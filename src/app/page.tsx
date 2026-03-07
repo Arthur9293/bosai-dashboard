@@ -76,6 +76,31 @@ type CommandsResponse = {
   ts?: string;
 };
 
+type SlaIncidentItem = {
+  id: string;
+  name?: string;
+  sla_status?: string;
+  sla_remaining_minutes?: number | string | null;
+  escalation_queued?: boolean;
+  last_sla_check?: string;
+  linked_run?: string[] | null;
+};
+
+type SlaResponse = {
+  ok?: boolean;
+  count?: number;
+  incidents?: SlaIncidentItem[];
+  stats?: {
+    ok?: number;
+    warning?: number;
+    breached?: number;
+    escalated?: number;
+    unknown?: number;
+    escalation_queued?: number;
+  };
+  ts?: string;
+};
+
 type DashboardState = {
   loading: boolean;
   error: string | null;
@@ -83,6 +108,7 @@ type DashboardState = {
   healthScore: HealthScoreResponse | null;
   runs: RunsResponse | null;
   commands: CommandsResponse | null;
+  sla: SlaResponse | null;
   lastRefresh: string | null;
 };
 
@@ -157,6 +183,23 @@ function getCommandStatusClasses(status?: string) {
   }
 }
 
+function getSlaStatusClasses(status?: string) {
+  const normalized = (status || "").toLowerCase();
+
+  switch (normalized) {
+    case "ok":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+    case "warning":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+    case "breached":
+      return "border-red-500/30 bg-red-500/10 text-red-300";
+    case "escalated":
+      return "border-rose-500/30 bg-rose-500/10 text-rose-300";
+    default:
+      return "border-zinc-700 bg-zinc-900 text-zinc-300";
+  }
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   const date = new Date(value);
@@ -170,6 +213,11 @@ function yesNo(value?: boolean | null) {
   return "—";
 }
 
+function formatMinutes(value?: number | string | null) {
+  if (value === null || value === undefined || value === "") return "—";
+  return String(value);
+}
+
 export default function HomePage() {
   const [state, setState] = useState<DashboardState>({
     loading: true,
@@ -178,6 +226,7 @@ export default function HomePage() {
     healthScore: null,
     runs: null,
     commands: null,
+    sla: null,
     lastRefresh: null,
   });
 
@@ -185,19 +234,23 @@ export default function HomePage() {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const [healthRes, healthScoreRes, runsRes, commandsRes] = await Promise.all([
-        fetch(`${WORKER_URL}/health`, { cache: "no-store" }),
-        fetch(`${WORKER_URL}/health/score`, { cache: "no-store" }),
-        fetch(`${WORKER_URL}/runs?limit=10`, { cache: "no-store" }),
-        fetch(`${WORKER_URL}/commands?limit=10`, { cache: "no-store" }),
-      ]);
+      const [healthRes, healthScoreRes, runsRes, commandsRes, slaRes] =
+        await Promise.all([
+          fetch(`${WORKER_URL}/health`, { cache: "no-store" }),
+          fetch(`${WORKER_URL}/health/score`, { cache: "no-store" }),
+          fetch(`${WORKER_URL}/runs?limit=10`, { cache: "no-store" }),
+          fetch(`${WORKER_URL}/commands?limit=10`, { cache: "no-store" }),
+          fetch(`${WORKER_URL}/sla?limit=10`, { cache: "no-store" }),
+        ]);
 
       if (!healthRes.ok) {
         throw new Error(`Health endpoint failed (${healthRes.status})`);
       }
 
       if (!healthScoreRes.ok) {
-        throw new Error(`Health score endpoint failed (${healthScoreRes.status})`);
+        throw new Error(
+          `Health score endpoint failed (${healthScoreRes.status})`
+        );
       }
 
       if (!runsRes.ok) {
@@ -208,10 +261,15 @@ export default function HomePage() {
         throw new Error(`Commands endpoint failed (${commandsRes.status})`);
       }
 
+      if (!slaRes.ok) {
+        throw new Error(`SLA endpoint failed (${slaRes.status})`);
+      }
+
       const health = (await healthRes.json()) as HealthResponse;
       const healthScore = (await healthScoreRes.json()) as HealthScoreResponse;
       const runs = (await runsRes.json()) as RunsResponse;
       const commands = (await commandsRes.json()) as CommandsResponse;
+      const sla = (await slaRes.json()) as SlaResponse;
 
       setState({
         loading: false,
@@ -220,6 +278,7 @@ export default function HomePage() {
         healthScore,
         runs,
         commands,
+        sla,
         lastRefresh: new Date().toISOString(),
       });
     } catch (error) {
@@ -233,6 +292,7 @@ export default function HomePage() {
         healthScore: null,
         runs: null,
         commands: null,
+        sla: null,
         lastRefresh: new Date().toISOString(),
       });
     }
@@ -257,6 +317,8 @@ export default function HomePage() {
   const runsStats = state.runs?.stats ?? {};
   const commands = state.commands?.commands ?? [];
   const commandsStats = state.commands?.stats ?? {};
+  const slaIncidents = state.sla?.incidents ?? [];
+  const slaStats = state.sla?.stats ?? {};
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -272,7 +334,8 @@ export default function HomePage() {
               </h1>
               <p className="mt-3 max-w-2xl text-sm text-zinc-400 md:text-base">
                 Monitor temps réel du worker BOSAI, du health score, des capacités
-                actives, des exécutions récentes et de la queue de commandes.
+                actives, des exécutions récentes, de la queue de commandes et du
+                suivi SLA.
               </p>
             </div>
 
@@ -390,7 +453,8 @@ export default function HomePage() {
               <div>
                 <h2 className="text-xl font-semibold">Health Score Analysis</h2>
                 <p className="mt-1 text-sm text-zinc-400">
-                  Données issues de <span className="text-zinc-200">/health/score</span>.
+                  Données issues de{" "}
+                  <span className="text-zinc-200">/health/score</span>.
                 </p>
               </div>
             </div>
@@ -496,7 +560,8 @@ export default function HomePage() {
             <div>
               <h2 className="text-xl font-semibold">Commands Queue</h2>
               <p className="mt-1 text-sm text-zinc-400">
-                File de commandes via <span className="text-zinc-200">/commands</span>.
+                File de commandes via{" "}
+                <span className="text-zinc-200">/commands</span>.
               </p>
             </div>
 
@@ -573,6 +638,77 @@ export default function HomePage() {
           )}
         </section>
 
+        <section className="mt-8 rounded-3xl border border-white/10 bg-zinc-950/70 p-6">
+          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">SLA Monitor</h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                Incidents et statuts via <span className="text-zinc-200">/sla</span>.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap">
+              <SmallStat label="OK" value={String(slaStats.ok ?? 0)} />
+              <SmallStat label="Warning" value={String(slaStats.warning ?? 0)} />
+              <SmallStat label="Breached" value={String(slaStats.breached ?? 0)} />
+              <SmallStat
+                label="Escalated"
+                value={String(slaStats.escalated ?? 0)}
+              />
+              <SmallStat label="Unknown" value={String(slaStats.unknown ?? 0)} />
+              <SmallStat
+                label="Esc Queue"
+                value={String(slaStats.escalation_queued ?? 0)}
+              />
+            </div>
+          </div>
+
+          {slaIncidents.length === 0 ? (
+            <EmptyState text="Aucun incident SLA trouvé." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-separate border-spacing-y-2">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-[0.2em] text-zinc-500">
+                    <th className="px-3 py-2">Incident</th>
+                    <th className="px-3 py-2">SLA Status</th>
+                    <th className="px-3 py-2">Remaining Min</th>
+                    <th className="px-3 py-2">Escalation Queued</th>
+                    <th className="px-3 py-2">Last SLA Check</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {slaIncidents.map((incident) => (
+                    <tr key={incident.id} className="rounded-2xl bg-white/[0.03]">
+                      <td className="rounded-l-2xl px-3 py-4 text-sm font-medium text-zinc-100">
+                        {incident.name || "—"}
+                      </td>
+                      <td className="px-3 py-4 text-sm">
+                        <span
+                          className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${getSlaStatusClasses(
+                            incident.sla_status
+                          )}`}
+                        >
+                          {incident.sla_status || "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-4 text-sm text-zinc-300">
+                        {formatMinutes(incident.sla_remaining_minutes)}
+                      </td>
+                      <td className="px-3 py-4 text-sm text-zinc-300">
+                        {yesNo(incident.escalation_queued)}
+                      </td>
+                      <td className="rounded-r-2xl px-3 py-4 text-sm text-zinc-300">
+                        {formatDate(incident.last_sla_check)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
         <section className="mt-8 grid gap-4 md:grid-cols-3">
           <InfoPanel
             title="Render Worker"
@@ -584,7 +720,7 @@ export default function HomePage() {
           />
           <InfoPanel
             title="Next Step"
-            text="Étape suivante : brancher SLA, Events et Escalations."
+            text="Étape suivante : brancher Events et Escalations."
           />
         </section>
       </div>
