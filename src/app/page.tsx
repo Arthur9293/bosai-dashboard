@@ -7,9 +7,7 @@ type HealthResponse = {
   app?: string;
   version?: string;
   worker?: string;
-  capabilities?: string[];
   ts?: string;
-  [key: string]: unknown;
 };
 
 type HealthScoreResponse = {
@@ -17,7 +15,6 @@ type HealthScoreResponse = {
   score?: number;
   issues?: string[];
   ts?: string;
-  [key: string]: unknown;
 };
 
 type RunItem = {
@@ -30,7 +27,6 @@ type RunItem = {
   started_at?: string;
   finished_at?: string;
   dry_run?: boolean | null;
-  [key: string]: unknown;
 };
 
 type RunsResponse = {
@@ -43,25 +39,22 @@ type RunsResponse = {
     error?: number;
     unsupported?: number;
     other?: number;
-    [key: string]: number | undefined;
   };
   ts?: string;
-  [key: string]: unknown;
 };
 
 type CommandItem = {
   id: string;
   capability?: string;
   status?: string;
-  worker?: string;
   priority?: number;
-  created_at?: string;
-  started_at?: string;
-  finished_at?: string;
   retry_count?: number;
-  is_blocked?: boolean;
+  retry_max?: number;
+  scheduled_at?: string;
+  next_retry_at?: string;
+  is_locked?: boolean;
+  locked_by?: string;
   idempotency_key?: string;
-  [key: string]: unknown;
 };
 
 type CommandsResponse = {
@@ -71,52 +64,54 @@ type CommandsResponse = {
   stats?: {
     queued?: number;
     running?: number;
+    retry?: number;
     done?: number;
-    error?: number;
+    dead?: number;
     blocked?: number;
+    unsupported?: number;
+    error?: number;
     other?: number;
-    [key: string]: number | undefined;
   };
   ts?: string;
-  [key: string]: unknown;
 };
 
-type SLAItem = {
+type IncidentItem = {
   id: string;
   name?: string;
-  title?: string;
   sla_status?: string;
-  priority?: string | number;
-  remaining_minutes?: number;
-  owner?: string;
-  status?: string;
-  updated_at?: string;
-  [key: string]: unknown;
+  sla_remaining_minutes?: number | string | null;
+  escalation_queued?: boolean;
+  last_sla_check?: string;
+  linked_run?: string[] | null;
 };
 
-type SLAResponse = {
+type SlaResponse = {
   ok?: boolean;
   count?: number;
-  breached?: number;
-  warning?: number;
-  ok_count?: number;
-  items?: SLAItem[];
+  incidents?: IncidentItem[];
+  stats?: {
+    ok?: number;
+    warning?: number;
+    breached?: number;
+    escalated?: number;
+    unknown?: number;
+    escalation_queued?: number;
+  };
   ts?: string;
-  [key: string]: unknown;
 };
 
 type EventItem = {
   id: string;
   event_type?: string;
-  type?: string;
-  source?: string;
   status?: string;
-  created_at?: string;
+  command_created?: boolean;
+  linked_command?: string[] | null;
+  mapped_capability?: string;
   processed_at?: string;
-  command_id?: string;
-  run_id?: string;
-  payload?: unknown;
-  [key: string]: unknown;
+  source?: string | null;
+  run_id?: string | null;
+  command_id?: string | null;
+  payload?: Record<string, unknown>;
 };
 
 type EventsResponse = {
@@ -124,186 +119,159 @@ type EventsResponse = {
   count?: number;
   events?: EventItem[];
   stats?: {
-    pending?: number;
+    queued?: number;
     processed?: number;
-    failed?: number;
+    ignored?: number;
+    error?: number;
     other?: number;
-    [key: string]: number | undefined;
   };
   ts?: string;
-  [key: string]: unknown;
 };
 
-type ApiErrorMap = Partial<Record<EndpointKey, string>>;
-
-type EndpointKey =
-  | "health"
-  | "healthScore"
-  | "runs"
-  | "commands"
-  | "sla"
-  | "events";
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_BOSAI_API_BASE_URL?.replace(/\/+$/, "") || "";
-
-const ENDPOINTS: Record<EndpointKey, string> = {
-  health: "/health",
-  healthScore: "/health/score",
-  runs: "/runs",
-  commands: "/commands",
-  sla: "/sla",
-  events: "/events",
+type LoadState = {
+  loading: boolean;
+  error: string | null;
 };
 
-function classNames(...parts: Array<string | false | null | undefined>) {
-  return parts.filter(Boolean).join(" ");
-}
+const WORKER_BASE_URL =
+  process.env.NEXT_PUBLIC_BOSAI_WORKER_URL?.replace(/\/+$/, "") || "";
 
-function formatDate(value?: string) {
+function formatDateTime(value?: string | null): string {
   if (!value) return "—";
+
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return "—";
+
   return new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "short",
-    timeStyle: "medium",
+    timeStyle: "short",
   }).format(date);
 }
 
-function formatNumber(value?: number | null) {
-  if (value === undefined || value === null || Number.isNaN(value)) return "—";
-  return new Intl.NumberFormat("fr-FR").format(value);
+function formatRelativeMinutes(value?: number | string | null): string {
+  if (value === null || value === undefined || value === "") return "—";
+
+  const num = typeof value === "number" ? value : Number(value);
+  if (Number.isNaN(num)) return "—";
+
+  return `${num} min`;
 }
 
-function scoreTone(score?: number) {
-  if (typeof score !== "number") return "text-zinc-300";
-  if (score >= 90) return "text-emerald-400";
-  if (score >= 70) return "text-amber-400";
-  return "text-rose-400";
+function joinIssues(issues?: string[]): string {
+  if (!issues || issues.length === 0) return "Aucune alerte";
+  return issues.slice(0, 3).join(" • ");
 }
 
-function statusTone(status?: string) {
+function getWorkerStatus(
+  health?: HealthResponse | null,
+  score?: HealthScoreResponse | null,
+  error?: string | null,
+): { label: string; tone: string } {
+  if (error) {
+    return { label: "Offline", tone: "bg-red-500/15 text-red-300 ring-red-500/30" };
+  }
+
+  if (!health?.ok) {
+    return { label: "Degraded", tone: "bg-amber-500/15 text-amber-300 ring-amber-500/30" };
+  }
+
+  const rawScore = score?.score ?? 0;
+
+  if (rawScore >= 85) {
+    return { label: "Online", tone: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30" };
+  }
+
+  if (rawScore >= 60) {
+    return { label: "Degraded", tone: "bg-amber-500/15 text-amber-300 ring-amber-500/30" };
+  }
+
+  return { label: "At Risk", tone: "bg-red-500/15 text-red-300 ring-red-500/30" };
+}
+
+function statusTone(status?: string): string {
   const s = (status || "").toLowerCase();
 
-  if (
-    s.includes("done") ||
-    s.includes("ok") ||
-    s.includes("healthy") ||
-    s.includes("success") ||
-    s.includes("processed")
-  ) {
-    return "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30";
+  if (["done", "active", "enabled", "processed", "ok"].includes(s)) {
+    return "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30";
   }
 
-  if (
-    s.includes("warning") ||
-    s.includes("queued") ||
-    s.includes("pending") ||
-    s.includes("running")
-  ) {
-    return "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30";
+  if (["queued", "queue", "running", "testing"].includes(s)) {
+    return "bg-sky-500/15 text-sky-300 ring-sky-500/30";
   }
 
-  if (
-    s.includes("error") ||
-    s.includes("fail") ||
-    s.includes("blocked") ||
-    s.includes("breached") ||
-    s.includes("unsupported")
-  ) {
-    return "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30";
+  if (["retry", "warning", "paused"].includes(s)) {
+    return "bg-amber-500/15 text-amber-300 ring-amber-500/30";
   }
 
-  return "bg-zinc-700/50 text-zinc-200 ring-1 ring-zinc-600";
+  if (["dead", "blocked", "error", "breached", "escalated", "unsupported"].includes(s)) {
+    return "bg-red-500/15 text-red-300 ring-red-500/30";
+  }
+
+  return "bg-white/10 text-zinc-300 ring-white/10";
 }
 
-function Card({
+function MetricCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur">
+      <div className="text-xs uppercase tracking-[0.18em] text-zinc-400">{label}</div>
+      <div className="mt-3 text-3xl font-semibold text-white">{value}</div>
+      <div className="mt-2 text-sm text-zinc-400">{hint || "—"}</div>
+    </div>
+  );
+}
+
+function SectionCard({
   title,
-  subtitle,
   right,
   children,
 }: {
   title: string;
-  subtitle?: string;
   right?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-sm font-semibold tracking-wide text-zinc-100 uppercase">
-            {title}
-          </h2>
-          {subtitle ? (
-            <p className="mt-1 text-sm text-zinc-400">{subtitle}</p>
-          ) : null}
-        </div>
-        {right ? <div className="shrink-0">{right}</div> : null}
+    <section className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-white">{title}</h2>
+        {right}
       </div>
       {children}
     </section>
   );
 }
 
-function Stat({
-  label,
-  value,
-  tone = "text-zinc-100",
-}: {
-  label: string;
-  value: string | number;
-  tone?: string;
-}) {
+function SmallBadge({ text, className = "" }: { text: string; className?: string }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
-      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className={classNames("mt-2 text-2xl font-semibold", tone)}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function Badge({ value }: { value?: string | number | boolean | null }) {
-  const text =
-    value === undefined || value === null || value === "" ? "—" : String(value);
-
-  return (
-    <span
-      className={classNames(
-        "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium",
-        statusTone(String(text))
-      )}
-    >
+    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs ring-1 ${className}`}>
       {text}
     </span>
   );
 }
 
-function JsonBlock({ data }: { data: unknown }) {
-  return (
-    <pre className="max-h-72 overflow-auto rounded-xl border border-zinc-800 bg-zinc-950/80 p-4 text-xs leading-6 text-zinc-300">
-      {JSON.stringify(data, null, 2)}
-    </pre>
-  );
-}
-
-export default function Page() {
+export default function BosaiOverviewPage() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthScore, setHealthScore] = useState<HealthScoreResponse | null>(null);
   const [runs, setRuns] = useState<RunsResponse | null>(null);
   const [commands, setCommands] = useState<CommandsResponse | null>(null);
-  const [sla, setSla] = useState<SLAResponse | null>(null);
+  const [sla, setSla] = useState<SlaResponse | null>(null);
   const [events, setEvents] = useState<EventsResponse | null>(null);
 
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<ApiErrorMap>({});
-  const [lastRefresh, setLastRefresh] = useState<string | null>(null);
+  const [state, setState] = useState<LoadState>({ loading: true, error: null });
 
   const fetchJson = useCallback(async <T,>(path: string): Promise<T> => {
-    const url = `${API_BASE}${path}`;
-    const res = await fetch(url, {
+    if (!WORKER_BASE_URL) {
+      throw new Error("NEXT_PUBLIC_BOSAI_WORKER_URL manquant");
+    }
+
+    const response = await fetch(`${WORKER_BASE_URL}${path}`, {
       method: "GET",
       cache: "no-store",
       headers: {
@@ -311,624 +279,415 @@ export default function Page() {
       },
     });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`);
+    if (!response.ok) {
+      throw new Error(`GET ${path} failed (${response.status})`);
     }
 
-    return (await res.json()) as T;
+    return (await response.json()) as T;
   }, []);
 
   const loadAll = useCallback(async () => {
-    setLoading(true);
-    setErrors({});
+    try {
+      setState({ loading: true, error: null });
 
-    const results = await Promise.allSettled([
-      fetchJson<HealthResponse>(ENDPOINTS.health),
-      fetchJson<HealthScoreResponse>(ENDPOINTS.healthScore),
-      fetchJson<RunsResponse>(ENDPOINTS.runs),
-      fetchJson<CommandsResponse>(ENDPOINTS.commands),
-      fetchJson<SLAResponse>(ENDPOINTS.sla),
-      fetchJson<EventsResponse>(ENDPOINTS.events),
-    ]);
+      const [
+        healthData,
+        healthScoreData,
+        runsData,
+        commandsData,
+        slaData,
+        eventsData,
+      ] = await Promise.all([
+        fetchJson<HealthResponse>("/health"),
+        fetchJson<HealthScoreResponse>("/health/score"),
+        fetchJson<RunsResponse>("/runs?limit=8"),
+        fetchJson<CommandsResponse>("/commands?limit=8"),
+        fetchJson<SlaResponse>("/sla?limit=8"),
+        fetchJson<EventsResponse>("/events?limit=8"),
+      ]);
 
-    const nextErrors: ApiErrorMap = {};
+      setHealth(healthData);
+      setHealthScore(healthScoreData);
+      setRuns(runsData);
+      setCommands(commandsData);
+      setSla(slaData);
+      setEvents(eventsData);
 
-    if (results[0].status === "fulfilled") setHealth(results[0].value);
-    else nextErrors.health = results[0].reason?.message || "Erreur inconnue";
-
-    if (results[1].status === "fulfilled") setHealthScore(results[1].value);
-    else nextErrors.healthScore = results[1].reason?.message || "Erreur inconnue";
-
-    if (results[2].status === "fulfilled") setRuns(results[2].value);
-    else nextErrors.runs = results[2].reason?.message || "Erreur inconnue";
-
-    if (results[3].status === "fulfilled") setCommands(results[3].value);
-    else nextErrors.commands = results[3].reason?.message || "Erreur inconnue";
-
-    if (results[4].status === "fulfilled") setSla(results[4].value);
-    else nextErrors.sla = results[4].reason?.message || "Erreur inconnue";
-
-    if (results[5].status === "fulfilled") setEvents(results[5].value);
-    else nextErrors.events = results[5].reason?.message || "Erreur inconnue";
-
-    setErrors(nextErrors);
-    setLastRefresh(new Date().toISOString());
-    setLoading(false);
+      setState({ loading: false, error: null });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erreur inconnue";
+      setState({ loading: false, error: message });
+    }
   }, [fetchJson]);
 
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
 
-  const summary = useMemo(() => {
-    const runsStats = runs?.stats || {};
-    const commandsStats = commands?.stats || {};
-    const eventsStats = events?.stats || {};
+  const worker = getWorkerStatus(health, healthScore, state.error);
+
+  const totalRuns = runs?.count ?? 0;
+  const commandsQueued = commands?.stats?.queued ?? 0;
+  const commandsFailed =
+    (commands?.stats?.dead ?? 0) +
+    (commands?.stats?.error ?? 0) +
+    (commands?.stats?.blocked ?? 0);
+
+  const breachedIncidents =
+    (sla?.stats?.breached ?? 0) + (sla?.stats?.escalated ?? 0);
+
+  const capabilitySnapshot = useMemo(() => {
+    const recentCommandCapabilities = new Set(
+      (commands?.commands ?? []).map((item) => item.capability).filter(Boolean),
+    );
+    const recentEventCapabilities = new Set(
+      (events?.events ?? []).map((item) => item.mapped_capability).filter(Boolean),
+    );
+
+    const unique = new Set([
+      ...Array.from(recentCommandCapabilities),
+      ...Array.from(recentEventCapabilities),
+    ]);
 
     return {
-      healthOk: health?.ok === true,
-      score: healthScore?.score,
-      runsDone: runsStats.done ?? 0,
-      runsError: runsStats.error ?? 0,
-      commandsQueued: commandsStats.queued ?? 0,
-      commandsBlocked: commandsStats.blocked ?? 0,
-      slaBreached: sla?.breached ?? 0,
-      eventsPending: eventsStats.pending ?? 0,
+      totalVisible: unique.size,
+      recentHttpExec: (commands?.commands ?? []).filter(
+        (item) => item.capability === "http_exec",
+      ).length,
+      recentEventEngine: (commands?.commands ?? []).filter(
+        (item) => item.capability === "event_engine",
+      ).length,
+      recentCommandOrchestrator: (commands?.commands ?? []).filter(
+        (item) => item.capability === "command_orchestrator",
+      ).length,
     };
-  }, [health, healthScore, runs, commands, sla, events]);
+  }, [commands, events]);
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
+    <main className="min-h-screen bg-[#0a0a0f] text-white">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <header className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
-              BOSAI Dashboard
+        <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-zinc-400">
+                Business Operating System for AI
+              </p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+                BOSAI Runtime Control Center
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm text-zinc-400">
+                Vue d’ensemble du worker, des commandes, des événements et de la santé opérationnelle.
+              </p>
             </div>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
-              Control Surface
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm text-zinc-400">
-              Vue unifiée des endpoints /health, /health/score, /runs, /commands,
-              /sla et /events.
-            </p>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <SmallBadge text={worker.label} className={worker.tone} />
+              <SmallBadge
+                text={`v${health?.version ?? "—"}`}
+                className="bg-white/10 text-zinc-200 ring-white/10"
+              />
+              <button
+                onClick={() => void loadAll()}
+                className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-white transition hover:bg-white/15"
+              >
+                Actualiser
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-400">
-              <div>API Base</div>
-              <div className="mt-1 break-all font-mono text-xs text-zinc-300">
-                {API_BASE || "même origine"}
-              </div>
+          <div className="flex flex-wrap gap-6 text-sm text-zinc-400">
+            <div>
+              <span className="text-zinc-500">Worker :</span>{" "}
+              <span className="text-zinc-200">{health?.worker ?? "—"}</span>
             </div>
-
-            <button
-              onClick={() => void loadAll()}
-              disabled={loading}
-              className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-white px-4 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loading ? "Actualisation..." : "Actualiser"}
-            </button>
+            <div>
+              <span className="text-zinc-500">App :</span>{" "}
+              <span className="text-zinc-200">{health?.app ?? "—"}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500">Dernière mise à jour :</span>{" "}
+              <span className="text-zinc-200">{formatDateTime(health?.ts)}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500">Source :</span>{" "}
+              <span className="text-zinc-200">
+                {WORKER_BASE_URL || "NEXT_PUBLIC_BOSAI_WORKER_URL non défini"}
+              </span>
+            </div>
           </div>
         </header>
 
-        <section className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-8">
-          <Stat
-            label="Health"
-            value={summary.healthOk ? "OK" : "Check"}
-            tone={summary.healthOk ? "text-emerald-400" : "text-rose-400"}
+        {state.error && (
+          <div className="mb-8 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+            Erreur de chargement : {state.error}
+          </div>
+        )}
+
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+          <MetricCard
+            label="Worker Status"
+            value={worker.label}
+            hint={health?.worker ?? "—"}
           />
-          <Stat
-            label="Score"
-            value={summary.score ?? "—"}
-            tone={scoreTone(summary.score)}
+          <MetricCard
+            label="Health Score"
+            value={healthScore?.score ?? "—"}
+            hint={joinIssues(healthScore?.issues)}
           />
-          <Stat label="Runs done" value={formatNumber(summary.runsDone)} />
-          <Stat
-            label="Runs error"
-            value={formatNumber(summary.runsError)}
-            tone={summary.runsError > 0 ? "text-rose-400" : "text-zinc-100"}
+          <MetricCard
+            label="Runs"
+            value={totalRuns}
+            hint={`Done: ${runs?.stats?.done ?? 0} • Error: ${runs?.stats?.error ?? 0}`}
           />
-          <Stat
-            label="Cmd queued"
-            value={formatNumber(summary.commandsQueued)}
-            tone={
-              summary.commandsQueued > 0 ? "text-amber-400" : "text-zinc-100"
-            }
+          <MetricCard
+            label="Commands Queued"
+            value={commandsQueued}
+            hint={`Running: ${commands?.stats?.running ?? 0}`}
           />
-          <Stat
-            label="Cmd blocked"
-            value={formatNumber(summary.commandsBlocked)}
-            tone={
-              summary.commandsBlocked > 0 ? "text-rose-400" : "text-zinc-100"
-            }
+          <MetricCard
+            label="Commands Failed"
+            value={commandsFailed}
+            hint={`Dead: ${commands?.stats?.dead ?? 0} • Blocked: ${commands?.stats?.blocked ?? 0}`}
           />
-          <Stat
-            label="SLA breached"
-            value={formatNumber(summary.slaBreached)}
-            tone={summary.slaBreached > 0 ? "text-rose-400" : "text-zinc-100"}
-          />
-          <Stat
-            label="Events pending"
-            value={formatNumber(summary.eventsPending)}
-            tone={summary.eventsPending > 0 ? "text-amber-400" : "text-zinc-100"}
+          <MetricCard
+            label="Breached Incidents"
+            value={breachedIncidents}
+            hint={`Warning: ${sla?.stats?.warning ?? 0}`}
           />
         </section>
 
-        <div className="mb-8 grid gap-6 lg:grid-cols-2">
-          <Card
-            title="/health"
-            subtitle="État applicatif général"
-            right={<Badge value={health?.ok ? "ok" : errors.health ? "error" : "—"} />}
-          >
-            {errors.health ? (
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300">
-                {errors.health}
-              </div>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                <Stat label="App" value={String(health?.app || "—")} />
-                <Stat label="Version" value={String(health?.version || "—")} />
-                <Stat label="Worker" value={String(health?.worker || "—")} />
-                <Stat
-                  label="Capabilities"
-                  value={formatNumber(health?.capabilities?.length || 0)}
-                />
-                <div className="md:col-span-2">
-                  <div className="mb-2 text-xs uppercase tracking-wide text-zinc-500">
-                    Capabilities
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(health?.capabilities || []).length > 0 ? (
-                      health?.capabilities?.map((cap) => (
-                        <span
-                          key={cap}
-                          className="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1 text-xs text-zinc-300"
-                        >
-                          {cap}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-sm text-zinc-500">Aucune donnée</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </Card>
-
-          <Card
-            title="/health/score"
-            subtitle="Score de santé agrégé"
+        <section className="mt-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <SectionCard
+            title="Recent Commands"
             right={
-              <div className={classNames("text-2xl font-semibold", scoreTone(healthScore?.score))}>
-                {healthScore?.score ?? "—"}
+              <div className="flex gap-2">
+                <SmallBadge
+                  text={`Queued ${commands?.stats?.queued ?? 0}`}
+                  className="bg-sky-500/15 text-sky-300 ring-sky-500/30"
+                />
+                <SmallBadge
+                  text={`Done ${commands?.stats?.done ?? 0}`}
+                  className="bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
+                />
               </div>
             }
           >
-            {errors.healthScore ? (
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300">
-                {errors.healthScore}
+            <div className="overflow-hidden rounded-2xl border border-white/10">
+              <div className="grid grid-cols-[1.3fr_1fr_0.9fr] gap-3 border-b border-white/10 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.16em] text-zinc-400">
+                <div>Capability</div>
+                <div>Status</div>
+                <div>Planifiée</div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="h-3 w-full overflow-hidden rounded-full bg-zinc-800">
-                  <div
-                    className={classNames(
-                      "h-full rounded-full transition-all",
-                      typeof healthScore?.score === "number" && healthScore.score >= 90
-                        ? "bg-emerald-400"
-                        : typeof healthScore?.score === "number" &&
-                            healthScore.score >= 70
-                          ? "bg-amber-400"
-                          : "bg-rose-400"
-                    )}
-                    style={{ width: `${Math.max(0, Math.min(healthScore?.score ?? 0, 100))}%` }}
-                  />
-                </div>
 
-                <div>
-                  <div className="mb-2 text-xs uppercase tracking-wide text-zinc-500">
-                    Issues
-                  </div>
-                  {(healthScore?.issues || []).length > 0 ? (
-                    <ul className="space-y-2 text-sm text-zinc-300">
-                      {healthScore?.issues?.map((issue, idx) => (
-                        <li
-                          key={`${issue}-${idx}`}
-                          className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-4 py-3"
-                        >
-                          {issue}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-4 py-3 text-sm text-zinc-500">
-                      Aucune issue remontée
+              {(commands?.commands ?? []).length === 0 ? (
+                <div className="px-4 py-6 text-sm text-zinc-400">
+                  {state.loading ? "Chargement..." : "Aucune commande visible."}
+                </div>
+              ) : (
+                <div className="divide-y divide-white/10">
+                  {(commands?.commands ?? []).map((item) => (
+                    <div
+                      key={item.id}
+                      className="grid grid-cols-[1.3fr_1fr_0.9fr] gap-3 px-4 py-3 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-white">
+                          {item.capability || "—"}
+                        </div>
+                        <div className="truncate text-xs text-zinc-500">
+                          {item.idempotency_key || item.id}
+                        </div>
+                      </div>
+                      <div>
+                        <SmallBadge
+                          text={item.status || "unknown"}
+                          className={statusTone(item.status)}
+                        />
+                      </div>
+                      <div className="text-zinc-300">
+                        {formatDateTime(item.scheduled_at || item.next_retry_at)}
+                      </div>
                     </div>
-                  )}
+                  ))}
                 </div>
-              </div>
-            )}
-          </Card>
-        </div>
+              )}
+            </div>
+          </SectionCard>
 
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Card
-            title="/runs"
-            subtitle="Historique récent des runs"
-            right={<Badge value={runs?.count ?? 0} />}
+          <SectionCard
+            title="Recent Events"
+            right={
+              <div className="flex gap-2">
+                <SmallBadge
+                  text={`Processed ${events?.stats?.processed ?? 0}`}
+                  className="bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
+                />
+                <SmallBadge
+                  text={`Queued ${events?.stats?.queued ?? 0}`}
+                  className="bg-sky-500/15 text-sky-300 ring-sky-500/30"
+                />
+              </div>
+            }
           >
-            {errors.runs ? (
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300">
-                {errors.runs}
+            <div className="overflow-hidden rounded-2xl border border-white/10">
+              <div className="grid grid-cols-[1.2fr_1fr_1fr] gap-3 border-b border-white/10 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.16em] text-zinc-400">
+                <div>Event</div>
+                <div>Status</div>
+                <div>Capability</div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-                  <Stat label="Running" value={runs?.stats?.running ?? 0} />
-                  <Stat label="Done" value={runs?.stats?.done ?? 0} />
-                  <Stat
-                    label="Error"
-                    value={runs?.stats?.error ?? 0}
-                    tone={(runs?.stats?.error ?? 0) > 0 ? "text-rose-400" : "text-zinc-100"}
-                  />
-                  <Stat
-                    label="Unsupported"
-                    value={runs?.stats?.unsupported ?? 0}
-                    tone={
-                      (runs?.stats?.unsupported ?? 0) > 0
-                        ? "text-amber-400"
-                        : "text-zinc-100"
-                    }
-                  />
-                  <Stat label="Other" value={runs?.stats?.other ?? 0} />
-                </div>
 
-                <div className="overflow-x-auto rounded-xl border border-zinc-800">
-                  <table className="min-w-full divide-y divide-zinc-800 text-sm">
-                    <thead className="bg-zinc-950/80 text-zinc-400">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-medium">Run</th>
-                        <th className="px-4 py-3 text-left font-medium">Capability</th>
-                        <th className="px-4 py-3 text-left font-medium">Status</th>
-                        <th className="px-4 py-3 text-left font-medium">Priority</th>
-                        <th className="px-4 py-3 text-left font-medium">Started</th>
-                        <th className="px-4 py-3 text-left font-medium">Finished</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                      {(runs?.runs || []).length > 0 ? (
-                        runs?.runs?.map((run) => (
-                          <tr key={run.id} className="bg-zinc-900/30">
-                            <td className="px-4 py-3 font-mono text-xs text-zinc-300">
-                              {run.run_id || run.id}
-                            </td>
-                            <td className="px-4 py-3 text-zinc-200">
-                              {run.capability || "—"}
-                            </td>
-                            <td className="px-4 py-3">
-                              <Badge value={run.status} />
-                            </td>
-                            <td className="px-4 py-3 text-zinc-300">
-                              {run.priority ?? "—"}
-                            </td>
-                            <td className="px-4 py-3 text-zinc-400">
-                              {formatDate(run.started_at)}
-                            </td>
-                            <td className="px-4 py-3 text-zinc-400">
-                              {formatDate(run.finished_at)}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td
-                            colSpan={6}
-                            className="px-4 py-8 text-center text-sm text-zinc-500"
-                          >
-                            Aucune donnée
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+              {(events?.events ?? []).length === 0 ? (
+                <div className="px-4 py-6 text-sm text-zinc-400">
+                  {state.loading ? "Chargement..." : "Aucun event visible."}
                 </div>
+              ) : (
+                <div className="divide-y divide-white/10">
+                  {(events?.events ?? []).map((item) => (
+                    <div
+                      key={item.id}
+                      className="grid grid-cols-[1.2fr_1fr_1fr] gap-3 px-4 py-3 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-white">
+                          {item.event_type || "—"}
+                        </div>
+                        <div className="truncate text-xs text-zinc-500">
+                          {item.source || item.id}
+                        </div>
+                      </div>
+                      <div>
+                        <SmallBadge
+                          text={item.status || "unknown"}
+                          className={statusTone(item.status)}
+                        />
+                      </div>
+                      <div className="truncate text-zinc-300">
+                        {item.mapped_capability || "—"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </SectionCard>
+        </section>
 
-                <details className="group">
-                  <summary className="cursor-pointer text-sm text-zinc-400 marker:text-zinc-600">
-                    Réponse brute
-                  </summary>
-                  <div className="mt-3">
-                    <JsonBlock data={runs} />
-                  </div>
-                </details>
+        <section className="mt-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <SectionCard
+            title="SLA / Incidents"
+            right={
+              <div className="flex gap-2">
+                <SmallBadge
+                  text={`Warning ${sla?.stats?.warning ?? 0}`}
+                  className="bg-amber-500/15 text-amber-300 ring-amber-500/30"
+                />
+                <SmallBadge
+                  text={`Breached ${sla?.stats?.breached ?? 0}`}
+                  className="bg-red-500/15 text-red-300 ring-red-500/30"
+                />
               </div>
-            )}
-          </Card>
-
-          <Card
-            title="/commands"
-            subtitle="État de la file de commandes"
-            right={<Badge value={commands?.count ?? 0} />}
+            }
           >
-            {errors.commands ? (
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300">
-                {errors.commands}
+            <div className="grid grid-cols-2 gap-3 pb-4 sm:grid-cols-4">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">OK</div>
+                <div className="mt-2 text-2xl font-semibold">{sla?.stats?.ok ?? 0}</div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
-                  <Stat label="Queued" value={commands?.stats?.queued ?? 0} />
-                  <Stat label="Running" value={commands?.stats?.running ?? 0} />
-                  <Stat label="Done" value={commands?.stats?.done ?? 0} />
-                  <Stat
-                    label="Error"
-                    value={commands?.stats?.error ?? 0}
-                    tone={
-                      (commands?.stats?.error ?? 0) > 0
-                        ? "text-rose-400"
-                        : "text-zinc-100"
-                    }
-                  />
-                  <Stat
-                    label="Blocked"
-                    value={commands?.stats?.blocked ?? 0}
-                    tone={
-                      (commands?.stats?.blocked ?? 0) > 0
-                        ? "text-rose-400"
-                        : "text-zinc-100"
-                    }
-                  />
-                  <Stat label="Other" value={commands?.stats?.other ?? 0} />
-                </div>
-
-                <div className="overflow-x-auto rounded-xl border border-zinc-800">
-                  <table className="min-w-full divide-y divide-zinc-800 text-sm">
-                    <thead className="bg-zinc-950/80 text-zinc-400">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-medium">Command</th>
-                        <th className="px-4 py-3 text-left font-medium">Capability</th>
-                        <th className="px-4 py-3 text-left font-medium">Status</th>
-                        <th className="px-4 py-3 text-left font-medium">Retry</th>
-                        <th className="px-4 py-3 text-left font-medium">Priority</th>
-                        <th className="px-4 py-3 text-left font-medium">Created</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                      {(commands?.commands || []).length > 0 ? (
-                        commands?.commands?.map((command) => (
-                          <tr key={command.id} className="bg-zinc-900/30">
-                            <td className="px-4 py-3 font-mono text-xs text-zinc-300">
-                              {command.id}
-                            </td>
-                            <td className="px-4 py-3 text-zinc-200">
-                              {command.capability || "—"}
-                            </td>
-                            <td className="px-4 py-3">
-                              <Badge value={command.status} />
-                            </td>
-                            <td className="px-4 py-3 text-zinc-300">
-                              {command.retry_count ?? 0}
-                            </td>
-                            <td className="px-4 py-3 text-zinc-300">
-                              {command.priority ?? "—"}
-                            </td>
-                            <td className="px-4 py-3 text-zinc-400">
-                              {formatDate(command.created_at)}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td
-                            colSpan={6}
-                            className="px-4 py-8 text-center text-sm text-zinc-500"
-                          >
-                            Aucune donnée
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                <details className="group">
-                  <summary className="cursor-pointer text-sm text-zinc-400 marker:text-zinc-600">
-                    Réponse brute
-                  </summary>
-                  <div className="mt-3">
-                    <JsonBlock data={commands} />
-                  </div>
-                </details>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">Warning</div>
+                <div className="mt-2 text-2xl font-semibold">{sla?.stats?.warning ?? 0}</div>
               </div>
-            )}
-          </Card>
-
-          <Card
-            title="/sla"
-            subtitle="Suivi SLA et incidents"
-            right={<Badge value={sla?.count ?? 0} />}
-          >
-            {errors.sla ? (
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300">
-                {errors.sla}
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">Breached</div>
+                <div className="mt-2 text-2xl font-semibold">{sla?.stats?.breached ?? 0}</div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                  <Stat label="Items" value={sla?.count ?? 0} />
-                  <Stat
-                    label="Breached"
-                    value={sla?.breached ?? 0}
-                    tone={(sla?.breached ?? 0) > 0 ? "text-rose-400" : "text-zinc-100"}
-                  />
-                  <Stat
-                    label="Warning"
-                    value={sla?.warning ?? 0}
-                    tone={(sla?.warning ?? 0) > 0 ? "text-amber-400" : "text-zinc-100"}
-                  />
-                  <Stat label="OK" value={sla?.ok_count ?? 0} />
-                </div>
-
-                <div className="overflow-x-auto rounded-xl border border-zinc-800">
-                  <table className="min-w-full divide-y divide-zinc-800 text-sm">
-                    <thead className="bg-zinc-950/80 text-zinc-400">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-medium">Item</th>
-                        <th className="px-4 py-3 text-left font-medium">SLA</th>
-                        <th className="px-4 py-3 text-left font-medium">Remaining</th>
-                        <th className="px-4 py-3 text-left font-medium">Priority</th>
-                        <th className="px-4 py-3 text-left font-medium">Owner</th>
-                        <th className="px-4 py-3 text-left font-medium">Updated</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                      {(sla?.items || []).length > 0 ? (
-                        sla?.items?.map((item) => (
-                          <tr key={item.id} className="bg-zinc-900/30">
-                            <td className="px-4 py-3 text-zinc-200">
-                              {item.name || item.title || item.id}
-                            </td>
-                            <td className="px-4 py-3">
-                              <Badge value={item.sla_status} />
-                            </td>
-                            <td className="px-4 py-3 text-zinc-300">
-                              {item.remaining_minutes ?? "—"}
-                            </td>
-                            <td className="px-4 py-3 text-zinc-300">
-                              {item.priority ?? "—"}
-                            </td>
-                            <td className="px-4 py-3 text-zinc-300">
-                              {item.owner || "—"}
-                            </td>
-                            <td className="px-4 py-3 text-zinc-400">
-                              {formatDate(item.updated_at)}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td
-                            colSpan={6}
-                            className="px-4 py-8 text-center text-sm text-zinc-500"
-                          >
-                            Aucune donnée
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                <details className="group">
-                  <summary className="cursor-pointer text-sm text-zinc-400 marker:text-zinc-600">
-                    Réponse brute
-                  </summary>
-                  <div className="mt-3">
-                    <JsonBlock data={sla} />
-                  </div>
-                </details>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">Escalated</div>
+                <div className="mt-2 text-2xl font-semibold">{sla?.stats?.escalated ?? 0}</div>
               </div>
-            )}
-          </Card>
+            </div>
 
-          <Card
-            title="/events"
-            subtitle="Pipeline d’événements"
-            right={<Badge value={events?.count ?? 0} />}
-          >
-            {errors.events ? (
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300">
-                {errors.events}
+            <div className="overflow-hidden rounded-2xl border border-white/10">
+              <div className="grid grid-cols-[1.2fr_0.8fr_0.8fr] gap-3 border-b border-white/10 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.16em] text-zinc-400">
+                <div>Incident</div>
+                <div>Status</div>
+                <div>Remaining</div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                  <Stat label="Pending" value={events?.stats?.pending ?? 0} />
-                  <Stat label="Processed" value={events?.stats?.processed ?? 0} />
-                  <Stat
-                    label="Failed"
-                    value={events?.stats?.failed ?? 0}
-                    tone={
-                      (events?.stats?.failed ?? 0) > 0
-                        ? "text-rose-400"
-                        : "text-zinc-100"
-                    }
-                  />
-                  <Stat label="Other" value={events?.stats?.other ?? 0} />
-                </div>
 
-                <div className="overflow-x-auto rounded-xl border border-zinc-800">
-                  <table className="min-w-full divide-y divide-zinc-800 text-sm">
-                    <thead className="bg-zinc-950/80 text-zinc-400">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-medium">Event</th>
-                        <th className="px-4 py-3 text-left font-medium">Type</th>
-                        <th className="px-4 py-3 text-left font-medium">Status</th>
-                        <th className="px-4 py-3 text-left font-medium">Source</th>
-                        <th className="px-4 py-3 text-left font-medium">Run</th>
-                        <th className="px-4 py-3 text-left font-medium">Created</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                      {(events?.events || []).length > 0 ? (
-                        events?.events?.map((event) => (
-                          <tr key={event.id} className="bg-zinc-900/30">
-                            <td className="px-4 py-3 font-mono text-xs text-zinc-300">
-                              {event.id}
-                            </td>
-                            <td className="px-4 py-3 text-zinc-200">
-                              {event.event_type || event.type || "—"}
-                            </td>
-                            <td className="px-4 py-3">
-                              <Badge value={event.status} />
-                            </td>
-                            <td className="px-4 py-3 text-zinc-300">
-                              {event.source || "—"}
-                            </td>
-                            <td className="px-4 py-3 font-mono text-xs text-zinc-400">
-                              {event.run_id || "—"}
-                            </td>
-                            <td className="px-4 py-3 text-zinc-400">
-                              {formatDate(event.created_at)}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td
-                            colSpan={6}
-                            className="px-4 py-8 text-center text-sm text-zinc-500"
-                          >
-                            Aucune donnée
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+              {(sla?.incidents ?? []).length === 0 ? (
+                <div className="px-4 py-6 text-sm text-zinc-400">
+                  {state.loading ? "Chargement..." : "Aucun incident visible."}
                 </div>
+              ) : (
+                <div className="divide-y divide-white/10">
+                  {(sla?.incidents ?? []).map((item) => (
+                    <div
+                      key={item.id}
+                      className="grid grid-cols-[1.2fr_0.8fr_0.8fr] gap-3 px-4 py-3 text-sm"
+                    >
+                      <div className="truncate font-medium text-white">
+                        {item.name || item.id}
+                      </div>
+                      <div>
+                        <SmallBadge
+                          text={item.sla_status || "unknown"}
+                          className={statusTone(item.sla_status)}
+                        />
+                      </div>
+                      <div className="text-zinc-300">
+                        {formatRelativeMinutes(item.sla_remaining_minutes)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </SectionCard>
 
-                <details className="group">
-                  <summary className="cursor-pointer text-sm text-zinc-400 marker:text-zinc-600">
-                    Réponse brute
-                  </summary>
-                  <div className="mt-3">
-                    <JsonBlock data={events} />
-                  </div>
-                </details>
+          <SectionCard title="Capability Snapshot">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">Visible</div>
+                <div className="mt-2 text-2xl font-semibold text-white">
+                  {capabilitySnapshot.totalVisible}
+                </div>
               </div>
-            )}
-          </Card>
-        </div>
 
-        <footer className="mt-8 flex flex-col gap-2 border-t border-zinc-900 pt-6 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            Dernière actualisation : {lastRefresh ? formatDate(lastRefresh) : "—"}
-          </div>
-          <div>Cache : no-store</div>
-        </footer>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">HTTP Exec</div>
+                <div className="mt-2 text-2xl font-semibold text-white">
+                  {capabilitySnapshot.recentHttpExec}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">Event Engine</div>
+                <div className="mt-2 text-2xl font-semibold text-white">
+                  {capabilitySnapshot.recentEventEngine}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+                  Command Orchestrator
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-white">
+                  {capabilitySnapshot.recentCommandOrchestrator}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-zinc-300">
+              <div className="font-medium text-white">Résumé runtime</div>
+              <p className="mt-2 leading-6 text-zinc-400">
+                Cette vue Overview lit directement le worker BOSAI et agrège santé,
+                queue, événements et incidents. La partie Governance détaillée pourra
+                être branchée ensuite avec les endpoints read-only dédiés.
+              </p>
+            </div>
+          </SectionCard>
+        </section>
       </div>
     </main>
   );
