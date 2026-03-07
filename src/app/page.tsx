@@ -1,65 +1,378 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useMemo, useState } from "react";
+
+type HealthResponse = {
+  ok?: boolean;
+  app?: string;
+  version?: string;
+  worker?: string;
+  capabilities?: string[];
+  ts?: string;
+};
+
+type HealthScoreResponse = {
+  ok?: boolean;
+  score?: number;
+  issues?: string[];
+  ts?: string;
+};
+
+type DashboardState = {
+  loading: boolean;
+  error: string | null;
+  health: HealthResponse | null;
+  healthScore: HealthScoreResponse | null;
+  lastRefresh: string | null;
+};
+
+const WORKER_URL =
+  process.env.NEXT_PUBLIC_BOSAI_WORKER_URL?.replace(/\/$/, "") ||
+  "https://bosai-worker.onrender.com";
+
+function getStatusLabel(
+  health: HealthResponse | null,
+  healthScore: HealthScoreResponse | null
+) {
+  if (!health?.ok) return "Offline";
+  const score = healthScore?.score ?? 0;
+  if (score >= 90) return "Stable";
+  if (score >= 70) return "Warning";
+  return "Critical";
+}
+
+function getStatusClasses(status: string) {
+  switch (status) {
+    case "Stable":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+    case "Warning":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+    case "Critical":
+      return "border-red-500/30 bg-red-500/10 text-red-300";
+    default:
+      return "border-zinc-700 bg-zinc-900 text-zinc-300";
+  }
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+export default function HomePage() {
+  const [state, setState] = useState<DashboardState>({
+    loading: true,
+    error: null,
+    health: null,
+    healthScore: null,
+    lastRefresh: null,
+  });
+
+  const loadData = async () => {
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const [healthRes, healthScoreRes] = await Promise.all([
+        fetch(`${WORKER_URL}/health`, { cache: "no-store" }),
+        fetch(`${WORKER_URL}/health/score`, { cache: "no-store" }),
+      ]);
+
+      if (!healthRes.ok) {
+        throw new Error(`Health endpoint failed (${healthRes.status})`);
+      }
+
+      if (!healthScoreRes.ok) {
+        throw new Error(`Health score endpoint failed (${healthScoreRes.status})`);
+      }
+
+      const health = (await healthRes.json()) as HealthResponse;
+      const healthScore = (await healthScoreRes.json()) as HealthScoreResponse;
+
+      setState({
+        loading: false,
+        error: null,
+        health,
+        healthScore,
+        lastRefresh: new Date().toISOString(),
+      });
+    } catch (error) {
+      setState({
+        loading: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Impossible de charger les données BOSAI.",
+        health: null,
+        healthScore: null,
+        lastRefresh: new Date().toISOString(),
+      });
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const status = useMemo(
+    () => getStatusLabel(state.health, state.healthScore),
+    [state.health, state.healthScore]
+  );
+
+  const statusClasses = getStatusClasses(status);
+  const capabilities = state.health?.capabilities ?? [];
+  const issues = state.healthScore?.issues ?? [];
+  const score = state.healthScore?.score ?? 0;
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <main className="min-h-screen bg-black text-white">
+      <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-6 py-8 md:px-10">
+        <header className="mb-8 flex flex-col gap-5 border-b border-white/10 pb-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="mb-2 inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium tracking-[0.2em] text-emerald-300 uppercase">
+                BOSAI Dashboard v1
+              </p>
+              <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
+                Anti-Chaos AI Ops Layer
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm text-zinc-400 md:text-base">
+                Monitor temps réel du worker BOSAI, du health score et des
+                capacités actives. Première brique d’interface opérationnelle.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div
+                className={`rounded-full border px-4 py-2 text-sm font-medium ${statusClasses}`}
+              >
+                System Status: {status}
+              </div>
+
+              <button
+                onClick={loadData}
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-white/25 hover:bg-white/10"
+              >
+                {state.loading ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-6 text-sm text-zinc-400">
+            <span>
+              Worker URL:{" "}
+              <span className="font-medium text-zinc-200">{WORKER_URL}</span>
+            </span>
+            <span>
+              Last refresh:{" "}
+              <span className="font-medium text-zinc-200">
+                {formatDate(state.lastRefresh)}
+              </span>
+            </span>
+          </div>
+        </header>
+
+        {state.error && (
+          <div className="mb-6 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200">
+            {state.error}
+          </div>
+        )}
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card
+            title="Worker"
+            value={state.health?.worker || "Unavailable"}
+            subtitle={state.health?.app || "No app detected"}
+          />
+          <Card
+            title="Version"
+            value={state.health?.version || "—"}
+            subtitle="Current deployed worker"
+          />
+          <Card
+            title="Health Score"
+            value={String(score)}
+            subtitle="Global system confidence"
+          />
+          <Card
+            title="Capabilities"
+            value={String(capabilities.length)}
+            subtitle="Loaded in worker"
+          />
+        </section>
+
+        <section className="mt-8 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-3xl border border-white/10 bg-zinc-950/70 p-6">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">System Overview</h2>
+                <p className="mt-1 text-sm text-zinc-400">
+                  Vue d’ensemble du noyau BOSAI Worker.
+                </p>
+              </div>
+              <div className="text-right text-sm text-zinc-400">
+                <div>Health endpoint</div>
+                <div className="font-medium text-zinc-200">/health</div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <MetricBox
+                label="App Name"
+                value={state.health?.app || "—"}
+              />
+              <MetricBox
+                label="Worker Name"
+                value={state.health?.worker || "—"}
+              />
+              <MetricBox
+                label="Worker Timestamp"
+                value={formatDate(state.health?.ts)}
+              />
+              <MetricBox
+                label="Score Timestamp"
+                value={formatDate(state.healthScore?.ts)}
+              />
+            </div>
+
+            <div className="mt-6">
+              <h3 className="mb-3 text-sm font-medium uppercase tracking-[0.2em] text-zinc-500">
+                Loaded Capabilities
+              </h3>
+
+              {capabilities.length === 0 ? (
+                <EmptyState text="Aucune capability détectée." />
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {capabilities.map((capability) => (
+                    <span
+                      key={capability}
+                      className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-sm text-cyan-200"
+                    >
+                      {capability}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-white/10 bg-zinc-950/70 p-6">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">Health Score Analysis</h2>
+                <p className="mt-1 text-sm text-zinc-400">
+                  Données issues de <span className="text-zinc-200">/health/score</span>.
+                </p>
+              </div>
+            </div>
+
+            <ScoreBar score={score} />
+
+            <div className="mt-6">
+              <h3 className="mb-3 text-sm font-medium uppercase tracking-[0.2em] text-zinc-500">
+                Issues / Signals
+              </h3>
+
+              {issues.length === 0 ? (
+                <EmptyState text="Aucun signal remonté." />
+              ) : (
+                <div className="space-y-2">
+                  {issues.map((issue) => (
+                    <div
+                      key={issue}
+                      className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm text-zinc-200"
+                    >
+                      {issue}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-8 grid gap-4 md:grid-cols-3">
+          <InfoPanel
+            title="Render Worker"
+            text="Le backend BOSAI Worker reste la source d’exécution et d’orchestration."
+          />
+          <InfoPanel
+            title="GitHub → Vercel"
+            text="Chaque push sur le repo bosai-dashboard peut mettre à jour l’interface."
+          />
+          <InfoPanel
+            title="Next Step"
+            text="Étape suivante : brancher System_Runs, Commands, SLA et Escalations."
+          />
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function Card({
+  title,
+  value,
+  subtitle,
+}: {
+  title: string;
+  value: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-zinc-950/70 p-5">
+      <p className="text-sm text-zinc-400">{title}</p>
+      <p className="mt-3 text-3xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-2 text-sm text-zinc-500">{subtitle}</p>
+    </div>
+  );
+}
+
+function MetricBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
+      <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">{label}</p>
+      <p className="mt-2 text-sm font-medium text-zinc-100">{value}</p>
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm text-zinc-500">
+      {text}
+    </div>
+  );
+}
+
+function InfoPanel({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-zinc-950/70 p-5">
+      <h3 className="text-base font-semibold">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-zinc-400">{text}</p>
+    </div>
+  );
+}
+
+function ScoreBar({ score }: { score: number }) {
+  const normalizedScore = Math.max(0, Math.min(100, score));
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between text-sm">
+        <span className="text-zinc-400">Current score</span>
+        <span className="font-semibold text-white">{normalizedScore}/100</span>
+      </div>
+      <div className="h-3 w-full overflow-hidden rounded-full bg-zinc-800">
+        <div
+          className="h-full rounded-full bg-white transition-all"
+          style={{ width: `${normalizedScore}%` }}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
     </div>
   );
 }
