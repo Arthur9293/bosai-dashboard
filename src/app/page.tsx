@@ -18,11 +18,38 @@ type HealthScoreResponse = {
   ts?: string;
 };
 
+type RunItem = {
+  id: string;
+  run_id?: string;
+  worker?: string;
+  capability?: string;
+  status?: string;
+  priority?: number;
+  started_at?: string;
+  finished_at?: string;
+  dry_run?: boolean | null;
+};
+
+type RunsResponse = {
+  ok?: boolean;
+  count?: number;
+  runs?: RunItem[];
+  stats?: {
+    running?: number;
+    done?: number;
+    error?: number;
+    unsupported?: number;
+    other?: number;
+  };
+  ts?: string;
+};
+
 type DashboardState = {
   loading: boolean;
   error: string | null;
   health: HealthResponse | null;
   healthScore: HealthScoreResponse | null;
+  runs: RunsResponse | null;
   lastRefresh: string | null;
 };
 
@@ -54,6 +81,23 @@ function getStatusClasses(status: string) {
   }
 }
 
+function getRunStatusClasses(status?: string) {
+  const normalized = (status || "").toLowerCase();
+
+  switch (normalized) {
+    case "done":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+    case "running":
+      return "border-sky-500/30 bg-sky-500/10 text-sky-300";
+    case "error":
+      return "border-red-500/30 bg-red-500/10 text-red-300";
+    case "unsupported":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+    default:
+      return "border-zinc-700 bg-zinc-900 text-zinc-300";
+  }
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   const date = new Date(value);
@@ -67,6 +111,7 @@ export default function HomePage() {
     error: null,
     health: null,
     healthScore: null,
+    runs: null,
     lastRefresh: null,
   });
 
@@ -74,9 +119,10 @@ export default function HomePage() {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const [healthRes, healthScoreRes] = await Promise.all([
+      const [healthRes, healthScoreRes, runsRes] = await Promise.all([
         fetch(`${WORKER_URL}/health`, { cache: "no-store" }),
         fetch(`${WORKER_URL}/health/score`, { cache: "no-store" }),
+        fetch(`${WORKER_URL}/runs?limit=10`, { cache: "no-store" }),
       ]);
 
       if (!healthRes.ok) {
@@ -87,14 +133,20 @@ export default function HomePage() {
         throw new Error(`Health score endpoint failed (${healthScoreRes.status})`);
       }
 
+      if (!runsRes.ok) {
+        throw new Error(`Runs endpoint failed (${runsRes.status})`);
+      }
+
       const health = (await healthRes.json()) as HealthResponse;
       const healthScore = (await healthScoreRes.json()) as HealthScoreResponse;
+      const runs = (await runsRes.json()) as RunsResponse;
 
       setState({
         loading: false,
         error: null,
         health,
         healthScore,
+        runs,
         lastRefresh: new Date().toISOString(),
       });
     } catch (error) {
@@ -106,6 +158,7 @@ export default function HomePage() {
             : "Impossible de charger les données BOSAI.",
         health: null,
         healthScore: null,
+        runs: null,
         lastRefresh: new Date().toISOString(),
       });
     }
@@ -126,6 +179,8 @@ export default function HomePage() {
   const capabilities = state.health?.capabilities ?? [];
   const issues = state.healthScore?.issues ?? [];
   const score = state.healthScore?.score ?? 0;
+  const runs = state.runs?.runs ?? [];
+  const runsStats = state.runs?.stats ?? {};
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -133,15 +188,15 @@ export default function HomePage() {
         <header className="mb-8 flex flex-col gap-5 border-b border-white/10 pb-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="mb-2 inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium tracking-[0.2em] text-emerald-300 uppercase">
+              <p className="mb-2 inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-emerald-300">
                 BOSAI Dashboard v1
               </p>
               <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
                 Anti-Chaos AI Ops Layer
               </h1>
               <p className="mt-3 max-w-2xl text-sm text-zinc-400 md:text-base">
-                Monitor temps réel du worker BOSAI, du health score et des
-                capacités actives. Première brique d’interface opérationnelle.
+                Monitor temps réel du worker BOSAI, du health score, des capacités
+                actives et des exécutions récentes.
               </p>
             </div>
 
@@ -220,14 +275,8 @@ export default function HomePage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <MetricBox
-                label="App Name"
-                value={state.health?.app || "—"}
-              />
-              <MetricBox
-                label="Worker Name"
-                value={state.health?.worker || "—"}
-              />
+              <MetricBox label="App Name" value={state.health?.app || "—"} />
+              <MetricBox label="Worker Name" value={state.health?.worker || "—"} />
               <MetricBox
                 label="Worker Timestamp"
                 value={formatDate(state.health?.ts)}
@@ -295,6 +344,76 @@ export default function HomePage() {
           </div>
         </section>
 
+        <section className="mt-8 rounded-3xl border border-white/10 bg-zinc-950/70 p-6">
+          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Recent Runs</h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                Dernières exécutions réelles du worker via <span className="text-zinc-200">/runs</span>.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap">
+              <SmallStat label="Running" value={String(runsStats.running ?? 0)} />
+              <SmallStat label="Done" value={String(runsStats.done ?? 0)} />
+              <SmallStat label="Error" value={String(runsStats.error ?? 0)} />
+              <SmallStat
+                label="Unsupported"
+                value={String(runsStats.unsupported ?? 0)}
+              />
+            </div>
+          </div>
+
+          {runs.length === 0 ? (
+            <EmptyState text="Aucun run trouvé." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-separate border-spacing-y-2">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-[0.2em] text-zinc-500">
+                    <th className="px-3 py-2">Capability</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Worker</th>
+                    <th className="px-3 py-2">Priority</th>
+                    <th className="px-3 py-2">Started</th>
+                    <th className="px-3 py-2">Finished</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {runs.map((run) => (
+                    <tr key={run.id} className="rounded-2xl bg-white/[0.03]">
+                      <td className="rounded-l-2xl px-3 py-4 text-sm font-medium text-zinc-100">
+                        {run.capability || "—"}
+                      </td>
+                      <td className="px-3 py-4 text-sm">
+                        <span
+                          className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${getRunStatusClasses(
+                            run.status
+                          )}`}
+                        >
+                          {run.status || "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-4 text-sm text-zinc-300">
+                        {run.worker || "—"}
+                      </td>
+                      <td className="px-3 py-4 text-sm text-zinc-300">
+                        {run.priority ?? "—"}
+                      </td>
+                      <td className="px-3 py-4 text-sm text-zinc-300">
+                        {formatDate(run.started_at)}
+                      </td>
+                      <td className="rounded-r-2xl px-3 py-4 text-sm text-zinc-300">
+                        {formatDate(run.finished_at)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
         <section className="mt-8 grid gap-4 md:grid-cols-3">
           <InfoPanel
             title="Render Worker"
@@ -306,7 +425,7 @@ export default function HomePage() {
           />
           <InfoPanel
             title="Next Step"
-            text="Étape suivante : brancher System_Runs, Commands, SLA et Escalations."
+            text="Étape suivante : brancher Commands, SLA, Events et Escalations."
           />
         </section>
       </div>
@@ -337,6 +456,17 @@ function MetricBox({ label, value }: { label: string; value: string }) {
     <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
       <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">{label}</p>
       <p className="mt-2 text-sm font-medium text-zinc-100">{value}</p>
+    </div>
+  );
+}
+
+function SmallStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+      <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-semibold text-zinc-100">{value}</p>
     </div>
   );
 }
