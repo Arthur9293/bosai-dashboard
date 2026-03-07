@@ -44,12 +44,45 @@ type RunsResponse = {
   ts?: string;
 };
 
+type CommandItem = {
+  id: string;
+  capability?: string;
+  status?: string;
+  priority?: number;
+  retry_count?: number;
+  retry_max?: number;
+  scheduled_at?: string;
+  next_retry_at?: string;
+  is_locked?: boolean;
+  locked_by?: string;
+  idempotency_key?: string;
+};
+
+type CommandsResponse = {
+  ok?: boolean;
+  count?: number;
+  commands?: CommandItem[];
+  stats?: {
+    queued?: number;
+    running?: number;
+    retry?: number;
+    done?: number;
+    dead?: number;
+    blocked?: number;
+    unsupported?: number;
+    error?: number;
+    other?: number;
+  };
+  ts?: string;
+};
+
 type DashboardState = {
   loading: boolean;
   error: string | null;
   health: HealthResponse | null;
   healthScore: HealthScoreResponse | null;
   runs: RunsResponse | null;
+  commands: CommandsResponse | null;
   lastRefresh: string | null;
 };
 
@@ -98,11 +131,43 @@ function getRunStatusClasses(status?: string) {
   }
 }
 
+function getCommandStatusClasses(status?: string) {
+  const normalized = (status || "").toLowerCase();
+
+  switch (normalized) {
+    case "queued":
+    case "queue":
+      return "border-violet-500/30 bg-violet-500/10 text-violet-300";
+    case "running":
+      return "border-sky-500/30 bg-sky-500/10 text-sky-300";
+    case "retry":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+    case "done":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+    case "dead":
+      return "border-rose-500/30 bg-rose-500/10 text-rose-300";
+    case "blocked":
+      return "border-orange-500/30 bg-orange-500/10 text-orange-300";
+    case "unsupported":
+      return "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300";
+    case "error":
+      return "border-red-500/30 bg-red-500/10 text-red-300";
+    default:
+      return "border-zinc-700 bg-zinc-900 text-zinc-300";
+  }
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
+}
+
+function yesNo(value?: boolean | null) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return "—";
 }
 
 export default function HomePage() {
@@ -112,6 +177,7 @@ export default function HomePage() {
     health: null,
     healthScore: null,
     runs: null,
+    commands: null,
     lastRefresh: null,
   });
 
@@ -119,10 +185,11 @@ export default function HomePage() {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const [healthRes, healthScoreRes, runsRes] = await Promise.all([
+      const [healthRes, healthScoreRes, runsRes, commandsRes] = await Promise.all([
         fetch(`${WORKER_URL}/health`, { cache: "no-store" }),
         fetch(`${WORKER_URL}/health/score`, { cache: "no-store" }),
         fetch(`${WORKER_URL}/runs?limit=10`, { cache: "no-store" }),
+        fetch(`${WORKER_URL}/commands?limit=10`, { cache: "no-store" }),
       ]);
 
       if (!healthRes.ok) {
@@ -137,9 +204,14 @@ export default function HomePage() {
         throw new Error(`Runs endpoint failed (${runsRes.status})`);
       }
 
+      if (!commandsRes.ok) {
+        throw new Error(`Commands endpoint failed (${commandsRes.status})`);
+      }
+
       const health = (await healthRes.json()) as HealthResponse;
       const healthScore = (await healthScoreRes.json()) as HealthScoreResponse;
       const runs = (await runsRes.json()) as RunsResponse;
+      const commands = (await commandsRes.json()) as CommandsResponse;
 
       setState({
         loading: false,
@@ -147,6 +219,7 @@ export default function HomePage() {
         health,
         healthScore,
         runs,
+        commands,
         lastRefresh: new Date().toISOString(),
       });
     } catch (error) {
@@ -159,6 +232,7 @@ export default function HomePage() {
         health: null,
         healthScore: null,
         runs: null,
+        commands: null,
         lastRefresh: new Date().toISOString(),
       });
     }
@@ -181,6 +255,8 @@ export default function HomePage() {
   const score = state.healthScore?.score ?? 0;
   const runs = state.runs?.runs ?? [];
   const runsStats = state.runs?.stats ?? {};
+  const commands = state.commands?.commands ?? [];
+  const commandsStats = state.commands?.stats ?? {};
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -196,7 +272,7 @@ export default function HomePage() {
               </h1>
               <p className="mt-3 max-w-2xl text-sm text-zinc-400 md:text-base">
                 Monitor temps réel du worker BOSAI, du health score, des capacités
-                actives et des exécutions récentes.
+                actives, des exécutions récentes et de la queue de commandes.
               </p>
             </div>
 
@@ -349,7 +425,8 @@ export default function HomePage() {
             <div>
               <h2 className="text-xl font-semibold">Recent Runs</h2>
               <p className="mt-1 text-sm text-zinc-400">
-                Dernières exécutions réelles du worker via <span className="text-zinc-200">/runs</span>.
+                Dernières exécutions réelles du worker via{" "}
+                <span className="text-zinc-200">/runs</span>.
               </p>
             </div>
 
@@ -414,6 +491,88 @@ export default function HomePage() {
           )}
         </section>
 
+        <section className="mt-8 rounded-3xl border border-white/10 bg-zinc-950/70 p-6">
+          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Commands Queue</h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                File de commandes via <span className="text-zinc-200">/commands</span>.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap">
+              <SmallStat label="Queued" value={String(commandsStats.queued ?? 0)} />
+              <SmallStat label="Running" value={String(commandsStats.running ?? 0)} />
+              <SmallStat label="Retry" value={String(commandsStats.retry ?? 0)} />
+              <SmallStat label="Done" value={String(commandsStats.done ?? 0)} />
+              <SmallStat label="Dead" value={String(commandsStats.dead ?? 0)} />
+              <SmallStat label="Blocked" value={String(commandsStats.blocked ?? 0)} />
+              <SmallStat
+                label="Unsupported"
+                value={String(commandsStats.unsupported ?? 0)}
+              />
+              <SmallStat label="Error" value={String(commandsStats.error ?? 0)} />
+            </div>
+          </div>
+
+          {commands.length === 0 ? (
+            <EmptyState text="Aucune commande trouvée." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-separate border-spacing-y-2">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-[0.2em] text-zinc-500">
+                    <th className="px-3 py-2">Capability</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Priority</th>
+                    <th className="px-3 py-2">Retry</th>
+                    <th className="px-3 py-2">Locked</th>
+                    <th className="px-3 py-2">Locked By</th>
+                    <th className="px-3 py-2">Scheduled</th>
+                    <th className="px-3 py-2">Next Retry</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {commands.map((command) => (
+                    <tr key={command.id} className="rounded-2xl bg-white/[0.03]">
+                      <td className="rounded-l-2xl px-3 py-4 text-sm font-medium text-zinc-100">
+                        {command.capability || "—"}
+                      </td>
+                      <td className="px-3 py-4 text-sm">
+                        <span
+                          className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${getCommandStatusClasses(
+                            command.status
+                          )}`}
+                        >
+                          {command.status || "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-4 text-sm text-zinc-300">
+                        {command.priority ?? "—"}
+                      </td>
+                      <td className="px-3 py-4 text-sm text-zinc-300">
+                        {command.retry_count ?? 0}/{command.retry_max ?? 0}
+                      </td>
+                      <td className="px-3 py-4 text-sm text-zinc-300">
+                        {yesNo(command.is_locked)}
+                      </td>
+                      <td className="px-3 py-4 text-sm text-zinc-300">
+                        {command.locked_by || "—"}
+                      </td>
+                      <td className="px-3 py-4 text-sm text-zinc-300">
+                        {formatDate(command.scheduled_at)}
+                      </td>
+                      <td className="rounded-r-2xl px-3 py-4 text-sm text-zinc-300">
+                        {formatDate(command.next_retry_at)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
         <section className="mt-8 grid gap-4 md:grid-cols-3">
           <InfoPanel
             title="Render Worker"
@@ -425,7 +584,7 @@ export default function HomePage() {
           />
           <InfoPanel
             title="Next Step"
-            text="Étape suivante : brancher Commands, SLA, Events et Escalations."
+            text="Étape suivante : brancher SLA, Events et Escalations."
           />
         </section>
       </div>
