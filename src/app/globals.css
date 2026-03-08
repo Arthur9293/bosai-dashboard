@@ -1,22 +1,15 @@
-@import "tailwindcss";
-
-:root {
-  color-scheme: dark;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 html,
 body {
   margin: 0;
   padding: 0;
-  background: #000;
-  color: #fff;
+}
+
+body {
+  background: #0a0a0a;
+  color: white;
   font-family: Arial, Helvetica, sans-serif;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-button {
-  font: inherit;
 }
