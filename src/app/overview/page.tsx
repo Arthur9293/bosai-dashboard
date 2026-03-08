@@ -1,7 +1,7 @@
-import { AppShell } from "@/components/layout/app-shell";
-import { PageHeader } from "@/components/ui/page-header";
-import { StatCard } from "@/components/ui/stat-card";
-import { RunsList } from "@/components/runs/runs-list";
+import { AppShell } from "../../components/layout/app-shell";
+import { PageHeader } from "../../components/ui/page-header";
+import { StatCard } from "../../components/ui/stat-card";
+import { RunsList } from "../../components/runs/runs-list";
 
 async function getRuns() {
   try {
