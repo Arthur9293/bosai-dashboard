@@ -17,7 +17,9 @@ function StatusBadge({ status }: { status?: string }) {
     "bg-white/5 text-zinc-300 border border-white/10";
 
   return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${className}`}>
+    <span
+      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${className}`}
+    >
       {status || "unknown"}
     </span>
   );
@@ -101,6 +103,9 @@ export default async function RunsPage() {
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
         <div className="border-b border-white/10 px-5 py-4">
           <h2 className="text-lg font-semibold text-white">Runs ({count})</h2>
+          <p className="mt-1 text-sm text-zinc-400">
+            Exécutions remontées par le BOSAI Worker.
+          </p>
         </div>
 
         {runs.length === 0 ? (
