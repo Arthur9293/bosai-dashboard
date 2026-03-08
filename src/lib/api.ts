@@ -2,10 +2,6 @@ export const WORKER_BASE_URL =
   process.env.NEXT_PUBLIC_WORKER_URL?.replace(/\/$/, "") ||
   "https://bosai-worker.onrender.com";
 
-/* -----------------------------
-   COMMANDS
-------------------------------*/
-
 export type CommandItem = {
   id: string;
   capability?: string;
@@ -43,10 +39,6 @@ export async function fetchCommands(): Promise<CommandsResponse> {
 
   return res.json();
 }
-
-/* -----------------------------
-   RUNS
-------------------------------*/
 
 export type RunItem = {
   id?: string;
