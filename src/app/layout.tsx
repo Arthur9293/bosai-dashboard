@@ -1,9 +1,9 @@
-import type { Metadata } from "next";
 import "./globals.css";
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "BOSAI Dashboard",
-  description: "Operational monitoring dashboard for BOSAI Worker",
+  title: "BOSAI",
+  description: "BOSAI SaaS V1 Dashboard",
 };
 
 export default function RootLayout({
