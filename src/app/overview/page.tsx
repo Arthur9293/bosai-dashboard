@@ -2,7 +2,35 @@ import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 
-export default function OverviewPage() {
+async function getHealth() {
+  const res = await fetch("https://bosai-worker.onrender.com/health", {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    return { ok: false };
+  }
+
+  return res.json();
+}
+
+async function getRuns() {
+  const res = await fetch("https://bosai-worker.onrender.com/runs", {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    return [];
+  }
+
+  const data = await res.json();
+  return data.runs || [];
+}
+
+export default async function OverviewPage() {
+  const health = await getHealth();
+  const runs = await getRuns();
+
   return (
     <AppShell title="Overview">
       <PageHeader
@@ -11,39 +39,44 @@ export default function OverviewPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Health score" value="92" hint="Core stable" />
-        <StatCard label="Commands queued" value="4" hint="À surveiller" />
-        <StatCard label="Runs 24h" value="37" hint="Activité récente" />
-        <StatCard label="Incidents actifs" value="2" hint="1 breached" />
+        <StatCard
+          label="Worker status"
+          value={health.ok ? "Healthy" : "Offline"}
+          hint="bosai-worker"
+        />
+
+        <StatCard
+          label="Runs"
+          value={String(runs.length)}
+          hint="Recent executions"
+        />
+
+        <StatCard
+          label="Environment"
+          value="Production"
+          hint="Vercel"
+        />
+
+        <StatCard
+          label="System"
+          value="BOSAI V1"
+          hint="Core runtime"
+        />
       </div>
 
-      <div className="mt-8 grid gap-6 xl:grid-cols-2">
-        <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-          <h3 className="text-lg font-medium">Activité récente</h3>
-          <div className="mt-4 space-y-3 text-sm text-white/70">
-            <div className="rounded-xl border border-white/10 p-3">
-              run_001 · command_orchestrator · done
-            </div>
-            <div className="rounded-xl border border-white/10 p-3">
-              run_002 · http_exec · error
-            </div>
-            <div className="rounded-xl border border-white/10 p-3">
-              run_003 · health_tick · done
-            </div>
-          </div>
-        </section>
+      <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5">
+        <h3 className="text-lg font-medium">Recent Runs</h3>
 
-        <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-          <h3 className="text-lg font-medium">Incidents critiques</h3>
-          <div className="mt-4 space-y-3 text-sm text-white/70">
-            <div className="rounded-xl border border-white/10 p-3">
-              INC-001 · SLA breached · critical
+        <div className="mt-4 space-y-2 text-sm text-white/70">
+          {runs.slice(0, 5).map((run: any) => (
+            <div
+              key={run.id}
+              className="rounded-xl border border-white/10 p-3"
+            >
+              {run.capability} · {run.status}
             </div>
-            <div className="rounded-xl border border-white/10 p-3">
-              INC-002 · endpoint timeout · high
-            </div>
-          </div>
-        </section>
+          ))}
+        </div>
       </div>
     </AppShell>
   );
