@@ -1,92 +1,120 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { SidebarItem } from "./sidebar-item";
-
-const operateNav = [
-  { label: "Overview", href: "/app" },
-  { label: "Commands", href: "/app/commands" },
-  { label: "Runs", href: "/app/runs" },
-  { label: "Incidents", href: "/app/incidents" },
-];
-
-const governNav = [
-  { label: "Tools", href: "/app/tools" },
-  { label: "Policies", href: "/app/policies" },
-];
-
-const workspaceNav = [
-  { label: "Integrations", href: "/app/integrations" },
-  { label: "Settings", href: "/app/settings" },
-];
 
 export function Sidebar() {
   const pathname = usePathname();
 
-  const isActivePath = (href: string) => {
-    if (href === "/app") return pathname === "/app";
-    return pathname === href || pathname.startsWith(`${href}/`);
-  };
+  const links = [
+    { name: "Overview", href: "/app" },
+    { name: "Commands", href: "/app/commands" },
+    { name: "Runs", href: "/app/runs" },
+    { name: "Incidents", href: "/app/incidents" },
+    { name: "Tools", href: "/app/tools" },
+    { name: "Policies", href: "/app/policies" },
+    { name: "Integrations", href: "/app/integrations" },
+    { name: "Settings", href: "/app/settings" },
+  ];
 
   return (
-    <aside className="flex h-screen w-72 flex-col border-r border-white/10 bg-zinc-950">
-      <div className="border-b border-white/10 px-6 py-5">
-        <p className="text-lg font-semibold text-white">BOSAI</p>
-        <p className="text-xs text-zinc-500">SaaS V1 Workspace</p>
+    <aside className="w-64 border-r border-zinc-800 bg-zinc-950 p-4">
+      <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+          BOSAI
+        </p>
+        <h2 className="mt-2 text-3xl font-bold text-white">BOSAI V1</h2>
+        <p className="mt-3 text-sm text-zinc-400">Workspace: Production</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-4">
+      <div className="space-y-8">
         <div>
-          <p className="px-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Operate
           </p>
-          <div className="mt-2 space-y-1">
-            {operateNav.map((item) => (
-              <SidebarItem
-                key={item.href}
-                label={item.label}
-                href={item.href}
-                isActive={isActivePath(item.href)}
-              />
-            ))}
-          </div>
+          <nav className="space-y-2">
+            {links.slice(0, 4).map((link) => {
+              const isActive =
+                pathname === link.href ||
+                (link.href !== "/app" && pathname.startsWith(link.href));
+
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`block rounded-xl px-3 py-2 text-sm ${
+                    isActive
+                      ? "bg-white text-zinc-950"
+                      : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                  }`}
+                >
+                  {link.name}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
 
-        <div className="mt-8">
-          <p className="px-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+        <div>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Govern
           </p>
-          <div className="mt-2 space-y-1">
-            {governNav.map((item) => (
-              <SidebarItem
-                key={item.href}
-                label={item.label}
-                href={item.href}
-                isActive={isActivePath(item.href)}
-              />
-            ))}
-          </div>
+          <nav className="space-y-2">
+            {links.slice(4, 6).map((link) => {
+              const isActive =
+                pathname === link.href ||
+                (link.href !== "/app" && pathname.startsWith(link.href));
+
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`block rounded-xl px-3 py-2 text-sm ${
+                    isActive
+                      ? "bg-white text-zinc-950"
+                      : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                  }`}
+                >
+                  {link.name}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
 
-        <div className="mt-8">
-          <p className="px-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+        <div>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Workspace
           </p>
-          <div className="mt-2 space-y-1">
-            {workspaceNav.map((item) => (
-              <SidebarItem
-                key={item.href}
-                label={item.label}
-                href={item.href}
-                isActive={isActivePath(item.href)}
-              />
-            ))}
-          </div>
+          <nav className="space-y-2">
+            {links.slice(6).map((link) => {
+              const isActive =
+                pathname === link.href ||
+                (link.href !== "/app" && pathname.startsWith(link.href));
+
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`block rounded-xl px-3 py-2 text-sm ${
+                    isActive
+                      ? "bg-white text-zinc-950"
+                      : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                  }`}
+                >
+                  {link.name}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
       </div>
 
-      <div className="border-t border-white/10 px-6 py-4">
-        <p className="text-xs text-zinc-500">Arthur Workspace</p>
+      <div className="mt-10 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+        <p className="text-xs text-zinc-400">Runtime status</p>
+        <p className="mt-2 text-sm font-medium text-emerald-400">
+          Core connected
+        </p>
       </div>
     </aside>
   );
