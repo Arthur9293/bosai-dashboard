@@ -19,12 +19,12 @@ export function SidebarNav() {
 
   return (
     <div className="flex h-full flex-col p-5">
-      <div className="mb-8">
-        <div className="text-xs uppercase tracking-[0.25em] text-white/40">
+      <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="text-[11px] uppercase tracking-[0.3em] text-white/40">
           BOSAI
         </div>
-        <div className="mt-2 text-2xl font-semibold">BOSAI V1</div>
-        <div className="mt-1 text-sm text-white/50">Workspace: Production</div>
+        <div className="mt-2 text-3xl font-semibold tracking-tight">BOSAI V1</div>
+        <div className="mt-2 text-sm text-white/60">Workspace: Production</div>
       </div>
 
       <nav className="flex flex-col gap-2">
@@ -37,10 +37,10 @@ export function SidebarNav() {
               key={item.href}
               href={item.href}
               className={[
-                "rounded-xl px-4 py-3 text-sm transition",
+                "rounded-2xl px-4 py-3 text-sm transition-all duration-200",
                 active
-                  ? "bg-white text-black"
-                  : "text-white/70 hover:bg-white/5 hover:text-white",
+                  ? "border border-white/15 bg-white text-black shadow-lg"
+                  : "text-white/70 hover:border hover:border-white/10 hover:bg-white/5 hover:text-white",
               ].join(" ")}
             >
               {item.label}
@@ -49,9 +49,9 @@ export function SidebarNav() {
         })}
       </nav>
 
-      <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="text-sm font-medium">Runtime status</div>
-        <div className="mt-2 text-sm text-emerald-400">Core connected</div>
+      <div className="mt-auto rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+        <div className="text-sm font-medium text-white">Runtime status</div>
+        <div className="mt-2 text-sm text-emerald-300">Core connected</div>
       </div>
     </div>
   );
