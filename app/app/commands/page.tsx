@@ -1,90 +1,179 @@
-type CommandItem = {
-  id: string;
-  capability: string;
-  worker: string;
-  status: "pending" | "running" | "done" | "error" | "unsupported";
-  started_at: string;
-};
+import { fetchCommands } from "@/lib/api";
 
-const MOCK_COMMANDS: CommandItem[] = [
-  {
-    id: "cmd_001",
-    capability: "command_orchestrator",
-    worker: "bosai-worker",
-    status: "done",
-    started_at: "2026-03-08 10:12",
-  },
-  {
-    id: "cmd_002",
-    capability: "sla_machine",
-    worker: "bosai-worker",
-    status: "running",
-    started_at: "2026-03-08 10:15",
-  },
-  {
-    id: "cmd_003",
-    capability: "http_exec",
-    worker: "bosai-worker",
-    status: "error",
-    started_at: "2026-03-08 10:18",
-  },
-];
+function StatusBadge({ status }: { status?: string }) {
+  const normalized = (status || "unknown").toLowerCase();
 
-function StatusBadge({ status }: { status: CommandItem["status"] }) {
-  const map: Record<CommandItem["status"], string> = {
-    pending: "bg-zinc-700 text-zinc-200",
-    running: "bg-blue-500/20 text-blue-400",
-    done: "bg-emerald-500/20 text-emerald-400",
-    error: "bg-red-500/20 text-red-400",
-    unsupported: "bg-orange-500/20 text-orange-400",
+  const styles: Record<string, string> = {
+    pending: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20",
+    queued: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20",
+    running: "bg-blue-500/15 text-blue-300 border border-blue-500/20",
+    done: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20",
+    success: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20",
+    error: "bg-red-500/15 text-red-300 border border-red-500/20",
+    failed: "bg-red-500/15 text-red-300 border border-red-500/20",
+    unsupported: "bg-orange-500/15 text-orange-300 border border-orange-500/20",
   };
 
+  const className =
+    styles[normalized] ||
+    "bg-white/5 text-zinc-300 border border-white/10";
+
   return (
-    <span
-      className={`px-2 py-1 text-xs rounded-md font-medium ${map[status]}`}
-    >
-      {status}
+    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${className}`}>
+      {status || "unknown"}
     </span>
   );
 }
 
-export default function CommandsPage() {
+function formatDate(value?: string) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
+export default async function CommandsPage() {
+  let data = null;
+  let errorMessage = "";
+
+  try {
+    data = await fetchCommands();
+  } catch (error) {
+    errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Impossible de charger les commandes.";
+  }
+
+  const commands = data?.commands ?? [];
+  const count = data?.count ?? commands.length;
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-white">Commands</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Pilotage des commandes du workspace.
+        <h1 className="text-3xl font-semibold tracking-tight text-white">
+          Commands
+        </h1>
+        <p className="mt-2 text-sm text-zinc-400">
+          Queue des commandes BOSAI.
         </p>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-zinc-900/60 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="border-b border-white/10 text-zinc-400">
-            <tr>
-              <th className="text-left px-4 py-3">Capability</th>
-              <th className="text-left px-4 py-3">Worker</th>
-              <th className="text-left px-4 py-3">Status</th>
-              <th className="text-left px-4 py-3">Started</th>
-            </tr>
-          </thead>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+          <p className="text-sm font-medium text-zinc-400">Total Commands</p>
+          <p className="mt-3 text-3xl font-semibold tracking-tight text-white">
+            {count}
+          </p>
+          <p className="mt-2 text-xs text-zinc-500">records returned</p>
+        </div>
 
-          <tbody>
-            {MOCK_COMMANDS.map((cmd) => (
-              <tr
-                key={cmd.id}
-                className="border-b border-white/5 hover:bg-white/5"
-              >
-                <td className="px-4 py-3 text-white">{cmd.capability}</td>
-                <td className="px-4 py-3 text-zinc-300">{cmd.worker}</td>
-                <td className="px-4 py-3">
-                  <StatusBadge status={cmd.status} />
-                </td>
-                <td className="px-4 py-3 text-zinc-400">{cmd.started_at}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+          <p className="text-sm font-medium text-zinc-400">Queued</p>
+          <p className="mt-3 text-3xl font-semibold tracking-tight text-white">
+            {data?.stats?.queue ?? 0}
+          </p>
+          <p className="mt-2 text-xs text-zinc-500">waiting commands</p>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+          <p className="text-sm font-medium text-zinc-400">Running</p>
+          <p className="mt-3 text-3xl font-semibold tracking-tight text-white">
+            {data?.stats?.running ?? 0}
+          </p>
+          <p className="mt-2 text-xs text-zinc-500">currently processing</p>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+          <p className="text-sm font-medium text-zinc-400">Errors</p>
+          <p className="mt-3 text-3xl font-semibold tracking-tight text-white">
+            {data?.stats?.error ?? 0}
+          </p>
+          <p className="mt-2 text-xs text-zinc-500">failed commands</p>
+        </div>
+      </section>
+
+      {errorMessage ? (
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-5 text-sm text-red-300">
+          {errorMessage}
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+        <div className="border-b border-white/10 px-5 py-4">
+          <h2 className="text-lg font-semibold text-white">
+            Commands ({count})
+          </h2>
+          <p className="mt-1 text-sm text-zinc-400">
+            Historique et statut des commandes remontées par BOSAI.
+          </p>
+        </div>
+
+        {commands.length === 0 ? (
+          <div className="px-5 py-8">
+            <p className="text-sm text-zinc-400">Aucune commande trouvée.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-sm">
+              <thead className="border-b border-white/10 bg-black/10 text-zinc-400">
+                <tr>
+                  <th className="px-5 py-3 text-left font-medium">ID</th>
+                  <th className="px-5 py-3 text-left font-medium">Capability</th>
+                  <th className="px-5 py-3 text-left font-medium">Status</th>
+                  <th className="px-5 py-3 text-left font-medium">Priority</th>
+                  <th className="px-5 py-3 text-left font-medium">Worker</th>
+                  <th className="px-5 py-3 text-left font-medium">Created</th>
+                  <th className="px-5 py-3 text-left font-medium">Updated</th>
+                  <th className="px-5 py-3 text-left font-medium">Dry Run</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {commands.map((command) => (
+                  <tr
+                    key={command.id}
+                    className="border-b border-white/5 hover:bg-white/[0.03]"
+                  >
+                    <td className="px-5 py-4 text-zinc-300">
+                      <span className="font-mono text-xs">{command.id}</span>
+                    </td>
+                    <td className="px-5 py-4 text-white">
+                      {command.capability || "—"}
+                    </td>
+                    <td className="px-5 py-4">
+                      <StatusBadge status={command.status} />
+                    </td>
+                    <td className="px-5 py-4 text-zinc-300">
+                      {command.priority ?? "—"}
+                    </td>
+                    <td className="px-5 py-4 text-zinc-300">
+                      {command.worker || "—"}
+                    </td>
+                    <td className="px-5 py-4 text-zinc-400">
+                      {formatDate(command.created_at)}
+                    </td>
+                    <td className="px-5 py-4 text-zinc-400">
+                      {formatDate(command.updated_at)}
+                    </td>
+                    <td className="px-5 py-4 text-zinc-300">
+                      {command.dry_run === true
+                        ? "Yes"
+                        : command.dry_run === false
+                        ? "No"
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
