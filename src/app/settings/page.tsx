@@ -1,5 +1,5 @@
-import { AppShell } from "@/components/layout/app-shell";
-import { PageHeader } from "@/components/ui/page-header";
+import { AppShell } from "../../components/layout/app-shell";
+import { PageHeader } from "../../components/ui/page-header";
 
 export default function SettingsPage() {
   return (
