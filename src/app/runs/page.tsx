@@ -12,7 +12,7 @@ type RunItem = {
   duration_ms?: number;
 };
 
-async function getRuns(): Promise<RunItem[]> {
+async function getRuns() {
   const res = await fetch("https://bosai-worker.onrender.com/runs", {
     cache: "no-store",
   });
@@ -22,7 +22,12 @@ async function getRuns(): Promise<RunItem[]> {
   }
 
   const data = await res.json();
-  return data.runs || [];
+
+  if (!data || !data.runs) {
+    return [];
+  }
+
+  return data.runs;
 }
 
 function formatDate(value?: string) {
