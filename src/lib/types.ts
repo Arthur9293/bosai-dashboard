@@ -72,6 +72,7 @@ export type IncidentItem = {
   title?: string;
   severity?: string;
   status?: string;
+  sla_status?: string;
   source?: string;
   created_at?: string;
   updated_at?: string;
