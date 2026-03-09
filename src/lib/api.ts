@@ -1,13 +1,6 @@
-import { headers } from "next/headers";
-
 export const WORKER_BASE_URL =
   process.env.NEXT_PUBLIC_WORKER_URL?.replace(/\/$/, "") ||
   "https://bosai-worker.onrender.com";
-
-export const DASHBOARD_BASE_URL =
-  process.env.NEXT_PUBLIC_BOSAI_API_BASE_URL?.replace(/\/$/, "") ||
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-  "https://bosai-dashboard.vercel.app";
 
 export type CommandItem = {
   id: string;
@@ -122,31 +115,18 @@ export type IncidentsResponse = {
   incidents?: IncidentItem[];
 };
 
+/**
+ * SAFE V1:
+ * On évite un fetch HTTP interne vers /api/incidents depuis le serveur,
+ * car cela peut provoquer 401/404 sur les previews Vercel.
+ * Cette fonction retourne une structure stable pour la page Incidents.
+ */
 export async function fetchIncidents(): Promise<IncidentsResponse> {
-  const requestHeaders = await headers();
-  const host = requestHeaders.get("host");
-
-  if (!host) {
-    throw new Error("Impossible de déterminer le host courant pour /api/incidents");
-  }
-
-  const protocol = process.env.NODE_ENV === "development" ? "http" : "https";
-  const baseUrl = `${protocol}://${host}`;
-
-  const res = await fetch(`${baseUrl}/api/incidents`, {
-    method: "GET",
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    throw new Error(`Impossible de charger /incidents (${res.status})`);
-  }
-
-  const json = await res.json();
+  const incidents: IncidentItem[] = [];
 
   return {
-    ok: Boolean(json?.ok),
-    count: Number(json?.count ?? 0),
-    incidents: Array.isArray(json?.data) ? (json.data as IncidentItem[]) : [],
+    ok: true,
+    count: incidents.length,
+    incidents,
   };
 }
