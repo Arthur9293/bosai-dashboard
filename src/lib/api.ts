@@ -98,3 +98,31 @@ export async function fetchHealthScore(): Promise<HealthScoreResponse> {
 
   return res.json();
 }
+export type IncidentItem = {
+  id?: string;
+  title?: string;
+  status?: string;
+  severity?: string;
+  sla_status?: string;
+  created?: string;
+  worker?: string;
+};
+
+export type IncidentsResponse = {
+  ok?: boolean;
+  count?: number;
+  incidents?: IncidentItem[];
+};
+
+export async function fetchIncidents(): Promise<IncidentsResponse> {
+  const res = await fetch(`${WORKER_BASE_URL}/incidents`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Impossible de charger /incidents (${res.status})`);
+  }
+
+  return res.json();
+}
