@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
+  const incidents = [];
+
   return NextResponse.json({
     ok: true,
-    source: "incidents_route",
-    incidents: [],
-    ts: new Date().toISOString(),
+    count: incidents.length,
+    data: incidents
   });
 }
