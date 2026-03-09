@@ -56,6 +56,10 @@ function StatusBadge({ value }: { value?: string }) {
     ok: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20",
     warning: "bg-orange-500/15 text-orange-300 border border-orange-500/20",
     breached: "bg-red-500/15 text-red-300 border border-red-500/20",
+    open: "bg-red-500/15 text-red-300 border border-red-500/20",
+    resolved: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20",
+    closed: "bg-zinc-500/15 text-zinc-300 border border-white/10",
+    critical: "bg-red-500/15 text-red-300 border border-red-500/20",
   };
 
   const className =
@@ -98,7 +102,8 @@ export default async function OverviewPage() {
   const doneRuns = runs?.stats?.done ?? 0;
   const errorRuns = runs?.stats?.error ?? 0;
 
-  const queuedCommands = commands?.stats?.queue ?? 0;
+  const queuedCommands =
+    commands?.stats?.queue ?? commands?.stats?.queued ?? 0;
   const runningCommands = commands?.stats?.running ?? 0;
   const errorCommands = commands?.stats?.error ?? 0;
   const doneCommands = commands?.stats?.done ?? 0;
@@ -113,7 +118,9 @@ export default async function OverviewPage() {
   const recentCommands = Array.isArray(commands?.commands)
     ? commands.commands.slice(0, 5)
     : [];
-  const recentIncidents = incidentRows.slice(0, 5);
+  const recentIncidents = Array.isArray(incidentRows)
+    ? incidentRows.slice(0, 5)
+    : [];
 
   const systemSignals: string[] = [];
 
@@ -457,12 +464,12 @@ export default async function OverviewPage() {
                         </p>
                       </div>
 
-                      <StatusBadge value={incident.sla_status || incident.status} />
+                      <StatusBadge value={incident.status} />
                     </div>
 
                     <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
-                      <span>{incident.worker || "—"}</span>
-                      <span>{formatDate(incident.created)}</span>
+                      <span>{incident.source || "—"}</span>
+                      <span>{formatDate(incident.created_at)}</span>
                     </div>
                   </div>
                 ))}
