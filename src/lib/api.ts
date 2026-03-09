@@ -1,3 +1,84 @@
+export const WORKER_BASE_URL =
+  process.env.NEXT_PUBLIC_WORKER_URL?.replace(/\/$/, "") ||
+  "https://bosai-worker.onrender.com";
+
+export type CommandItem = {
+  id: string;
+  capability?: string;
+  status?: string;
+  priority?: number;
+  created_at?: string;
+  updated_at?: string;
+  dry_run?: boolean | null;
+  worker?: string;
+};
+
+export type CommandsResponse = {
+  ok?: boolean;
+  count?: number;
+  commands?: CommandItem[];
+  stats?: {
+    queue?: number;
+    running?: number;
+    done?: number;
+    error?: number;
+    other?: number;
+  };
+  ts?: string;
+};
+
+export async function fetchCommands(): Promise<CommandsResponse> {
+  const res = await fetch(`${WORKER_BASE_URL}/commands`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Impossible de charger /commands (${res.status})`);
+  }
+
+  return res.json();
+}
+
+export type RunItem = {
+  id?: string;
+  run_id?: string;
+  worker?: string;
+  capability?: string;
+  status?: string;
+  priority?: number;
+  started_at?: string;
+  finished_at?: string;
+  dry_run?: boolean | null;
+};
+
+export type RunsResponse = {
+  ok?: boolean;
+  count?: number;
+  runs?: RunItem[];
+  stats?: {
+    running?: number;
+    done?: number;
+    error?: number;
+    unsupported?: number;
+    other?: number;
+  };
+  ts?: string;
+};
+
+export async function fetchRuns(): Promise<RunsResponse> {
+  const res = await fetch(`${WORKER_BASE_URL}/runs`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Impossible de charger /runs (${res.status})`);
+  }
+
+  return res.json();
+}
+
 export type HealthScoreResponse = {
   ok?: boolean;
   score?: number;
@@ -16,33 +97,4 @@ export async function fetchHealthScore(): Promise<HealthScoreResponse> {
   }
 
   return res.json();
-}
-const API_BASE =
-  process.env.NEXT_PUBLIC_BOSAI_API ||
-  "https://bosai-worker.onrender.com";
-
-export async function fetchRuns() {
-  try {
-    const res = await fetch(`${API_BASE}/runs`, {
-      cache: "no-store",
-    });
-
-    if (!res.ok) {
-      throw new Error("Failed to fetch runs");
-    }
-
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    console.error("fetchRuns error:", err);
-    return {
-      runs: [],
-      stats: {
-        running: 0,
-        done: 0,
-        error: 0,
-        unsupported: 0,
-      },
-    };
-  }
 }
