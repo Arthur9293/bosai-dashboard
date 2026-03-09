@@ -1,25 +1,24 @@
 import { ReactNode } from "react";
-import { SidebarNav } from "./sidebar-nav";
+import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
 type AppShellProps = {
-  title: string;
   children: ReactNode;
 };
 
-export function AppShell({ title, children }: AppShellProps) {
+export function AppShell({ children }: AppShellProps) {
   return (
-    <div className="min-h-screen text-white">
+    <div className="min-h-screen bg-zinc-950 text-white">
       <div className="flex min-h-screen">
-        <aside className="w-72 border-r border-white/10 bg-black/25 backdrop-blur-xl">
-          <SidebarNav />
-        </aside>
+        <Sidebar />
 
-        <div className="flex min-h-screen flex-1 flex-col">
-          <Topbar title={title} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Topbar />
 
-          <main className="flex-1 p-6 md:p-8">
-            <div className="mx-auto max-w-7xl">{children}</div>
+          <main className="flex-1">
+            <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+              {children}
+            </div>
           </main>
         </div>
       </div>
