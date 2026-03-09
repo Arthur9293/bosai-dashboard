@@ -2,6 +2,11 @@ export const WORKER_BASE_URL =
   process.env.NEXT_PUBLIC_WORKER_URL?.replace(/\/$/, "") ||
   "https://bosai-worker.onrender.com";
 
+export const DASHBOARD_BASE_URL =
+  process.env.NEXT_PUBLIC_BOSAI_API_BASE_URL?.replace(/\/$/, "") ||
+  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
+  "https://bosai-dashboard.vercel.app";
+
 export type CommandItem = {
   id: string;
   capability?: string;
@@ -98,6 +103,7 @@ export async function fetchHealthScore(): Promise<HealthScoreResponse> {
 
   return res.json();
 }
+
 export type IncidentItem = {
   id?: string;
   title?: string;
@@ -115,7 +121,7 @@ export type IncidentsResponse = {
 };
 
 export async function fetchIncidents(): Promise<IncidentsResponse> {
-  const res = await fetch(`/api/incidents`, {
+  const res = await fetch(`${DASHBOARD_BASE_URL}/api/incidents`, {
     method: "GET",
     cache: "no-store",
   });
@@ -129,6 +135,6 @@ export async function fetchIncidents(): Promise<IncidentsResponse> {
   return {
     ok: Boolean(json?.ok),
     count: Number(json?.count ?? 0),
-    incidents: Array.isArray(json?.data) ? json.data : [],
+    incidents: Array.isArray(json?.data) ? (json.data as IncidentItem[]) : [],
   };
 }
