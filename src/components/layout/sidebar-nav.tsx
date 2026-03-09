@@ -2,57 +2,76 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { dashboardNavigation } from "../../lib/navigation";
 
-const navItems = [
-  { label: "Overview", href: "/overview" },
-  { label: "Commands", href: "/commands" },
-  { label: "Runs", href: "/runs" },
-  { label: "Incidents", href: "/incidents" },
-  { label: "Tools", href: "/tools" },
-  { label: "Policies", href: "/policies" },
-  { label: "Integrations", href: "/integrations" },
-  { label: "Settings", href: "/settings" },
-];
+function isActive(pathname: string, href: string) {
+  if (href === "/app") return pathname === "/app";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
-export function SidebarNav() {
+export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <div className="flex h-full flex-col p-5">
-      <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="text-[11px] uppercase tracking-[0.3em] text-white/40">
+    <aside className="hidden w-72 shrink-0 border-r border-zinc-800 bg-zinc-950/80 lg:flex lg:flex-col">
+      <div className="border-b border-zinc-800 px-6 py-5">
+        <div className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500">
           BOSAI
         </div>
-        <div className="mt-2 text-3xl font-semibold tracking-tight">BOSAI V1</div>
-        <div className="mt-2 text-sm text-white/60">Workspace: Production</div>
+
+        <div className="mt-2 text-xl font-semibold text-white">SaaS V1</div>
+
+        <p className="mt-2 text-sm text-zinc-400">
+          Cockpit de supervision et gouvernance.
+        </p>
       </div>
 
-      <nav className="flex flex-col gap-2">
-        {navItems.map((item) => {
-          const active =
-            pathname === item.href || pathname.startsWith(item.href + "/");
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        <nav className="space-y-8">
+          {dashboardNavigation.map((section) => (
+            <div key={section.title}>
+              <div className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
+                {section.title}
+              </div>
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={[
-                "rounded-2xl px-4 py-3 text-sm transition-all duration-200",
-                active
-                  ? "border border-white/15 bg-white text-black shadow-lg"
-                  : "text-white/70 hover:border hover:border-white/10 hover:bg-white/5 hover:text-white",
-              ].join(" ")}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
+              <div className="mt-3 space-y-1">
+                {section.items.map((item) => {
+                  const active = isActive(pathname, item.href);
 
-      <div className="mt-auto rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-        <div className="text-sm font-medium text-white">Runtime status</div>
-        <div className="mt-2 text-sm text-emerald-300">Core connected</div>
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={[
+                        "block rounded-xl border px-3 py-2.5 text-sm transition",
+                        active
+                          ? "border-zinc-700 bg-zinc-800 text-white"
+                          : "border-transparent text-zinc-400 hover:border-zinc-800 hover:bg-zinc-900 hover:text-white",
+                      ].join(" ")}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
       </div>
-    </div>
+
+      <div className="border-t border-zinc-800 px-6 py-4">
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+          <div className="text-xs font-medium uppercase tracking-[0.2em] text-emerald-300">
+            Runtime
+          </div>
+          <div className="mt-2 text-sm font-medium text-white">
+            Core connected
+          </div>
+          <p className="mt-1 text-xs text-zinc-300">
+            Worker Render + Dashboard Vercel
+          </p>
+        </div>
+      </div>
+    </aside>
   );
 }
