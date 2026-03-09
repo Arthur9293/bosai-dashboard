@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+
 export const WORKER_BASE_URL =
   process.env.NEXT_PUBLIC_WORKER_URL?.replace(/\/$/, "") ||
   "https://bosai-worker.onrender.com";
@@ -121,7 +123,17 @@ export type IncidentsResponse = {
 };
 
 export async function fetchIncidents(): Promise<IncidentsResponse> {
-  const res = await fetch(`${DASHBOARD_BASE_URL}/api/incidents`, {
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host");
+
+  if (!host) {
+    throw new Error("Impossible de déterminer le host courant pour /api/incidents");
+  }
+
+  const protocol = process.env.NODE_ENV === "development" ? "http" : "https";
+  const baseUrl = `${protocol}://${host}`;
+
+  const res = await fetch(`${baseUrl}/api/incidents`, {
     method: "GET",
     cache: "no-store",
   });
