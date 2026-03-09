@@ -1,29 +1,6 @@
-import { fetchCommands } from "@/lib/api";
-
-function StatusBadge({ status }: { status?: string }) {
-  const normalized = (status || "unknown").toLowerCase();
-
-  const styles: Record<string, string> = {
-    pending: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20",
-    queued: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20",
-    running: "bg-blue-500/15 text-blue-300 border border-blue-500/20",
-    done: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20",
-    success: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20",
-    error: "bg-red-500/15 text-red-300 border border-red-500/20",
-    failed: "bg-red-500/15 text-red-300 border border-red-500/20",
-    unsupported: "bg-orange-500/15 text-orange-300 border border-orange-500/20",
-  };
-
-  const className =
-    styles[normalized] ||
-    "bg-white/5 text-zinc-300 border border-white/10";
-
-  return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${className}`}>
-      {status || "unknown"}
-    </span>
-  );
-}
+import { PageHeader } from "../../../components/ui/page-header";
+import { fetchCommands } from "../../../lib/api";
+import type { CommandItem } from "../../../lib/types";
 
 function formatDate(value?: string) {
   if (!value) return "—";
@@ -37,144 +14,287 @@ function formatDate(value?: string) {
   }).format(date);
 }
 
+function normalizeStatus(status?: string) {
+  return (status || "").trim().toLowerCase();
+}
+
+function statusTone(status?: string) {
+  const normalized = normalizeStatus(status);
+
+  if (normalized === "done") {
+    return "border border-emerald-500/20 bg-emerald-500/10 text-emerald-300";
+  }
+
+  if (normalized === "running") {
+    return "border border-sky-500/20 bg-sky-500/10 text-sky-300";
+  }
+
+  if (normalized === "queued" || normalized === "queue" || normalized === "pending") {
+    return "border border-amber-500/20 bg-amber-500/10 text-amber-300";
+  }
+
+  if (normalized === "error" || normalized === "failed") {
+    return "border border-red-500/20 bg-red-500/10 text-red-300";
+  }
+
+  return "border border-zinc-700 bg-zinc-800 text-zinc-300";
+}
+
+function formatStatus(status?: string) {
+  if (!status) return "Unknown";
+
+  const normalized = normalizeStatus(status);
+
+  if (normalized === "queued") return "Queued";
+  if (normalized === "queue") return "Queue";
+  if (normalized === "running") return "Running";
+  if (normalized === "done") return "Done";
+  if (normalized === "error") return "Error";
+  if (normalized === "failed") return "Failed";
+  if (normalized === "pending") return "Pending";
+
+  return status;
+}
+
+function formatJsonPreview(input?: Record<string, unknown> | null) {
+  if (!input || Object.keys(input).length === 0) return "—";
+
+  const raw = JSON.stringify(input);
+  if (raw.length <= 80) return raw;
+
+  return `${raw.slice(0, 80)}…`;
+}
+
+function getCommandId(command: CommandItem) {
+  return command.command_id || command.id || "—";
+}
+
 export default async function CommandsPage() {
-  let data = null;
-  let errorMessage = "";
+  let commandsData = null;
+  let loadError: string | null = null;
 
   try {
-    data = await fetchCommands();
+    commandsData = await fetchCommands();
   } catch (error) {
-    errorMessage =
+    loadError =
       error instanceof Error
         ? error.message
         : "Impossible de charger les commandes.";
   }
 
-  const commands = data?.commands ?? [];
-  const count = data?.count ?? commands.length;
+  const commands = commandsData?.commands ?? [];
+  const totalCommands = commandsData?.count ?? commands.length ?? 0;
+
+  const queuedCommands =
+    commandsData?.stats?.queue ??
+    commandsData?.stats?.queued ??
+    commands.filter((command) => {
+      const status = normalizeStatus(command.status);
+      return status === "queue" || status === "queued" || status === "pending";
+    }).length;
+
+  const runningCommands =
+    commandsData?.stats?.running ??
+    commands.filter((command) => normalizeStatus(command.status) === "running").length;
+
+  const doneCommands =
+    commandsData?.stats?.done ??
+    commands.filter((command) => normalizeStatus(command.status) === "done").length;
+
+  const errorCommands =
+    commandsData?.stats?.error ??
+    commands.filter((command) => {
+      const status = normalizeStatus(command.status);
+      return status === "error" || status === "failed";
+    }).length;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight text-white">
-          Commands
-        </h1>
-        <p className="mt-2 text-sm text-zinc-400">
-          Queue des commandes BOSAI.
-        </p>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="Operations"
+        title="Commands"
+        description="Historique et statut des commandes remontées par BOSAI."
+      />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <p className="text-sm font-medium text-zinc-400">Total Commands</p>
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-white">
-            {count}
-          </p>
-          <p className="mt-2 text-xs text-zinc-500">records returned</p>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+          <div className="text-sm text-zinc-400">Queue</div>
+          <div className="mt-3 text-3xl font-semibold text-white">
+            {queuedCommands}
+          </div>
+          <p className="mt-2 text-sm text-zinc-500">Commandes en attente</p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <p className="text-sm font-medium text-zinc-400">Queued</p>
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-white">
-            {data?.stats?.queue ?? 0}
-          </p>
-          <p className="mt-2 text-xs text-zinc-500">waiting commands</p>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+          <div className="text-sm text-zinc-400">Running</div>
+          <div className="mt-3 text-3xl font-semibold text-white">
+            {runningCommands}
+          </div>
+          <p className="mt-2 text-sm text-zinc-500">Commandes en cours</p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <p className="text-sm font-medium text-zinc-400">Running</p>
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-white">
-            {data?.stats?.running ?? 0}
-          </p>
-          <p className="mt-2 text-xs text-zinc-500">currently processing</p>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+          <div className="text-sm text-zinc-400">Done</div>
+          <div className="mt-3 text-3xl font-semibold text-white">
+            {doneCommands}
+          </div>
+          <p className="mt-2 text-sm text-zinc-500">Commandes terminées</p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <p className="text-sm font-medium text-zinc-400">Errors</p>
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-white">
-            {data?.stats?.error ?? 0}
-          </p>
-          <p className="mt-2 text-xs text-zinc-500">failed commands</p>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+          <div className="text-sm text-zinc-400">Errors</div>
+          <div className="mt-3 text-3xl font-semibold text-white">
+            {errorCommands}
+          </div>
+          <p className="mt-2 text-sm text-zinc-500">Commandes en erreur</p>
         </div>
       </section>
 
-      {errorMessage ? (
-        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-5 text-sm text-red-300">
-          {errorMessage}
-        </div>
-      ) : null}
-
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-        <div className="border-b border-white/10 px-5 py-4">
+      <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900">
+        <div className="border-b border-zinc-800 px-6 py-5">
           <h2 className="text-lg font-semibold text-white">
-            Commands ({count})
+            Commands ({totalCommands})
           </h2>
           <p className="mt-1 text-sm text-zinc-400">
-            Historique et statut des commandes remontées par BOSAI.
+            File de commandes lue depuis l’API BOSAI Worker.
           </p>
         </div>
 
-        {commands.length === 0 ? (
-          <div className="px-5 py-8">
-            <p className="text-sm text-zinc-400">Aucune commande trouvée.</p>
+        {loadError ? (
+          <div className="px-6 py-6">
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
+              Impossible de charger les commandes : {loadError}
+            </div>
+          </div>
+        ) : commands.length === 0 ? (
+          <div className="px-6 py-8 text-sm text-zinc-400">
+            Aucune commande trouvée.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-sm">
-              <thead className="border-b border-white/10 bg-black/10 text-zinc-400">
-                <tr>
-                  <th className="px-5 py-3 text-left font-medium">ID</th>
-                  <th className="px-5 py-3 text-left font-medium">Capability</th>
-                  <th className="px-5 py-3 text-left font-medium">Status</th>
-                  <th className="px-5 py-3 text-left font-medium">Priority</th>
-                  <th className="px-5 py-3 text-left font-medium">Worker</th>
-                  <th className="px-5 py-3 text-left font-medium">Created</th>
-                  <th className="px-5 py-3 text-left font-medium">Updated</th>
-                  <th className="px-5 py-3 text-left font-medium">Dry Run</th>
-                </tr>
-              </thead>
+          <>
+            <div className="hidden min-[980px]:block">
+              <div className="grid grid-cols-[2.1fr_1.4fr_1fr_1fr_1.2fr_1.2fr] gap-4 border-b border-zinc-800 px-6 py-4 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
+                <div>Command ID</div>
+                <div>Capability</div>
+                <div>Status</div>
+                <div>Priority</div>
+                <div>Worker</div>
+                <div>Created</div>
+              </div>
 
-              <tbody>
+              <div className="divide-y divide-zinc-800">
                 {commands.map((command) => (
-                  <tr
-                    key={command.id}
-                    className="border-b border-white/5 hover:bg-white/[0.03]"
+                  <div
+                    key={getCommandId(command)}
+                    className="grid grid-cols-[2.1fr_1.4fr_1fr_1fr_1.2fr_1.2fr] gap-4 px-6 py-4 text-sm"
                   >
-                    <td className="px-5 py-4 text-zinc-300">
-                      <span className="font-mono text-xs">{command.id}</span>
-                    </td>
-                    <td className="px-5 py-4 text-white">
+                    <div className="min-w-0">
+                      <div className="break-words font-medium text-zinc-200">
+                        {getCommandId(command)}
+                      </div>
+                      <div className="mt-1 break-words text-xs text-zinc-500">
+                        {formatJsonPreview(command.input)}
+                      </div>
+                    </div>
+
+                    <div className="break-words text-zinc-300">
                       {command.capability || "—"}
-                    </td>
-                    <td className="px-5 py-4">
-                      <StatusBadge status={command.status} />
-                    </td>
-                    <td className="px-5 py-4 text-zinc-300">
+                    </div>
+
+                    <div>
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
+                          command.status
+                        )}`}
+                      >
+                        {formatStatus(command.status)}
+                      </span>
+                    </div>
+
+                    <div className="text-zinc-300">
                       {command.priority ?? "—"}
-                    </td>
-                    <td className="px-5 py-4 text-zinc-300">
+                    </div>
+
+                    <div className="break-words text-zinc-300">
                       {command.worker || "—"}
-                    </td>
-                    <td className="px-5 py-4 text-zinc-400">
+                    </div>
+
+                    <div className="text-zinc-400">
                       {formatDate(command.created_at)}
-                    </td>
-                    <td className="px-5 py-4 text-zinc-400">
-                      {formatDate(command.updated_at)}
-                    </td>
-                    <td className="px-5 py-4 text-zinc-300">
-                      {command.dry_run === true
-                        ? "Yes"
-                        : command.dry_run === false
-                        ? "No"
-                        : "—"}
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-4 min-[980px]:hidden">
+              {commands.map((command) => (
+                <div
+                  key={getCommandId(command)}
+                  className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="break-words text-base font-semibold text-white">
+                        {command.capability || "Unknown capability"}
+                      </div>
+                      <div className="mt-1 break-words text-xs text-zinc-500">
+                        {getCommandId(command)}
+                      </div>
+                    </div>
+
+                    <span
+                      className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
+                        command.status
+                      )}`}
+                    >
+                      {formatStatus(command.status)}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                        Worker
+                      </div>
+                      <div className="mt-1 text-sm text-zinc-300">
+                        {command.worker || "—"}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                        Priority
+                      </div>
+                      <div className="mt-1 text-sm text-zinc-300">
+                        {command.priority ?? "—"}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                        Created
+                      </div>
+                      <div className="mt-1 text-sm text-zinc-300">
+                        {formatDate(command.created_at)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                        Input
+                      </div>
+                      <div className="mt-1 break-words text-sm text-zinc-300">
+                        {formatJsonPreview(command.input)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
-      </div>
+      </section>
     </div>
   );
 }
