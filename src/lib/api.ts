@@ -1,132 +1,63 @@
-export const WORKER_BASE_URL =
-  process.env.NEXT_PUBLIC_WORKER_URL?.replace(/\/$/, "") ||
-  "https://bosai-worker.onrender.com";
+import type {
+  CommandsResponse,
+  HealthResponse,
+  HealthScoreResponse,
+  IncidentsResponse,
+  RunsResponse,
+} from "./types";
 
-export type CommandItem = {
-  id: string;
-  capability?: string;
-  status?: string;
-  priority?: number;
-  created_at?: string;
-  updated_at?: string;
-  dry_run?: boolean | null;
-  worker?: string;
-};
+const WORKER_BASE_URL =
+  process.env.BOSAI_WORKER_BASE_URL?.replace(/\/+$/, "") ||
+  process.env.NEXT_PUBLIC_BOSAI_WORKER_BASE_URL?.replace(/\/+$/, "") ||
+  "";
 
-export type CommandsResponse = {
-  ok?: boolean;
-  count?: number;
-  commands?: CommandItem[];
-  stats?: {
-    queue?: number;
-    running?: number;
-    done?: number;
-    error?: number;
-    other?: number;
-  };
-  ts?: string;
-};
+function buildUrl(path: string) {
+  if (!WORKER_BASE_URL) {
+    throw new Error(
+      "Missing BOSAI worker base URL. Set BOSAI_WORKER_BASE_URL or NEXT_PUBLIC_BOSAI_WORKER_BASE_URL."
+    );
+  }
 
-export async function fetchCommands(): Promise<CommandsResponse> {
-  const res = await fetch(`${WORKER_BASE_URL}/commands`, {
+  return `${WORKER_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+async function fetchJson<T>(path: string): Promise<T> {
+  const response = await fetch(buildUrl(path), {
     method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
     cache: "no-store",
   });
 
-  if (!res.ok) {
-    throw new Error(`Impossible de charger /commands (${res.status})`);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Request failed: ${response.status} ${response.statusText}${
+        text ? ` — ${text}` : ""
+      }`
+    );
   }
 
-  return res.json();
+  return response.json() as Promise<T>;
 }
 
-export type RunItem = {
-  id?: string;
-  run_id?: string;
-  worker?: string;
-  capability?: string;
-  status?: string;
-  priority?: number;
-  started_at?: string;
-  finished_at?: string;
-  dry_run?: boolean | null;
-};
-
-export type RunsResponse = {
-  ok?: boolean;
-  count?: number;
-  runs?: RunItem[];
-  stats?: {
-    running?: number;
-    done?: number;
-    error?: number;
-    unsupported?: number;
-    other?: number;
-  };
-  ts?: string;
-};
-
-export async function fetchRuns(): Promise<RunsResponse> {
-  const res = await fetch(`${WORKER_BASE_URL}/runs`, {
-    method: "GET",
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    throw new Error(`Impossible de charger /runs (${res.status})`);
-  }
-
-  return res.json();
+export async function fetchHealth(): Promise<HealthResponse> {
+  return fetchJson<HealthResponse>("/health");
 }
-
-export type HealthScoreResponse = {
-  ok?: boolean;
-  score?: number;
-  issues?: string[];
-  ts?: string;
-};
 
 export async function fetchHealthScore(): Promise<HealthScoreResponse> {
-  const res = await fetch(`${WORKER_BASE_URL}/health/score`, {
-    method: "GET",
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    throw new Error(`Impossible de charger /health/score (${res.status})`);
-  }
-
-  return res.json();
+  return fetchJson<HealthScoreResponse>("/health/score");
 }
 
-export type IncidentItem = {
-  id?: string;
-  title?: string;
-  status?: string;
-  severity?: string;
-  sla_status?: string;
-  created?: string;
-  worker?: string;
-};
+export async function fetchRuns(): Promise<RunsResponse> {
+  return fetchJson<RunsResponse>("/runs");
+}
 
-export type IncidentsResponse = {
-  ok?: boolean;
-  count?: number;
-  incidents?: IncidentItem[];
-};
+export async function fetchCommands(): Promise<CommandsResponse> {
+  return fetchJson<CommandsResponse>("/commands");
+}
 
-/**
- * SAFE V1:
- * On évite un fetch HTTP interne vers /api/incidents depuis le serveur,
- * car cela peut provoquer 401/404 sur les previews Vercel.
- * Cette fonction retourne une structure stable pour la page Incidents.
- */
 export async function fetchIncidents(): Promise<IncidentsResponse> {
-  const incidents: IncidentItem[] = [];
-
-  return {
-    ok: true,
-    count: incidents.length,
-    incidents,
-  };
+  return fetchJson<IncidentsResponse>("/incidents");
 }
