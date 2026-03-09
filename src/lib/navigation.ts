@@ -11,26 +11,30 @@ export type NavSection = {
 export const dashboardNavigation: NavSection[] = [
   {
     title: "Core",
-    items: [{ label: "Overview", href: "/app" }],
+    items: [
+      { label: "Overview", href: "/" },
+    ],
   },
   {
     title: "Operations",
     items: [
-      { label: "Commands", href: "/app/commands" },
-      { label: "Runs", href: "/app/runs" },
-      { label: "Incidents", href: "/app/incidents" },
+      { label: "Commands", href: "/commands" },
+      { label: "Runs", href: "/runs" },
+      { label: "Incidents", href: "/incidents" },
     ],
   },
   {
     title: "Governance",
     items: [
-      { label: "Tools", href: "/app/tools" },
-      { label: "Policies", href: "/app/policies" },
-      { label: "Integrations", href: "/app/integrations" },
+      { label: "Tools", href: "/tools" },
+      { label: "Policies", href: "/policies" },
+      { label: "Integrations", href: "/integrations" },
     ],
   },
   {
     title: "Workspace",
-    items: [{ label: "Settings", href: "/app/settings" }],
+    items: [
+      { label: "Settings", href: "/settings" },
+    ],
   },
 ];
