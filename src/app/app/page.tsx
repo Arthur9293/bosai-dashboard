@@ -81,21 +81,42 @@ export default async function OverviewPage() {
   let health = null;
   let incidents = null;
 
+  let runsError: string | null = null;
+  let commandsError: string | null = null;
+  let healthError: string | null = null;
+  let incidentsError: string | null = null;
+
   try {
     runs = await fetchRuns();
-  } catch {}
+  } catch (error) {
+    runsError =
+      error instanceof Error ? error.message : "Erreur inconnue sur /runs";
+  }
 
   try {
     commands = await fetchCommands();
-  } catch {}
+  } catch (error) {
+    commandsError =
+      error instanceof Error ? error.message : "Erreur inconnue sur /commands";
+  }
 
   try {
     health = await fetchHealthScore();
-  } catch {}
+  } catch (error) {
+    healthError =
+      error instanceof Error
+        ? error.message
+        : "Erreur inconnue sur /health/score";
+  }
 
   try {
     incidents = await fetchIncidents();
-  } catch {}
+  } catch (error) {
+    incidentsError =
+      error instanceof Error
+        ? error.message
+        : "Erreur inconnue sur /incidents";
+  }
 
   const totalRuns = runs?.count ?? 0;
   const runningRuns = runs?.stats?.running ?? 0;
@@ -155,8 +176,25 @@ export default async function OverviewPage() {
   const healthTone = getHealthTone(healthScore);
   const healthLabel = getHealthLabel(healthScore);
 
+  const hasFetchErrors =
+    !!runsError || !!commandsError || !!healthError || !!incidentsError;
+
   return (
     <div className="space-y-8">
+      {hasFetchErrors && (
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
+          <p className="text-sm font-medium text-red-300">
+            Dashboard fetch diagnostic
+          </p>
+          <div className="mt-3 space-y-2 text-sm text-red-200">
+            {runsError && <p>Runs: {runsError}</p>}
+            {commandsError && <p>Commands: {commandsError}</p>}
+            {healthError && <p>Health: {healthError}</p>}
+            {incidentsError && <p>Incidents: {incidentsError}</p>}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
