@@ -115,7 +115,7 @@ export type IncidentsResponse = {
 };
 
 export async function fetchIncidents(): Promise<IncidentsResponse> {
-  const res = await fetch(`${WORKER_BASE_URL}/incidents`, {
+  const res = await fetch(`/api/incidents`, {
     method: "GET",
     cache: "no-store",
   });
@@ -124,5 +124,11 @@ export async function fetchIncidents(): Promise<IncidentsResponse> {
     throw new Error(`Impossible de charger /incidents (${res.status})`);
   }
 
-  return res.json();
+  const json = await res.json();
+
+  return {
+    ok: Boolean(json?.ok),
+    count: Number(json?.count ?? 0),
+    incidents: Array.isArray(json?.data) ? json.data : [],
+  };
 }
