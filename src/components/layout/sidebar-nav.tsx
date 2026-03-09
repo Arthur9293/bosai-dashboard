@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { dashboardNavigation } from "../../lib/navigation";
 
 function isActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
+  if (href === "/app") return pathname === "/app";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
