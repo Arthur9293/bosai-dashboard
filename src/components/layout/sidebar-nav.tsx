@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { dashboardNavigation } from "../../lib/navigation";
 
 function isActive(pathname: string, href: string) {
-  if (href === "/app") return pathname === "/app";
+  if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -19,7 +19,9 @@ export function Sidebar() {
           BOSAI
         </div>
 
-        <div className="mt-2 text-xl font-semibold text-white">SaaS V1</div>
+        <div className="mt-2 text-xl font-semibold text-white">
+          SaaS V1
+        </div>
 
         <p className="mt-2 text-sm text-zinc-400">
           Cockpit de supervision et gouvernance.
