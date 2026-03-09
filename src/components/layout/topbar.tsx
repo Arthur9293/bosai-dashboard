@@ -1,18 +1,24 @@
-type TopbarProps = {
-  title: string;
-};
-
-export function Topbar({ title }: TopbarProps) {
+export function Topbar() {
   return (
-    <header className="sticky top-0 z-20 border-b border-white/10 bg-black/20 px-6 py-4 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between">
+    <header className="sticky top-0 z-20 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
+      <div className="flex min-h-[72px] items-center justify-between px-4 sm:px-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-          <p className="mt-1 text-sm text-white/50">BOSAI SaaS V1</p>
+          <div className="text-xs font-medium uppercase tracking-[0.22em] text-zinc-500">
+            Workspace
+          </div>
+          <div className="mt-1 text-sm font-medium text-white">
+            Default workspace
+          </div>
         </div>
 
-        <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-white/70">
-          PROD
+        <div className="flex items-center gap-3">
+          <div className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300">
+            Multi-workspace ready
+          </div>
+
+          <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300">
+            Read-only API
+          </div>
         </div>
       </div>
     </header>
