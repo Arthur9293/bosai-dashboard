@@ -28,6 +28,7 @@ async function fetchJson<T>(path: string): Promise<T> {
       Accept: "application/json",
     },
     cache: "no-store",
+    next: { revalidate: 0 },
   });
 
   if (!response.ok) {
