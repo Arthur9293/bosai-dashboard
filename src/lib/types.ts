@@ -90,3 +90,37 @@ export type IncidentsResponse = {
   };
   ts?: string;
 };
+export type EventItem = {
+  id: string;
+  event_type?: string;
+  status?: string;
+  command_created?: boolean;
+  linked_command?: string[] | string | null;
+  mapped_capability?: string;
+  processed_at?: string;
+  source?: string | null;
+  run_id?: string | null;
+  command_id?: string | null;
+  payload?: Record<string, unknown> | null;
+};
+
+export type EventsResponse = {
+  ok?: boolean;
+  source?: {
+    ok?: boolean;
+    table?: string;
+    view?: string;
+    reason?: string;
+    detail?: string;
+  };
+  count?: number;
+  stats?: {
+    queued?: number;
+    processed?: number;
+    ignored?: number;
+    error?: number;
+    other?: number;
+  };
+  events?: EventItem[];
+  ts?: string;
+};
