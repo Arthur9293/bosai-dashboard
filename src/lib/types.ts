@@ -4,6 +4,21 @@ export type HealthResponse = {
   version?: string;
   worker?: string;
   capabilities?: string[];
+  policies_loaded?: boolean;
+  policy_keys?: string[];
+  cors?: {
+    allow_origins?: string[];
+    allow_methods?: string[];
+    allow_headers?: string[];
+    expose_headers?: string[];
+    allow_credentials?: boolean;
+  };
+  dashboard_views?: {
+    system_runs_view?: string;
+    commands_dashboard_view?: string;
+    sla_dashboard_view?: string;
+    events_dashboard_view?: string;
+  };
   ts?: string;
 };
 
@@ -28,8 +43,14 @@ export type RunItem = {
 
 export type RunsResponse = {
   ok?: boolean;
+  source?: {
+    ok?: boolean;
+    table?: string;
+    view?: string;
+    reason?: string;
+    detail?: string;
+  };
   count?: number;
-  runs?: RunItem[];
   stats?: {
     running?: number;
     done?: number;
@@ -37,59 +58,81 @@ export type RunsResponse = {
     unsupported?: number;
     other?: number;
   };
+  runs?: RunItem[];
   ts?: string;
 };
 
 export type CommandItem = {
   id: string;
-  command_id?: string;
   capability?: string;
   status?: string;
-  worker?: string;
-  priority?: number | null;
-  created_at?: string;
-  updated_at?: string;
-  input?: Record<string, unknown> | null;
+  priority?: number;
+  retry_count?: number;
+  retry_max?: number;
+  scheduled_at?: string;
+  next_retry_at?: string;
+  is_locked?: boolean;
+  locked_by?: string;
+  idempotency_key?: string;
 };
 
 export type CommandsResponse = {
   ok?: boolean;
+  source?: {
+    ok?: boolean;
+    table?: string;
+    view?: string;
+    reason?: string;
+    detail?: string;
+  };
   count?: number;
-  commands?: CommandItem[];
   stats?: {
-    queue?: number;
     queued?: number;
     running?: number;
+    retry?: number;
     done?: number;
+    dead?: number;
+    blocked?: number;
+    unsupported?: number;
     error?: number;
     other?: number;
   };
+  commands?: CommandItem[];
   ts?: string;
 };
 
 export type IncidentItem = {
   id: string;
   title?: string;
-  severity?: string;
   status?: string;
+  severity?: string;
   sla_status?: string;
-  source?: string;
   created_at?: string;
-  updated_at?: string;
+  source?: string;
+  worker?: string;
 };
 
 export type IncidentsResponse = {
   ok?: boolean;
+  source?: {
+    ok?: boolean;
+    table?: string;
+    view?: string;
+    reason?: string;
+    detail?: string;
+  };
   count?: number;
-  incidents?: IncidentItem[];
   stats?: {
     open?: number;
     critical?: number;
     warning?: number;
     resolved?: number;
+    other?: number;
   };
+  incidents?: IncidentItem[];
   ts?: string;
 };
+
 export type EventItem = {
   id: string;
   event_type?: string;
@@ -124,31 +167,23 @@ export type EventsResponse = {
   events?: EventItem[];
   ts?: string;
 };
-export type EventMapping = {
-  id: string;
-  event_type: string;
-  capability: string;
-  enabled?: boolean;
-  priority?: number;
-  created_at?: string;
-};
 
-export type EventMappingsResponse = {
-  ok?: boolean;
-  count?: number;
-  mappings?: EventMapping[];
-  ts?: string;
-};
 export type EventMappingItem = {
   event_type?: string;
   capability?: string;
   enabled?: boolean;
+  source?: string;
 };
 
 export type EventMappingsResponse = {
   ok?: boolean;
-  mappings?: EventMappingItem[];
   count?: number;
+  stats?: {
+    enabled?: number;
+    disabled?: number;
+    other?: number;
+  };
+  mappings?: EventMappingItem[];
   ts?: string;
 };
 
