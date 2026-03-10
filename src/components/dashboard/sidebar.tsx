@@ -3,19 +3,55 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+type SidebarLink = {
+  name: string;
+  href: string;
+};
+
 export function Sidebar() {
   const pathname = usePathname();
 
-  const links = [
+  const links: SidebarLink[] = [
     { name: "Overview", href: "/app" },
     { name: "Commands", href: "/app/commands" },
     { name: "Runs", href: "/app/runs" },
     { name: "Incidents", href: "/app/incidents" },
+    { name: "Events", href: "/app/events" },
     { name: "Tools", href: "/app/tools" },
     { name: "Policies", href: "/app/policies" },
     { name: "Integrations", href: "/app/integrations" },
     { name: "Settings", href: "/app/settings" },
   ];
+
+  const operateLinks = links.slice(0, 5);
+  const governLinks = links.slice(5, 7);
+  const workspaceLinks = links.slice(7);
+
+  const isLinkActive = (href: string) => {
+    if (href === "/app") {
+      return pathname === "/app";
+    }
+    return pathname === href || pathname.startsWith(`${href}/`) || pathname.startsWith(href);
+  };
+
+  const renderLinks = (items: SidebarLink[]) =>
+    items.map((link) => {
+      const isActive = isLinkActive(link.href);
+
+      return (
+        <Link
+          key={link.href}
+          href={link.href}
+          className={`block rounded-xl px-3 py-2 text-sm transition-colors ${
+            isActive
+              ? "bg-white text-zinc-950"
+              : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+          }`}
+        >
+          {link.name}
+        </Link>
+      );
+    });
 
   return (
     <aside className="w-64 border-r border-zinc-800 bg-zinc-950 p-4">
@@ -32,81 +68,21 @@ export function Sidebar() {
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Operate
           </p>
-          <nav className="space-y-2">
-            {links.slice(0, 4).map((link) => {
-              const isActive =
-                pathname === link.href ||
-                (link.href !== "/app" && pathname.startsWith(link.href));
-
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`block rounded-xl px-3 py-2 text-sm ${
-                    isActive
-                      ? "bg-white text-zinc-950"
-                      : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-                  }`}
-                >
-                  {link.name}
-                </Link>
-              );
-            })}
-          </nav>
+          <nav className="space-y-2">{renderLinks(operateLinks)}</nav>
         </div>
 
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Govern
           </p>
-          <nav className="space-y-2">
-            {links.slice(4, 6).map((link) => {
-              const isActive =
-                pathname === link.href ||
-                (link.href !== "/app" && pathname.startsWith(link.href));
-
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`block rounded-xl px-3 py-2 text-sm ${
-                    isActive
-                      ? "bg-white text-zinc-950"
-                      : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-                  }`}
-                >
-                  {link.name}
-                </Link>
-              );
-            })}
-          </nav>
+          <nav className="space-y-2">{renderLinks(governLinks)}</nav>
         </div>
 
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Workspace
           </p>
-          <nav className="space-y-2">
-            {links.slice(6).map((link) => {
-              const isActive =
-                pathname === link.href ||
-                (link.href !== "/app" && pathname.startsWith(link.href));
-
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`block rounded-xl px-3 py-2 text-sm ${
-                    isActive
-                      ? "bg-white text-zinc-950"
-                      : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-                  }`}
-                >
-                  {link.name}
-                </Link>
-              );
-            })}
-          </nav>
+          <nav className="space-y-2">{renderLinks(workspaceLinks)}</nav>
         </div>
       </div>
 
