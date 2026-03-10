@@ -1,43 +1,40 @@
 import type {
   CommandsResponse,
   EventsResponse,
-  EventMappingsResponse,
   HealthResponse,
   HealthScoreResponse,
   IncidentsResponse,
   RunsResponse,
+  EventMappingsResponse,
+  EventCommandGraphResponse,
 } from "./types";
 
 const WORKER_BASE_URL =
-  process.env.BOSAI_WORKER_BASE_URL?.replace(/\/+$/, "") ||
-  process.env.NEXT_PUBLIC_BOSAI_WORKER_BASE_URL?.replace(/\/+$/, "") ||
+  process.env.BOSAI_WORKER_BASE_URL?.trim() ||
+  process.env.NEXT_PUBLIC_BOSAI_WORKER_BASE_URL?.trim() ||
   "";
 
-function buildUrl(path: string) {
+function getWorkerBaseUrl(): string {
   if (!WORKER_BASE_URL) {
     throw new Error(
-      "Missing BOSAI worker base URL. Set BOSAI_WORKER_BASE_URL or NEXT_PUBLIC_BOSAI_WORKER_BASE_URL."
+      "Missing BOSAI worker base URL. Define BOSAI_WORKER_BASE_URL or NEXT_PUBLIC_BOSAI_WORKER_BASE_URL in Vercel."
     );
   }
 
-  return `${WORKER_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+  return WORKER_BASE_URL.replace(/\/+$/, "");
 }
 
 async function fetchJson<T>(path: string): Promise<T> {
-  const response = await fetch(buildUrl(path), {
+  const baseUrl = getWorkerBaseUrl();
+  const response = await fetch(`${baseUrl}${path}`, {
     method: "GET",
-    headers: {
-      Accept: "application/json",
-    },
     cache: "no-store",
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
+    const text = await response.text();
     throw new Error(
-      `Request failed: ${response.status} ${response.statusText}${
-        text ? ` — ${text}` : ""
-      }`
+      `Request failed: ${response.status}${text ? ` — ${text}` : ""}`
     );
   }
 
@@ -67,15 +64,11 @@ export async function fetchIncidents(): Promise<IncidentsResponse> {
 export async function fetchEvents(): Promise<EventsResponse> {
   return fetchJson<EventsResponse>("/events");
 }
+
 export async function fetchEventMappings(): Promise<EventMappingsResponse> {
   return fetchJson<EventMappingsResponse>("/event-mappings");
 }
-export async function fetchEventCommandGraph() {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL}/event-command-graph`);
 
-  if (!res.ok) {
-    throw new Error("Failed to fetch event command graph");
-  }
-
-  return res.json();
+export async function fetchEventCommandGraph(): Promise<EventCommandGraphResponse> {
+  return fetchJson<EventCommandGraphResponse>("/event-command-graph");
 }
