@@ -93,7 +93,6 @@ export default async function CommandsPage() {
 
   const queuedCommands =
     commandsData?.stats?.queued ??
-    commandsData?.stats?.queue ??
     commands.filter((command) => {
       const status = normalizeStatus(command.status);
       return status === "queue" || status === "queued" || status === "pending";
