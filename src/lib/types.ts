@@ -124,3 +124,18 @@ export type EventsResponse = {
   events?: EventItem[];
   ts?: string;
 };
+export type EventMapping = {
+  id: string;
+  event_type: string;
+  capability: string;
+  enabled?: boolean;
+  priority?: number;
+  created_at?: string;
+};
+
+export type EventMappingsResponse = {
+  ok?: boolean;
+  count?: number;
+  mappings?: EventMapping[];
+  ts?: string;
+};
