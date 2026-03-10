@@ -29,11 +29,22 @@ function statusTone(status?: string) {
     return "border border-sky-500/20 bg-sky-500/10 text-sky-300";
   }
 
-  if (normalized === "queued" || normalized === "queue" || normalized === "pending") {
+  if (
+    normalized === "queued" ||
+    normalized === "queue" ||
+    normalized === "pending" ||
+    normalized === "retry"
+  ) {
     return "border border-amber-500/20 bg-amber-500/10 text-amber-300";
   }
 
-  if (normalized === "error" || normalized === "failed") {
+  if (
+    normalized === "error" ||
+    normalized === "failed" ||
+    normalized === "dead" ||
+    normalized === "blocked" ||
+    normalized === "unsupported"
+  ) {
     return "border border-red-500/20 bg-red-500/10 text-red-300";
   }
 
@@ -49,6 +60,10 @@ function formatStatus(status?: string) {
   if (normalized === "queue") return "Queue";
   if (normalized === "running") return "Running";
   if (normalized === "done") return "Done";
+  if (normalized === "retry") return "Retry";
+  if (normalized === "dead") return "Dead";
+  if (normalized === "blocked") return "Blocked";
+  if (normalized === "unsupported") return "Unsupported";
   if (normalized === "error") return "Error";
   if (normalized === "failed") return "Failed";
   if (normalized === "pending") return "Pending";
@@ -56,17 +71,8 @@ function formatStatus(status?: string) {
   return status;
 }
 
-function formatJsonPreview(input?: Record<string, unknown> | null) {
-  if (!input || Object.keys(input).length === 0) return "—";
-
-  const raw = JSON.stringify(input);
-  if (raw.length <= 80) return raw;
-
-  return `${raw.slice(0, 80)}…`;
-}
-
 function getCommandId(command: CommandItem) {
-  return command.command_id || command.id || "—";
+  return command.id || "—";
 }
 
 export default async function CommandsPage() {
@@ -86,8 +92,8 @@ export default async function CommandsPage() {
   const totalCommands = commandsData?.count ?? commands.length ?? 0;
 
   const queuedCommands =
-    commandsData?.stats?.queue ??
     commandsData?.stats?.queued ??
+    commandsData?.stats?.queue ??
     commands.filter((command) => {
       const status = normalizeStatus(command.status);
       return status === "queue" || status === "queued" || status === "pending";
@@ -95,17 +101,26 @@ export default async function CommandsPage() {
 
   const runningCommands =
     commandsData?.stats?.running ??
-    commands.filter((command) => normalizeStatus(command.status) === "running").length;
+    commands.filter(
+      (command) => normalizeStatus(command.status) === "running"
+    ).length;
 
   const doneCommands =
     commandsData?.stats?.done ??
-    commands.filter((command) => normalizeStatus(command.status) === "done").length;
+    commands.filter((command) => normalizeStatus(command.status) === "done")
+      .length;
 
   const errorCommands =
     commandsData?.stats?.error ??
     commands.filter((command) => {
       const status = normalizeStatus(command.status);
-      return status === "error" || status === "failed";
+      return (
+        status === "error" ||
+        status === "failed" ||
+        status === "dead" ||
+        status === "blocked" ||
+        status === "unsupported"
+      );
     }).length;
 
   return (
@@ -173,27 +188,27 @@ export default async function CommandsPage() {
         ) : (
           <>
             <div className="hidden min-[980px]:block">
-              <div className="grid grid-cols-[2.1fr_1.4fr_1fr_1fr_1.2fr_1.2fr] gap-4 border-b border-zinc-800 px-6 py-4 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
+              <div className="grid grid-cols-[2fr_1.2fr_1fr_0.8fr_1.2fr_1.2fr] gap-4 border-b border-zinc-800 px-6 py-4 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
                 <div>Command ID</div>
                 <div>Capability</div>
                 <div>Status</div>
                 <div>Priority</div>
-                <div>Worker</div>
-                <div>Created</div>
+                <div>Locked By</div>
+                <div>Scheduled</div>
               </div>
 
               <div className="divide-y divide-zinc-800">
                 {commands.map((command) => (
                   <div
                     key={getCommandId(command)}
-                    className="grid grid-cols-[2.1fr_1.4fr_1fr_1fr_1.2fr_1.2fr] gap-4 px-6 py-4 text-sm"
+                    className="grid grid-cols-[2fr_1.2fr_1fr_0.8fr_1.2fr_1.2fr] gap-4 px-6 py-4 text-sm"
                   >
                     <div className="min-w-0">
                       <div className="break-words font-medium text-zinc-200">
                         {getCommandId(command)}
                       </div>
                       <div className="mt-1 break-words text-xs text-zinc-500">
-                        {formatJsonPreview(command.input)}
+                        {command.idempotency_key || "—"}
                       </div>
                     </div>
 
@@ -216,11 +231,11 @@ export default async function CommandsPage() {
                     </div>
 
                     <div className="break-words text-zinc-300">
-                      {command.worker || "—"}
+                      {command.locked_by || "—"}
                     </div>
 
                     <div className="text-zinc-400">
-                      {formatDate(command.created_at)}
+                      {formatDate(command.scheduled_at)}
                     </div>
                   </div>
                 ))}
@@ -255,15 +270,6 @@ export default async function CommandsPage() {
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <div>
                       <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                        Worker
-                      </div>
-                      <div className="mt-1 text-sm text-zinc-300">
-                        {command.worker || "—"}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
                         Priority
                       </div>
                       <div className="mt-1 text-sm text-zinc-300">
@@ -273,19 +279,46 @@ export default async function CommandsPage() {
 
                     <div>
                       <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                        Created
+                        Locked By
                       </div>
                       <div className="mt-1 text-sm text-zinc-300">
-                        {formatDate(command.created_at)}
+                        {command.locked_by || "—"}
                       </div>
                     </div>
 
                     <div>
                       <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                        Input
+                        Scheduled
+                      </div>
+                      <div className="mt-1 text-sm text-zinc-300">
+                        {formatDate(command.scheduled_at)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                        Next Retry
+                      </div>
+                      <div className="mt-1 text-sm text-zinc-300">
+                        {formatDate(command.next_retry_at)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                        Retry Count
+                      </div>
+                      <div className="mt-1 text-sm text-zinc-300">
+                        {command.retry_count ?? "—"}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                        Idempotency Key
                       </div>
                       <div className="mt-1 break-words text-sm text-zinc-300">
-                        {formatJsonPreview(command.input)}
+                        {command.idempotency_key || "—"}
                       </div>
                     </div>
                   </div>
