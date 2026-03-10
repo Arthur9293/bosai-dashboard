@@ -1,5 +1,13 @@
 import type {
   CommandsResponse,
+  EventsResponse,
+  HealthResponse,
+  HealthScoreResponse,
+  IncidentsResponse,
+  RunsResponse,
+} from "./types";
+import type {
+  CommandsResponse,
   HealthResponse,
   HealthScoreResponse,
   IncidentsResponse,
