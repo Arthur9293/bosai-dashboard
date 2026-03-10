@@ -261,7 +261,7 @@ export default async function IncidentsPage() {
                     </div>
 
                     <div className="text-zinc-400">
-                      {formatDate(incident.updated_at)}
+                      {formatDate(incident.created_at)}
                     </div>
                   </div>
                 ))}
@@ -327,7 +327,7 @@ export default async function IncidentsPage() {
                         Updated
                       </div>
                       <div className="mt-1 text-sm text-zinc-300">
-                        {formatDate(incident.updated_at)}
+                        {formatDate(incident.created_at)}
                       </div>
                     </div>
                   </div>
