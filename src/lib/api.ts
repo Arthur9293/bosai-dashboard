@@ -1,6 +1,7 @@
 import type {
   CommandsResponse,
   EventsResponse,
+  EventMappingsResponse,
   HealthResponse,
   HealthScoreResponse,
   IncidentsResponse,
@@ -65,4 +66,7 @@ export async function fetchIncidents(): Promise<IncidentsResponse> {
 
 export async function fetchEvents(): Promise<EventsResponse> {
   return fetchJson<EventsResponse>("/events");
+}
+export async function fetchEventMappings(): Promise<EventMappingsResponse> {
+  return fetchJson<EventMappingsResponse>("/event-mappings");
 }
