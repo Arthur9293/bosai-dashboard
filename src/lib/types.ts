@@ -139,3 +139,31 @@ export type EventMappingsResponse = {
   mappings?: EventMapping[];
   ts?: string;
 };
+export type EventMappingItem = {
+  event_type?: string;
+  capability?: string;
+  enabled?: boolean;
+};
+
+export type EventMappingsResponse = {
+  ok?: boolean;
+  mappings?: EventMappingItem[];
+  count?: number;
+  ts?: string;
+};
+
+export type EventCommandGraphItem = {
+  event_id?: string;
+  event_type?: string;
+  capability?: string;
+  command_id?: string | null;
+  run_id?: string | null;
+  run_status?: string | null;
+};
+
+export type EventCommandGraphResponse = {
+  ok?: boolean;
+  count?: number;
+  graph?: EventCommandGraphItem[];
+  ts?: string;
+};
