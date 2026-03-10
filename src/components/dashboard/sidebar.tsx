@@ -21,6 +21,7 @@ export function Sidebar() {
     { name: "Policies", href: "/app/policies" },
     { name: "Integrations", href: "/app/integrations" },
     { name: "Settings", href: "/app/settings" },
+    { name: "Event Mappings", href: "/app/event-mappings" }
   ];
 
   const operateLinks = links.slice(0, 5);
