@@ -70,3 +70,12 @@ export async function fetchEvents(): Promise<EventsResponse> {
 export async function fetchEventMappings(): Promise<EventMappingsResponse> {
   return fetchJson<EventMappingsResponse>("/event-mappings");
 }
+export async function fetchEventCommandGraph() {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL}/event-command-graph`);
+
+  if (!res.ok) {
+    throw new Error("Failed to fetch event command graph");
+  }
+
+  return res.json();
+}
