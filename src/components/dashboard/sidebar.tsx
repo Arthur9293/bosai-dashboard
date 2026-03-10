@@ -21,7 +21,7 @@ export function Sidebar() {
     { name: "Policies", href: "/app/policies" },
     { name: "Integrations", href: "/app/integrations" },
     { name: "Settings", href: "/app/settings" },
-    { name: "Event Mappings", href: "/app/event-mappings" }
+    { name: "Event Mappings", href: "/app/event-mappings" },
     { name: "Event Graph", href: "/app/event-graph" }
   ];
 
