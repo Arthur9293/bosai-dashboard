@@ -6,13 +6,6 @@ import type {
   IncidentsResponse,
   RunsResponse,
 } from "./types";
-import type {
-  CommandsResponse,
-  HealthResponse,
-  HealthScoreResponse,
-  IncidentsResponse,
-  RunsResponse,
-} from "./types";
 
 const WORKER_BASE_URL =
   process.env.BOSAI_WORKER_BASE_URL?.replace(/\/+$/, "") ||
@@ -36,7 +29,6 @@ async function fetchJson<T>(path: string): Promise<T> {
       Accept: "application/json",
     },
     cache: "no-store",
-    next: { revalidate: 0 },
   });
 
   if (!response.ok) {
@@ -70,6 +62,7 @@ export async function fetchCommands(): Promise<CommandsResponse> {
 export async function fetchIncidents(): Promise<IncidentsResponse> {
   return fetchJson<IncidentsResponse>("/incidents");
 }
+
 export async function fetchEvents(): Promise<EventsResponse> {
   return fetchJson<EventsResponse>("/events");
 }
