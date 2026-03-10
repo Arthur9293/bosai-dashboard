@@ -70,3 +70,6 @@ export async function fetchCommands(): Promise<CommandsResponse> {
 export async function fetchIncidents(): Promise<IncidentsResponse> {
   return fetchJson<IncidentsResponse>("/incidents");
 }
+export async function fetchEvents(): Promise<EventsResponse> {
+  return fetchJson<EventsResponse>("/events");
+}
