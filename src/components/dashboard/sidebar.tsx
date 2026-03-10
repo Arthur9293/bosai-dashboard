@@ -22,6 +22,7 @@ export function Sidebar() {
     { name: "Integrations", href: "/app/integrations" },
     { name: "Settings", href: "/app/settings" },
     { name: "Event Mappings", href: "/app/event-mappings" }
+    { name: "Event Graph", href: "/app/event-graph" }
   ];
 
   const operateLinks = links.slice(0, 5);
