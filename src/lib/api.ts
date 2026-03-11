@@ -72,3 +72,26 @@ export async function fetchEventMappings(): Promise<EventMappingsResponse> {
 export async function fetchEventCommandGraph(): Promise<EventCommandGraphResponse> {
   return fetchJson<EventCommandGraphResponse>("/event-command-graph");
 }
+export async function fetchCommandById(id: string) {
+  const res = await fetch(`${process.env.BOSAI_WORKER_BASE_URL}/commands/${id}`, {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch command ${id}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchRunById(id: string) {
+  const res = await fetch(`${process.env.BOSAI_WORKER_BASE_URL}/runs/${id}`, {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch run ${id}`);
+  }
+
+  return res.json();
+}
