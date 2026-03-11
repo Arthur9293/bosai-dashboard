@@ -1,3 +1,11 @@
+export type SourceMeta = {
+  ok?: boolean;
+  table?: string;
+  view?: string;
+  reason?: string;
+  detail?: string;
+};
+
 export type HealthResponse = {
   ok?: boolean;
   app?: string;
@@ -43,13 +51,7 @@ export type RunItem = {
 
 export type RunsResponse = {
   ok?: boolean;
-  source?: {
-    ok?: boolean;
-    table?: string;
-    view?: string;
-    reason?: string;
-    detail?: string;
-  };
+  source?: SourceMeta;
   count?: number;
   stats?: {
     running?: number;
@@ -74,30 +76,56 @@ export type CommandItem = {
   is_locked?: boolean;
   locked_by?: string;
   idempotency_key?: string;
+  created_at?: string;
+  started_at?: string;
+  finished_at?: string;
+};
+
+export type CommandsStats = {
+  queued?: number;
+  running?: number;
+  retry?: number;
+  done?: number;
+  dead?: number;
+  blocked?: number;
+  unsupported?: number;
+  error?: number;
+  other?: number;
 };
 
 export type CommandsResponse = {
   ok?: boolean;
-  source?: {
-    ok?: boolean;
-    table?: string;
-    view?: string;
-    reason?: string;
-    detail?: string;
-  };
+  source?: SourceMeta;
   count?: number;
-  stats?: {
-    queued?: number;
-    running?: number;
-    retry?: number;
-    done?: number;
-    dead?: number;
-    blocked?: number;
-    unsupported?: number;
-    error?: number;
-    other?: number;
-  };
+  stats?: CommandsStats;
   commands?: CommandItem[];
+  ts?: string;
+};
+
+export type CommandDetailItem = {
+  id: string;
+  capability?: string;
+  status?: string;
+  priority?: number;
+  retry_count?: number;
+  retry_max?: number;
+  scheduled_at?: string;
+  next_retry_at?: string;
+  is_locked?: boolean;
+  locked_by?: string;
+  idempotency_key?: string;
+  linked_run?: string[] | null;
+  input_json?: string;
+  result_json?: string;
+  error_message?: string;
+  last_error?: string;
+  started_at?: string;
+  finished_at?: string;
+};
+
+export type CommandDetailResponse = {
+  ok?: boolean;
+  command?: CommandDetailItem;
   ts?: string;
 };
 
@@ -114,13 +142,7 @@ export type IncidentItem = {
 
 export type IncidentsResponse = {
   ok?: boolean;
-  source?: {
-    ok?: boolean;
-    table?: string;
-    view?: string;
-    reason?: string;
-    detail?: string;
-  };
+  source?: SourceMeta;
   count?: number;
   stats?: {
     open?: number;
@@ -130,6 +152,32 @@ export type IncidentsResponse = {
     other?: number;
   };
   incidents?: IncidentItem[];
+  ts?: string;
+};
+
+export type SlaIncidentItem = {
+  id: string;
+  name?: string;
+  sla_status?: string;
+  sla_remaining_minutes?: number | string;
+  escalation_queued?: boolean;
+  last_sla_check?: string;
+  linked_run?: string[] | null;
+};
+
+export type SlaResponse = {
+  ok?: boolean;
+  source?: SourceMeta;
+  count?: number;
+  stats?: {
+    ok?: number;
+    warning?: number;
+    breached?: number;
+    escalated?: number;
+    unknown?: number;
+    escalation_queued?: number;
+  };
+  incidents?: SlaIncidentItem[];
   ts?: string;
 };
 
@@ -149,15 +197,10 @@ export type EventItem = {
 
 export type EventsResponse = {
   ok?: boolean;
-  source?: {
-    ok?: boolean;
-    table?: string;
-    view?: string;
-    reason?: string;
-    detail?: string;
-  };
+  source?: SourceMeta;
   count?: number;
   stats?: {
+    new?: number;
     queued?: number;
     processed?: number;
     ignored?: number;
@@ -190,15 +233,42 @@ export type EventMappingsResponse = {
 export type EventCommandGraphItem = {
   event_id?: string;
   event_type?: string;
-  capability?: string;
-  command_id?: string | null;
+  event_status?: string;
+  mapped_capability?: string;
+  command_record_id?: string | null;
+  command_capability?: string | null;
+  command_status?: string | null;
   run_id?: string | null;
   run_status?: string | null;
 };
 
 export type EventCommandGraphResponse = {
   ok?: boolean;
+  source?: SourceMeta;
   count?: number;
   graph?: EventCommandGraphItem[];
+  ts?: string;
+};
+
+export type RunDetailItem = {
+  id: string;
+  run_id?: string;
+  worker?: string;
+  capability?: string;
+  status?: string;
+  priority?: number;
+  dry_run?: boolean | null;
+  started_at?: string;
+  finished_at?: string;
+  idempotency_key?: string;
+  input_json?: string;
+  result_json?: string;
+  app_name?: string;
+  app_version?: string;
+};
+
+export type RunDetailResponse = {
+  ok?: boolean;
+  run?: RunDetailItem;
   ts?: string;
 };
