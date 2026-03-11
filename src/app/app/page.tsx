@@ -123,8 +123,7 @@ export default async function OverviewPage() {
   const doneRuns = runs?.stats?.done ?? 0;
   const errorRuns = runs?.stats?.error ?? 0;
 
-  const queuedCommands =
-    commands?.stats?.queue ?? commands?.stats?.queued ?? 0;
+  const queuedCommands = commands?.stats?.queued ?? 0;
   const runningCommands = commands?.stats?.running ?? 0;
   const errorCommands = commands?.stats?.error ?? 0;
   const doneCommands = commands?.stats?.done ?? 0;
