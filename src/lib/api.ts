@@ -1,12 +1,15 @@
 import type {
-  CommandsResponse,
-  EventsResponse,
   HealthResponse,
   HealthScoreResponse,
-  IncidentsResponse,
   RunsResponse,
+  CommandsResponse,
+  IncidentsResponse,
+  EventsResponse,
   EventMappingsResponse,
   EventCommandGraphResponse,
+  CommandDetailResponse,
+  RunDetailResponse,
+  SlaResponse,
 } from "./types";
 
 const WORKER_BASE_URL =
