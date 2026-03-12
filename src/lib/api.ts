@@ -138,7 +138,34 @@ export type SlaResponse = {
   incidents?: IncidentItem[];
   ts?: string;
 };
+export type EventItem = {
+  id: string;
+  event_type?: string;
+  status?: string;
+  command_created?: boolean;
+  linked_command?: string[] | null;
+  mapped_capability?: string | null;
+  processed_at?: string | null;
+  source?: string | null;
+  run_id?: string | null;
+  command_id?: string | null;
+  payload?: Record<string, unknown> | null;
+};
 
+export type EventsResponse = {
+  ok?: boolean;
+  count?: number;
+  stats?: {
+    new?: number;
+    queued?: number;
+    processed?: number;
+    ignored?: number;
+    error?: number;
+    other?: number;
+  };
+  events?: EventItem[];
+  ts?: string;
+};
 export async function fetchHealth(): Promise<HealthResponse> {
   return fetchJson<HealthResponse>("/health");
 }
