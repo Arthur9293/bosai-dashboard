@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
+import { MobileShell } from "./mobile-shell";
 import { Sidebar } from "./sidebar";
-import { Topbar } from "./topbar";
 
 type AppShellProps = {
   children: ReactNode;
@@ -9,15 +9,14 @@ type AppShellProps = {
 export function AppShell({ children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-black text-white">
-      <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
+      <MobileShell />
+
+      <div className="mx-auto flex min-h-screen max-w-[1600px]">
         <div className="hidden lg:block">
           <Sidebar />
         </div>
 
-        <div className="flex min-h-screen flex-col">
-          <Topbar />
-          <main className="flex-1 bg-zinc-950 px-6 py-8">{children}</main>
-        </div>
+        <main className="min-w-0 flex-1">{children}</main>
       </div>
     </div>
   );
