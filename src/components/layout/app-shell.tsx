@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Sidebar } from "./sidebar-nav";
+import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
 type AppShellProps = {
@@ -8,18 +8,15 @@ type AppShellProps = {
 
 export function AppShell({ children }: AppShellProps) {
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <div className="flex min-h-screen">
-        <Sidebar />
+    <div className="min-h-screen bg-black text-white">
+      <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
+        <div className="hidden lg:block">
+          <Sidebar />
+        </div>
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-screen flex-col">
           <Topbar />
-
-          <main className="flex-1">
-            <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-              {children}
-            </div>
-          </main>
+          <main className="flex-1 bg-zinc-950 px-6 py-8">{children}</main>
         </div>
       </div>
     </div>
