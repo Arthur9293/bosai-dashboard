@@ -1,48 +1,143 @@
-import type {
-  HealthResponse,
-  HealthScoreResponse,
-  RunsResponse,
-  CommandsResponse,
-  IncidentsResponse,
-  EventsResponse,
-  EventMappingsResponse,
-  EventCommandGraphResponse,
-  CommandDetailResponse,
-  RunDetailResponse,
-  SlaResponse,
-} from "./types";
+type FetchOptions = {
+  revalidate?: number;
+};
 
-const WORKER_BASE_URL =
-  process.env.BOSAI_WORKER_BASE_URL?.trim() ||
-  process.env.NEXT_PUBLIC_BOSAI_WORKER_BASE_URL?.trim() ||
-  "";
+const DEFAULT_REVALIDATE = 10;
 
 function getWorkerBaseUrl(): string {
-  if (!WORKER_BASE_URL) {
-    throw new Error(
-      "Missing BOSAI worker base URL. Define BOSAI_WORKER_BASE_URL or NEXT_PUBLIC_BOSAI_WORKER_BASE_URL in Vercel."
-    );
-  }
+  const baseUrl =
+    process.env.BOSAI_WORKER_URL ||
+    process.env.NEXT_PUBLIC_BOSAI_WORKER_URL ||
+    "https://bosai-worker.onrender.com";
 
-  return WORKER_BASE_URL.replace(/\/+$/, "");
+  return baseUrl.replace(/\/+$/, "");
 }
 
-async function fetchJson<T>(path: string): Promise<T> {
+async function fetchJson<T>(
+  path: string,
+  options: FetchOptions = {}
+): Promise<T> {
   const baseUrl = getWorkerBaseUrl();
-  const response = await fetch(`${baseUrl}${path}`, {
+  const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+
+  const response = await fetch(url, {
     method: "GET",
-    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
+    next: {
+      revalidate: options.revalidate ?? DEFAULT_REVALIDATE,
+    },
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(
-      `Request failed: ${response.status}${text ? ` — ${text}` : ""}`
-    );
+    const text = await response.text().catch(() => "");
+    throw new Error(`Request failed (${response.status}) ${path}: ${text}`);
   }
 
-  return response.json() as Promise<T>;
+  return (await response.json()) as T;
 }
+
+export type HealthResponse = {
+  ok?: boolean;
+  app?: string;
+  version?: string;
+  worker?: string;
+  capabilities?: string[];
+  policies_loaded?: boolean;
+  policy_keys?: string[];
+  ts?: string;
+};
+
+export type HealthScoreResponse = {
+  ok?: boolean;
+  score?: number;
+  issues?: string[];
+  ts?: string;
+};
+
+export type RunItem = {
+  id: string;
+  run_id?: string;
+  worker?: string;
+  capability?: string;
+  status?: string;
+  priority?: number;
+  started_at?: string;
+  finished_at?: string;
+  dry_run?: boolean | null;
+};
+
+export type RunsResponse = {
+  ok?: boolean;
+  count?: number;
+  stats?: {
+    running?: number;
+    done?: number;
+    error?: number;
+    unsupported?: number;
+    other?: number;
+  };
+  runs?: RunItem[];
+  ts?: string;
+};
+
+export type CommandItem = {
+  id: string;
+  capability?: string;
+  status?: string;
+  priority?: number;
+  retry_count?: number | null;
+  retry_max?: number | null;
+  scheduled_at?: string | null;
+  next_retry_at?: string | null;
+  is_locked?: boolean | null;
+  locked_by?: string | null;
+  idempotency_key?: string | null;
+};
+
+export type CommandsResponse = {
+  ok?: boolean;
+  count?: number;
+  stats?: {
+    queued?: number;
+    running?: number;
+    retry?: number;
+    done?: number;
+    dead?: number;
+    blocked?: number;
+    unsupported?: number;
+    error?: number;
+    other?: number;
+  };
+  commands?: CommandItem[];
+  ts?: string;
+};
+
+export type IncidentItem = {
+  id: string;
+  name?: string;
+  sla_status?: string;
+  sla_remaining_minutes?: number | null;
+  escalation_queued?: boolean;
+  last_sla_check?: string | null;
+  linked_run?: string[] | null;
+};
+
+export type SlaResponse = {
+  ok?: boolean;
+  count?: number;
+  stats?: {
+    ok?: number;
+    warning?: number;
+    breached?: number;
+    escalated?: number;
+    unknown?: number;
+    escalation_queued?: number;
+  };
+  incidents?: IncidentItem[];
+  ts?: string;
+};
 
 export async function fetchHealth(): Promise<HealthResponse> {
   return fetchJson<HealthResponse>("/health");
@@ -52,49 +147,14 @@ export async function fetchHealthScore(): Promise<HealthScoreResponse> {
   return fetchJson<HealthScoreResponse>("/health/score");
 }
 
-export async function fetchRuns(): Promise<RunsResponse> {
-  return fetchJson<RunsResponse>("/runs");
+export async function fetchRuns(limit = 6): Promise<RunsResponse> {
+  return fetchJson<RunsResponse>(`/runs?limit=${limit}`);
 }
 
-export async function fetchCommands(): Promise<CommandsResponse> {
-  return fetchJson<CommandsResponse>("/commands");
+export async function fetchCommands(limit = 6): Promise<CommandsResponse> {
+  return fetchJson<CommandsResponse>(`/commands?limit=${limit}`);
 }
 
-export async function fetchIncidents(): Promise<IncidentsResponse> {
-  return fetchJson<IncidentsResponse>("/incidents");
-}
-
-export async function fetchEvents(): Promise<EventsResponse> {
-  return fetchJson<EventsResponse>("/events");
-}
-
-export async function fetchEventMappings(): Promise<EventMappingsResponse> {
-  return fetchJson<EventMappingsResponse>("/event-mappings");
-}
-
-export async function fetchEventCommandGraph(): Promise<EventCommandGraphResponse> {
-  return fetchJson<EventCommandGraphResponse>("/event-command-graph");
-}
-export async function fetchCommandById(id: string) {
-  const res = await fetch(`${process.env.BOSAI_WORKER_BASE_URL}/commands/${id}`, {
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    throw new Error(`Failed to fetch command ${id}`);
-  }
-
-  return res.json();
-}
-
-export async function fetchRunById(id: string) {
-  const res = await fetch(`${process.env.BOSAI_WORKER_BASE_URL}/runs/${id}`, {
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    throw new Error(`Failed to fetch run ${id}`);
-  }
-
-  return res.json();
+export async function fetchSla(limit = 10): Promise<SlaResponse> {
+  return fetchJson<SlaResponse>(`/sla?limit=${limit}`);
 }
