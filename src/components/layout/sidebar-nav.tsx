@@ -2,77 +2,96 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { dashboardNavigation } from "../../lib/navigation";
 
-function isActive(pathname: string, href: string) {
+type NavItem = {
+  href: string;
+  label: string;
+};
+
+const operateItems: NavItem[] = [
+  { href: "/app", label: "Overview" },
+  { href: "/app/commands", label: "Commands" },
+  { href: "/app/runs", label: "Runs" },
+  { href: "/app/incidents", label: "Incidents" },
+  { href: "/app/events", label: "Events" },
+];
+
+const governItems: NavItem[] = [
+  { href: "/app/tools", label: "Tools" },
+  { href: "/app/policies", label: "Policies" },
+];
+
+const workspaceItems: NavItem[] = [
+  { href: "/app/integrations", label: "Integrations" },
+  { href: "/app/settings", label: "Settings" },
+];
+
+function isActive(pathname: string, href: string): boolean {
   if (href === "/app") return pathname === "/app";
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const active = isActive(pathname, item.href);
+
+  return (
+    <Link
+      href={item.href}
+      className={[
+        "block rounded-2xl px-4 py-3 text-sm transition",
+        active
+          ? "bg-white text-black"
+          : "text-zinc-300 hover:bg-zinc-900 hover:text-white",
+      ].join(" ")}
+    >
+      {item.label}
+    </Link>
+  );
+}
+
+function NavSection({
+  title,
+  items,
+  pathname,
+}: {
+  title: string;
+  items: NavItem[];
+  pathname: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="px-2 text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-500">
+        {title}
+      </p>
+
+      <div className="space-y-2">
+        {items.map((item) => (
+          <NavLink key={item.href} item={item} pathname={pathname} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden w-72 shrink-0 border-r border-zinc-800 bg-zinc-950/80 lg:flex lg:flex-col">
-      <div className="border-b border-zinc-800 px-6 py-5">
-        <div className="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500">
-          BOSAI
+    <aside className="flex h-full w-full flex-col border-r border-zinc-800 bg-black">
+      <div className="border-b border-zinc-800 p-5">
+        <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+          <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">BOSAI</p>
+          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">
+            BOSAI V1
+          </h1>
+          <p className="mt-3 text-sm text-zinc-400">Workspace: Production</p>
         </div>
-
-        <div className="mt-2 text-xl font-semibold text-white">
-          SaaS V1
-        </div>
-
-        <p className="mt-2 text-sm text-zinc-400">
-          Cockpit de supervision et gouvernance.
-        </p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <nav className="space-y-8">
-          {dashboardNavigation.map((section) => (
-            <div key={section.title}>
-              <div className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
-                {section.title}
-              </div>
-
-              <div className="mt-3 space-y-1">
-                {section.items.map((item) => {
-                  const active = isActive(pathname, item.href);
-
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={[
-                        "block rounded-xl border px-3 py-2.5 text-sm transition",
-                        active
-                          ? "border-zinc-700 bg-zinc-800 text-white"
-                          : "border-transparent text-zinc-400 hover:border-zinc-800 hover:bg-zinc-900 hover:text-white",
-                      ].join(" ")}
-                    >
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </nav>
-      </div>
-
-      <div className="border-t border-zinc-800 px-6 py-4">
-        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-          <div className="text-xs font-medium uppercase tracking-[0.2em] text-emerald-300">
-            Runtime
-          </div>
-          <div className="mt-2 text-sm font-medium text-white">
-            Core connected
-          </div>
-          <p className="mt-1 text-xs text-zinc-300">
-            Worker Render + Dashboard Vercel
-          </p>
-        </div>
+      <div className="flex-1 space-y-8 overflow-y-auto p-5">
+        <NavSection title="Operate" items={operateItems} pathname={pathname} />
+        <NavSection title="Govern" items={governItems} pathname={pathname} />
+        <NavSection title="Workspace" items={workspaceItems} pathname={pathname} />
       </div>
     </aside>
   );
