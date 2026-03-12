@@ -139,60 +139,6 @@ export type SlaResponse = {
   ts?: string;
 };
 
-export type IncidentRow = {
-  id: string;
-  title?: string;
-  status?: string;
-  severity?: string;
-  sla_status?: string;
-  created_at?: string;
-  source?: string;
-  worker?: string;
-};
-
-export type IncidentsResponse = {
-  ok?: boolean;
-  count?: number;
-  stats?: {
-    open?: number;
-    critical?: number;
-    warning?: number;
-    resolved?: number;
-    other?: number;
-  };
-  incidents?: IncidentRow[];
-  ts?: string;
-};
-
-export type EventItem = {
-  id: string;
-  event_type?: string;
-  status?: string;
-  command_created?: boolean;
-  linked_command?: string[] | string | null;
-  mapped_capability?: string | null;
-  processed_at?: string | null;
-  source?: string | null;
-  run_id?: string | null;
-  command_id?: string | null;
-  payload?: Record<string, unknown>;
-};
-
-export type EventsResponse = {
-  ok?: boolean;
-  count?: number;
-  stats?: {
-    new?: number;
-    queued?: number;
-    processed?: number;
-    ignored?: number;
-    error?: number;
-    other?: number;
-  };
-  events?: EventItem[];
-  ts?: string;
-};
-
 export async function fetchHealth(): Promise<HealthResponse> {
   return fetchJson<HealthResponse>("/health");
 }
@@ -205,18 +151,10 @@ export async function fetchRuns(limit = 6): Promise<RunsResponse> {
   return fetchJson<RunsResponse>(`/runs?limit=${limit}`);
 }
 
-export async function fetchCommands(limit = 6): Promise<CommandsResponse> {
+export async function fetchCommands(limit = 12): Promise<CommandsResponse> {
   return fetchJson<CommandsResponse>(`/commands?limit=${limit}`);
 }
 
 export async function fetchSla(limit = 10): Promise<SlaResponse> {
   return fetchJson<SlaResponse>(`/sla?limit=${limit}`);
-}
-
-export async function fetchIncidents(limit = 10): Promise<IncidentsResponse> {
-  return fetchJson<IncidentsResponse>(`/incidents?limit=${limit}`);
-}
-
-export async function fetchEvents(limit = 10): Promise<EventsResponse> {
-  return fetchJson<EventsResponse>(`/events?limit=${limit}`);
 }
