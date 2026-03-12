@@ -185,3 +185,6 @@ export async function fetchCommands(limit = 12): Promise<CommandsResponse> {
 export async function fetchSla(limit = 10): Promise<SlaResponse> {
   return fetchJson<SlaResponse>(`/sla?limit=${limit}`);
 }
+export async function fetchEvents(limit = 12): Promise<EventsResponse> {
+  return fetchJson<EventsResponse>(`/events?limit=${limit}`);
+}
