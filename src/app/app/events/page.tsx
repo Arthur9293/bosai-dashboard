@@ -1,6 +1,6 @@
 // src/app/app/events/page.tsx
 
-import { fetchEvents } from "@/lib/api";
+import { EventItem, fetchEvents } from "@/lib/api";
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -47,7 +47,7 @@ export default async function EventsPage() {
     data = await fetchEvents();
   } catch {}
 
-  const events = data?.events ?? [];
+  const events: EventItem[] = data?.events ?? [];
   const stats = data?.stats ?? {};
 
   const totalVisible = data?.count ?? events.length ?? 0;
@@ -168,7 +168,7 @@ export default async function EventsPage() {
               Aucun event récent pour le moment.
             </div>
           ) : (
-            events.map((event: any) => (
+            events.map((event) => (
               <article
                 key={event.id}
                 className="rounded-[30px] border border-zinc-800 bg-black/30 p-6 md:p-8"
