@@ -141,6 +141,30 @@ export type IncidentsResponse = {
   incidents?: IncidentItem[];
   ts?: string;
 };
+export type SlaItem = {
+  id: string;
+  name?: string;
+  sla_status?: string;
+  sla_remaining_minutes?: number;
+  escalation_queued?: boolean;
+  last_sla_check?: string;
+  linked_run?: string[] | string | null;
+};
+
+export type SlaResponse = {
+  ok?: boolean;
+  count?: number;
+  stats?: {
+    ok?: number;
+    warning?: number;
+    breached?: number;
+    escalated?: number;
+    unknown?: number;
+    escalation_queued?: number;
+  };
+  incidents?: SlaItem[];
+  ts?: string;
+};
 
 export async function fetchHealthScore() {
   return fetchJson<HealthScoreResponse>("/health/score");
@@ -160,4 +184,7 @@ export async function fetchEvents() {
 
 export async function fetchIncidents() {
   return fetchJson<IncidentsResponse>("/incidents");
+}
+export async function fetchSla() {
+  return fetchJson<SlaResponse>("/sla?limit=20");
 }
