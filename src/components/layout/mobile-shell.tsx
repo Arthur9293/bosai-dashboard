@@ -52,7 +52,7 @@ export function MobileShell({ title = "BOSAI Dashboard" }: MobileShellProps) {
             </div>
 
             <div className="h-[calc(100%-64px)]">
-              <Sidebar onNavigate={() => setOpen(false)} />
+             <Sidebar />
             </div>
           </div>
         </div>
