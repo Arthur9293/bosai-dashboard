@@ -1,53 +1,27 @@
-type FetchOptions = {
-  revalidate?: number;
-};
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_BOSAI_API_URL?.replace(/\/$/, "") ||
+  "";
 
-const DEFAULT_REVALIDATE = 10;
+async function fetchJson<T>(path: string): Promise<T> {
+  if (!API_BASE_URL) {
+    throw new Error("NEXT_PUBLIC_BOSAI_API_URL manquant");
+  }
 
-function getWorkerBaseUrl(): string {
-  const baseUrl =
-    process.env.BOSAI_WORKER_URL ||
-    process.env.NEXT_PUBLIC_BOSAI_WORKER_URL ||
-    "https://bosai-worker.onrender.com";
-
-  return baseUrl.replace(/\/+$/, "");
-}
-
-async function fetchJson<T>(
-  path: string,
-  options: FetchOptions = {}
-): Promise<T> {
-  const baseUrl = getWorkerBaseUrl();
-  const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
-
-  const response = await fetch(url, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "GET",
+    cache: "no-store",
     headers: {
       Accept: "application/json",
-    },
-    next: {
-      revalidate: options.revalidate ?? DEFAULT_REVALIDATE,
     },
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Request failed (${response.status}) ${path}: ${text}`);
+    const text = await response.text();
+    throw new Error(`API ${path} failed: ${response.status} ${text}`);
   }
 
-  return (await response.json()) as T;
+  return response.json() as Promise<T>;
 }
-
-export type HealthResponse = {
-  ok?: boolean;
-  app?: string;
-  version?: string;
-  worker?: string;
-  capabilities?: string[];
-  policies_loaded?: boolean;
-  policy_keys?: string[];
-  ts?: string;
-};
 
 export type HealthScoreResponse = {
   ok?: boolean;
@@ -87,13 +61,13 @@ export type CommandItem = {
   capability?: string;
   status?: string;
   priority?: number;
-  retry_count?: number | null;
-  retry_max?: number | null;
-  scheduled_at?: string | null;
-  next_retry_at?: string | null;
-  is_locked?: boolean | null;
-  locked_by?: string | null;
-  idempotency_key?: string | null;
+  retry_count?: number;
+  retry_max?: number;
+  scheduled_at?: string;
+  next_retry_at?: string;
+  is_locked?: boolean;
+  locked_by?: string;
+  idempotency_key?: string;
 };
 
 export type CommandsResponse = {
@@ -114,42 +88,18 @@ export type CommandsResponse = {
   ts?: string;
 };
 
-export type IncidentItem = {
-  id: string;
-  name?: string;
-  sla_status?: string;
-  sla_remaining_minutes?: number | null;
-  escalation_queued?: boolean;
-  last_sla_check?: string | null;
-  linked_run?: string[] | null;
-};
-
-export type SlaResponse = {
-  ok?: boolean;
-  count?: number;
-  stats?: {
-    ok?: number;
-    warning?: number;
-    breached?: number;
-    escalated?: number;
-    unknown?: number;
-    escalation_queued?: number;
-  };
-  incidents?: IncidentItem[];
-  ts?: string;
-};
 export type EventItem = {
   id: string;
   event_type?: string;
   status?: string;
   command_created?: boolean;
-  linked_command?: string[] | null;
-  mapped_capability?: string | null;
-  processed_at?: string | null;
+  linked_command?: string[];
+  mapped_capability?: string;
+  processed_at?: string;
   source?: string | null;
   run_id?: string | null;
   command_id?: string | null;
-  payload?: Record<string, unknown> | null;
+  payload?: Record<string, unknown>;
 };
 
 export type EventsResponse = {
@@ -166,25 +116,48 @@ export type EventsResponse = {
   events?: EventItem[];
   ts?: string;
 };
-export async function fetchHealth(): Promise<HealthResponse> {
-  return fetchJson<HealthResponse>("/health");
-}
 
-export async function fetchHealthScore(): Promise<HealthScoreResponse> {
+export type IncidentItem = {
+  id: string;
+  title?: string;
+  status?: string;
+  severity?: string;
+  sla_status?: string;
+  created_at?: string;
+  source?: string;
+  worker?: string;
+};
+
+export type IncidentsResponse = {
+  ok?: boolean;
+  count?: number;
+  stats?: {
+    open?: number;
+    critical?: number;
+    warning?: number;
+    resolved?: number;
+    other?: number;
+  };
+  incidents?: IncidentItem[];
+  ts?: string;
+};
+
+export async function fetchHealthScore() {
   return fetchJson<HealthScoreResponse>("/health/score");
 }
 
-export async function fetchRuns(limit = 6): Promise<RunsResponse> {
-  return fetchJson<RunsResponse>(`/runs?limit=${limit}`);
+export async function fetchRuns() {
+  return fetchJson<RunsResponse>("/runs?limit=20");
 }
 
-export async function fetchCommands(limit = 12): Promise<CommandsResponse> {
-  return fetchJson<CommandsResponse>(`/commands?limit=${limit}`);
+export async function fetchCommands() {
+  return fetchJson<CommandsResponse>("/commands?limit=20");
 }
 
-export async function fetchSla(limit = 10): Promise<SlaResponse> {
-  return fetchJson<SlaResponse>(`/sla?limit=${limit}`);
+export async function fetchEvents() {
+  return fetchJson<EventsResponse>("/events?limit=20");
 }
-export async function fetchEvents(limit = 12): Promise<EventsResponse> {
-  return fetchJson<EventsResponse>(`/events?limit=${limit}`);
+
+export async function fetchIncidents() {
+  return fetchJson<IncidentsResponse>("/incidents");
 }
