@@ -4,11 +4,11 @@ const items = [
   { href: "/", label: "Overview" },
   { href: "/runs", label: "Runs" },
   { href: "/commands", label: "Commands" },
-  { href: "/events", label: "Events" },
+  { href: "/app/events", label: "Events" },
   { href: "/incidents", label: "Incidents" },
-  { href: "/policies", label: "Policies" },
-  { href: "/tools", label: "Tools" },
-  { href: "/settings", label: "Settings" },
+  { href: "/app/policies", label: "Policies" },
+  { href: "/app/tools", label: "Tools" },
+  { href: "/app/settings", label: "Settings" },
 ];
 
 export function Sidebar() {
