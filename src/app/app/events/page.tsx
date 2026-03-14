@@ -44,7 +44,7 @@ export default async function EventsPage() {
   let data = null;
 
   try {
-    data = await fetchEvents(12);
+    data = await fetchEvents();
   } catch {}
 
   const events = data?.events ?? [];
