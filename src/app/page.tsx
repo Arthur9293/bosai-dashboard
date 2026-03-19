@@ -83,18 +83,22 @@ export default async function OverviewPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
-      <div className="flex">
-        <Sidebar />
+      <div className="flex min-h-screen">
+        <div className="hidden lg:block">
+          <Sidebar />
+        </div>
 
-        <main className="flex-1 p-6">
-          <div className="mb-6">
-            <h1 className="text-3xl font-semibold tracking-tight">Overview</h1>
-            <p className="mt-1 text-sm text-zinc-400">
+        <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
+          <div className="mb-6 border-b border-white/10 pb-4">
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              Overview
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-zinc-400 sm:text-base">
               Control tower du système BOSAI.
             </p>
           </div>
 
-          <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <div className={cardClassName()}>
               <div className="text-sm text-zinc-400">Health Score</div>
               <div className={`mt-3 text-4xl font-semibold ${healthTone(healthScore)}`}>
@@ -150,19 +154,19 @@ export default async function OverviewPage() {
             <div className={`${cardClassName()} xl:col-span-1`}>
               <div className="mb-4 text-lg font-medium">System Health</div>
               <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Airtable</span>
                   <span className="text-emerald-400">OK</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Worker</span>
                   <span className="text-emerald-400">OK</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Scheduler</span>
                   <span className="text-emerald-400">OK</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Policies</span>
                   <span className="text-emerald-400">Loaded</span>
                 </div>
@@ -172,19 +176,19 @@ export default async function OverviewPage() {
             <div className={cardClassName()}>
               <div className="mb-4 text-lg font-medium">Command Queue</div>
               <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Queued</span>
                   <span>{formatNumber(queuedCommands)}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Running</span>
                   <span>{formatNumber(runningCommands)}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Retry</span>
                   <span>{formatNumber(retryCommands)}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Dead</span>
                   <span>{formatNumber(deadCommands)}</span>
                 </div>
@@ -194,19 +198,19 @@ export default async function OverviewPage() {
             <div className={cardClassName()}>
               <div className="mb-4 text-lg font-medium">Event Stream</div>
               <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">New</span>
                   <span>{formatNumber(newEvents)}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Queued</span>
                   <span>{formatNumber(queuedEvents)}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Processed</span>
                   <span>{formatNumber(processedEvents)}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Errors</span>
                   <span>{formatNumber(eventErrors)}</span>
                 </div>
@@ -217,29 +221,34 @@ export default async function OverviewPage() {
           <section className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
             <div className={`${cardClassName()} xl:col-span-2`}>
               <div className="mb-4 text-lg font-medium">Incidents actifs</div>
+
               <div className="space-y-3 text-sm">
                 {(incidents?.incidents ?? []).slice(0, 5).map((incident: any) => (
                   <div
                     key={incident.id}
-                    className="flex items-center justify-between rounded-xl border border-white/10 px-3 py-3"
+                    className="flex flex-col gap-3 rounded-xl border border-white/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div>
-                      <div className="font-medium">
-                        {incident.title || "Untitled incident"}
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">
+                        {incident.title ||
+                          incident.name ||
+                          incident.error_id ||
+                          "Untitled incident"}
                       </div>
-                      <div className="text-zinc-500">
-                        {incident.sla_status || "—"}
+                      <div className="mt-1 text-zinc-500">
+                        {incident.sla_status || incident.status || "—"}
                       </div>
                     </div>
-                    <div className="text-right text-zinc-400">
+
+                    <div className="text-left text-zinc-400 sm:text-right">
                       <div>{incident.severity || "—"}</div>
-                      <div>{incident.status || "—"}</div>
+                      <div>{incident.status || incident.statut_incident || "—"}</div>
                     </div>
                   </div>
                 ))}
 
                 {(incidents?.incidents ?? []).length === 0 && (
-                  <div className="rounded-xl border border-dashed border-white/10 px-3 py-6 text-sm text-zinc-500">
+                  <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-sm text-zinc-500">
                     Aucun incident affiché.
                   </div>
                 )}
@@ -249,15 +258,15 @@ export default async function OverviewPage() {
             <div className={cardClassName()}>
               <div className="mb-4 text-lg font-medium">Retry / Dead Zone</div>
               <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Retry queue</span>
                   <span>{formatNumber(retryCommands)}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Dead commands</span>
                   <span>{formatNumber(deadCommands)}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-400">Warnings</span>
                   <span>{formatNumber(warningIncidents)}</span>
                 </div>
