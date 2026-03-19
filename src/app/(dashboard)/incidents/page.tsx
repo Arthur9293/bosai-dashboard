@@ -11,7 +11,11 @@ type IncidentItem = {
   sla_status?: string;
   sla_remaining_minutes?: number;
   workspace_id?: string;
+  workspace?: string;
   linked_run?: string;
+  linked_command?: string;
+  command_id?: string;
+  run_id?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -69,16 +73,34 @@ function toneSla(status?: string) {
 }
 
 function getIncidentTitle(incident: IncidentItem) {
-  return (
-    incident.title ||
-    incident.name ||
-    incident.error_id ||
-    `incident-${incident.id.slice(0, 8)}`
-  );
+  if (incident.title) return incident.title;
+  if (incident.name) return incident.name;
+  if (incident.error_id) return `Error ${incident.error_id}`;
+  if ((incident.sla_status || "").toLowerCase() === "breached") {
+    return "SLA Breach detected";
+  }
+  return `Incident ${incident.id.slice(0, 6)}`;
 }
 
 function getIncidentStatus(incident: IncidentItem) {
-  return incident.status || incident.statut_incident || "unknown";
+  if (incident.status) return incident.status;
+  if (incident.statut_incident) return incident.statut_incident;
+  if ((incident.sla_status || "").toLowerCase() === "breached") {
+    return "action required";
+  }
+  return "monitoring";
+}
+
+function getWorkspace(incident: IncidentItem) {
+  return incident.workspace_id || incident.workspace || "—";
+}
+
+function getLinkedRun(incident: IncidentItem) {
+  return incident.linked_run || incident.run_id || "—";
+}
+
+function getLinkedCommand(incident: IncidentItem) {
+  return incident.linked_command || incident.command_id || "—";
 }
 
 function cardClassName() {
@@ -95,23 +117,27 @@ export default async function IncidentsPage() {
   }
 
   const incidents: IncidentItem[] = data?.incidents ?? [];
-  const stats = data?.stats ?? {};
 
-  const openCount = stats?.open ?? incidents.length ?? 0;
-  const criticalCount =
-    stats?.critical ??
-    incidents.filter((i) =>
-      ["critical", "critique"].includes((i.severity || "").toLowerCase())
-    ).length;
+  const openCount = incidents.length;
 
-  const warningCount =
-    stats?.warning ??
-    incidents.filter((i) =>
-      ["warning", "medium", "moyen"].includes((i.severity || "").toLowerCase())
-    ).length;
+  const criticalCount = incidents.filter((i) =>
+    ["critical", "critique"].includes((i.severity || "").toLowerCase())
+  ).length;
+
+  const warningCount = incidents.filter((i) =>
+    ["warning", "medium", "moyen"].includes((i.severity || "").toLowerCase())
+  ).length;
 
   const breachedCount = incidents.filter(
     (i) => (i.sla_status || "").toLowerCase() === "breached"
+  ).length;
+
+  const linkedRunCount = incidents.filter(
+    (i) => getLinkedRun(i) !== "—"
+  ).length;
+
+  const linkedCommandCount = incidents.filter(
+    (i) => getLinkedCommand(i) !== "—"
   ).length;
 
   const visibleIncidents = [...incidents]
@@ -131,11 +157,11 @@ export default async function IncidentsPage() {
         </h1>
         <p className="mt-2 max-w-3xl text-sm text-zinc-400 sm:text-base">
           Supervision opérationnelle des incidents, niveaux de gravité, statut
-          SLA et signaux critiques du système BOSAI.
+          SLA et liens vers l’exécution BOSAI.
         </p>
       </div>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Open incidents</div>
           <div className="mt-3 text-4xl font-semibold text-white">
@@ -161,6 +187,20 @@ export default async function IncidentsPage() {
           <div className="text-sm text-zinc-400">SLA breached</div>
           <div className="mt-3 text-4xl font-semibold text-red-300">
             {formatNumber(breachedCount)}
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Linked runs</div>
+          <div className="mt-3 text-4xl font-semibold text-white">
+            {formatNumber(linkedRunCount)}
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Linked commands</div>
+          <div className="mt-3 text-4xl font-semibold text-white">
+            {formatNumber(linkedCommandCount)}
           </div>
         </div>
       </section>
@@ -224,7 +264,7 @@ export default async function IncidentsPage() {
                       ID: <span className="text-zinc-300">{incident.id}</span>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-2 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-2 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-4">
                       <div>
                         Status:{" "}
                         <span className="text-zinc-300">
@@ -244,14 +284,21 @@ export default async function IncidentsPage() {
                       <div>
                         Workspace:{" "}
                         <span className="text-zinc-300">
-                          {incident.workspace_id || "—"}
+                          {getWorkspace(incident)}
                         </span>
                       </div>
 
                       <div>
                         Linked run:{" "}
-                        <span className="text-zinc-300">
-                          {incident.linked_run || "—"}
+                        <span className="text-zinc-300 break-all">
+                          {getLinkedRun(incident)}
+                        </span>
+                      </div>
+
+                      <div>
+                        Linked command:{" "}
+                        <span className="text-zinc-300 break-all">
+                          {getLinkedCommand(incident)}
                         </span>
                       </div>
 
@@ -266,6 +313,15 @@ export default async function IncidentsPage() {
                         Updated:{" "}
                         <span className="text-zinc-300">
                           {formatDate(incident.updated_at)}
+                        </span>
+                      </div>
+
+                      <div>
+                        Signal:{" "}
+                        <span className="text-zinc-300">
+                          {getLinkedCommand(incident) !== "—"
+                            ? "linked"
+                            : "unlinked"}
                         </span>
                       </div>
                     </div>
