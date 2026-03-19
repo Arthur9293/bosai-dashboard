@@ -1,45 +1,80 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 
-const items = [
+const navItems = [
   { href: "/", label: "Overview" },
   { href: "/runs", label: "Runs" },
   { href: "/commands", label: "Commands" },
-  { href: "/app/events", label: "Events" },
+  { href: "/events", label: "Events" },
   { href: "/incidents", label: "Incidents" },
-  { href: "/app/policies", label: "Policies" },
-  { href: "/app/tools", label: "Tools" },
-  { href: "/app/settings", label: "Settings" },
+  { href: "/policies", label: "Policies" },
+  { href: "/tools", label: "Tools" },
+  { href: "/settings", label: "Settings" },
 ];
 
-export function Sidebar() {
+export function MobileSidebar() {
+  const [open, setOpen] = useState(false);
+
   return (
-    <aside className="flex h-screen w-64 flex-col border-r border-white/10 bg-black/30 px-4 py-6">
-      <div className="mb-8">
-        <div className="text-xl font-semibold tracking-tight text-white">
-          BOSAI
-        </div>
-        <div className="mt-1 text-sm text-zinc-400">
-          Anti-Chaos AI Ops Layer
-        </div>
+    <>
+      <div className="mb-4 flex items-center justify-between lg:hidden">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+          aria-label="Open menu"
+        >
+          ☰
+        </button>
+
+        <div className="text-sm font-medium text-zinc-400">BOSAI</div>
+
+        <div className="w-10" />
       </div>
 
-      <nav className="flex-1 space-y-1">
-        {items.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
-          >
-            {item.label}
-          </Link>
-        ))}
-      </nav>
+      {open && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setOpen(false)}
+          />
 
-      <div className="border-t border-white/10 pt-4 text-xs text-zinc-500">
-        <div>Worker: healthy</div>
-        <div>Version: v2.5.5-rebuild</div>
-        <div>Workspace: production</div>
-      </div>
-    </aside>
+          <div className="absolute left-0 top-0 h-full w-72 border-r border-white/10 bg-zinc-950 p-6 text-white shadow-2xl">
+            <div className="mb-8 flex items-start justify-between">
+              <div>
+                <div className="text-2xl font-semibold tracking-tight">BOSAI</div>
+                <div className="mt-1 text-sm text-zinc-400">
+                  Anti-Chaos AI Ops Layer
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm"
+                aria-label="Close menu"
+              >
+                ✕
+              </button>
+            </div>
+
+            <nav className="space-y-2">
+              {navItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setOpen(false)}
+                  className="block rounded-xl px-3 py-3 text-base text-zinc-200 transition hover:bg-white/5 hover:text-white"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
