@@ -19,7 +19,7 @@ export function MobileSidebar() {
 
   return (
     <>
-      <div className="mb-4 flex items-center justify-between lg:hidden">
+      <div className="mb-4 flex items-center justify-between xl:hidden">
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -35,7 +35,7 @@ export function MobileSidebar() {
       </div>
 
       {open && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50 xl:hidden">
           <div
             className="absolute inset-0 bg-black/60"
             onClick={() => setOpen(false)}
