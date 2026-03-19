@@ -56,16 +56,16 @@ function statusTone(status?: string) {
     return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
   }
 
+  if (normalized === "retry") {
+    return "bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/20";
+  }
+
   if (
     normalized === "error" ||
     normalized === "failed" ||
     normalized === "dead"
   ) {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  if (normalized === "retry") {
-    return "bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/20";
   }
 
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
@@ -92,6 +92,15 @@ export default async function CommandsPage() {
   const doneCount = stats.done ?? 0;
   const retryCount = stats.retry ?? 0;
   const deadCount = stats.dead ?? stats.error ?? stats.failed ?? 0;
+
+  const visibleCommands = [...commands]
+    .sort((a, b) => {
+      return (
+        new Date(b.created_at || 0).getTime() -
+        new Date(a.created_at || 0).getTime()
+      );
+    })
+    .slice(0, 50);
 
   return (
     <div className="space-y-6">
@@ -147,24 +156,28 @@ export default async function CommandsPage() {
           <div>
             <h2 className="text-lg font-semibold text-white">Commands queue</h2>
             <p className="mt-1 text-sm text-zinc-400">
-              {formatNumber(commands.length)} commande(s) visible(s)
+              {formatNumber(visibleCommands.length)} commande(s) visible(s)
             </p>
           </div>
         </div>
 
-        {commands.length === 0 ? (
+        {visibleCommands.length === 0 ? (
           <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
             Aucune commande visible pour le moment.
           </div>
         ) : (
           <div className="space-y-3">
-            {commands.slice(0, 50).map((command) => (
+            {visibleCommands.map((command) => (
               <div
                 key={command.id}
-                className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                className="rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:bg-white/5"
               >
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0 flex-1 space-y-3">
+                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                      {command.capability || "Unknown capability"}
+                    </div>
+
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="text-base font-semibold text-white">
                         {command.capability || "Unknown capability"}
@@ -175,7 +188,7 @@ export default async function CommandsPage() {
                           command.status
                         )}`}
                       >
-                        {command.status || "unknown"}
+                        {(command.status || "unknown").toUpperCase()}
                       </span>
                     </div>
 
