@@ -11,14 +11,14 @@ type AppShellProps = {
 export function AppShell({ children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
-      {/* Mobile top bar */}
-      <div className="border-b border-white/10 px-4 py-4 lg:hidden">
+      {/* Mobile / tablet top bar */}
+      <div className="border-b border-white/10 px-4 py-4 xl:hidden">
         <MobileSidebar />
       </div>
 
       <div className="flex">
         {/* Desktop sidebar */}
-        <div className="hidden lg:block">
+        <div className="hidden xl:block">
           <Sidebar />
         </div>
 
