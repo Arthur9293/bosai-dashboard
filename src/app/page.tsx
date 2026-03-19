@@ -1,280 +1,45 @@
-import { Sidebar } from "@/components/layout/sidebar";
-import {
-  fetchCommands,
-  fetchEvents,
-  fetchHealthScore,
-  fetchIncidents,
-  fetchRuns,
-} from "@/lib/api";
+import { PageHeader } from "../../components/ui/page-header";
 
-function formatNumber(value?: number) {
-  return typeof value === "number" ? value.toString() : "0";
-}
-
-function healthLabel(score: number) {
-  if (score >= 80) return "Stable";
-  if (score >= 50) return "À surveiller";
-  return "Critique";
-}
-
-function healthTone(score: number) {
-  if (score >= 80) return "text-emerald-400";
-  if (score >= 50) return "text-amber-400";
-  return "text-red-400";
-}
-
-function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
-}
-
-type CommandStatsCompat = {
-  queue?: number;
-  queued?: number;
-  running?: number;
-  retry?: number;
-  dead?: number;
-};
-
-export default async function OverviewPage() {
-  let health = null;
-  let runs = null;
-  let commands = null;
-  let events = null;
-  let incidents = null;
-
-  try {
-    health = await fetchHealthScore();
-  } catch {}
-
-  try {
-    runs = await fetchRuns();
-  } catch {}
-
-  try {
-    commands = await fetchCommands();
-  } catch {}
-
-  try {
-    events = await fetchEvents();
-  } catch {}
-
-  try {
-    incidents = await fetchIncidents();
-  } catch {}
-
-  const healthScore = health?.score ?? 0;
-  const totalRuns = runs?.count ?? 0;
-  const runningRuns = runs?.stats?.running ?? 0;
-
-  const commandStats = commands?.stats as CommandStatsCompat | undefined;
-  const queuedCommands = commandStats?.queue ?? commandStats?.queued ?? 0;
-  const runningCommands = commandStats?.running ?? 0;
-  const retryCommands = commandStats?.retry ?? 0;
-  const deadCommands = commandStats?.dead ?? 0;
-
-  const newEvents = events?.stats?.new ?? 0;
-  const queuedEvents = events?.stats?.queued ?? 0;
-  const processedEvents = events?.stats?.processed ?? 0;
-  const eventErrors = events?.stats?.error ?? 0;
-
-  const openIncidents = incidents?.stats?.open ?? 0;
-  const criticalIncidents = incidents?.stats?.critical ?? 0;
-  const warningIncidents = incidents?.stats?.warning ?? 0;
-
+export default function OverviewPage() {
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <div className="flex min-h-screen">
-        <div className="hidden lg:block">
-          <Sidebar />
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="BOSAI"
+        title="Overview"
+        description="Cockpit principal du workspace BOSAI. Cette page centralisera health score, runs, commands, incidents et signaux système."
+      />
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+          <div className="text-sm text-zinc-400">System Health</div>
+          <div className="mt-3 text-3xl font-semibold text-white">—</div>
         </div>
 
-        <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
-          <div className="mb-6 border-b border-white/10 pb-4">
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              Overview
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-zinc-400 sm:text-base">
-              Control tower du système BOSAI.
-            </p>
-          </div>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+          <div className="text-sm text-zinc-400">Commands Queue</div>
+          <div className="mt-3 text-3xl font-semibold text-white">—</div>
+        </div>
 
-          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <div className={cardClassName()}>
-              <div className="text-sm text-zinc-400">Health Score</div>
-              <div className={`mt-3 text-4xl font-semibold ${healthTone(healthScore)}`}>
-                {formatNumber(healthScore)}
-              </div>
-              <div className="mt-2 text-sm text-zinc-300">
-                {healthLabel(healthScore)}
-              </div>
-            </div>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+          <div className="text-sm text-zinc-400">Runs</div>
+          <div className="mt-3 text-3xl font-semibold text-white">—</div>
+        </div>
 
-            <div className={cardClassName()}>
-              <div className="text-sm text-zinc-400">Total Runs</div>
-              <div className="mt-3 text-4xl font-semibold">
-                {formatNumber(totalRuns)}
-              </div>
-              <div className="mt-2 text-sm text-zinc-300">
-                Running: {formatNumber(runningRuns)}
-              </div>
-            </div>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+          <div className="text-sm text-zinc-400">Incidents</div>
+          <div className="mt-3 text-3xl font-semibold text-white">—</div>
+        </div>
+      </section>
 
-            <div className={cardClassName()}>
-              <div className="text-sm text-zinc-400">Queued Commands</div>
-              <div className="mt-3 text-4xl font-semibold">
-                {formatNumber(queuedCommands)}
-              </div>
-              <div className="mt-2 text-sm text-zinc-300">
-                Running: {formatNumber(runningCommands)}
-              </div>
-            </div>
-
-            <div className={cardClassName()}>
-              <div className="text-sm text-zinc-400">Open Incidents</div>
-              <div className="mt-3 text-4xl font-semibold">
-                {formatNumber(openIncidents)}
-              </div>
-              <div className="mt-2 text-sm text-zinc-300">
-                Critical: {formatNumber(criticalIncidents)}
-              </div>
-            </div>
-
-            <div className={cardClassName()}>
-              <div className="text-sm text-zinc-400">Event Throughput</div>
-              <div className="mt-3 text-4xl font-semibold">
-                {formatNumber(processedEvents)}
-              </div>
-              <div className="mt-2 text-sm text-zinc-300">
-                Errors: {formatNumber(eventErrors)}
-              </div>
-            </div>
-          </section>
-
-          <section className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <div className={`${cardClassName()} xl:col-span-1`}>
-              <div className="mb-4 text-lg font-medium">System Health</div>
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Airtable</span>
-                  <span className="text-emerald-400">OK</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Worker</span>
-                  <span className="text-emerald-400">OK</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Scheduler</span>
-                  <span className="text-emerald-400">OK</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Policies</span>
-                  <span className="text-emerald-400">Loaded</span>
-                </div>
-              </div>
-            </div>
-
-            <div className={cardClassName()}>
-              <div className="mb-4 text-lg font-medium">Command Queue</div>
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Queued</span>
-                  <span>{formatNumber(queuedCommands)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Running</span>
-                  <span>{formatNumber(runningCommands)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Retry</span>
-                  <span>{formatNumber(retryCommands)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Dead</span>
-                  <span>{formatNumber(deadCommands)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className={cardClassName()}>
-              <div className="mb-4 text-lg font-medium">Event Stream</div>
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">New</span>
-                  <span>{formatNumber(newEvents)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Queued</span>
-                  <span>{formatNumber(queuedEvents)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Processed</span>
-                  <span>{formatNumber(processedEvents)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Errors</span>
-                  <span>{formatNumber(eventErrors)}</span>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <div className={`${cardClassName()} xl:col-span-2`}>
-              <div className="mb-4 text-lg font-medium">Incidents actifs</div>
-
-              <div className="space-y-3 text-sm">
-                {(incidents?.incidents ?? []).slice(0, 5).map((incident: any) => (
-                  <div
-                    key={incident.id}
-                    className="flex flex-col gap-3 rounded-xl border border-white/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">
-                        {incident.title ||
-                          incident.name ||
-                          incident.error_id ||
-                          "Untitled incident"}
-                      </div>
-                      <div className="mt-1 text-zinc-500">
-                        {incident.sla_status || incident.status || "—"}
-                      </div>
-                    </div>
-
-                    <div className="text-left text-zinc-400 sm:text-right">
-                      <div>{incident.severity || "—"}</div>
-                      <div>{incident.status || incident.statut_incident || "—"}</div>
-                    </div>
-                  </div>
-                ))}
-
-                {(incidents?.incidents ?? []).length === 0 && (
-                  <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-sm text-zinc-500">
-                    Aucun incident affiché.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className={cardClassName()}>
-              <div className="mb-4 text-lg font-medium">Retry / Dead Zone</div>
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Retry queue</span>
-                  <span>{formatNumber(retryCommands)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Dead commands</span>
-                  <span>{formatNumber(deadCommands)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-400">Warnings</span>
-                  <span>{formatNumber(warningIncidents)}</span>
-                </div>
-              </div>
-            </div>
-          </section>
-        </main>
-      </div>
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+        <h2 className="text-lg font-semibold text-white">
+          BOSAI SaaS V1 architecture
+        </h2>
+        <p className="mt-3 text-sm text-zinc-400">
+          Layout SaaS en place. Les prochaines étapes consistent à brancher les
+          pages Runs, Commands, Incidents, Tools, Policies, Integrations et
+          Settings une par une, en lecture API uniquement.
+        </p>
+      </section>
     </div>
   );
-}
