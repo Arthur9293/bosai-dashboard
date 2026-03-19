@@ -1,23 +1,25 @@
-import { ReactNode } from "react";
-import { MobileShell } from "./mobile-shell";
-import { Sidebar } from "./sidebar";
+"use client";
 
-type AppShellProps = {
+import { ReactNode } from "react";
+import { MobileSidebar } from "./mobile-sidebar";
+
+type MobileShellProps = {
+  title?: string;
   children: ReactNode;
 };
 
-export function AppShell({ children }: AppShellProps) {
+export function MobileShell({ title, children }: MobileShellProps) {
   return (
-    <div className="min-h-screen bg-black text-white">
-      <MobileShell />
-
-      <div className="mx-auto flex min-h-screen max-w-[1600px]">
-        <div className="hidden lg:block">
-          <Sidebar />
+    <div className="lg:hidden">
+      <MobileSidebar />
+      {title ? (
+        <div className="mb-4">
+          <h1 className="text-2xl font-semibold tracking-tight text-white">
+            {title}
+          </h1>
         </div>
-
-        <main className="min-w-0 flex-1">{children}</main>
-      </div>
+      ) : null}
+      <div>{children}</div>
     </div>
   );
 }
