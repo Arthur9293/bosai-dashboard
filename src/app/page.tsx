@@ -27,6 +27,14 @@ function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
+type CommandStatsCompat = {
+  queue?: number;
+  queued?: number;
+  running?: number;
+  retry?: number;
+  dead?: number;
+};
+
 export default async function OverviewPage() {
   let health = null;
   let runs = null;
@@ -58,10 +66,11 @@ export default async function OverviewPage() {
   const totalRuns = runs?.count ?? 0;
   const runningRuns = runs?.stats?.running ?? 0;
 
-  const queuedCommands = commands?.stats?.queue ?? commands?.stats?.queued ?? 0;
-  const runningCommands = commands?.stats?.running ?? 0;
-  const retryCommands = commands?.stats?.retry ?? 0;
-  const deadCommands = commands?.stats?.dead ?? 0;
+  const commandStats = commands?.stats as CommandStatsCompat | undefined;
+  const queuedCommands = commandStats?.queue ?? commandStats?.queued ?? 0;
+  const runningCommands = commandStats?.running ?? 0;
+  const retryCommands = commandStats?.retry ?? 0;
+  const deadCommands = commandStats?.dead ?? 0;
 
   const newEvents = events?.stats?.new ?? 0;
   const queuedEvents = events?.stats?.queued ?? 0;
