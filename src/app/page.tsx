@@ -58,7 +58,7 @@ export default async function OverviewPage() {
   const totalRuns = runs?.count ?? 0;
   const runningRuns = runs?.stats?.running ?? 0;
 
-  const queuedCommands = commands?.stats?.queued ?? 0;
+  const queuedCommands = commands?.stats?.queue ?? commands?.stats?.queued ?? 0;
   const runningCommands = commands?.stats?.running ?? 0;
   const retryCommands = commands?.stats?.retry ?? 0;
   const deadCommands = commands?.stats?.dead ?? 0;
@@ -209,7 +209,7 @@ export default async function OverviewPage() {
             <div className={`${cardClassName()} xl:col-span-2`}>
               <div className="mb-4 text-lg font-medium">Incidents actifs</div>
               <div className="space-y-3 text-sm">
-                {(incidents?.incidents ?? []).slice(0, 5).map((incident) => (
+                {(incidents?.incidents ?? []).slice(0, 5).map((incident: any) => (
                   <div
                     key={incident.id}
                     className="flex items-center justify-between rounded-xl border border-white/10 px-3 py-3"
