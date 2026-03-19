@@ -12,6 +12,7 @@ export function MobileShell({ title, children }: MobileShellProps) {
   return (
     <div className="lg:hidden">
       <MobileSidebar />
+
       {title ? (
         <div className="mb-4">
           <h1 className="text-2xl font-semibold tracking-tight text-white">
@@ -19,6 +20,7 @@ export function MobileShell({ title, children }: MobileShellProps) {
           </h1>
         </div>
       ) : null}
+
       <div>{children}</div>
     </div>
   );
