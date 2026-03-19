@@ -19,7 +19,7 @@ export function MobileSidebar() {
 
   return (
     <>
-      <div className="mb-4 flex items-center justify-between xl:hidden">
+      <div className="flex items-center justify-between xl:hidden">
         <button
           type="button"
           onClick={() => setOpen(true)}
