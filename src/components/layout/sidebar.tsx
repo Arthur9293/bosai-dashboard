@@ -1,6 +1,3 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
 
 const navItems = [
@@ -14,67 +11,35 @@ const navItems = [
   { href: "/settings", label: "Settings" },
 ];
 
-export function MobileSidebar() {
-  const [open, setOpen] = useState(false);
-
+export function Sidebar() {
   return (
-    <>
-      <div className="mb-4 flex items-center justify-between lg:hidden">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
-          aria-label="Open menu"
-        >
-          ☰
-        </button>
-
-        <div className="text-sm font-medium text-zinc-400">BOSAI</div>
-
-        <div className="w-10" />
-      </div>
-
-      {open && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setOpen(false)}
-          />
-
-          <div className="absolute left-0 top-0 h-full w-72 border-r border-white/10 bg-zinc-950 p-6 text-white shadow-2xl">
-            <div className="mb-8 flex items-start justify-between">
-              <div>
-                <div className="text-2xl font-semibold tracking-tight">BOSAI</div>
-                <div className="mt-1 text-sm text-zinc-400">
-                  Anti-Chaos AI Ops Layer
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm"
-                aria-label="Close menu"
-              >
-                ✕
-              </button>
-            </div>
-
-            <nav className="space-y-2">
-              {navItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setOpen(false)}
-                  className="block rounded-xl px-3 py-3 text-base text-zinc-200 transition hover:bg-white/5 hover:text-white"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
+    <aside className="w-64 shrink-0 border-r border-white/10 bg-black/40 text-white">
+      <div className="flex h-screen flex-col px-6 py-8">
+        <div className="mb-10">
+          <div className="text-3xl font-semibold tracking-tight">BOSAI</div>
+          <div className="mt-2 text-sm text-zinc-400">
+            Anti-Chaos AI Ops Layer
           </div>
         </div>
-      )}
-    </>
+
+        <nav className="space-y-2">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="block rounded-xl px-3 py-3 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="mt-auto border-t border-white/10 pt-6 text-xs text-zinc-500">
+          <div>Worker: healthy</div>
+          <div>Version: v2.5.5-rebuild</div>
+          <div>Workspace: production</div>
+        </div>
+      </div>
+    </aside>
   );
 }
