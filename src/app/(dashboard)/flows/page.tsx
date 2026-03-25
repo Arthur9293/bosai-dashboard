@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { fetchCommands } from "../../../lib/api";
 
 type CommandItem = {
@@ -81,6 +82,26 @@ function statusLabel(status?: string) {
   return "UNKNOWN";
 }
 
+function flowStatusTone(status: string) {
+  if (status === "SUCCESS") {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  if (status === "RUNNING") {
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+  }
+
+  if (status === "PARTIAL") {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  if (status === "FAILED") {
+    return "bg-red-500/15 text-red-300 border border-red-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
 function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
@@ -91,6 +112,34 @@ function getDisplayFlowTitle(flow: FlowGroup) {
 
 function getFallbackFlowKey(flow: FlowGroup) {
   return flow.isSynthetic ? flow.flowId : null;
+}
+
+function getFlowStatus(commands: CommandItem[]) {
+  const statuses = commands.map((cmd) => (cmd.status || "").toLowerCase());
+
+  const hasError = statuses.some((s) => ["error", "failed", "dead"].includes(s));
+  const hasRunning = statuses.some((s) => s === "running");
+  const hasRetry = statuses.some((s) => s === "retry");
+  const hasQueued = statuses.some((s) => s === "queued" || s === "queue");
+  const allDone = statuses.length > 0 && statuses.every((s) => s === "done");
+  const hasDone = statuses.some((s) => s === "done");
+
+  if (allDone) return "SUCCESS";
+  if (hasError) return "FAILED";
+  if (hasRunning || hasRetry || hasQueued) return "RUNNING";
+  if (hasDone) return "PARTIAL";
+  return "UNKNOWN";
+}
+
+function getFlowSummary(commands: CommandItem[]) {
+  const done = commands.filter((c) => (c.status || "").toLowerCase() === "done").length;
+  const running = commands.filter((c) => (c.status || "").toLowerCase() === "running").length;
+  const retry = commands.filter((c) => (c.status || "").toLowerCase() === "retry").length;
+  const failed = commands.filter((c) =>
+    ["error", "failed", "dead"].includes((c.status || "").toLowerCase())
+  ).length;
+
+  return { done, running, retry, failed };
 }
 
 export default async function FlowsPage() {
@@ -137,13 +186,13 @@ export default async function FlowsPage() {
       };
     })
     .sort((a, b) => {
-      const aTs = new Date(
-        b.commands[b.commands.length - 1]?.created_at || 0
-      ).getTime();
-      const bTs = new Date(
-        a.commands[a.commands.length - 1]?.created_at || 0
-      ).getTime();
-      return aTs - bTs;
+      const aLast = a.commands[a.commands.length - 1];
+      const bLast = b.commands[b.commands.length - 1];
+
+      const aTs = new Date(aLast?.created_at || 0).getTime();
+      const bTs = new Date(bLast?.created_at || 0).getTime();
+
+      return bTs - aTs;
     })
     .slice(0, 30);
 
@@ -191,19 +240,32 @@ export default async function FlowsPage() {
         <section className="space-y-4">
           {flows.map((flow) => {
             const fallbackKey = getFallbackFlowKey(flow);
+            const flowStatus = getFlowStatus(flow.commands);
+            const summary = getFlowSummary(flow.commands);
 
             return (
-              <div
+              <Link
                 key={flow.flowId}
-                className="rounded-2xl border border-white/10 bg-white/5 p-5"
+                href={`/flows/${encodeURIComponent(flow.flowId)}`}
+                className="block rounded-2xl border border-white/10 bg-white/5 p-5 transition hover:border-white/20 hover:bg-white/10"
               >
-                <div className="mb-4 flex flex-col gap-2 border-b border-white/10 pb-4">
+                <div className="mb-4 flex flex-col gap-3 border-b border-white/10 pb-4">
                   <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
                     BOSAI FLOW
                   </div>
 
-                  <div className="break-all text-lg font-semibold text-white">
-                    {getDisplayFlowTitle(flow)}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="break-all text-lg font-semibold text-white">
+                      {getDisplayFlowTitle(flow)}
+                    </div>
+
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${flowStatusTone(
+                        flowStatus
+                      )}`}
+                    >
+                      {flowStatus}
+                    </span>
                   </div>
 
                   {fallbackKey ? (
@@ -220,8 +282,12 @@ export default async function FlowsPage() {
                     </span>
                   </div>
 
-                  <div className="text-sm text-zinc-400">
-                    {flow.commands.length} commande(s)
+                  <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
+                    <span>{flow.commands.length} commande(s)</span>
+                    <span>Done: {summary.done}</span>
+                    <span>Running: {summary.running}</span>
+                    <span>Retry: {summary.retry}</span>
+                    <span>Failed: {summary.failed}</span>
                   </div>
                 </div>
 
@@ -255,6 +321,10 @@ export default async function FlowsPage() {
                                 >
                                   {statusLabel(cmd.status)}
                                 </span>
+
+                                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                                  STEP {index + 1}
+                                </span>
                               </div>
 
                               <div className="break-all text-sm text-zinc-400">
@@ -262,7 +332,6 @@ export default async function FlowsPage() {
                               </div>
 
                               <div className="mt-2 flex flex-wrap gap-4 text-xs text-zinc-400">
-                                <span>Step: {index + 1}</span>
                                 <span>
                                   Priority:{" "}
                                   {typeof cmd.priority === "number" ? cmd.priority : "—"}
@@ -284,7 +353,7 @@ export default async function FlowsPage() {
                     );
                   })}
                 </div>
-              </div>
+              </Link>
             );
           })}
         </section>
