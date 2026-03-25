@@ -3,6 +3,7 @@
 import { ReactNode } from "react";
 import { Sidebar } from "./sidebar";
 import { MobileSidebar } from "./mobile-sidebar";
+import { Topbar } from "./topbar";
 
 type AppShellProps = {
   children: ReactNode;
@@ -23,7 +24,10 @@ export function AppShell({ children }: AppShellProps) {
         </div>
 
         {/* Main content */}
-        <main className="flex-1 p-4 lg:p-6">{children}</main>
+        <div className="flex min-h-screen flex-1 flex-col">
+          <Topbar />
+          <main className="flex-1 p-4 lg:p-6">{children}</main>
+        </div>
       </div>
     </div>
   );
