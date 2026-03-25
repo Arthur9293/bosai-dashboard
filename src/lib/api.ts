@@ -202,3 +202,18 @@ export type ToolsResponse = {
 export async function fetchTools() {
   return fetchJson<ToolsResponse>("/tools");
 }
+export type PolicyItem = {
+  id: string;
+  name?: string;
+  value?: string | number | boolean;
+  description?: string;
+};
+
+export type PoliciesResponse = {
+  ok?: boolean;
+  policies?: PolicyItem[];
+};
+
+export async function fetchPolicies() {
+  return fetchJson<PoliciesResponse>("/policies");
+}
