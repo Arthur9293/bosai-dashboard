@@ -14,6 +14,12 @@ type CommandItem = {
   created_at?: string;
 };
 
+type FlowGroup = {
+  flowId: string;
+  rootEventId?: string;
+  commands: CommandItem[];
+};
+
 function formatDate(value?: string) {
   if (!value) return "—";
 
@@ -78,12 +84,6 @@ function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
-type FlowGroup = {
-  flowId: string;
-  rootEventId?: string;
-  commands: CommandItem[];
-};
-
 export default async function FlowsPage() {
   let data: any = null;
 
@@ -115,8 +115,8 @@ export default async function FlowsPage() {
     .map((group) => {
       const sortedCommands = [...group.commands].sort((a, b) => {
         return (
-          new Date(b.created_at || 0).getTime() -
-          new Date(a.created_at || 0).getTime()
+          new Date(a.created_at || 0).getTime() -
+          new Date(b.created_at || 0).getTime()
         );
       });
 
@@ -126,9 +126,9 @@ export default async function FlowsPage() {
       };
     })
     .sort((a, b) => {
-      const aTs = new Date(a.commands[0]?.created_at || 0).getTime();
-      const bTs = new Date(b.commands[0]?.created_at || 0).getTime();
-      return bTs - aTs;
+      const aTs = new Date(b.commands[b.commands.length - 1]?.created_at || 0).getTime();
+      const bTs = new Date(a.commands[a.commands.length - 1]?.created_at || 0).getTime();
+      return aTs - bTs;
     })
     .slice(0, 30);
 
@@ -184,11 +184,11 @@ export default async function FlowsPage() {
                   BOSAI FLOW
                 </div>
 
-                <div className="text-lg font-semibold text-white break-all">
+                <div className="break-all text-lg font-semibold text-white">
                   {flow.flowId}
                 </div>
 
-                <div className="text-sm text-zinc-400 break-all">
+                <div className="break-all text-sm text-zinc-400">
                   Root event:{" "}
                   <span className="text-zinc-300">{flow.rootEventId || "—"}</span>
                 </div>
@@ -199,86 +199,63 @@ export default async function FlowsPage() {
               </div>
 
               <div className="space-y-3">
-                {flow.commands.map((cmd) => (
-                  <div
-                    key={cmd.id}
-                    className="rounded-xl border border-white/10 bg-black/20 p-4"
-                  >
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                      <div className="min-w-0 flex-1 space-y-3">
-                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          {cmd.capability || "Unknown capability"}
-                        </div>
+                {flow.commands.map((cmd, index) => {
+                  const isLast = index === flow.commands.length - 1;
 
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-base font-semibold text-white">
-                            {cmd.capability || "Unknown capability"}
-                          </div>
-
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
-                              cmd.status
-                            )}`}
-                          >
-                            {statusLabel(cmd.status)}
-                          </span>
-                        </div>
-
-                        <div className="text-sm text-zinc-400">
-                          ID: <span className="text-zinc-300">{cmd.id}</span>
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-2 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-                          <div>
-                            Priority:{" "}
-                            <span className="text-zinc-300">
-                              {typeof cmd.priority === "number" ? cmd.priority : "—"}
-                            </span>
-                          </div>
-
-                          <div>
-                            Worker:{" "}
-                            <span className="text-zinc-300">
-                              {cmd.worker || "—"}
-                            </span>
-                          </div>
-
-                          <div>
-                            Workspace:{" "}
-                            <span className="text-zinc-300">
-                              {cmd.workspace_id || "—"}
-                            </span>
-                          </div>
-
-                          <div>
-                            Created:{" "}
-                            <span className="text-zinc-300">
-                              {formatDate(cmd.created_at)}
-                            </span>
-                          </div>
-
-                          <div>
-                            Started:{" "}
-                            <span className="text-zinc-300">
-                              {formatDate(cmd.started_at)}
-                            </span>
-                          </div>
-
-                          <div>
-                            Finished:{" "}
-                            <span className="text-zinc-300">
-                              {formatDate(cmd.finished_at)}
-                            </span>
-                          </div>
-                        </div>
+                  return (
+                    <div key={cmd.id} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className="h-3 w-3 rounded-full bg-white" />
+                        {!isLast && <div className="w-px flex-1 bg-white/10" />}
                       </div>
 
-                      <div className="text-xs text-zinc-500 xl:min-w-[120px] xl:text-right">
-                        FLOW STEP
+                      <div className="flex-1 rounded-xl border border-white/10 bg-black/20 p-4">
+                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                          <div className="min-w-0 flex-1 space-y-3">
+                            <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                              {cmd.capability || "Unknown capability"}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-base font-semibold text-white">
+                                {cmd.capability || "Unknown capability"}
+                              </div>
+
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
+                                  cmd.status
+                                )}`}
+                              >
+                                {statusLabel(cmd.status)}
+                              </span>
+                            </div>
+
+                            <div className="break-all text-sm text-zinc-400">
+                              ID: <span className="text-zinc-300">{cmd.id}</span>
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap gap-4 text-xs text-zinc-400">
+                              <span>Step: {index + 1}</span>
+                              <span>
+                                Priority:{" "}
+                                {typeof cmd.priority === "number" ? cmd.priority : "—"}
+                              </span>
+                              <span>Worker: {cmd.worker || "—"}</span>
+                              <span>Workspace: {cmd.workspace_id || "—"}</span>
+                              <span>Created: {formatDate(cmd.created_at)}</span>
+                              <span>Started: {formatDate(cmd.started_at)}</span>
+                              <span>Finished: {formatDate(cmd.finished_at)}</span>
+                            </div>
+                          </div>
+
+                          <div className="text-xs text-zinc-500 xl:min-w-[120px] xl:text-right">
+                            FLOW STEP
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}
