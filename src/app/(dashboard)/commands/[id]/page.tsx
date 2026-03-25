@@ -1,7 +1,6 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchCommands } from "../../../../lib/api";
-import { PageHeader } from "../../../../components/ui/page-header";
-import { DashboardCard } from "../../../../components/ui/dashboard-card";
 
 type CommandItem = {
   id: string;
@@ -66,6 +65,10 @@ function tone(status?: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function cardClassName() {
+  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+}
+
 type PageProps = {
   params: Promise<{
     id: string;
@@ -90,17 +93,29 @@ export default async function CommandDetailPage({ params }: PageProps) {
     notFound();
   }
 
+  const hasFlow = !!String(command.flow_id || "").trim();
+  const hasEvent = !!String(command.root_event_id || "").trim();
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Command"
-        title={command.capability || "Command detail"}
-        description="Vue détaillée d’une commande BOSAI."
-      />
+      <div className="border-b border-white/10 pb-4">
+        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+          COMMAND
+        </div>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+          {command.capability || "Command detail"}
+        </h1>
+        <p className="mt-2 max-w-3xl text-sm text-zinc-400 sm:text-base">
+          Vue détaillée d’une commande BOSAI.
+        </p>
+      </div>
 
-      <DashboardCard
-        title="Command identity"
-        rightSlot={
+      <section className={cardClassName()}>
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Command identity</h2>
+          </div>
+
           <span
             className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
               command.status
@@ -108,8 +123,8 @@ export default async function CommandDetailPage({ params }: PageProps) {
           >
             {(command.status || "unknown").toUpperCase()}
           </span>
-        }
-      >
+        </div>
+
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
             ID: <span className="break-all text-zinc-300">{command.id}</span>
@@ -133,9 +148,33 @@ export default async function CommandDetailPage({ params }: PageProps) {
             Workspace: <span className="text-zinc-300">{command.workspace_id || "—"}</span>
           </div>
         </div>
-      </DashboardCard>
 
-      <DashboardCard title="Execution">
+        <div className="mt-5 flex flex-wrap gap-3">
+          {hasFlow ? (
+            <Link
+              href={`/flows/${encodeURIComponent(String(command.flow_id))}`}
+              className="inline-flex rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10"
+            >
+              Voir Flow
+            </Link>
+          ) : null}
+
+          {hasEvent ? (
+            <Link
+              href={`/events/${encodeURIComponent(String(command.root_event_id))}`}
+              className="inline-flex rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10"
+            >
+              Voir Event source
+            </Link>
+          ) : null}
+        </div>
+      </section>
+
+      <section className={cardClassName()}>
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-white">Execution</h2>
+        </div>
+
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
             Worker: <span className="text-zinc-300">{command.worker || "—"}</span>
@@ -158,9 +197,13 @@ export default async function CommandDetailPage({ params }: PageProps) {
             <span className="text-zinc-300">{formatDate(command.next_retry_at)}</span>
           </div>
         </div>
-      </DashboardCard>
+      </section>
 
-      <DashboardCard title="Control / Retry">
+      <section className={cardClassName()}>
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-white">Control / Retry</h2>
+        </div>
+
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
             Retry count: <span className="text-zinc-300">{command.retry_count ?? "—"}</span>
@@ -188,7 +231,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
             </span>
           </div>
         </div>
-      </DashboardCard>
+      </section>
     </div>
   );
 }
