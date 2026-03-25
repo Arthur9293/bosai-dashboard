@@ -1,8 +1,5 @@
 import { PageHeader } from "../../../components/ui/page-header";
-
-function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
-}
+import { DashboardCard } from "../../../components/ui/dashboard-card";
 
 const tools = [
   {
@@ -66,17 +63,9 @@ export default function ToolsPage() {
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {tools.map((tool) => (
-          <div key={tool.name} className={cardClassName()}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-lg font-semibold text-white">
-                  {tool.name}
-                </div>
-                <p className="mt-2 text-sm text-zinc-400">
-                  {tool.description}
-                </p>
-              </div>
-
+          <DashboardCard
+            key={tool.name}
+            rightSlot={
               <span
                 className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
                   tool.status
@@ -84,24 +73,22 @@ export default function ToolsPage() {
               >
                 {tool.status.toUpperCase()}
               </span>
-            </div>
-          </div>
+            }
+          >
+            <div className="text-lg font-semibold text-white">{tool.name}</div>
+            <p className="mt-2 text-sm text-zinc-400">{tool.description}</p>
+          </DashboardCard>
         ))}
       </section>
 
-      <section className={cardClassName()}>
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-white">Tool registry</h2>
-          <p className="mt-2 text-sm text-zinc-400">
-            V1 statique validée. Cette page pourra ensuite être branchée sur un
-            endpoint réel des capacités BOSAI.
-          </p>
-        </div>
-
+      <DashboardCard
+        title="Tool registry"
+        subtitle="V1 statique validée. Cette page pourra ensuite être branchée sur un endpoint réel des capacités BOSAI."
+      >
         <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
           Registre des tools prêt pour raccordement futur.
         </div>
-      </section>
+      </DashboardCard>
     </div>
   );
 }
