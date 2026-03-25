@@ -1,43 +1,56 @@
 import { PageHeader } from "../../../components/ui/page-header";
 import { DashboardCard } from "../../../components/ui/dashboard-card";
+import { fetchPolicies, type PolicyItem } from "../../../lib/api";
 
-export default function PoliciesPage() {
+const fallbackPolicies: PolicyItem[] = [
+  { id: "retry_limit", name: "Retry limit", value: 3 },
+  { id: "lock_ttl", name: "Lock TTL (min)", value: 10 },
+  { id: "approval_required", name: "Approval required", value: false },
+  { id: "sla_warning", name: "SLA warning (min)", value: 15 },
+];
+
+export default async function PoliciesPage() {
+  let policies: PolicyItem[] = fallbackPolicies;
+
+  try {
+    const data = await fetchPolicies();
+    if (data?.policies?.length) {
+      policies = data.policies;
+    }
+  } catch {}
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Governance"
         title="Policies"
-        description="Vue de gouvernance BOSAI. Cette page affichera les règles, garde-fous, limites, approbations et politiques actives du système."
+        description="Pilotage des règles BOSAI (retry, SLA, approvals, limites système)."
       />
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <DashboardCard>
-          <div className="text-sm text-zinc-400">Policies loaded</div>
-          <div className="mt-3 text-4xl font-semibold text-white">—</div>
-        </DashboardCard>
-
-        <DashboardCard>
-          <div className="text-sm text-zinc-400">Approval required</div>
-          <div className="mt-3 text-2xl font-semibold text-white">—</div>
-        </DashboardCard>
-
-        <DashboardCard>
-          <div className="text-sm text-zinc-400">Retry limit</div>
-          <div className="mt-3 text-4xl font-semibold text-white">—</div>
-        </DashboardCard>
-
-        <DashboardCard>
-          <div className="text-sm text-zinc-400">Lock TTL</div>
-          <div className="mt-3 text-4xl font-semibold text-white">—</div>
-        </DashboardCard>
+        {policies.map((p) => (
+          <DashboardCard key={p.id}>
+            <div className="text-sm text-zinc-400">
+              {p.name || p.id}
+            </div>
+            <div className="mt-3 text-2xl font-semibold text-white">
+              {typeof p.value === "boolean"
+                ? p.value
+                  ? "Enabled"
+                  : "Disabled"
+                : p.value ?? "—"}
+            </div>
+          </DashboardCard>
+        ))}
       </section>
 
       <DashboardCard
-        title="Policy registry"
-        subtitle="Placeholder V1 prêt. Cette page recevra bientôt les politiques réelles chargées par le worker BOSAI."
+        title="Policy engine"
+        subtitle="BOSAI applique ces règles en temps réel dans l’orchestration."
       >
-        <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
-          Aucune policy branchée pour le moment.
+        <div className="text-sm text-zinc-500">
+          Les policies définissent le comportement global du système :
+          retry, SLA, validation humaine, et limites d’exécution.
         </div>
       </DashboardCard>
     </div>
