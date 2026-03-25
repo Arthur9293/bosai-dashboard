@@ -1,24 +1,27 @@
-import { fetchCommands } from "../../../lib/api";
+import { fetchEvents } from "../../../lib/api";
 
-type CommandItem = {
+type EventItem = {
   id: string;
-  capability?: string;
+  event_type?: string;
   status?: string;
-  priority?: number;
-  flow_id?: string;
-  root_event_id?: string;
-  worker?: string;
-  workspace_id?: string;
-  started_at?: string;
-  finished_at?: string;
-  created_at?: string;
+  command_created?: boolean;
+  linked_command?: string[];
+  mapped_capability?: string;
+  processed_at?: string;
+  source?: string | null;
+  run_id?: string | null;
+  command_id?: string | null;
+  flow_id?: string | null;
+  payload?: Record<string, unknown>;
 };
 
-type FlowGroup = {
-  flowId: string;
-  rootEventId?: string;
-  commands: CommandItem[];
-  isSynthetic: boolean;
+type EventStats = {
+  new?: number;
+  queued?: number;
+  processed?: number;
+  ignored?: number;
+  error?: number;
+  other?: number;
 };
 
 function formatDate(value?: string) {
@@ -33,69 +36,43 @@ function formatDate(value?: string) {
   }).format(d);
 }
 
-function statusTone(status?: string) {
+function tone(status?: string) {
   const s = (status || "").toLowerCase();
 
-  if (s === "done") {
+  if (s === "processed") {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  if (s === "queued" || s === "queue") {
+  if (s === "queued") {
     return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
   }
 
-  if (s === "running") {
+  if (s === "new") {
     return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
   }
 
-  if (s === "retry") {
-    return "bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/20";
+  if (s === "ignored") {
+    return "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20";
   }
 
-  if (s === "unsupported") {
-    return "bg-purple-500/15 text-purple-300 border border-purple-500/20";
-  }
-
-  if (s === "unknown") {
-    return "bg-yellow-500/15 text-yellow-300 border border-yellow-500/20";
-  }
-
-  if (["error", "failed", "dead"].includes(s)) {
+  if (s === "error") {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
   }
 
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function statusLabel(status?: string) {
-  const s = (status || "").toLowerCase();
-
-  if (s === "done") return "SUCCESS";
-  if (s === "running") return "RUNNING";
-  if (s === "queued" || s === "queue") return "QUEUED";
-  if (s === "retry") return "RETRY";
-  if (s === "unsupported") return "NOT SUPPORTED";
-  if (s === "unknown") return "UNKNOWN STATE";
-  if (["error", "failed", "dead"].includes(s)) return "FAILED";
-
-  return "UNKNOWN";
-}
-
-function flowStatusTone(status: string) {
-  if (status === "SUCCESS") {
+function linkageTone(linked: boolean) {
+  if (linked) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  if (status === "RUNNING") {
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
+function flowTone(linked: boolean) {
+  if (linked) {
     return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  if (status === "PARTIAL") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (status === "FAILED") {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
   }
 
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
@@ -105,257 +82,211 @@ function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
-function getDisplayFlowTitle(flow: FlowGroup) {
-  return flow.isSynthetic ? "Unlinked flow" : flow.flowId;
+function getLinkedCommandValue(evt: EventItem) {
+  if (evt.command_id) return evt.command_id;
+  if (Array.isArray(evt.linked_command) && evt.linked_command.length > 0) {
+    return evt.linked_command[0];
+  }
+  return "—";
 }
 
-function getFallbackFlowKey(flow: FlowGroup) {
-  return flow.isSynthetic ? flow.flowId : null;
+function isLinked(evt: EventItem) {
+  return evt.command_created === true || getLinkedCommandValue(evt) !== "—";
 }
 
-function getFlowStatus(commands: CommandItem[]) {
-  const statuses = commands.map((cmd) => (cmd.status || "").toLowerCase());
+function getFlowId(evt: EventItem) {
+  if (evt.flow_id && String(evt.flow_id).trim()) {
+    return String(evt.flow_id).trim();
+  }
 
-  const hasError = statuses.some((s) => ["error", "failed", "dead"].includes(s));
-  const hasRunning = statuses.some((s) => s === "running");
-  const hasRetry = statuses.some((s) => s === "retry");
-  const hasQueued = statuses.some((s) => s === "queued" || s === "queue");
-  const allDone = statuses.length > 0 && statuses.every((s) => s === "done");
-  const hasDone = statuses.some((s) => s === "done");
+  const payload = evt.payload;
+  if (payload && typeof payload === "object") {
+    const candidate =
+      (payload as Record<string, unknown>)["flow_id"] ??
+      (payload as Record<string, unknown>)["flowid"];
 
-  if (allDone) return "SUCCESS";
-  if (hasError) return "FAILED";
-  if (hasRunning || hasRetry || hasQueued) return "RUNNING";
-  if (hasDone) return "PARTIAL";
-  return "UNKNOWN";
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return "—";
 }
 
-function getFlowSummary(commands: CommandItem[]) {
-  const done = commands.filter((c) => (c.status || "").toLowerCase() === "done").length;
-  const running = commands.filter((c) => (c.status || "").toLowerCase() === "running").length;
-  const retry = commands.filter((c) => (c.status || "").toLowerCase() === "retry").length;
-  const failed = commands.filter((c) =>
-    ["error", "failed", "dead"].includes((c.status || "").toLowerCase())
-  ).length;
-
-  return { done, running, retry, failed };
+function hasFlow(evt: EventItem) {
+  return getFlowId(evt) !== "—";
 }
 
-export default async function FlowsPage() {
+export default async function EventsPage() {
   let data: any = null;
 
   try {
-    data = await fetchCommands();
+    data = await fetchEvents();
   } catch {
     data = null;
   }
 
-  const commands: CommandItem[] = data?.commands ?? [];
+  const events: EventItem[] = data?.events ?? [];
+  const stats = (data?.stats ?? {}) as EventStats;
 
-  const grouped = new Map<string, FlowGroup>();
+  const newEvents = stats.new ?? 0;
+  const queued = stats.queued ?? 0;
+  const processed = stats.processed ?? 0;
+  const ignored = stats.ignored ?? 0;
+  const error = stats.error ?? 0;
 
-  for (const cmd of commands) {
-    const hasRealFlowId = !!String(cmd.flow_id || "").trim();
-    const flowId = hasRealFlowId ? String(cmd.flow_id).trim() : `no-flow:${cmd.id}`;
-
-    if (!grouped.has(flowId)) {
-      grouped.set(flowId, {
-        flowId,
-        rootEventId: cmd.root_event_id,
-        commands: [],
-        isSynthetic: !hasRealFlowId,
-      });
-    }
-
-    grouped.get(flowId)!.commands.push(cmd);
-  }
-
-  const flows = [...grouped.values()]
-    .map((group) => {
-      const sortedCommands = [...group.commands].sort((a, b) => {
-        return (
-          new Date(a.created_at || 0).getTime() -
-          new Date(b.created_at || 0).getTime()
-        );
-      });
-
-      return {
-        ...group,
-        commands: sortedCommands,
-      };
-    })
-    .sort((a, b) => {
-      const aLast = a.commands[a.commands.length - 1];
-      const bLast = b.commands[b.commands.length - 1];
-
-      const aTs = new Date(aLast?.created_at || 0).getTime();
-      const bTs = new Date(bLast?.created_at || 0).getTime();
-
-      return bTs - aTs;
-    })
-    .slice(0, 30);
+  const list = [...events]
+    .sort(
+      (a, b) =>
+        new Date(b.processed_at || 0).getTime() -
+        new Date(a.processed_at || 0).getTime()
+    )
+    .slice(0, 50);
 
   return (
     <div className="space-y-6">
       <div className="border-b border-white/10 pb-4">
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Flows
+          Events
         </h1>
         <p className="mt-2 max-w-3xl text-sm text-zinc-400 sm:text-base">
-          Vue orientée orchestration. Cette page regroupe les commandes BOSAI
-          par flow afin de suivre un enchaînement complet au lieu d’une commande
-          isolée.
+          Pipeline Event → Command → Flow BOSAI.
         </p>
       </div>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Flows visibles</div>
-          <div className="mt-3 text-4xl font-semibold text-white">
-            {flows.length}
+      <section className="grid grid-cols-2 gap-4 md:grid-cols-5">
+        {[
+          ["New", newEvents],
+          ["Queued", queued],
+          ["Processed", processed],
+          ["Ignored", ignored],
+          ["Errors", error],
+        ].map(([label, value]) => (
+          <div key={label} className={cardClassName()}>
+            <div className="text-sm text-zinc-400">{label}</div>
+            <div className="mt-2 text-3xl font-semibold text-white">
+              {value}
+            </div>
           </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Commands totales</div>
-          <div className="mt-3 text-4xl font-semibold text-white">
-            {commands.length}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Mode</div>
-          <div className="mt-3 text-2xl font-semibold text-white">
-            FLOW VIEW
-          </div>
-        </div>
+        ))}
       </section>
 
-      {flows.length === 0 ? (
-        <section className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500">
-          Aucun flow visible pour le moment.
-        </section>
-      ) : (
-        <section className="space-y-4">
-          {flows.map((flow) => {
-            const fallbackKey = getFallbackFlowKey(flow);
-            const flowStatus = getFlowStatus(flow.commands);
-            const summary = getFlowSummary(flow.commands);
+      <div className="space-y-3">
+        {list.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-white/10 bg-black/20 p-6 text-sm text-zinc-500">
+            Aucun event affiché.
+          </div>
+        ) : (
+          list.map((evt) => {
+            const linked = isLinked(evt);
+            const linkedCommand = getLinkedCommandValue(evt);
+            const flowId = getFlowId(evt);
+            const flowLinked = hasFlow(evt);
 
             return (
               <div
-                key={flow.flowId}
-                className="rounded-2xl border border-white/10 bg-white/5 p-5"
+                key={evt.id}
+                className="rounded-xl border border-white/10 bg-black/30 p-4 transition hover:bg-white/5"
               >
-                <div className="mb-4 flex flex-col gap-3 border-b border-white/10 pb-4">
-                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                    BOSAI FLOW
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="break-all text-lg font-semibold text-white">
-                      {getDisplayFlowTitle(flow)}
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                      {evt.event_type || "event"}
                     </div>
 
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${flowStatusTone(
-                        flowStatus
-                      )}`}
-                    >
-                      {flowStatus}
-                    </span>
-                  </div>
-
-                  {fallbackKey ? (
-                    <div className="break-all text-sm text-zinc-400">
-                      Fallback key:{" "}
-                      <span className="text-zinc-300">{fallbackKey}</span>
-                    </div>
-                  ) : null}
-
-                  <div className="break-all text-sm text-zinc-400">
-                    Root event:{" "}
-                    <span className="text-zinc-300">
-                      {flow.rootEventId || "—"}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
-                    <span>{flow.commands.length} commande(s)</span>
-                    <span>Done: {summary.done}</span>
-                    <span>Running: {summary.running}</span>
-                    <span>Retry: {summary.retry}</span>
-                    <span>Failed: {summary.failed}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {flow.commands.map((cmd, index) => {
-                    const isLast = index === flow.commands.length - 1;
-
-                    return (
-                      <div key={cmd.id} className="flex gap-3">
-                        <div className="flex flex-col items-center">
-                          <div className="h-3 w-3 rounded-full bg-white" />
-                          {!isLast && <div className="w-px flex-1 bg-white/10" />}
-                        </div>
-
-                        <div className="flex-1 rounded-xl border border-white/10 bg-black/20 p-4">
-                          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                            <div className="min-w-0 flex-1 space-y-3">
-                              <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                                {cmd.capability || "Unknown capability"}
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-base font-semibold text-white">
-                                  {cmd.capability || "Unknown capability"}
-                                </div>
-
-                                <span
-                                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
-                                    cmd.status
-                                  )}`}
-                                >
-                                  {statusLabel(cmd.status)}
-                                </span>
-
-                                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                                  STEP {index + 1}
-                                </span>
-                              </div>
-
-                              <div className="break-all text-sm text-zinc-400">
-                                ID: <span className="text-zinc-300">{cmd.id}</span>
-                              </div>
-
-                              <div className="mt-2 flex flex-wrap gap-4 text-xs text-zinc-400">
-                                <span>
-                                  Priority:{" "}
-                                  {typeof cmd.priority === "number" ? cmd.priority : "—"}
-                                </span>
-                                <span>Worker: {cmd.worker || "—"}</span>
-                                <span>Workspace: {cmd.workspace_id || "—"}</span>
-                                <span>Created: {formatDate(cmd.created_at)}</span>
-                                <span>Started: {formatDate(cmd.started_at)}</span>
-                                <span>Finished: {formatDate(cmd.finished_at)}</span>
-                              </div>
-                            </div>
-
-                            <div className="text-xs text-zinc-500 xl:min-w-[120px] xl:text-right">
-                              FLOW STEP
-                            </div>
-                          </div>
-                        </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-base font-semibold text-white">
+                        {evt.mapped_capability || evt.event_type || "Unknown event"}
                       </div>
-                    );
-                  })}
+
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
+                          evt.status
+                        )}`}
+                      >
+                        {(evt.status || "unknown").toUpperCase()}
+                      </span>
+
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${linkageTone(
+                          linked
+                        )}`}
+                      >
+                        {linked ? "LINKED" : "UNLINKED"}
+                      </span>
+
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${flowTone(
+                          flowLinked
+                        )}`}
+                      >
+                        {flowLinked ? "FLOW LINKED" : "NO FLOW"}
+                      </span>
+                    </div>
+
+                    <div className="break-all text-sm text-zinc-400">
+                      ID: <span className="text-zinc-300">{evt.id}</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+                      <div>
+                        Capability:{" "}
+                        <span className="text-zinc-300">
+                          {evt.mapped_capability || "—"}
+                        </span>
+                      </div>
+
+                      <div>
+                        Command:{" "}
+                        <span className="break-all text-zinc-300">
+                          {linkedCommand}
+                        </span>
+                      </div>
+
+                      <div>
+                        Flow:{" "}
+                        <span className="break-all text-zinc-300">
+                          {flowId}
+                        </span>
+                      </div>
+
+                      <div>
+                        Run:{" "}
+                        <span className="break-all text-zinc-300">
+                          {evt.run_id || "—"}
+                        </span>
+                      </div>
+
+                      <div>
+                        Processed:{" "}
+                        <span className="text-zinc-300">
+                          {formatDate(evt.processed_at)}
+                        </span>
+                      </div>
+
+                      <div>
+                        Source:{" "}
+                        <span className="text-zinc-300">{evt.source || "—"}</span>
+                      </div>
+
+                      <div>
+                        Command created:{" "}
+                        <span className="text-zinc-300">
+                          {evt.command_created === true ? "Yes" : "No"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-zinc-500 xl:min-w-[120px] xl:text-right">
+                    EVENT SIGNAL
+                  </div>
                 </div>
               </div>
             );
-          })}
-        </section>
-      )}
+          })
+        )}
+      </div>
     </div>
   );
 }
