@@ -1,36 +1,17 @@
 import { PageHeader } from "../../../components/ui/page-header";
 import { DashboardCard } from "../../../components/ui/dashboard-card";
+import { fetchTools } from "../../../lib/api";
 
-const tools = [
+const fallbackTools = [
   {
     name: "http_exec",
     description: "Exécution HTTP contrôlée avec garde-fous BOSAI.",
-    status: "Active",
+    status: "active",
   },
   {
     name: "decision_router",
     description: "Routage décisionnel des flows BOSAI.",
-    status: "Active",
-  },
-  {
-    name: "incident_router",
-    description: "Création et orientation des incidents.",
-    status: "Active",
-  },
-  {
-    name: "retry_router",
-    description: "Gestion des retries et réinjection dans le pipeline.",
-    status: "Active",
-  },
-  {
-    name: "complete_flow_demo",
-    description: "Terminaison propre d’un flow BOSAI.",
-    status: "Active",
-  },
-  {
-    name: "event_engine",
-    description: "Transformation Event → Command.",
-    status: "Active",
+    status: "active",
   },
 ];
 
@@ -52,7 +33,16 @@ function tone(status?: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-export default function ToolsPage() {
+export default async function ToolsPage() {
+  let tools = fallbackTools;
+
+  try {
+    const data = await fetchTools();
+    if (data?.tools?.length) {
+      tools = data.tools;
+    }
+  } catch {}
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -71,24 +61,19 @@ export default function ToolsPage() {
                   tool.status
                 )}`}
               >
-                {tool.status.toUpperCase()}
+                {(tool.status || "unknown").toUpperCase()}
               </span>
             }
           >
-            <div className="text-lg font-semibold text-white">{tool.name}</div>
-            <p className="mt-2 text-sm text-zinc-400">{tool.description}</p>
+            <div className="text-lg font-semibold text-white">
+              {tool.name}
+            </div>
+            <p className="mt-2 text-sm text-zinc-400">
+              {tool.description || "No description"}
+            </p>
           </DashboardCard>
         ))}
       </section>
-
-      <DashboardCard
-        title="Tool registry"
-        subtitle="V1 statique validée. Cette page pourra ensuite être branchée sur un endpoint réel des capacités BOSAI."
-      >
-        <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
-          Registre des tools prêt pour raccordement futur.
-        </div>
-      </DashboardCard>
     </div>
   );
 }
