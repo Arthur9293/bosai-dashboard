@@ -1,8 +1,5 @@
 import { PageHeader } from "../../../components/ui/page-header";
-
-function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
-}
+import { DashboardCard } from "../../../components/ui/dashboard-card";
 
 export default function SettingsPage() {
   return (
@@ -10,63 +7,58 @@ export default function SettingsPage() {
       <PageHeader
         eyebrow="Configuration"
         title="Settings"
-        description="Paramètres système et configuration générale du cockpit BOSAI."
+        description="Configuration globale du système BOSAI (workspace, worker, environnement, options système)."
       />
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className={cardClassName()}>
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <DashboardCard>
           <div className="text-sm text-zinc-400">Workspace</div>
-          <div className="mt-3 text-2xl font-semibold text-white">
+          <div className="mt-3 text-xl font-semibold text-white">
             production
           </div>
-        </div>
+        </DashboardCard>
 
-        <div className={cardClassName()}>
+        <DashboardCard>
+          <div className="text-sm text-zinc-400">Worker</div>
+          <div className="mt-3 text-xl font-semibold text-white">
+            bosai-worker-01
+          </div>
+        </DashboardCard>
+
+        <DashboardCard>
           <div className="text-sm text-zinc-400">Environment</div>
-          <div className="mt-3 text-2xl font-semibold text-white">Stable</div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Mode</div>
-          <div className="mt-3 text-2xl font-semibold text-white">
-            Read-only
+          <div className="mt-3 text-xl font-semibold text-white">
+            stable
           </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Dashboard</div>
-          <div className="mt-3 text-2xl font-semibold text-white">V1</div>
-        </div>
+        </DashboardCard>
       </section>
 
-      <section className={cardClassName()}>
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-white">
-            Configuration registry
-          </h2>
-          <p className="mt-2 text-sm text-zinc-400">
-            Page de configuration prête. Les paramètres réels du cockpit BOSAI
-            pourront être branchés ici sans toucher au moteur.
-          </p>
-        </div>
-
+      <DashboardCard
+        title="System configuration"
+        subtitle="V1 statique. Cette section accueillera les paramètres dynamiques du worker BOSAI."
+      >
         <div className="space-y-3 text-sm text-zinc-400">
-          <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <span>Worker status</span>
-            <span className="text-zinc-300">Connected</span>
+          <div className="flex justify-between">
+            <span>Retry system</span>
+            <span className="text-zinc-300">Enabled</span>
           </div>
 
-          <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <span>API mode</span>
-            <span className="text-zinc-300">Live</span>
+          <div className="flex justify-between">
+            <span>Lock system</span>
+            <span className="text-zinc-300">Enabled</span>
           </div>
 
-          <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-            <span>Permissions</span>
-            <span className="text-zinc-300">Read-only</span>
+          <div className="flex justify-between">
+            <span>Event engine</span>
+            <span className="text-zinc-300">Active</span>
+          </div>
+
+          <div className="flex justify-between">
+            <span>Policies</span>
+            <span className="text-zinc-300">Loaded</span>
           </div>
         </div>
-      </section>
+      </DashboardCard>
     </div>
   );
 }
