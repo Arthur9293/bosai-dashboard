@@ -11,6 +11,7 @@ type EventItem = {
   source?: string | null;
   run_id?: string | null;
   command_id?: string | null;
+  flow_id?: string | null;
   payload?: Record<string, unknown>;
 };
 
@@ -69,6 +70,14 @@ function linkageTone(linked: boolean) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function flowTone(linked: boolean) {
+  if (linked) {
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
 function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
@@ -83,6 +92,29 @@ function getLinkedCommandValue(evt: EventItem) {
 
 function isLinked(evt: EventItem) {
   return evt.command_created === true || getLinkedCommandValue(evt) !== "—";
+}
+
+function getFlowId(evt: EventItem) {
+  if (evt.flow_id && String(evt.flow_id).trim()) {
+    return String(evt.flow_id).trim();
+  }
+
+  const payload = evt.payload;
+  if (payload && typeof payload === "object") {
+    const candidate =
+      (payload as Record<string, unknown>)["flow_id"] ??
+      (payload as Record<string, unknown>)["flowid"];
+
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return "—";
+}
+
+function hasFlow(evt: EventItem) {
+  return getFlowId(evt) !== "—";
 }
 
 export default async function EventsPage() {
@@ -118,7 +150,7 @@ export default async function EventsPage() {
           Events
         </h1>
         <p className="mt-2 max-w-3xl text-sm text-zinc-400 sm:text-base">
-          Pipeline Event → Command BOSAI.
+          Pipeline Event → Command → Flow BOSAI.
         </p>
       </div>
 
@@ -148,6 +180,8 @@ export default async function EventsPage() {
           list.map((evt) => {
             const linked = isLinked(evt);
             const linkedCommand = getLinkedCommandValue(evt);
+            const flowId = getFlowId(evt);
+            const flowLinked = hasFlow(evt);
 
             return (
               <div
@@ -180,6 +214,14 @@ export default async function EventsPage() {
                       >
                         {linked ? "LINKED" : "UNLINKED"}
                       </span>
+
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${flowTone(
+                          flowLinked
+                        )}`}
+                      >
+                        {flowLinked ? "FLOW LINKED" : "NO FLOW"}
+                      </span>
                     </div>
 
                     <div className="break-all text-sm text-zinc-400">
@@ -198,6 +240,13 @@ export default async function EventsPage() {
                         Command:{" "}
                         <span className="break-all text-zinc-300">
                           {linkedCommand}
+                        </span>
+                      </div>
+
+                      <div>
+                        Flow:{" "}
+                        <span className="break-all text-zinc-300">
+                          {flowId}
                         </span>
                       </div>
 
