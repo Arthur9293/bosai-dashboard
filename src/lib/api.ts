@@ -188,3 +188,17 @@ export async function fetchIncidents() {
 export async function fetchSla() {
   return fetchJson<SlaResponse>("/sla?limit=20");
 }
+export type ToolItem = {
+  name: string;
+  status?: string;
+  description?: string;
+};
+
+export type ToolsResponse = {
+  ok?: boolean;
+  tools?: ToolItem[];
+};
+
+export async function fetchTools() {
+  return fetchJson<ToolsResponse>("/tools");
+}
