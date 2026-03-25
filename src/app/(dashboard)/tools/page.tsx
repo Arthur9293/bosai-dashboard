@@ -1,8 +1,8 @@
 import { PageHeader } from "../../../components/ui/page-header";
 import { DashboardCard } from "../../../components/ui/dashboard-card";
-import { fetchTools } from "../../../lib/api";
+import { fetchTools, type ToolItem } from "../../../lib/api";
 
-const fallbackTools = [
+const fallbackTools: ToolItem[] = [
   {
     name: "http_exec",
     description: "Exécution HTTP contrôlée avec garde-fous BOSAI.",
@@ -11,6 +11,26 @@ const fallbackTools = [
   {
     name: "decision_router",
     description: "Routage décisionnel des flows BOSAI.",
+    status: "active",
+  },
+  {
+    name: "incident_router",
+    description: "Création et orientation des incidents.",
+    status: "active",
+  },
+  {
+    name: "retry_router",
+    description: "Gestion des retries et réinjection dans le pipeline.",
+    status: "active",
+  },
+  {
+    name: "complete_flow_demo",
+    description: "Terminaison propre d’un flow BOSAI.",
+    status: "active",
+  },
+  {
+    name: "event_engine",
+    description: "Transformation Event → Command.",
     status: "active",
   },
 ];
@@ -34,7 +54,7 @@ function tone(status?: string) {
 }
 
 export default async function ToolsPage() {
-  let tools = fallbackTools;
+  let tools: ToolItem[] = fallbackTools;
 
   try {
     const data = await fetchTools();
@@ -65,15 +85,22 @@ export default async function ToolsPage() {
               </span>
             }
           >
-            <div className="text-lg font-semibold text-white">
-              {tool.name}
-            </div>
+            <div className="text-lg font-semibold text-white">{tool.name}</div>
             <p className="mt-2 text-sm text-zinc-400">
               {tool.description || "No description"}
             </p>
           </DashboardCard>
         ))}
       </section>
+
+      <DashboardCard
+        title="Tool registry"
+        subtitle="V1 dynamique prête. Cette page peut utiliser un fallback statique si l’API n’expose pas encore /tools."
+      >
+        <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
+          Registre des tools prêt pour raccordement futur.
+        </div>
+      </DashboardCard>
     </div>
   );
 }
