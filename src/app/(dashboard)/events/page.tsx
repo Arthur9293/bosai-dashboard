@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { fetchEvents } from "../../../lib/api";
 
 type EventItem = {
@@ -184,9 +185,10 @@ export default async function EventsPage() {
             const flowLinked = hasFlow(evt);
 
             return (
-              <div
+              <Link
                 key={evt.id}
-                className="rounded-xl border border-white/10 bg-black/30 p-4 transition hover:bg-white/5"
+                href={`/events/${evt.id}`}
+                className="block rounded-xl border border-white/10 bg-black/30 p-4 transition hover:border-white/20 hover:bg-white/5"
               >
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0 flex-1 space-y-3">
@@ -282,7 +284,7 @@ export default async function EventsPage() {
                     EVENT SIGNAL
                   </div>
                 </div>
-              </div>
+              </Link>
             );
           })
         )}
