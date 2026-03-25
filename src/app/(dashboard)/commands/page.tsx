@@ -44,8 +44,9 @@ function tone(status?: string) {
   if (s === "running") return "bg-sky-500/15 text-sky-300";
   if (s === "retry") return "bg-fuchsia-500/15 text-fuchsia-300";
 
-  if (["error", "failed", "dead"].includes(s))
+  if (["error", "failed", "dead"].includes(s)) {
     return "bg-red-500/15 text-red-300";
+  }
 
   return "bg-zinc-800 text-zinc-300";
 }
@@ -79,13 +80,13 @@ export default async function CommandsPage() {
       {/* HEADER */}
       <div>
         <h1 className="text-3xl font-semibold text-white">Commands</h1>
-        <p className="text-sm text-zinc-400 mt-2">
+        <p className="mt-2 text-sm text-zinc-400">
           Monitoring et orchestration des commandes BOSAI
         </p>
       </div>
 
       {/* STATS */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         {[
           ["Queued", queued],
           ["Running", running],
@@ -98,7 +99,7 @@ export default async function CommandsPage() {
             className="rounded-xl border border-white/10 bg-white/5 p-4"
           >
             <div className="text-sm text-zinc-400">{label}</div>
-            <div className="text-3xl font-semibold text-white mt-2">
+            <div className="mt-2 text-3xl font-semibold text-white">
               {value}
             </div>
           </div>
@@ -107,45 +108,51 @@ export default async function CommandsPage() {
 
       {/* LIST */}
       <div className="space-y-3">
-        {list.map((cmd) => (
-          <div
-            key={cmd.id}
-            className="rounded-xl border border-white/10 bg-black/30 p-4 hover:bg-white/5 transition"
-          >
-            {/* TOP */}
-            <div className="flex justify-between items-center">
-              <div className="text-xs text-zinc-500 uppercase tracking-wider">
-                {cmd.capability}
+        {list.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-white/10 bg-black/20 p-6 text-sm text-zinc-500">
+            Aucune commande affichée.
+          </div>
+        ) : (
+          list.map((cmd) => (
+            <div
+              key={cmd.id}
+              className="rounded-xl border border-white/10 bg-black/30 p-4 transition hover:bg-white/5"
+            >
+              {/* TOP */}
+              <div className="flex items-center justify-between">
+                <div className="text-xs uppercase tracking-wider text-zinc-500">
+                  {cmd.capability}
+                </div>
+
+                <span
+                  className={`rounded-full px-2 py-1 text-xs font-medium ${tone(
+                    cmd.status
+                  )}`}
+                >
+                  {(cmd.status || "unknown").toUpperCase()}
+                </span>
               </div>
 
-              <span
-                className={`px-2 py-1 rounded-full text-xs font-medium ${tone(
-                  cmd.status
-                )}`}
-              >
-                {(cmd.status || "unknown").toUpperCase()}
-              </span>
+              {/* ID */}
+              <div className="mt-2 break-all text-sm text-zinc-300">
+                {cmd.id}
+              </div>
+
+              {/* GRID */}
+              <div className="mt-3 grid gap-2 text-xs text-zinc-400 md:grid-cols-3">
+                <div>Flow: {cmd.flow_id || "—"}</div>
+                <div>Event: {cmd.root_event_id || "—"}</div>
+                <div>Worker: {cmd.worker || "—"}</div>
+
+                <div>Priority: {cmd.priority ?? "—"}</div>
+                <div>Created: {formatDate(cmd.created_at)}</div>
+                <div>Started: {formatDate(cmd.started_at)}</div>
+
+                <div>Finished: {formatDate(cmd.finished_at)}</div>
+              </div>
             </div>
-
-            {/* ID */}
-            <div className="text-sm text-zinc-300 mt-2 break-all">
-              {cmd.id}
-            </div>
-
-            {/* GRID */}
-            <div className="grid md:grid-cols-3 gap-2 mt-3 text-xs text-zinc-400">
-              <div>Flow: {cmd.flow_id || "—"}</div>
-              <div>Event: {cmd.root_event_id || "—"}</div>
-              <div>Worker: {cmd.worker || "—"}</div>
-
-              <div>Priority: {cmd.priority ?? "—"}</div>
-              <div>Created: {formatDate(cmd.created_at)}</div>
-              <div>Started: {formatDate(cmd.started_at)}</div>
-
-              <div>Finished: {formatDate(cmd.finished_at)}</div>
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
