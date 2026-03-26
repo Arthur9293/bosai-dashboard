@@ -7,6 +7,7 @@ type CommandItem = {
   capability?: string;
   status?: string;
   priority?: number;
+  step_index?: number;
   flow_id?: string;
   root_event_id?: string;
   parent_command_id?: string;
@@ -270,6 +271,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
         <div className="space-y-3">
           {sortedCommands.map((cmd, index) => {
             const isLast = index === sortedCommands.length - 1;
+            const displayStep =
+              typeof cmd.step_index === "number" ? cmd.step_index : index + 1;
 
             return (
               <div key={cmd.id} className="flex gap-3">
@@ -299,7 +302,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
                         </span>
 
                         <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                          STEP {index + 1}
+                          STEP {displayStep}
                         </span>
                       </div>
 
@@ -312,6 +315,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
                           Priority:{" "}
                           {typeof cmd.priority === "number" ? cmd.priority : "—"}
                         </span>
+                        <span>Flow: {cmd.flow_id || "—"}</span>
+                        <span>Root event: {cmd.root_event_id || "—"}</span>
                         <span>
                           Parent command:{" "}
                           {cmd.parent_command_id ? (
