@@ -8,6 +8,7 @@ type CommandItem = {
   priority?: number;
   flow_id?: string;
   root_event_id?: string;
+  parent_command_id?: string;
   worker?: string;
   workspace_id?: string;
   started_at?: string;
@@ -45,8 +46,9 @@ function tone(status?: string) {
   if (s === "running") return "bg-sky-500/15 text-sky-300";
   if (s === "retry") return "bg-fuchsia-500/15 text-fuchsia-300";
 
-  if (["error", "failed", "dead"].includes(s))
+  if (["error", "failed", "dead"].includes(s)) {
     return "bg-red-500/15 text-red-300";
+  }
 
   return "bg-zinc-800 text-zinc-300";
 }
@@ -111,13 +113,13 @@ export default async function CommandsPage() {
             href={`/commands/${cmd.id}`}
             className="block rounded-xl border border-white/10 bg-black/30 p-4 transition hover:bg-white/5 hover:border-white/20"
           >
-            <div className="flex justify-between items-center">
-              <div className="text-xs text-zinc-500 uppercase tracking-wider">
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase tracking-wider text-zinc-500">
                 {cmd.capability}
               </div>
 
               <span
-                className={`px-2 py-1 rounded-full text-xs font-medium ${tone(
+                className={`rounded-full px-2 py-1 text-xs font-medium ${tone(
                   cmd.status
                 )}`}
               >
@@ -125,20 +127,22 @@ export default async function CommandsPage() {
               </span>
             </div>
 
-            <div className="text-sm text-zinc-300 mt-2 break-all">
+            <div className="mt-2 break-all text-sm text-zinc-300">
               {cmd.id}
             </div>
 
-            <div className="grid md:grid-cols-3 gap-2 mt-3 text-xs text-zinc-400">
+            <div className="mt-3 grid gap-2 text-xs text-zinc-400 md:grid-cols-3">
               <div>Flow: {cmd.flow_id || "—"}</div>
               <div>Event: {cmd.root_event_id || "—"}</div>
-              <div>Worker: {cmd.worker || "—"}</div>
+              <div>Parent: {cmd.parent_command_id || "—"}</div>
 
+              <div>Worker: {cmd.worker || "—"}</div>
               <div>Priority: {cmd.priority ?? "—"}</div>
               <div>Created: {formatDate(cmd.created_at)}</div>
-              <div>Started: {formatDate(cmd.started_at)}</div>
 
+              <div>Started: {formatDate(cmd.started_at)}</div>
               <div>Finished: {formatDate(cmd.finished_at)}</div>
+              <div>Workspace: {cmd.workspace_id || "—"}</div>
             </div>
           </Link>
         ))}
