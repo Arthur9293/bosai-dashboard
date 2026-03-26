@@ -68,12 +68,17 @@ export type CommandItem = {
   locked_by?: string;
   idempotency_key?: string;
   flow_id?: string;
+  flowid?: string;
   root_event_id?: string;
+  rooteventid?: string;
+  event_id?: string;
   worker?: string;
   workspace_id?: string;
   started_at?: string;
   finished_at?: string;
   created_at?: string;
+  input?: Record<string, unknown>;
+  input_json?: Record<string, unknown> | string;
 };
 
 export type CommandsResponse = {
