@@ -136,22 +136,15 @@ function parseInputJson(
 }
 
 function getCommandFlowId(cmd: CommandItem): string | null {
-  const direct =
-    cmd.flow_id ||
-    cmd.flowid ||
-    undefined;
+  const direct = cmd.flow_id || cmd.flowid || undefined;
 
   if (typeof direct === "string" && direct.trim()) {
     return direct.trim();
   }
 
-  const inputObj =
-    safeObject(cmd.input) ||
-    parseInputJson(cmd.input_json);
+  const inputObj = safeObject(cmd.input) || parseInputJson(cmd.input_json);
 
-  const candidate =
-    inputObj?.flow_id ??
-    inputObj?.flowid;
+  const candidate = inputObj?.flow_id ?? inputObj?.flowid;
 
   if (typeof candidate === "string" && candidate.trim()) {
     return candidate.trim();
@@ -171,9 +164,7 @@ function getCommandRootEventId(cmd: CommandItem): string | undefined {
     return direct.trim();
   }
 
-  const inputObj =
-    safeObject(cmd.input) ||
-    parseInputJson(cmd.input_json);
+  const inputObj = safeObject(cmd.input) || parseInputJson(cmd.input_json);
 
   const candidate =
     inputObj?.root_event_id ??
@@ -188,7 +179,7 @@ function getCommandRootEventId(cmd: CommandItem): string | undefined {
 }
 
 function getDisplayFlowTitle(flow: FlowGroup) {
-  return flow.isSynthetic ? "Unlinked flow" : flow.flowId;
+  return flow.isSynthetic ? "Legacy standalone command" : flow.flowId;
 }
 
 function getFallbackFlowKey(flow: FlowGroup) {
@@ -277,6 +268,10 @@ export default async function FlowsPage() {
       };
     })
     .sort((a, b) => {
+      if (a.isSynthetic !== b.isSynthetic) {
+        return a.isSynthetic ? 1 : -1;
+      }
+
       const aLast = a.commands[a.commands.length - 1];
       const bLast = b.commands[b.commands.length - 1];
 
@@ -357,6 +352,12 @@ export default async function FlowsPage() {
                     >
                       {flowStatus}
                     </span>
+
+                    {flow.isSynthetic ? (
+                      <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                        LEGACY
+                      </span>
+                    ) : null}
                   </div>
 
                   {fallbackKey ? (
