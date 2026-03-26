@@ -137,7 +137,7 @@ function getFlowSummary(commands: CommandItem[]) {
 }
 
 function getDisplayFlowTitle(flow: FlowGroup) {
-  return flow.isSynthetic ? "Unlinked flow" : flow.flowId;
+  return flow.isSynthetic ? "Legacy standalone command" : flow.flowId;
 }
 
 type PageProps = {
@@ -184,10 +184,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
   }
 
   const sortedCommands = [...flow.commands].sort((a, b) => {
-    return (
-      new Date(a.created_at || 0).getTime() -
-      new Date(b.created_at || 0).getTime()
-    );
+    return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
   });
 
   const flowStatus = getFlowStatus(sortedCommands);
@@ -259,7 +256,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <div>
             Type:{" "}
             <span className="text-zinc-300">
-              {flow.isSynthetic ? "Synthetic / unlinked" : "Linked flow"}
+              {flow.isSynthetic ? "Legacy synthetic record" : "Linked flow"}
             </span>
           </div>
         </div>
