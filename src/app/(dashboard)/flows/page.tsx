@@ -6,6 +6,7 @@ type CommandItem = {
   capability?: string;
   status?: string;
   priority?: number;
+  step_index?: number;
   flow_id?: string;
   flowid?: string;
   root_event_id?: string;
@@ -186,6 +187,16 @@ function getFallbackFlowKey(flow: FlowGroup) {
   return flow.isSynthetic ? flow.flowId : null;
 }
 
+function flowKindBadge(flow: FlowGroup) {
+  return flow.isSynthetic ? "LEGACY" : "LINKED";
+}
+
+function flowKindTone(flow: FlowGroup) {
+  return flow.isSynthetic
+    ? "bg-white/5 text-zinc-300 border border-white/10"
+    : "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+}
+
 function getFlowStatus(commands: CommandItem[]) {
   const statuses = commands.map((cmd) => (cmd.status || "").toLowerCase());
 
@@ -256,10 +267,16 @@ export default async function FlowsPage() {
   const flows = [...grouped.values()]
     .map((group) => {
       const sortedCommands = [...group.commands].sort((a, b) => {
-        return (
-          new Date(a.created_at || 0).getTime() -
-          new Date(b.created_at || 0).getTime()
-        );
+        const aStep =
+          typeof a.step_index === "number" ? a.step_index : Number.MAX_SAFE_INTEGER;
+        const bStep =
+          typeof b.step_index === "number" ? b.step_index : Number.MAX_SAFE_INTEGER;
+
+        if (aStep !== bStep) {
+          return aStep - bStep;
+        }
+
+        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
       });
 
       return {
@@ -281,6 +298,122 @@ export default async function FlowsPage() {
       return bTs - aTs;
     })
     .slice(0, 30);
+
+  const linkedFlows = flows.filter((flow) => !flow.isSynthetic);
+  const legacyFlows = flows.filter((flow) => flow.isSynthetic);
+
+  function renderFlowCard(flow: FlowGroup) {
+    const fallbackKey = getFallbackFlowKey(flow);
+    const flowStatus = getFlowStatus(flow.commands);
+    const summary = getFlowSummary(flow.commands);
+
+    return (
+      <Link
+        key={flow.flowId}
+        href={`/flows/${encodeURIComponent(flow.flowId)}`}
+        className="block rounded-2xl border border-white/10 bg-white/5 p-5 transition hover:border-white/20 hover:bg-white/10"
+      >
+        <div className="mb-4 flex flex-col gap-3 border-b border-white/10 pb-4">
+          <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+            BOSAI FLOW
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="break-all text-lg font-semibold text-white">
+              {getDisplayFlowTitle(flow)}
+            </div>
+
+            <span
+              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${flowStatusTone(
+                flowStatus
+              )}`}
+            >
+              {flowStatus}
+            </span>
+
+            <span
+              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${flowKindTone(
+                flow
+              )}`}
+            >
+              {flowKindBadge(flow)}
+            </span>
+          </div>
+
+          {fallbackKey ? (
+            <div className="break-all text-sm text-zinc-400">
+              Fallback key: <span className="text-zinc-300">{fallbackKey}</span>
+            </div>
+          ) : null}
+
+          <div className="break-all text-sm text-zinc-400">
+            Root event: <span className="text-zinc-300">{flow.rootEventId || "—"}</span>
+          </div>
+
+          <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
+            <span>{flow.commands.length} commande(s)</span>
+            <span>Done: {summary.done}</span>
+            <span>Running: {summary.running}</span>
+            <span>Retry: {summary.retry}</span>
+            <span>Failed: {summary.failed}</span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {flow.commands.map((cmd, index) => {
+            const isLast = index === flow.commands.length - 1;
+            const displayStep =
+              typeof cmd.step_index === "number" ? cmd.step_index : index + 1;
+
+            return (
+              <div key={cmd.id} className="flex gap-3">
+                <div className="flex flex-col items-center">
+                  <div className="h-3 w-3 rounded-full bg-white" />
+                  {!isLast && <div className="w-px flex-1 bg-white/10" />}
+                </div>
+
+                <div className="flex-1 rounded-xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0 flex-1 space-y-3">
+                      <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                        {cmd.capability || "Unknown capability"}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-base font-semibold text-white">
+                          {cmd.capability || "Unknown capability"}
+                        </div>
+
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
+                            cmd.status
+                          )}`}
+                        >
+                          {statusLabel(cmd.status)}
+                        </span>
+
+                        <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                          STEP {displayStep}
+                        </span>
+                      </div>
+
+                      <div className="break-all text-sm text-zinc-400">
+                        ID: <span className="text-zinc-300">{cmd.id}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-zinc-500 xl:min-w-[120px] xl:text-right">
+                      FLOW STEP
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Link>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -323,132 +456,41 @@ export default async function FlowsPage() {
           Aucun flow visible pour le moment.
         </section>
       ) : (
-        <section className="space-y-4">
-          {flows.map((flow) => {
-            const fallbackKey = getFallbackFlowKey(flow);
-            const flowStatus = getFlowStatus(flow.commands);
-            const summary = getFlowSummary(flow.commands);
+        <div className="space-y-8">
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Linked flows</h2>
+              <span className="text-sm text-zinc-400">{linkedFlows.length}</span>
+            </div>
 
-            return (
-              <Link
-                key={flow.flowId}
-                href={`/flows/${encodeURIComponent(flow.flowId)}`}
-                className="block rounded-2xl border border-white/10 bg-white/5 p-5 transition hover:border-white/20 hover:bg-white/10"
-              >
-                <div className="mb-4 flex flex-col gap-3 border-b border-white/10 pb-4">
-                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                    BOSAI FLOW
-                  </div>
+            {linkedFlows.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500">
+                Aucun linked flow visible.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {linkedFlows.map((flow) => renderFlowCard(flow))}
+              </div>
+            )}
+          </section>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="break-all text-lg font-semibold text-white">
-                      {getDisplayFlowTitle(flow)}
-                    </div>
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Legacy flows</h2>
+              <span className="text-sm text-zinc-400">{legacyFlows.length}</span>
+            </div>
 
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${flowStatusTone(
-                        flowStatus
-                      )}`}
-                    >
-                      {flowStatus}
-                    </span>
-
-                    {flow.isSynthetic ? (
-                      <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                        LEGACY
-                      </span>
-                    ) : null}
-                  </div>
-
-                  {fallbackKey ? (
-                    <div className="break-all text-sm text-zinc-400">
-                      Fallback key:{" "}
-                      <span className="text-zinc-300">{fallbackKey}</span>
-                    </div>
-                  ) : null}
-
-                  <div className="break-all text-sm text-zinc-400">
-                    Root event:{" "}
-                    <span className="text-zinc-300">
-                      {flow.rootEventId || "—"}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
-                    <span>{flow.commands.length} commande(s)</span>
-                    <span>Done: {summary.done}</span>
-                    <span>Running: {summary.running}</span>
-                    <span>Retry: {summary.retry}</span>
-                    <span>Failed: {summary.failed}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {flow.commands.map((cmd, index) => {
-                    const isLast = index === flow.commands.length - 1;
-
-                    return (
-                      <div key={cmd.id} className="flex gap-3">
-                        <div className="flex flex-col items-center">
-                          <div className="h-3 w-3 rounded-full bg-white" />
-                          {!isLast && <div className="w-px flex-1 bg-white/10" />}
-                        </div>
-
-                        <div className="flex-1 rounded-xl border border-white/10 bg-black/20 p-4">
-                          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                            <div className="min-w-0 flex-1 space-y-3">
-                              <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                                {cmd.capability || "Unknown capability"}
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-base font-semibold text-white">
-                                  {cmd.capability || "Unknown capability"}
-                                </div>
-
-                                <span
-                                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
-                                    cmd.status
-                                  )}`}
-                                >
-                                  {statusLabel(cmd.status)}
-                                </span>
-
-                                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                                  STEP {index + 1}
-                                </span>
-                              </div>
-
-                              <div className="break-all text-sm text-zinc-400">
-                                ID: <span className="text-zinc-300">{cmd.id}</span>
-                              </div>
-
-                              <div className="mt-2 flex flex-wrap gap-4 text-xs text-zinc-400">
-                                <span>
-                                  Priority:{" "}
-                                  {typeof cmd.priority === "number" ? cmd.priority : "—"}
-                                </span>
-                                <span>Worker: {cmd.worker || "—"}</span>
-                                <span>Workspace: {cmd.workspace_id || "—"}</span>
-                                <span>Created: {formatDate(cmd.created_at)}</span>
-                                <span>Started: {formatDate(cmd.started_at)}</span>
-                                <span>Finished: {formatDate(cmd.finished_at)}</span>
-                              </div>
-                            </div>
-
-                            <div className="text-xs text-zinc-500 xl:min-w-[120px] xl:text-right">
-                              FLOW STEP
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Link>
-            );
-          })}
-        </section>
+            {legacyFlows.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500">
+                Aucun legacy flow visible.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {legacyFlows.map((flow) => renderFlowCard(flow))}
+              </div>
+            )}
+          </section>
+        </div>
       )}
     </div>
   );
