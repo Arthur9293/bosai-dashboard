@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { fetchCommands } from "../../../../lib/api";
+import { fetchCommandById } from "../../../../lib/api";
 
 type CommandItem = {
   id: string;
@@ -78,16 +78,13 @@ type PageProps = {
 export default async function CommandDetailPage({ params }: PageProps) {
   const { id } = await params;
 
-  let data: any = null;
+  let command: CommandItem | null = null;
 
   try {
-    data = await fetchCommands();
+    command = await fetchCommandById(id);
   } catch {
-    data = null;
+    command = null;
   }
-
-  const commands: CommandItem[] = data?.commands ?? [];
-  const command = commands.find((item) => item.id === id);
 
   if (!command) {
     notFound();
