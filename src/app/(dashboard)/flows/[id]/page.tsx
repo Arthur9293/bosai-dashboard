@@ -8,6 +8,7 @@ type CommandItem = {
   priority?: number;
   flow_id?: string;
   root_event_id?: string;
+  parent_command_id?: string;
   worker?: string;
   workspace_id?: string;
   started_at?: string;
@@ -312,6 +313,9 @@ export default async function FlowDetailPage({ params }: PageProps) {
                         <span>
                           Priority:{" "}
                           {typeof cmd.priority === "number" ? cmd.priority : "—"}
+                        </span>
+                        <span>
+                          Parent: {cmd.parent_command_id || "—"}
                         </span>
                         <span>Worker: {cmd.worker || "—"}</span>
                         <span>Workspace: {cmd.workspace_id || "—"}</span>
