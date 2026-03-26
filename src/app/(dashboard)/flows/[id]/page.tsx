@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchCommands } from "../../../../lib/api";
 
@@ -315,7 +316,17 @@ export default async function FlowDetailPage({ params }: PageProps) {
                           {typeof cmd.priority === "number" ? cmd.priority : "—"}
                         </span>
                         <span>
-                          Parent: {cmd.parent_command_id || "—"}
+                          Parent command:{" "}
+                          {cmd.parent_command_id ? (
+                            <Link
+                              href={`/commands/${encodeURIComponent(String(cmd.parent_command_id))}`}
+                              className="text-zinc-300 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                            >
+                              {cmd.parent_command_id}
+                            </Link>
+                          ) : (
+                            "—"
+                          )}
                         </span>
                         <span>Worker: {cmd.worker || "—"}</span>
                         <span>Workspace: {cmd.workspace_id || "—"}</span>
