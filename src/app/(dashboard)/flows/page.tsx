@@ -7,12 +7,17 @@ type CommandItem = {
   status?: string;
   priority?: number;
   flow_id?: string;
+  flowid?: string;
   root_event_id?: string;
+  rooteventid?: string;
+  event_id?: string;
   worker?: string;
   workspace_id?: string;
   started_at?: string;
   finished_at?: string;
   created_at?: string;
+  input?: Record<string, unknown>;
+  input_json?: Record<string, unknown> | string;
 };
 
 type FlowGroup = {
@@ -106,6 +111,82 @@ function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
+function safeObject(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+function parseInputJson(
+  value: Record<string, unknown> | string | undefined
+): Record<string, unknown> | null {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return safeObject(parsed);
+    } catch {
+      return null;
+    }
+  }
+
+  return safeObject(value);
+}
+
+function getCommandFlowId(cmd: CommandItem): string | null {
+  const direct =
+    cmd.flow_id ||
+    cmd.flowid ||
+    undefined;
+
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+
+  const inputObj =
+    safeObject(cmd.input) ||
+    parseInputJson(cmd.input_json);
+
+  const candidate =
+    inputObj?.flow_id ??
+    inputObj?.flowid;
+
+  if (typeof candidate === "string" && candidate.trim()) {
+    return candidate.trim();
+  }
+
+  return null;
+}
+
+function getCommandRootEventId(cmd: CommandItem): string | undefined {
+  const direct =
+    cmd.root_event_id ||
+    cmd.rooteventid ||
+    cmd.event_id ||
+    undefined;
+
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+
+  const inputObj =
+    safeObject(cmd.input) ||
+    parseInputJson(cmd.input_json);
+
+  const candidate =
+    inputObj?.root_event_id ??
+    inputObj?.rooteventid ??
+    inputObj?.event_id;
+
+  if (typeof candidate === "string" && candidate.trim()) {
+    return candidate.trim();
+  }
+
+  return undefined;
+}
+
 function getDisplayFlowTitle(flow: FlowGroup) {
   return flow.isSynthetic ? "Unlinked flow" : flow.flowId;
 }
@@ -156,19 +237,29 @@ export default async function FlowsPage() {
   const grouped = new Map<string, FlowGroup>();
 
   for (const cmd of commands) {
-    const hasRealFlowId = !!String(cmd.flow_id || "").trim();
-    const flowId = hasRealFlowId ? String(cmd.flow_id).trim() : `no-flow:${cmd.id}`;
+    const resolvedFlowId = getCommandFlowId(cmd);
+    const resolvedRootEventId = getCommandRootEventId(cmd);
+
+    const flowId =
+      resolvedFlowId ||
+      (resolvedRootEventId ? `root:${resolvedRootEventId}` : `no-flow:${cmd.id}`);
 
     if (!grouped.has(flowId)) {
       grouped.set(flowId, {
         flowId,
-        rootEventId: cmd.root_event_id,
+        rootEventId: resolvedRootEventId,
         commands: [],
-        isSynthetic: !hasRealFlowId,
+        isSynthetic: !resolvedFlowId,
       });
     }
 
-    grouped.get(flowId)!.commands.push(cmd);
+    const current = grouped.get(flowId)!;
+
+    if (!current.rootEventId && resolvedRootEventId) {
+      current.rootEventId = resolvedRootEventId;
+    }
+
+    current.commands.push(cmd);
   }
 
   const flows = [...grouped.values()]
