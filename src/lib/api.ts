@@ -1,6 +1,5 @@
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_BOSAI_API_URL?.replace(/\/$/, "") ||
-  "";
+  process.env.NEXT_PUBLIC_BOSAI_API_URL?.replace(/\/$/, "") || "";
 
 async function fetchJson<T>(path: string): Promise<T> {
   if (!API_BASE_URL) {
@@ -68,6 +67,13 @@ export type CommandItem = {
   is_locked?: boolean;
   locked_by?: string;
   idempotency_key?: string;
+  flow_id?: string;
+  root_event_id?: string;
+  worker?: string;
+  workspace_id?: string;
+  started_at?: string;
+  finished_at?: string;
+  created_at?: string;
 };
 
 export type CommandsResponse = {
@@ -99,6 +105,7 @@ export type EventItem = {
   source?: string | null;
   run_id?: string | null;
   command_id?: string | null;
+  flow_id?: string | null;
   payload?: Record<string, unknown>;
 };
 
@@ -141,6 +148,7 @@ export type IncidentsResponse = {
   incidents?: IncidentItem[];
   ts?: string;
 };
+
 export type SlaItem = {
   id: string;
   name?: string;
@@ -166,28 +174,6 @@ export type SlaResponse = {
   ts?: string;
 };
 
-export async function fetchHealthScore() {
-  return fetchJson<HealthScoreResponse>("/health/score");
-}
-
-export async function fetchRuns() {
-  return fetchJson<RunsResponse>("/runs?limit=20");
-}
-
-export async function fetchCommands() {
-  return fetchJson<CommandsResponse>("/commands?limit=20");
-}
-
-export async function fetchEvents() {
-  return fetchJson<EventsResponse>("/events?limit=20");
-}
-
-export async function fetchIncidents() {
-  return fetchJson<IncidentsResponse>("/incidents");
-}
-export async function fetchSla() {
-  return fetchJson<SlaResponse>("/sla?limit=20");
-}
 export type ToolItem = {
   name: string;
   status?: string;
@@ -199,9 +185,6 @@ export type ToolsResponse = {
   tools?: ToolItem[];
 };
 
-export async function fetchTools() {
-  return fetchJson<ToolsResponse>("/tools");
-}
 export type PolicyItem = {
   id: string;
   name?: string;
@@ -214,17 +197,38 @@ export type PoliciesResponse = {
   policies?: PolicyItem[];
 };
 
+export async function fetchHealthScore() {
+  return fetchJson<HealthScoreResponse>("/health/score");
+}
+
+export async function fetchRuns() {
+  return fetchJson<RunsResponse>("/runs?limit=20");
+}
+
+export async function fetchCommands() {
+  return fetchJson<CommandsResponse>("/commands?limit=20");
+}
+
+export async function fetchCommandById(id: string) {
+  return fetchJson<CommandItem>(`/commands/${encodeURIComponent(id)}`);
+}
+
+export async function fetchEvents() {
+  return fetchJson<EventsResponse>("/events?limit=20");
+}
+
+export async function fetchIncidents() {
+  return fetchJson<IncidentsResponse>("/incidents");
+}
+
+export async function fetchSla() {
+  return fetchJson<SlaResponse>("/sla?limit=20");
+}
+
+export async function fetchTools() {
+  return fetchJson<ToolsResponse>("/tools");
+}
+
 export async function fetchPolicies() {
   return fetchJson<PoliciesResponse>("/policies");
-}
-export async function fetchCommandById(id: string) {
-  const res = await fetch(`${BASE_URL}/commands/${id}`, {
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    return null;
-  }
-
-  return res.json();
 }
