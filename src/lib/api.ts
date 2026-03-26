@@ -232,3 +232,9 @@ export async function fetchTools() {
 export async function fetchPolicies() {
   return fetchJson<PoliciesResponse>("/policies");
 }
+
+export async function fetchCommandById(id: string) {
+  const data = await fetchJson<any>(`/commands/${encodeURIComponent(id)}`);
+
+  return data?.command || data;
+}
