@@ -210,7 +210,8 @@ export async function fetchCommands() {
 }
 
 export async function fetchCommandById(id: string) {
-  return fetchJson<CommandItem>(`/commands/${encodeURIComponent(id)}`);
+  const data = await fetchJson<any>(`/commands/${encodeURIComponent(id)}`);
+  return data?.command || data;
 }
 
 export async function fetchEvents() {
@@ -231,10 +232,4 @@ export async function fetchTools() {
 
 export async function fetchPolicies() {
   return fetchJson<PoliciesResponse>("/policies");
-}
-
-export async function fetchCommandById(id: string) {
-  const data = await fetchJson<any>(`/commands/${encodeURIComponent(id)}`);
-
-  return data?.command || data;
 }
