@@ -217,3 +217,14 @@ export type PoliciesResponse = {
 export async function fetchPolicies() {
   return fetchJson<PoliciesResponse>("/policies");
 }
+export async function fetchCommandById(id: string) {
+  const res = await fetch(`${BASE_URL}/commands/${id}`, {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    return null;
+  }
+
+  return res.json();
+}
