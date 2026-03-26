@@ -109,6 +109,20 @@ function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
+function isRootCommand(cmd: CommandItem) {
+  return !String(cmd.parent_command_id || "").trim();
+}
+
+function lineageBadge(cmd: CommandItem) {
+  return isRootCommand(cmd) ? "ROOT" : "CHILD";
+}
+
+function lineageTone(cmd: CommandItem) {
+  return isRootCommand(cmd)
+    ? "bg-white/10 text-zinc-200 border border-white/10"
+    : "bg-white/5 text-zinc-300 border border-white/10";
+}
+
 function getFlowStatus(commands: CommandItem[]) {
   const statuses = commands.map((cmd) => (cmd.status || "").toLowerCase());
 
@@ -185,6 +199,15 @@ export default async function FlowDetailPage({ params }: PageProps) {
   }
 
   const sortedCommands = [...flow.commands].sort((a, b) => {
+    const aStep =
+      typeof a.step_index === "number" ? a.step_index : Number.MAX_SAFE_INTEGER;
+    const bStep =
+      typeof b.step_index === "number" ? b.step_index : Number.MAX_SAFE_INTEGER;
+
+    if (aStep !== bStep) {
+      return aStep - bStep;
+    }
+
     return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
   });
 
@@ -277,7 +300,11 @@ export default async function FlowDetailPage({ params }: PageProps) {
             return (
               <div key={cmd.id} className="flex gap-3">
                 <div className="flex flex-col items-center">
-                  <div className="h-3 w-3 rounded-full bg-white" />
+                  <div
+                    className={`h-3 w-3 rounded-full ${
+                      isRootCommand(cmd) ? "bg-white" : "bg-zinc-500"
+                    }`}
+                  />
                   {!isLast && <div className="w-px flex-1 bg-white/10" />}
                 </div>
 
@@ -304,6 +331,14 @@ export default async function FlowDetailPage({ params }: PageProps) {
                         <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
                           STEP {displayStep}
                         </span>
+
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${lineageTone(
+                            cmd
+                          )}`}
+                        >
+                          {lineageBadge(cmd)}
+                        </span>
                       </div>
 
                       <div className="break-all text-sm text-zinc-400">
@@ -329,6 +364,9 @@ export default async function FlowDetailPage({ params }: PageProps) {
                           ) : (
                             "—"
                           )}
+                        </span>
+                        <span>
+                          Command role: {isRootCommand(cmd) ? "Root node" : "Child node"}
                         </span>
                         <span>Worker: {cmd.worker || "—"}</span>
                         <span>Workspace: {cmd.workspace_id || "—"}</span>
