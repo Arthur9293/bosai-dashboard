@@ -19,6 +19,7 @@ type CommandItem = {
   created_at?: string;
   input?: Record<string, unknown>;
   input_json?: Record<string, unknown> | string;
+  result_json?: Record<string, unknown> | string;
 };
 
 type FlowGroup = {
@@ -137,18 +138,31 @@ function parseInputJson(
 }
 
 function getCommandFlowId(cmd: CommandItem): string | null {
-  const direct = cmd.flow_id || cmd.flowid || undefined;
-
+  const direct = cmd.flow_id || cmd.flowid;
   if (typeof direct === "string" && direct.trim()) {
     return direct.trim();
   }
 
   const inputObj = safeObject(cmd.input) || parseInputJson(cmd.input_json);
 
-  const candidate = inputObj?.flow_id ?? inputObj?.flowid;
+  const candidate =
+    inputObj?.flow_id ||
+    inputObj?.flowid ||
+    inputObj?.flowId;
 
   if (typeof candidate === "string" && candidate.trim()) {
     return candidate.trim();
+  }
+
+  const resultObj = parseInputJson(cmd.result_json);
+
+  const resultCandidate =
+    resultObj?.flow_id ||
+    resultObj?.flowid ||
+    resultObj?.flowId;
+
+  if (typeof resultCandidate === "string" && resultCandidate.trim()) {
+    return resultCandidate.trim();
   }
 
   return null;
@@ -158,8 +172,7 @@ function getCommandRootEventId(cmd: CommandItem): string | undefined {
   const direct =
     cmd.root_event_id ||
     cmd.rooteventid ||
-    cmd.event_id ||
-    undefined;
+    cmd.event_id;
 
   if (typeof direct === "string" && direct.trim()) {
     return direct.trim();
@@ -168,12 +181,22 @@ function getCommandRootEventId(cmd: CommandItem): string | undefined {
   const inputObj = safeObject(cmd.input) || parseInputJson(cmd.input_json);
 
   const candidate =
-    inputObj?.root_event_id ??
-    inputObj?.rooteventid ??
+    inputObj?.root_event_id ||
+    inputObj?.rooteventid ||
     inputObj?.event_id;
 
   if (typeof candidate === "string" && candidate.trim()) {
     return candidate.trim();
+  }
+
+  const resultObj = parseInputJson(cmd.result_json);
+
+  const resultCandidate =
+    resultObj?.root_event_id ||
+    resultObj?.rooteventid;
+
+  if (typeof resultCandidate === "string" && resultCandidate.trim()) {
+    return resultCandidate.trim();
   }
 
   return undefined;
