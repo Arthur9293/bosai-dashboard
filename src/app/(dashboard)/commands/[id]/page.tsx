@@ -21,6 +21,7 @@ type CommandItem = {
   started_at?: string;
   finished_at?: string;
   created_at?: string;
+  parent_command_id?: string;
 };
 
 function formatDate(value?: string) {
@@ -92,6 +93,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
   const hasFlow = !!String(command.flow_id || "").trim();
   const hasEvent = !!String(command.root_event_id || "").trim();
+  const hasParent = !!String(command.parent_command_id || "").trim();
 
   return (
     <div className="space-y-6">
@@ -142,6 +144,12 @@ export default async function CommandDetailPage({ params }: PageProps) {
             </span>
           </div>
           <div>
+            Parent command:{" "}
+            <span className="break-all text-zinc-300">
+              {command.parent_command_id || "—"}
+            </span>
+          </div>
+          <div>
             Workspace: <span className="text-zinc-300">{command.workspace_id || "—"}</span>
           </div>
         </div>
@@ -162,6 +170,15 @@ export default async function CommandDetailPage({ params }: PageProps) {
               className="inline-flex rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10"
             >
               Voir Event source
+            </Link>
+          ) : null}
+
+          {hasParent ? (
+            <Link
+              href={`/commands/${encodeURIComponent(String(command.parent_command_id))}`}
+              className="inline-flex rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10"
+            >
+              Voir parent
             </Link>
           ) : null}
         </div>
