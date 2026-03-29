@@ -28,12 +28,7 @@ function toText(value: unknown, fallback = "—") {
 }
 
 function getIncidentTitle(incident: IncidentItem) {
-  return (
-    incident.title ||
-    incident.name ||
-    incident.error_id ||
-    "Untitled incident"
-  );
+  return incident.title || incident.name || incident.error_id || "Untitled incident";
 }
 
 function getIncidentStatusRaw(incident: IncidentItem) {
@@ -249,9 +244,12 @@ function IncidentCard({ incident }: { incident: NormalizedIncident }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="break-all text-lg font-semibold text-white">
+          <Link
+            href={`/incidents/${encodeURIComponent(incident.id)}`}
+            className="break-all text-lg font-semibold text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
+          >
             {incident.title}
-          </div>
+          </Link>
 
           <span
             className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
