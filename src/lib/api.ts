@@ -140,7 +140,7 @@ export type IncidentItem = {
   title?: string;
   name?: string;
   error_id?: string;
-  status_select?: string;
+  status?: string;
   statut_incident?: string;
   severity?: string;
   sla_status?: string;
