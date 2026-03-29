@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import {
   fetchIncidents,
   type IncidentItem,
@@ -15,7 +16,7 @@ function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
-function formatDate(value?: string) {
+function formatDate(value?: string | null) {
   if (!value) return "—";
 
   const d = new Date(value);
@@ -34,12 +35,7 @@ function toText(value: unknown, fallback = "—") {
 }
 
 function getIncidentTitle(incident: IncidentItem) {
-  return (
-    incident.title ||
-    incident.name ||
-    incident.error_id ||
-    "Untitled incident"
-  );
+  return incident.title || incident.name || incident.error_id || "Untitled incident";
 }
 
 function getIncidentStatusRaw(incident: IncidentItem) {
@@ -200,7 +196,10 @@ function getSlaLabel(incident: IncidentItem) {
   const sla = (incident.sla_status || "").trim();
   if (sla) return sla.toUpperCase();
 
-  if (typeof incident.sla_remaining_minutes === "number" && incident.sla_remaining_minutes < 0) {
+  if (
+    typeof incident.sla_remaining_minutes === "number" &&
+    incident.sla_remaining_minutes < 0
+  ) {
     return "BREACHED";
   }
 
@@ -222,7 +221,10 @@ function getSlaTone(incident: IncidentItem) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  if (typeof incident.sla_remaining_minutes === "number" && incident.sla_remaining_minutes < 0) {
+  if (
+    typeof incident.sla_remaining_minutes === "number" &&
+    incident.sla_remaining_minutes < 0
+  ) {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
   }
 
@@ -244,32 +246,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const incident = incidents.find((item) => item.id === id);
 
   if (!incident) {
-    return (
-      <div className="space-y-6">
-        <div className="border-b border-white/10 pb-4">
-          <div className="text-sm text-zinc-400">
-            <Link
-              href="/incidents"
-              className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
-            >
-              Incidents
-            </Link>{" "}
-            / Detail
-          </div>
-
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-            Incident introuvable
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm text-zinc-400 sm:text-base">
-            Aucun incident ne correspond à cet identifiant.
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500">
-          L’incident demandé n’existe pas ou n’est plus visible dans la vue active.
-        </div>
-      </div>
-    );
+    notFound();
   }
 
   const title = getIncidentTitle(incident);
