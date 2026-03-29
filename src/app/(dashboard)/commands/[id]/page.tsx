@@ -79,13 +79,13 @@ function cardClassName() {
 }
 
 type PageProps = {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 };
 
 export default async function CommandDetailPage({ params }: PageProps) {
-  const { id } = params;
+  const { id } = await params;
 
   let command: CommandItem | null = null;
   let fetchError = "";
@@ -120,7 +120,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
           <div className="space-y-3 text-sm text-zinc-400">
             <div>
-              Requested ID: <span className="break-all text-zinc-300">{id}</span>
+              Requested ID: <span className="break-all text-zinc-300">{toText(id)}</span>
             </div>
 
             <div>
@@ -266,9 +266,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
             Locked:{" "}
             <span className="text-zinc-300">
               {typeof command.is_locked === "boolean"
-                ? command.is_locked
-                  ? "Yes"
-                  : "No"
+                ? command.is_locked ? "Yes" : "No"
                 : "—"}
             </span>
           </div>
