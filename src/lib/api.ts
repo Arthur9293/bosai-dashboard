@@ -82,9 +82,10 @@ export type CommandItem = {
   started_at?: string;
   finished_at?: string;
   created_at?: string;
+  step_index?: number;
   input?: Record<string, unknown>;
-  input_json?: Record<string, unknown> | string;
-  result_json?: Record<string, unknown> | string;
+  input_json?: Record<string, unknown> | string | null;
+  result_json?: Record<string, unknown> | string | null;
 };
 
 export type CommandsResponse = {
@@ -224,6 +225,85 @@ export type PolicyItem = {
 export type PoliciesResponse = {
   ok?: boolean;
   policies?: PolicyItem[];
+};
+
+export type FlowCommandItem = {
+  id: string;
+  capability?: string;
+  status?: string;
+  priority?: number;
+  retry_count?: number;
+  retry_max?: number;
+  scheduled_at?: string;
+  next_retry_at?: string;
+  is_locked?: boolean;
+  locked_by?: string;
+  idempotency_key?: string;
+  flow_id?: string;
+  root_event_id?: string;
+  parent_command_id?: string;
+  step_index?: number;
+  input_json?: Record<string, unknown> | string | null;
+  result_json?: Record<string, unknown> | string | null;
+  worker?: string;
+  workspace_id?: string;
+  started_at?: string;
+  finished_at?: string;
+  created_at?: string;
+};
+
+export type FlowItem = {
+  id: string;
+  flow_id?: string;
+  root_event_id?: string;
+  workspace_id?: string;
+  count?: number;
+  is_synthetic?: boolean;
+  commands?: FlowCommandItem[];
+  stats?: {
+    queued?: number;
+    running?: number;
+    retry?: number;
+    done?: number;
+    dead?: number;
+    blocked?: number;
+    unsupported?: number;
+    error?: number;
+    other?: number;
+  };
+  started_at?: string;
+  finished_at?: string;
+  created_at?: string;
+};
+
+export type FlowsResponse = {
+  ok?: boolean;
+  count?: number;
+  stats?: {
+    linked?: number;
+    synthetic?: number;
+  };
+  flows?: FlowItem[];
+  ts?: string;
+};
+
+export type FlowDetail = {
+  id: string;
+  count?: number;
+  root_event_id?: string;
+  workspace_id?: string;
+  stats?: {
+    queued?: number;
+    running?: number;
+    retry?: number;
+    done?: number;
+    dead?: number;
+    blocked?: number;
+    unsupported?: number;
+    error?: number;
+    other?: number;
+  };
+  commands?: FlowCommandItem[];
 };
 
 type RawIncidentItem = Record<string, unknown>;
@@ -402,4 +482,24 @@ export async function fetchTools() {
 
 export async function fetchPolicies() {
   return fetchJson<PoliciesResponse>("/policies");
+}
+
+export async function fetchFlows() {
+  return fetchJson<FlowsResponse>("/flows?limit=50");
+}
+
+export async function fetchFlowById(id: string): Promise<FlowDetail> {
+  if (!id?.trim()) {
+    throw new Error("fetchFlowById: id manquant");
+  }
+
+  const data = await fetchJson<{ ok?: boolean; flow?: FlowDetail }>(
+    `/flows/${encodeURIComponent(id)}`
+  );
+
+  if (!data?.flow) {
+    throw new Error("fetchFlowById: réponse invalide");
+  }
+
+  return data.flow;
 }
