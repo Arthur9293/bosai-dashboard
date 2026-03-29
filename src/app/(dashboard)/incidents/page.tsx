@@ -55,10 +55,10 @@ function getIncidentName(item: IncidentItem) {
 
 function getIncidentStatus(item: IncidentItem) {
   return String(
-    item.status ||
-      item.Status ||
+    item.Status_select ||
       item.status_select ||
-      item.Status_select ||
+      item.status ||
+      item.Status ||
       "Unknown"
   ).trim();
 }
@@ -215,16 +215,16 @@ export default async function IncidentsPage() {
 
   const sortedIncidents = [...normalized].sort((a, b) => b.sortDate - a.sortDate);
 
-  const openIncidents = sortedIncidents.filter((item) =>
-    ["open", "active"].includes(item.status.toLowerCase())
+  const openIncidents = sortedIncidents.filter(
+    (item) => item.status.toLowerCase() === "open"
   );
 
   const escalatedIncidents = sortedIncidents.filter(
     (item) => item.status.toLowerCase() === "escalated"
   );
 
-  const resolvedIncidents = sortedIncidents.filter((item) =>
-    ["resolved", "done", "closed"].includes(item.status.toLowerCase())
+  const resolvedIncidents = sortedIncidents.filter(
+    (item) => item.status.toLowerCase() === "resolved"
   );
 
   const criticalIncidents = sortedIncidents.filter(
