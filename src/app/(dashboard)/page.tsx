@@ -41,11 +41,50 @@ type CommandStatsCompat = {
 };
 
 function getIncidentTitle(incident: IncidentItem) {
-  return incident.title || incident.name || incident.error_id || "Untitled incident";
+  return (
+    incident.title ||
+    incident.name ||
+    incident.error_id ||
+    "Untitled incident"
+  );
 }
 
 function getIncidentStatus(incident: IncidentItem) {
-  return incident.status || incident.statut_incident || "—";
+  const direct = String(
+    incident.status || incident.statut_incident || ""
+  ).trim();
+
+  if (direct) return direct;
+
+  const sla = String(incident.sla_status || "").trim().toLowerCase();
+  const remaining =
+    typeof incident.sla_remaining_minutes === "number"
+      ? incident.sla_remaining_minutes
+      : undefined;
+
+  if (sla === "breached") return "Open";
+  if (remaining !== undefined && remaining < 0) return "Open";
+
+  return "—";
+}
+
+function isOpenIncident(incident: IncidentItem) {
+  return getIncidentStatus(incident).toLowerCase() === "open";
+}
+
+function isCriticalIncident(incident: IncidentItem) {
+  const severity = String(incident.severity || "").toLowerCase();
+  return severity === "critical" || severity === "critique";
+}
+
+function isWarningIncident(incident: IncidentItem) {
+  const severity = String(incident.severity || "").toLowerCase();
+  return (
+    severity === "warning" ||
+    severity === "warn" ||
+    severity === "medium" ||
+    severity === "moyen"
+  );
 }
 
 export default async function OverviewPage() {
@@ -90,11 +129,19 @@ export default async function OverviewPage() {
   const processedEvents = events?.stats?.processed ?? 0;
   const eventErrors = events?.stats?.error ?? 0;
 
-  const openIncidents = incidents?.stats?.open ?? 0;
-  const criticalIncidents = incidents?.stats?.critical ?? 0;
-  const warningIncidents = incidents?.stats?.warning ?? 0;
-
   const incidentItems: IncidentItem[] = incidents?.incidents ?? [];
+
+  const openIncidents =
+    incidents?.stats?.open ??
+    incidentItems.filter((incident) => isOpenIncident(incident)).length;
+
+  const criticalIncidents =
+    incidents?.stats?.critical ??
+    incidentItems.filter((incident) => isCriticalIncident(incident)).length;
+
+  const warningIncidents =
+    incidents?.stats?.warning ??
+    incidentItems.filter((incident) => isWarningIncident(incident)).length;
 
   return (
     <div className="space-y-6">
@@ -235,7 +282,9 @@ export default async function OverviewPage() {
             {incidentItems.slice(0, 5).map((incident) => {
               const incidentTitle = getIncidentTitle(incident);
               const incidentSubline =
-                incident.sla_status || getIncidentStatus(incident) || "—";
+                getIncidentStatus(incident) ||
+                incident.sla_status ||
+                "—";
               const incidentSeverity = incident.severity || "—";
               const incidentStatus = getIncidentStatus(incident);
 
