@@ -36,10 +36,14 @@ function formatDate(value?: string) {
   }).format(d);
 }
 
-function toText(value?: string | number | null) {
-  if (value === null || value === undefined) return "—";
+// ✅ FIX ICI
+function toText(
+  value?: string | number | null,
+  fallback: string = "—"
+) {
+  if (value === null || value === undefined) return fallback;
   const text = String(value).trim();
-  return text || "—";
+  return text || fallback;
 }
 
 function tone(status?: string) {
@@ -123,9 +127,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
       <section className={cardClassName()}>
         <div className="mb-4 flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-white">Command identity</h2>
-          </div>
+          <h2 className="text-lg font-semibold text-white">Command identity</h2>
 
           <span
             className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
@@ -168,95 +170,65 @@ export default async function CommandDetailPage({ params }: PageProps) {
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
-          {hasFlow ? (
+          {hasFlow && (
             <Link
               href={`/flows/${encodeURIComponent(flowId)}`}
               className="inline-flex rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10"
             >
               Voir Flow
             </Link>
-          ) : null}
+          )}
 
-          {hasEvent ? (
+          {hasEvent && (
             <Link
               href={`/events/${encodeURIComponent(rootEventId)}`}
               className="inline-flex rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10"
             >
               Voir Event source
             </Link>
-          ) : null}
+          )}
 
-          {hasParent ? (
+          {hasParent && (
             <Link
               href={`/commands/${encodeURIComponent(parentCommandId)}`}
               className="inline-flex rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10"
             >
               Voir parent
             </Link>
-          ) : null}
+          )}
         </div>
       </section>
 
       <section className={cardClassName()}>
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-white">Execution</h2>
-        </div>
+        <h2 className="mb-4 text-lg font-semibold text-white">Execution</h2>
 
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            Worker: <span className="text-zinc-300">{toText(command.worker)}</span>
-          </div>
-
-          <div>
-            Created: <span className="text-zinc-300">{formatDate(command.created_at)}</span>
-          </div>
-
-          <div>
-            Started: <span className="text-zinc-300">{formatDate(command.started_at)}</span>
-          </div>
-
-          <div>
-            Finished: <span className="text-zinc-300">{formatDate(command.finished_at)}</span>
-          </div>
-
-          <div>
-            Scheduled: <span className="text-zinc-300">{formatDate(command.scheduled_at)}</span>
-          </div>
-
-          <div>
-            Next retry: <span className="text-zinc-300">{formatDate(command.next_retry_at)}</span>
-          </div>
+          <div>Worker: <span className="text-zinc-300">{toText(command.worker)}</span></div>
+          <div>Created: <span className="text-zinc-300">{formatDate(command.created_at)}</span></div>
+          <div>Started: <span className="text-zinc-300">{formatDate(command.started_at)}</span></div>
+          <div>Finished: <span className="text-zinc-300">{formatDate(command.finished_at)}</span></div>
+          <div>Scheduled: <span className="text-zinc-300">{formatDate(command.scheduled_at)}</span></div>
+          <div>Next retry: <span className="text-zinc-300">{formatDate(command.next_retry_at)}</span></div>
         </div>
       </section>
 
       <section className={cardClassName()}>
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-white">Control / Retry</h2>
-        </div>
+        <h2 className="mb-4 text-lg font-semibold text-white">Control / Retry</h2>
 
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            Retry count: <span className="text-zinc-300">{toText(command.retry_count)}</span>
-          </div>
-
-          <div>
-            Retry max: <span className="text-zinc-300">{toText(command.retry_max)}</span>
-          </div>
+          <div>Retry count: <span className="text-zinc-300">{toText(command.retry_count)}</span></div>
+          <div>Retry max: <span className="text-zinc-300">{toText(command.retry_max)}</span></div>
 
           <div>
             Locked:{" "}
             <span className="text-zinc-300">
               {typeof command.is_locked === "boolean"
-                ? command.is_locked
-                  ? "Yes"
-                  : "No"
+                ? command.is_locked ? "Yes" : "No"
                 : "—"}
             </span>
           </div>
 
-          <div>
-            Locked by: <span className="text-zinc-300">{toText(command.locked_by)}</span>
-          </div>
+          <div>Locked by: <span className="text-zinc-300">{toText(command.locked_by)}</span></div>
 
           <div className="md:col-span-2 xl:col-span-3">
             Idempotency key:{" "}
