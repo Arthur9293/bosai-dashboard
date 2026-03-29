@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { fetchCommandById } from "../../../../lib/api";
 
 type CommandItem = {
@@ -36,7 +35,6 @@ function formatDate(value?: string) {
   }).format(d);
 }
 
-// ✅ FIX ICI
 function toText(
   value?: string | number | null,
   fallback: string = "—"
@@ -90,15 +88,60 @@ export default async function CommandDetailPage({ params }: PageProps) {
   const { id } = params;
 
   let command: CommandItem | null = null;
+  let fetchError = "";
 
   try {
     command = await fetchCommandById(id);
-  } catch {
+  } catch (error) {
     command = null;
+    fetchError =
+      error instanceof Error ? error.message : "Unknown fetchCommandById error";
   }
 
   if (!command) {
-    notFound();
+    return (
+      <div className="space-y-6">
+        <div className="border-b border-white/10 pb-4">
+          <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+            COMMAND
+          </div>
+
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            Command not found
+          </h1>
+
+          <p className="mt-2 max-w-3xl text-sm text-zinc-400 sm:text-base">
+            Impossible de charger cette commande BOSAI.
+          </p>
+        </div>
+
+        <section className={cardClassName()}>
+          <h2 className="mb-4 text-lg font-semibold text-white">Debug</h2>
+
+          <div className="space-y-3 text-sm text-zinc-400">
+            <div>
+              Requested ID: <span className="break-all text-zinc-300">{id}</span>
+            </div>
+
+            <div>
+              Error:{" "}
+              <span className="break-all text-red-300">
+                {fetchError || "No error message"}
+              </span>
+            </div>
+
+            <div className="pt-2">
+              <Link
+                href="/commands"
+                className="inline-flex rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10"
+              >
+                Retour à la liste Commands
+              </Link>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   const flowId = String(command.flow_id || "").trim();
@@ -223,7 +266,9 @@ export default async function CommandDetailPage({ params }: PageProps) {
             Locked:{" "}
             <span className="text-zinc-300">
               {typeof command.is_locked === "boolean"
-                ? command.is_locked ? "Yes" : "No"
+                ? command.is_locked
+                  ? "Yes"
+                  : "No"
                 : "—"}
             </span>
           </div>
