@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import {
   fetchFlowById,
   fetchIncidentsByFlowId,
@@ -19,7 +20,7 @@ function badgeClass(value?: string) {
     return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
   }
 
-  if (["warning", "queued", "pending", "medium", "retry"].includes(v)) {
+  if (["warning", "queued", "pending", "medium", "retry", "open"].includes(v)) {
     return "border-amber-500/30 bg-amber-500/10 text-amber-300";
   }
 
@@ -33,19 +34,22 @@ function badgeClass(value?: string) {
 function fmt(value?: string | null) {
   if (!value) return "—";
 
-  try {
-    return new Date(value).toLocaleString("fr-FR");
-  } catch {
-    return value;
-  }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+
+  return d.toLocaleString("fr-FR");
 }
 
 function getFlowStatus(flow: FlowDetail) {
   const stats = flow.stats || {};
+
   if ((stats.error || 0) > 0 || (stats.dead || 0) > 0) return "FAILED";
   if ((stats.running || 0) > 0 || (stats.retry || 0) > 0) return "RUNNING";
-  if ((stats.done || 0) > 0 && (flow.count || 0) === (stats.done || 0)) return "SUCCESS";
+  if ((stats.done || 0) > 0 && (flow.count || 0) === (stats.done || 0)) {
+    return "SUCCESS";
+  }
   if ((stats.done || 0) > 0) return "PARTIAL";
+
   return "UNKNOWN";
 }
 
@@ -57,10 +61,30 @@ function getFailedCount(flow: FlowDetail) {
   return (flow.stats?.error ?? 0) + (flow.stats?.dead ?? 0);
 }
 
+function getIncidentSortTs(incident: IncidentItem) {
+  return new Date(
+    incident.updated_at ||
+      incident.opened_at ||
+      incident.created_at ||
+      incident.resolved_at ||
+      0
+  ).getTime();
+}
+
 export default async function FlowDetailPage({ params }: PageProps) {
   const { id } = await params;
 
-  const flow = await fetchFlowById(id);
+  let flow: FlowDetail | null = null;
+
+  try {
+    flow = await fetchFlowById(decodeURIComponent(id));
+  } catch {
+    flow = null;
+  }
+
+  if (!flow) {
+    notFound();
+  }
 
   const effectiveFlowId = flow.flow_id || flow.id || id;
 
@@ -68,7 +92,10 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   try {
     const incidents = await fetchIncidentsByFlowId(effectiveFlowId);
-    linkedIncident = incidents[0] || null;
+    const sortedIncidents = [...incidents].sort(
+      (a, b) => getIncidentSortTs(b) - getIncidentSortTs(a)
+    );
+    linkedIncident = sortedIncidents[0] || null;
   } catch {
     linkedIncident = null;
   }
@@ -82,7 +109,10 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
     if (aStep !== bStep) return aStep - bStep;
 
-    return 0;
+    return (
+      new Date(a.started_at || a.created_at || 0).getTime() -
+      new Date(b.started_at || b.created_at || 0).getTime()
+    );
   });
 
   const flowStatus = getFlowStatus(flow);
@@ -107,9 +137,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
           {effectiveFlowId}
         </h1>
 
-        <p className="mt-2 text-white/55">
-          Vue détaillée du flow BOSAI.
-        </p>
+        <p className="mt-2 text-white/55">Vue détaillée du flow BOSAI.</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -158,7 +186,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <div>Root event: {flow.root_event_id || "—"}</div>
           <div>Workspace: {flow.workspace_id || "production"}</div>
           <div>Last step: {lastCommand?.capability || "—"}</div>
-          <div>Last activity: —</div>
+          <div>Last activity: {fmt(lastCommand?.finished_at || lastCommand?.started_at || lastCommand?.created_at)}</div>
           <div>Last status: {flowStatus}</div>
         </div>
       </div>
@@ -234,7 +262,9 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
         <div className="space-y-4">
           {sortedCommands.length === 0 ? (
-            <div className="text-sm text-white/60">Aucune commande dans ce flow.</div>
+            <div className="text-sm text-white/60">
+              Aucune commande dans ce flow.
+            </div>
           ) : (
             sortedCommands.map((step, index) => (
               <div
