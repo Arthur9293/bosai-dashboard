@@ -9,13 +9,19 @@ type CommandItem = {
   priority?: number;
   step_index?: number;
   flow_id?: string;
+  flowid?: string;
   root_event_id?: string;
+  rooteventid?: string;
+  event_id?: string;
   parent_command_id?: string;
   worker?: string;
   workspace_id?: string;
   started_at?: string;
   finished_at?: string;
   created_at?: string;
+  input?: Record<string, unknown>;
+  input_json?: Record<string, unknown> | string;
+  result_json?: Record<string, unknown> | string;
 };
 
 type FlowGroup = {
@@ -155,6 +161,107 @@ function getDisplayFlowTitle(flow: FlowGroup) {
   return flow.isSynthetic ? "Legacy standalone command" : flow.flowId;
 }
 
+function safeObject(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+function parseInputJson(
+  value: Record<string, unknown> | string | undefined
+): Record<string, unknown> | null {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return safeObject(parsed);
+    } catch {
+      return null;
+    }
+  }
+
+  return safeObject(value);
+}
+
+function getCommandFlowId(cmd: CommandItem): string | null {
+  const direct = cmd.flow_id || cmd.flowid;
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+
+  const inputObj = safeObject(cmd.input) || parseInputJson(cmd.input_json);
+
+  const candidate =
+    inputObj?.flow_id ||
+    inputObj?.flowid ||
+    inputObj?.flowId;
+
+  if (typeof candidate === "string" && candidate.trim()) {
+    return candidate.trim();
+  }
+
+  const resultObj = parseInputJson(cmd.result_json);
+
+  const resultCandidate =
+    resultObj?.flow_id ||
+    resultObj?.flowid ||
+    resultObj?.flowId;
+
+  if (typeof resultCandidate === "string" && resultCandidate.trim()) {
+    return resultCandidate.trim();
+  }
+
+  return null;
+}
+
+function getCommandRootEventId(cmd: CommandItem): string | undefined {
+  const direct =
+    cmd.root_event_id ||
+    cmd.rooteventid ||
+    cmd.event_id;
+
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+
+  const inputObj = safeObject(cmd.input) || parseInputJson(cmd.input_json);
+
+  const candidate =
+    inputObj?.root_event_id ||
+    inputObj?.rooteventid ||
+    inputObj?.event_id;
+
+  if (typeof candidate === "string" && candidate.trim()) {
+    return candidate.trim();
+  }
+
+  const resultObj = parseInputJson(cmd.result_json);
+
+  const resultCandidate =
+    resultObj?.root_event_id ||
+    resultObj?.rooteventid;
+
+  if (typeof resultCandidate === "string" && resultCandidate.trim()) {
+    return resultCandidate.trim();
+  }
+
+  return undefined;
+}
+
+function getLastCommand(commands: CommandItem[]) {
+  if (commands.length === 0) return null;
+  return commands[commands.length - 1];
+}
+
+function getLastActivity(commands: CommandItem[]) {
+  const last = getLastCommand(commands);
+  if (!last) return "—";
+
+  return formatDate(last.finished_at || last.started_at || last.created_at);
+}
+
 type PageProps = {
   params: Promise<{
     id: string;
@@ -177,19 +284,29 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const grouped = new Map<string, FlowGroup>();
 
   for (const cmd of commands) {
-    const hasRealFlowId = !!String(cmd.flow_id || "").trim();
-    const flowId = hasRealFlowId ? String(cmd.flow_id).trim() : `no-flow:${cmd.id}`;
+    const resolvedFlowId = getCommandFlowId(cmd);
+    const resolvedRootEventId = getCommandRootEventId(cmd);
+
+    const flowId =
+      resolvedFlowId ||
+      (resolvedRootEventId ? `root:${resolvedRootEventId}` : `no-flow:${cmd.id}`);
 
     if (!grouped.has(flowId)) {
       grouped.set(flowId, {
         flowId,
-        rootEventId: cmd.root_event_id,
+        rootEventId: resolvedRootEventId,
         commands: [],
-        isSynthetic: !hasRealFlowId,
+        isSynthetic: !resolvedFlowId,
       });
     }
 
-    grouped.get(flowId)!.commands.push(cmd);
+    const current = grouped.get(flowId)!;
+
+    if (!current.rootEventId && resolvedRootEventId) {
+      current.rootEventId = resolvedRootEventId;
+    }
+
+    current.commands.push(cmd);
   }
 
   const flow = grouped.get(decodeURIComponent(id));
@@ -213,10 +330,21 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   const flowStatus = getFlowStatus(sortedCommands);
   const summary = getFlowSummary(sortedCommands);
+  const lastCommand = getLastCommand(sortedCommands);
+  const lastActivity = getLastActivity(sortedCommands);
 
   return (
     <div className="space-y-6">
       <div className="border-b border-white/10 pb-4">
+        <div className="mb-3">
+          <Link
+            href="/flows"
+            className="text-sm text-zinc-400 underline decoration-white/10 underline-offset-4 transition hover:text-white"
+          >
+            ← Retour aux flows
+          </Link>
+        </div>
+
         <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
           FLOW
         </div>
@@ -282,6 +410,18 @@ export default async function FlowDetailPage({ params }: PageProps) {
             <span className="text-zinc-300">
               {flow.isSynthetic ? "Legacy synthetic record" : "Linked flow"}
             </span>
+          </div>
+          <div>
+            Last step:{" "}
+            <span className="text-zinc-300">{lastCommand?.capability || "—"}</span>
+          </div>
+          <div>
+            Last activity:{" "}
+            <span className="text-zinc-300">{lastActivity}</span>
+          </div>
+          <div>
+            Last status:{" "}
+            <span className="text-zinc-300">{statusLabel(lastCommand?.status)}</span>
           </div>
         </div>
       </section>
@@ -350,8 +490,10 @@ export default async function FlowDetailPage({ params }: PageProps) {
                           Priority:{" "}
                           {typeof cmd.priority === "number" ? cmd.priority : "—"}
                         </span>
-                        <span>Flow: {cmd.flow_id || "—"}</span>
-                        <span>Root event: {cmd.root_event_id || "—"}</span>
+                        <span>Flow: {cmd.flow_id || cmd.flowid || "—"}</span>
+                        <span>
+                          Root event: {cmd.root_event_id || cmd.rooteventid || "—"}
+                        </span>
                         <span>
                           Parent command:{" "}
                           {cmd.parent_command_id ? (
