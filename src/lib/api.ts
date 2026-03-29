@@ -140,7 +140,7 @@ export type IncidentItem = {
   title?: string;
   name?: string;
   error_id?: string;
-  status?: string;
+  status_select?: string;
   statut_incident?: string;
   severity?: string;
   sla_status?: string;
@@ -275,10 +275,10 @@ function normalizeIncident(item: RawIncidentItem): IncidentItem {
   );
 
   const status = firstString(
-    item.status,
-    item.Status,
-    item.Status_select,
     item.status_select,
+    item.Status_select,
+    item.Status,
+    item.status,
     item.statut_incident
   );
 
