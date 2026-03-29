@@ -1,39 +1,5 @@
 import Link from "next/link";
-import { fetchIncidents } from "../../../lib/api";
-
-type IncidentItem = {
-  id: string;
-  name?: string;
-  Name?: string;
-  status?: string;
-  Status?: string;
-  status_select?: string;
-  Status_select?: string;
-  severity?: string;
-  Severity?: string;
-  category?: string;
-  Category?: string;
-  reason?: string;
-  Reason?: string;
-  flow_id?: string;
-  Flow_ID?: string;
-  root_event_id?: string;
-  Root_Event_ID?: string;
-  run_record_id?: string;
-  Run_Record_ID?: string;
-  command_id?: string;
-  Command_ID?: string;
-  updated_at?: string;
-  Updated_At?: string;
-  opened_at?: string;
-  Opened_At?: string;
-  resolved_at?: string;
-  Resolved_At?: string;
-  workspace_id?: string;
-  Workspace_ID?: string;
-  sla_status?: string;
-  sla_remaining_minutes?: number;
-};
+import { fetchIncidents, type IncidentItem, type IncidentsResponse } from "@/lib/api";
 
 function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
@@ -51,145 +17,327 @@ function formatDate(value?: string) {
   }).format(d);
 }
 
-function getIncidentName(item: IncidentItem) {
-  return String(item.name || item.Name || "Incident").trim();
+function toText(value: unknown, fallback = "—") {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  return text || fallback;
 }
 
-function getIncidentStatus(item: IncidentItem) {
-  const direct = String(
-    item.Status_select ||
-      item.status_select ||
-      item.status ||
-      item.Status ||
-      ""
-  ).trim();
-
-  if (direct) return direct;
-
-  const sla = String(item.sla_status || "").trim().toLowerCase();
-  const remaining =
-    typeof item.sla_remaining_minutes === "number"
-      ? item.sla_remaining_minutes
-      : undefined;
-
-  if (sla === "breached") return "Open";
-  if (remaining !== undefined && remaining < 0) return "Open";
-
-  return "Unknown";
+function getIncidentTitle(incident: IncidentItem) {
+  return (
+    incident.title ||
+    incident.name ||
+    incident.error_id ||
+    "Untitled incident"
+  );
 }
 
-function getIncidentSeverity(item: IncidentItem) {
-  return String(item.severity || item.Severity || "unknown").trim();
+function getIncidentStatusRaw(incident: IncidentItem) {
+  return (incident.status || incident.statut_incident || "").trim();
 }
 
-function getIncidentCategory(item: IncidentItem) {
-  return String(item.category || item.Category || "—").trim();
+function getIncidentSeverityRaw(incident: IncidentItem) {
+  return (incident.severity || "").trim();
 }
 
-function getIncidentReason(item: IncidentItem) {
-  return String(item.reason || item.Reason || "—").trim();
+function getIncidentStatusNormalized(incident: IncidentItem) {
+  const raw = getIncidentStatusRaw(incident).toLowerCase();
+
+  if (!raw) {
+    if ((incident.sla_status || "").toLowerCase() === "breached") return "open";
+    return "open";
+  }
+
+  if (["open", "opened", "new", "active", "en cours"].includes(raw)) return "open";
+  if (["escalated", "escalade", "escaladé"].includes(raw)) return "escalated";
+  if (["resolved", "closed", "done", "résolu"].includes(raw)) return "resolved";
+
+  return raw;
 }
 
-function getIncidentFlowId(item: IncidentItem) {
-  return String(item.flow_id || item.Flow_ID || "").trim();
+function getIncidentStatusLabel(incident: IncidentItem) {
+  const normalized = getIncidentStatusNormalized(incident);
+
+  if (normalized === "open") return "OPEN";
+  if (normalized === "escalated") return "ESCALATED";
+  if (normalized === "resolved") return "RESOLVED";
+
+  const raw = getIncidentStatusRaw(incident);
+  return raw ? raw.toUpperCase() : "OPEN";
 }
 
-function getIncidentRootEventId(item: IncidentItem) {
-  return String(item.root_event_id || item.Root_Event_ID || "").trim();
+function getIncidentSeverityNormalized(incident: IncidentItem) {
+  const raw = getIncidentSeverityRaw(incident).toLowerCase();
+
+  if (!raw) {
+    if ((incident.sla_status || "").toLowerCase() === "breached") return "critical";
+    return "unknown";
+  }
+
+  if (["critical", "critique"].includes(raw)) return "critical";
+  if (["high", "élevé", "eleve"].includes(raw)) return "high";
+  if (["warning", "warn", "medium", "moyen"].includes(raw)) return "medium";
+  if (["low", "faible"].includes(raw)) return "low";
+
+  return raw;
 }
 
-function getIncidentRunRecordId(item: IncidentItem) {
-  return String(item.run_record_id || item.Run_Record_ID || "").trim();
+function getIncidentSeverityLabel(incident: IncidentItem) {
+  const normalized = getIncidentSeverityNormalized(incident);
+
+  if (normalized === "critical") return "CRITICAL";
+  if (normalized === "high") return "HIGH";
+  if (normalized === "medium") return "MEDIUM";
+  if (normalized === "low") return "LOW";
+
+  const raw = getIncidentSeverityRaw(incident);
+  return raw ? raw.toUpperCase() : "UNKNOWN";
 }
 
-function getIncidentCommandId(item: IncidentItem) {
-  return String(item.command_id || item.Command_ID || "").trim();
-}
+function statusTone(incident: IncidentItem) {
+  const status = getIncidentStatusNormalized(incident);
 
-function getIncidentOpenedAt(item: IncidentItem) {
-  return item.opened_at || item.Opened_At;
-}
-
-function getIncidentUpdatedAt(item: IncidentItem) {
-  return item.updated_at || item.Updated_At;
-}
-
-function getIncidentResolvedAt(item: IncidentItem) {
-  return item.resolved_at || item.Resolved_At;
-}
-
-function getIncidentWorkspace(item: IncidentItem) {
-  return String(item.workspace_id || item.Workspace_ID || "—").trim();
-}
-
-function statusTone(status?: string) {
-  const s = (status || "").toLowerCase();
-
-  if (s === "resolved" || s === "done" || s === "closed") {
+  if (status === "resolved") {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  if (s === "escalated") {
+  if (status === "escalated") {
     return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
   }
 
-  if (s === "open" || s === "active") {
+  if (status === "open") {
     return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
   }
 
-  if (s === "error" || s === "failed") {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function severityTone(severity?: string) {
-  const s = (severity || "").toLowerCase();
+function severityTone(incident: IncidentItem) {
+  const severity = getIncidentSeverityNormalized(incident);
 
-  if (s === "critical" || s === "critique") {
+  if (severity === "critical") {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
   }
 
-  if (s === "high") {
+  if (severity === "high") {
     return "bg-orange-500/15 text-orange-300 border border-orange-500/20";
   }
 
-  if (s === "medium") {
+  if (severity === "medium") {
     return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
   }
 
-  if (s === "low") {
+  if (severity === "low") {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function statusLabel(status?: string) {
-  const s = (status || "").toLowerCase();
-
-  if (s === "resolved" || s === "done" || s === "closed") return "RESOLVED";
-  if (s === "escalated") return "ESCALATED";
-  if (s === "open" || s === "active") return "OPEN";
-  if (s === "error" || s === "failed") return "FAILED";
-
-  return (status || "UNKNOWN").toUpperCase();
+function getOpenedAt(incident: IncidentItem) {
+  return incident.opened_at || incident.created_at;
 }
 
-function severityLabel(severity?: string) {
-  const s = (severity || "").toLowerCase();
+function getUpdatedAt(incident: IncidentItem) {
+  return incident.updated_at || incident.created_at;
+}
 
-  if (s === "critical" || s === "critique") return "CRITICAL";
-  if (s === "high") return "HIGH";
-  if (s === "medium") return "MEDIUM";
-  if (s === "low") return "LOW";
+function getResolvedAt(incident: IncidentItem) {
+  return incident.resolved_at;
+}
 
-  return (severity || "UNKNOWN").toUpperCase();
+function getWorkspace(incident: IncidentItem) {
+  return incident.workspace_id || incident.workspace || "—";
+}
+
+function getRunRecord(incident: IncidentItem) {
+  return incident.run_record_id || incident.linked_run || incident.run_id || "—";
+}
+
+function getCommandRecord(incident: IncidentItem) {
+  return incident.command_id || incident.linked_command || "—";
+}
+
+function getFlowId(incident: IncidentItem) {
+  return incident.flow_id || "";
+}
+
+function getRootEventId(incident: IncidentItem) {
+  return incident.root_event_id || "";
+}
+
+function getCategory(incident: IncidentItem) {
+  return incident.category || "—";
+}
+
+function getReason(incident: IncidentItem) {
+  return incident.reason || "—";
+}
+
+function getSuggestedAction(incident: IncidentItem) {
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+
+  if (status === "escalated") return "Review escalated incident";
+  if (severity === "critical") return "Prioritize immediate review";
+  if ((incident.sla_status || "").toLowerCase() === "breached") return "Review SLA breach";
+  if (status === "resolved") return "Verify final resolution state";
+
+  return "Monitor flow and resolution";
+}
+
+type NormalizedIncident = {
+  raw: IncidentItem;
+  id: string;
+  title: string;
+  status: string;
+  statusLabel: string;
+  severity: string;
+  severityLabel: string;
+  openedAt?: string;
+  updatedAt?: string;
+  resolvedAt?: string;
+  workspace: string;
+  runRecord: string;
+  commandRecord: string;
+  flowId: string;
+  rootEventId: string;
+  category: string;
+  reason: string;
+  suggestedAction: string;
+  sortDate: number;
+};
+
+function normalizeIncident(incident: IncidentItem): NormalizedIncident {
+  const openedAt = getOpenedAt(incident);
+  const updatedAt = getUpdatedAt(incident);
+  const resolvedAt = getResolvedAt(incident);
+
+  return {
+    raw: incident,
+    id: incident.id,
+    title: getIncidentTitle(incident),
+    status: getIncidentStatusNormalized(incident),
+    statusLabel: getIncidentStatusLabel(incident),
+    severity: getIncidentSeverityNormalized(incident),
+    severityLabel: getIncidentSeverityLabel(incident),
+    openedAt,
+    updatedAt,
+    resolvedAt,
+    workspace: getWorkspace(incident),
+    runRecord: getRunRecord(incident),
+    commandRecord: getCommandRecord(incident),
+    flowId: getFlowId(incident),
+    rootEventId: getRootEventId(incident),
+    category: getCategory(incident),
+    reason: getReason(incident),
+    suggestedAction: getSuggestedAction(incident),
+    sortDate: new Date(updatedAt || openedAt || resolvedAt || 0).getTime(),
+  };
+}
+
+function IncidentCard({ incident }: { incident: NormalizedIncident }) {
+  return (
+    <article className="rounded-2xl border border-white/10 bg-white/5 p-5">
+      <div className="mb-4 flex flex-col gap-3 border-b border-white/10 pb-4">
+        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+          BOSAI INCIDENT
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="break-all text-lg font-semibold text-white">
+            {incident.title}
+          </div>
+
+          <span
+            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
+              incident.raw
+            )}`}
+          >
+            {incident.statusLabel}
+          </span>
+
+          <span
+            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${severityTone(
+              incident.raw
+            )}`}
+          >
+            {incident.severityLabel}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
+          <span>
+            Category: <span className="text-zinc-300">{incident.category}</span>
+          </span>
+          <span>
+            Reason: <span className="text-zinc-300">{incident.reason}</span>
+          </span>
+          <span>
+            Workspace: <span className="text-zinc-300">{incident.workspace}</span>
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+        <div>
+          Opened: <span className="text-zinc-300">{formatDate(incident.openedAt)}</span>
+        </div>
+
+        <div>
+          Updated: <span className="text-zinc-300">{formatDate(incident.updatedAt)}</span>
+        </div>
+
+        <div>
+          Resolved: <span className="text-zinc-300">{formatDate(incident.resolvedAt)}</span>
+        </div>
+
+        <div className="break-all">
+          Flow:{" "}
+          {incident.flowId !== "—" && incident.flowId ? (
+            <Link
+              href={`/flows/${encodeURIComponent(incident.flowId)}`}
+              className="text-zinc-300 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+            >
+              {incident.flowId}
+            </Link>
+          ) : (
+            <span className="text-zinc-300">—</span>
+          )}
+        </div>
+
+        <div className="break-all">
+          Root event: <span className="text-zinc-300">{toText(incident.rootEventId)}</span>
+        </div>
+
+        <div className="break-all">
+          Run record: <span className="text-zinc-300">{toText(incident.runRecord)}</span>
+        </div>
+
+        <div className="break-all">
+          Command:{" "}
+          {incident.commandRecord !== "—" && incident.commandRecord ? (
+            <Link
+              href={`/commands/${encodeURIComponent(incident.commandRecord)}`}
+              className="text-zinc-300 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+            >
+              {incident.commandRecord}
+            </Link>
+          ) : (
+            <span className="text-zinc-300">—</span>
+          )}
+        </div>
+
+        <div className="md:col-span-2 xl:col-span-3">
+          Action suggested: <span className="text-zinc-300">{incident.suggestedAction}</span>
+        </div>
+      </div>
+    </article>
+  );
 }
 
 export default async function IncidentsPage() {
-  let data: any = null;
+  let data: IncidentsResponse | null = null;
 
   try {
     data = await fetchIncidents();
@@ -197,57 +345,20 @@ export default async function IncidentsPage() {
     data = null;
   }
 
-  const incidents: IncidentItem[] =
-    data?.incidents || data?.items || data?.records || [];
+  const incidents: IncidentItem[] = Array.isArray(data?.incidents) ? data!.incidents! : [];
 
-  const normalized = incidents.map((item) => {
-    const status = getIncidentStatus(item);
-    const severity = getIncidentSeverity(item);
-    const flowId = getIncidentFlowId(item);
-    const openedAt = getIncidentOpenedAt(item);
-    const updatedAt = getIncidentUpdatedAt(item);
-    const resolvedAt = getIncidentResolvedAt(item);
+  const normalized = incidents
+    .map(normalizeIncident)
+    .sort((a, b) => b.sortDate - a.sortDate);
 
-    return {
-      raw: item,
-      id: item.id,
-      name: getIncidentName(item),
-      status,
-      severity,
-      category: getIncidentCategory(item),
-      reason: getIncidentReason(item),
-      flowId,
-      rootEventId: getIncidentRootEventId(item),
-      runRecordId: getIncidentRunRecordId(item),
-      commandId: getIncidentCommandId(item),
-      workspaceId: getIncidentWorkspace(item),
-      openedAt,
-      updatedAt,
-      resolvedAt,
-      slaStatus: item.sla_status,
-      slaRemainingMinutes: item.sla_remaining_minutes,
-      sortDate: new Date(updatedAt || openedAt || resolvedAt || 0).getTime(),
-    };
-  });
+  const openIncidents = normalized.filter((item) => item.status === "open");
+  const escalatedIncidents = normalized.filter((item) => item.status === "escalated");
+  const resolvedIncidents = normalized.filter((item) => item.status === "resolved");
+  const criticalIncidents = normalized.filter((item) => item.severity === "critical");
 
-  const sortedIncidents = [...normalized].sort((a, b) => b.sortDate - a.sortDate);
-
-  const openIncidents = sortedIncidents.filter(
-    (item) => item.status.toLowerCase() === "open"
+  const activeIncidents = [...openIncidents, ...escalatedIncidents].sort(
+    (a, b) => b.sortDate - a.sortDate
   );
-
-  const escalatedIncidents = sortedIncidents.filter(
-    (item) => item.status.toLowerCase() === "escalated"
-  );
-
-  const resolvedIncidents = sortedIncidents.filter(
-    (item) => item.status.toLowerCase() === "resolved"
-  );
-
-  const criticalIncidents = sortedIncidents.filter((item) => {
-    const s = item.severity.toLowerCase();
-    return s === "critical" || s === "critique";
-  });
 
   return (
     <div className="space-y-6">
@@ -291,7 +402,7 @@ export default async function IncidentsPage() {
         </div>
       </section>
 
-      {sortedIncidents.length === 0 ? (
+      {normalized.length === 0 ? (
         <section className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500">
           Aucun incident visible pour le moment.
         </section>
@@ -300,128 +411,17 @@ export default async function IncidentsPage() {
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">Active incidents</h2>
-              <span className="text-sm text-zinc-400">
-                {openIncidents.length + escalatedIncidents.length}
-              </span>
+              <span className="text-sm text-zinc-400">{activeIncidents.length}</span>
             </div>
 
-            {openIncidents.length + escalatedIncidents.length === 0 ? (
+            {activeIncidents.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500">
                 Aucun incident actif.
               </div>
             ) : (
               <div className="space-y-4">
-                {[...openIncidents, ...escalatedIncidents].map((incident) => (
-                  <article
-                    key={incident.id}
-                    className="rounded-2xl border border-white/10 bg-white/5 p-5"
-                  >
-                    <div className="mb-4 flex flex-col gap-3 border-b border-white/10 pb-4">
-                      <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                        BOSAI INCIDENT
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="break-all text-lg font-semibold text-white">
-                          {incident.name}
-                        </div>
-
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
-                            incident.status
-                          )}`}
-                        >
-                          {statusLabel(incident.status)}
-                        </span>
-
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${severityTone(
-                            incident.severity
-                          )}`}
-                        >
-                          {severityLabel(incident.severity)}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
-                        <span>
-                          Category: <span className="text-zinc-300">{incident.category}</span>
-                        </span>
-                        <span>
-                          Reason: <span className="text-zinc-300">{incident.reason}</span>
-                        </span>
-                        <span>
-                          Workspace:{" "}
-                          <span className="text-zinc-300">{incident.workspaceId || "—"}</span>
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-                      <div>
-                        Opened:{" "}
-                        <span className="text-zinc-300">{formatDate(incident.openedAt)}</span>
-                      </div>
-                      <div>
-                        Updated:{" "}
-                        <span className="text-zinc-300">{formatDate(incident.updatedAt)}</span>
-                      </div>
-                      <div>
-                        Resolved:{" "}
-                        <span className="text-zinc-300">{formatDate(incident.resolvedAt)}</span>
-                      </div>
-
-                      <div className="break-all">
-                        Flow:{" "}
-                        {incident.flowId ? (
-                          <Link
-                            href={`/flows/${encodeURIComponent(incident.flowId)}`}
-                            className="text-zinc-300 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                          >
-                            {incident.flowId}
-                          </Link>
-                        ) : (
-                          <span className="text-zinc-300">—</span>
-                        )}
-                      </div>
-
-                      <div className="break-all">
-                        Root event:{" "}
-                        <span className="text-zinc-300">{incident.rootEventId || "—"}</span>
-                      </div>
-
-                      <div className="break-all">
-                        Run record:{" "}
-                        <span className="text-zinc-300">{incident.runRecordId || "—"}</span>
-                      </div>
-
-                      <div className="break-all">
-                        Command:{" "}
-                        {incident.commandId ? (
-                          <Link
-                            href={`/commands/${encodeURIComponent(incident.commandId)}`}
-                            className="text-zinc-300 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                          >
-                            {incident.commandId}
-                          </Link>
-                        ) : (
-                          <span className="text-zinc-300">—</span>
-                        )}
-                      </div>
-
-                      <div className="md:col-span-2 xl:col-span-3">
-                        Action suggested:{" "}
-                        <span className="text-zinc-300">
-                          {incident.status.toLowerCase() === "escalated"
-                            ? "Review escalated incident"
-                            : incident.severity.toLowerCase() === "critical" ||
-                              incident.severity.toLowerCase() === "critique"
-                            ? "Prioritize immediate review"
-                            : "Monitor flow and resolution"}
-                        </span>
-                      </div>
-                    </div>
-                  </article>
+                {activeIncidents.map((incident) => (
+                  <IncidentCard key={incident.id} incident={incident} />
                 ))}
               </div>
             )}
@@ -440,72 +440,7 @@ export default async function IncidentsPage() {
             ) : (
               <div className="space-y-4">
                 {resolvedIncidents.map((incident) => (
-                  <article
-                    key={incident.id}
-                    className="rounded-2xl border border-white/10 bg-white/5 p-5"
-                  >
-                    <div className="mb-4 flex flex-col gap-3 border-b border-white/10 pb-4">
-                      <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                        RESOLVED INCIDENT
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="break-all text-lg font-semibold text-white">
-                          {incident.name}
-                        </div>
-
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
-                            incident.status
-                          )}`}
-                        >
-                          {statusLabel(incident.status)}
-                        </span>
-
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${severityTone(
-                            incident.severity
-                          )}`}
-                        >
-                          {severityLabel(incident.severity)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-                      <div>
-                        Resolved:{" "}
-                        <span className="text-zinc-300">{formatDate(incident.resolvedAt)}</span>
-                      </div>
-                      <div>
-                        Last update:{" "}
-                        <span className="text-zinc-300">{formatDate(incident.updatedAt)}</span>
-                      </div>
-                      <div>
-                        Workspace:{" "}
-                        <span className="text-zinc-300">{incident.workspaceId || "—"}</span>
-                      </div>
-                      <div className="break-all">
-                        Flow:{" "}
-                        {incident.flowId ? (
-                          <Link
-                            href={`/flows/${encodeURIComponent(incident.flowId)}`}
-                            className="text-zinc-300 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                          >
-                            {incident.flowId}
-                          </Link>
-                        ) : (
-                          <span className="text-zinc-300">—</span>
-                        )}
-                      </div>
-                      <div>
-                        Category: <span className="text-zinc-300">{incident.category}</span>
-                      </div>
-                      <div>
-                        Reason: <span className="text-zinc-300">{incident.reason}</span>
-                      </div>
-                    </div>
-                  </article>
+                  <IncidentCard key={incident.id} incident={incident} />
                 ))}
               </div>
             )}
