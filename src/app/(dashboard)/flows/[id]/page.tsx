@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { fetchFlowById } from "../../../../lib/api";
+import {
+  fetchFlowById,
+  fetchIncidentsByFlowId,
+  type IncidentItem,
+} from "../../../../lib/api";
 
 type FlowCommandItem = {
   id: string;
@@ -233,6 +237,16 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const summary = getFlowSummary(commands);
   const lastCommand = getLastCommand(commands);
   const lastActivity = getLastActivity(commands);
+
+  const effectiveFlowId = flow.id;
+
+  let linkedIncidents: IncidentItem[] = [];
+
+  try {
+    linkedIncidents = await fetchIncidentsByFlowId(effectiveFlowId);
+  } catch {
+    linkedIncidents = [];
+  }
 
   return (
     <div className="space-y-6">
