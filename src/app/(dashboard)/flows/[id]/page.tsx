@@ -115,18 +115,30 @@ function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
-function isRootCommand(cmd: CommandItem) {
+function isFlowStart(cmd: CommandItem) {
   return typeof cmd.step_index === "number" && cmd.step_index === 1;
 }
 
+function isGraphRoot(cmd: CommandItem) {
+  return !String(cmd.parent_command_id || "").trim();
+}
+
 function lineageBadge(cmd: CommandItem) {
-  return isRootCommand(cmd) ? "ROOT" : "CHILD";
+  if (isFlowStart(cmd)) return "START";
+  if (isGraphRoot(cmd)) return "ROOT";
+  return "CHILD";
 }
 
 function lineageTone(cmd: CommandItem) {
-  return isRootCommand(cmd)
-    ? "bg-white/10 text-zinc-200 border border-white/10"
-    : "bg-white/5 text-zinc-300 border border-white/10";
+  if (isFlowStart(cmd)) {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  if (isGraphRoot(cmd)) {
+    return "bg-white/10 text-zinc-200 border border-white/10";
+  }
+
+  return "bg-white/5 text-zinc-300 border border-white/10";
 }
 
 function getFlowStatus(commands: CommandItem[]) {
@@ -450,7 +462,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
                 <div className="flex flex-col items-center">
                   <div
                     className={`h-3 w-3 rounded-full shadow-lg ${
-                      isRootCommand(cmd)
+                      isFlowStart(cmd)
                         ? "bg-white shadow-white/30"
                         : "bg-zinc-500 shadow-zinc-500/20"
                     }`}
@@ -518,7 +530,12 @@ export default async function FlowDetailPage({ params }: PageProps) {
                           )}
                         </span>
                         <span>
-                          Command role: {isRootCommand(cmd) ? "Root node" : "Child node"}
+                          Command role:{" "}
+                          {isFlowStart(cmd)
+                            ? "Flow start"
+                            : isGraphRoot(cmd)
+                              ? "Graph root"
+                              : "Child node"}
                         </span>
                         <span>Worker: {cmd.worker || "—"}</span>
                         <span>Workspace: {cmd.workspace_id || "—"}</span>
