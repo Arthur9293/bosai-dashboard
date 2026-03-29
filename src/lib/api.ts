@@ -76,6 +76,7 @@ export type CommandItem = {
   root_event_id?: string;
   rooteventid?: string;
   event_id?: string;
+  parent_command_id?: string;
   worker?: string;
   workspace_id?: string;
   started_at?: string;
@@ -83,6 +84,7 @@ export type CommandItem = {
   created_at?: string;
   input?: Record<string, unknown>;
   input_json?: Record<string, unknown> | string;
+  result_json?: Record<string, unknown> | string;
 };
 
 export type CommandsResponse = {
@@ -149,8 +151,15 @@ export type IncidentItem = {
   linked_command?: string;
   command_id?: string;
   run_id?: string;
+  run_record_id?: string;
+  flow_id?: string;
+  root_event_id?: string;
+  category?: string;
+  reason?: string;
   created_at?: string;
   updated_at?: string;
+  resolved_at?: string;
+  opened_at?: string;
   source?: string;
   worker?: string;
 };
@@ -269,7 +278,8 @@ function normalizeIncident(item: RawIncidentItem): IncidentItem {
     item.status,
     item.Status,
     item.Status_select,
-    item.status_select
+    item.status_select,
+    item.statut_incident
   );
 
   const title = firstString(
@@ -278,6 +288,13 @@ function normalizeIncident(item: RawIncidentItem): IncidentItem {
     item.Name,
     item.error_id,
     item.incident_code
+  );
+
+  const runRecordId = firstString(
+    item.run_record_id,
+    item.Run_Record_ID,
+    item.run_id,
+    item.Run_ID
   );
 
   return {
@@ -298,12 +315,19 @@ function normalizeIncident(item: RawIncidentItem): IncidentItem {
       item.Workspace_ID
     ),
     workspace: firstString(item.workspace, item.workspace_name),
-    linked_run: firstString(item.linked_run, item.Linked_Run),
+    linked_run: firstString(item.linked_run, item.Linked_Run, runRecordId),
     linked_command: firstString(item.linked_command, item.Linked_Command),
     command_id: firstString(item.command_id, item.Command_ID),
-    run_id: firstString(item.run_id, item.Run_ID),
+    run_id: firstString(item.run_id, item.Run_ID, runRecordId),
+    run_record_id: runRecordId,
+    flow_id: firstString(item.flow_id, item.Flow_ID),
+    root_event_id: firstString(item.root_event_id, item.Root_Event_ID),
+    category: firstString(item.category, item.Category),
+    reason: firstString(item.reason, item.Reason),
     created_at: firstString(item.created_at, item.Created_At, item.createdTime),
     updated_at: firstString(item.updated_at, item.Updated_At, item.lastModified),
+    resolved_at: firstString(item.resolved_at, item.Resolved_At),
+    opened_at: firstString(item.opened_at, item.Opened_At),
     source: firstString(item.source),
     worker: firstString(item.worker),
   };
