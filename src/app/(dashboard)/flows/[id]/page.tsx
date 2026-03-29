@@ -1,34 +1,40 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { fetchCommands } from "../../../../lib/api";
+import { fetchFlowById } from "../../../../lib/api";
 
-type CommandItem = {
+type FlowCommandItem = {
   id: string;
   capability?: string;
   status?: string;
   priority?: number;
   step_index?: number;
   flow_id?: string;
-  flowid?: string;
   root_event_id?: string;
-  rooteventid?: string;
-  event_id?: string;
   parent_command_id?: string;
   worker?: string;
   workspace_id?: string;
   started_at?: string;
   finished_at?: string;
   created_at?: string;
-  input?: Record<string, unknown>;
-  input_json?: Record<string, unknown> | string;
-  result_json?: Record<string, unknown> | string;
 };
 
-type FlowGroup = {
-  flowId: string;
-  rootEventId?: string;
-  commands: CommandItem[];
-  isSynthetic: boolean;
+type FlowDetail = {
+  id: string;
+  count?: number;
+  root_event_id?: string;
+  workspace_id?: string;
+  stats?: {
+    queued?: number;
+    running?: number;
+    retry?: number;
+    done?: number;
+    dead?: number;
+    blocked?: number;
+    unsupported?: number;
+    error?: number;
+    other?: number;
+  };
+  commands?: FlowCommandItem[];
 };
 
 function formatDate(value?: string) {
@@ -41,6 +47,12 @@ function formatDate(value?: string) {
     dateStyle: "short",
     timeStyle: "short",
   }).format(d);
+}
+
+function toText(value?: string | number | null, fallback = "—") {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  return text || fallback;
 }
 
 function statusTone(status?: string) {
@@ -115,21 +127,21 @@ function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
-function isFlowStart(cmd: CommandItem) {
+function isFlowStart(cmd: FlowCommandItem) {
   return typeof cmd.step_index === "number" && cmd.step_index === 1;
 }
 
-function isGraphRoot(cmd: CommandItem) {
+function isGraphRoot(cmd: FlowCommandItem) {
   return !String(cmd.parent_command_id || "").trim();
 }
 
-function lineageBadge(cmd: CommandItem) {
+function lineageBadge(cmd: FlowCommandItem) {
   if (isFlowStart(cmd)) return "START";
   if (isGraphRoot(cmd)) return "ROOT";
   return "CHILD";
 }
 
-function lineageTone(cmd: CommandItem) {
+function lineageTone(cmd: FlowCommandItem) {
   if (isFlowStart(cmd)) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
@@ -141,7 +153,7 @@ function lineageTone(cmd: CommandItem) {
   return "bg-white/5 text-zinc-300 border border-white/10";
 }
 
-function getFlowStatus(commands: CommandItem[]) {
+function getFlowStatus(commands: FlowCommandItem[]) {
   const statuses = commands.map((cmd) => (cmd.status || "").toLowerCase());
 
   const hasError = statuses.some((s) => ["error", "failed", "dead"].includes(s));
@@ -158,7 +170,7 @@ function getFlowStatus(commands: CommandItem[]) {
   return "UNKNOWN";
 }
 
-function getFlowSummary(commands: CommandItem[]) {
+function getFlowSummary(commands: FlowCommandItem[]) {
   const done = commands.filter((c) => (c.status || "").toLowerCase() === "done").length;
   const running = commands.filter((c) => (c.status || "").toLowerCase() === "running").length;
   const retry = commands.filter((c) => (c.status || "").toLowerCase() === "retry").length;
@@ -169,105 +181,12 @@ function getFlowSummary(commands: CommandItem[]) {
   return { done, running, retry, failed };
 }
 
-function getDisplayFlowTitle(flow: FlowGroup) {
-  return flow.isSynthetic ? "Legacy standalone command" : flow.flowId;
-}
-
-function safeObject(value: unknown): Record<string, unknown> | null {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return null;
-}
-
-function parseInputJson(
-  value: Record<string, unknown> | string | undefined
-): Record<string, unknown> | null {
-  if (!value) return null;
-
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return safeObject(parsed);
-    } catch {
-      return null;
-    }
-  }
-
-  return safeObject(value);
-}
-
-function getCommandFlowId(cmd: CommandItem): string | null {
-  const direct = cmd.flow_id || cmd.flowid;
-  if (typeof direct === "string" && direct.trim()) {
-    return direct.trim();
-  }
-
-  const inputObj = safeObject(cmd.input) || parseInputJson(cmd.input_json);
-
-  const candidate =
-    inputObj?.flow_id ||
-    inputObj?.flowid ||
-    inputObj?.flowId;
-
-  if (typeof candidate === "string" && candidate.trim()) {
-    return candidate.trim();
-  }
-
-  const resultObj = parseInputJson(cmd.result_json);
-
-  const resultCandidate =
-    resultObj?.flow_id ||
-    resultObj?.flowid ||
-    resultObj?.flowId;
-
-  if (typeof resultCandidate === "string" && resultCandidate.trim()) {
-    return resultCandidate.trim();
-  }
-
-  return null;
-}
-
-function getCommandRootEventId(cmd: CommandItem): string | undefined {
-  const direct =
-    cmd.root_event_id ||
-    cmd.rooteventid ||
-    cmd.event_id;
-
-  if (typeof direct === "string" && direct.trim()) {
-    return direct.trim();
-  }
-
-  const inputObj = safeObject(cmd.input) || parseInputJson(cmd.input_json);
-
-  const candidate =
-    inputObj?.root_event_id ||
-    inputObj?.rooteventid ||
-    inputObj?.event_id;
-
-  if (typeof candidate === "string" && candidate.trim()) {
-    return candidate.trim();
-  }
-
-  const resultObj = parseInputJson(cmd.result_json);
-
-  const resultCandidate =
-    resultObj?.root_event_id ||
-    resultObj?.rooteventid;
-
-  if (typeof resultCandidate === "string" && resultCandidate.trim()) {
-    return resultCandidate.trim();
-  }
-
-  return undefined;
-}
-
-function getLastCommand(commands: CommandItem[]) {
+function getLastCommand(commands: FlowCommandItem[]) {
   if (commands.length === 0) return null;
   return commands[commands.length - 1];
 }
 
-function getLastActivity(commands: CommandItem[]) {
+function getLastActivity(commands: FlowCommandItem[]) {
   const last = getLastCommand(commands);
   if (!last) return "—";
 
@@ -283,51 +202,21 @@ type PageProps = {
 export default async function FlowDetailPage({ params }: PageProps) {
   const { id } = await params;
 
-  let data: any = null;
+  let flow: FlowDetail | null = null;
 
   try {
-    data = await fetchCommands();
+    flow = await fetchFlowById(decodeURIComponent(id));
   } catch {
-    data = null;
+    flow = null;
   }
-
-  const commands: CommandItem[] = data?.commands ?? [];
-
-  const grouped = new Map<string, FlowGroup>();
-
-  for (const cmd of commands) {
-    const resolvedFlowId = getCommandFlowId(cmd);
-    const resolvedRootEventId = getCommandRootEventId(cmd);
-
-    const flowId =
-      resolvedFlowId ||
-      (resolvedRootEventId ? `root:${resolvedRootEventId}` : `no-flow:${cmd.id}`);
-
-    if (!grouped.has(flowId)) {
-      grouped.set(flowId, {
-        flowId,
-        rootEventId: resolvedRootEventId,
-        commands: [],
-        isSynthetic: !resolvedFlowId,
-      });
-    }
-
-    const current = grouped.get(flowId)!;
-
-    if (!current.rootEventId && resolvedRootEventId) {
-      current.rootEventId = resolvedRootEventId;
-    }
-
-    current.commands.push(cmd);
-  }
-
-  const flow = grouped.get(decodeURIComponent(id));
 
   if (!flow) {
     notFound();
   }
 
-  const sortedCommands = [...flow.commands].sort((a, b) => {
+  const commands = Array.isArray(flow.commands) ? [...flow.commands] : [];
+
+  commands.sort((a, b) => {
     const aStep =
       typeof a.step_index === "number" ? a.step_index : Number.MAX_SAFE_INTEGER;
     const bStep =
@@ -340,10 +229,10 @@ export default async function FlowDetailPage({ params }: PageProps) {
     return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
   });
 
-  const flowStatus = getFlowStatus(sortedCommands);
-  const summary = getFlowSummary(sortedCommands);
-  const lastCommand = getLastCommand(sortedCommands);
-  const lastActivity = getLastActivity(sortedCommands);
+  const flowStatus = getFlowStatus(commands);
+  const summary = getFlowSummary(commands);
+  const lastCommand = getLastCommand(commands);
+  const lastActivity = getLastActivity(commands);
 
   return (
     <div className="space-y-6">
@@ -360,9 +249,11 @@ export default async function FlowDetailPage({ params }: PageProps) {
         <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
           FLOW
         </div>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          {getDisplayFlowTitle(flow)}
+
+        <h1 className="mt-2 break-all text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+          {toText(flow.id)}
         </h1>
+
         <p className="mt-2 max-w-3xl text-sm text-zinc-400 sm:text-base">
           Vue détaillée d’un flow BOSAI.
         </p>
@@ -385,7 +276,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Commands</div>
           <div className="mt-3 text-4xl font-semibold text-white">
-            {sortedCommands.length}
+            {flow.count ?? commands.length}
           </div>
         </div>
 
@@ -415,25 +306,21 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
-            Flow key: <span className="break-all text-zinc-300">{flow.flowId}</span>
+            Flow key: <span className="break-all text-zinc-300">{toText(flow.id)}</span>
           </div>
           <div>
             Root event:{" "}
-            <span className="break-all text-zinc-300">{flow.rootEventId || "—"}</span>
+            <span className="break-all text-zinc-300">{toText(flow.root_event_id)}</span>
           </div>
           <div>
-            Type:{" "}
-            <span className="text-zinc-300">
-              {flow.isSynthetic ? "Legacy synthetic record" : "Linked flow"}
-            </span>
+            Workspace: <span className="text-zinc-300">{toText(flow.workspace_id)}</span>
           </div>
           <div>
             Last step:{" "}
-            <span className="text-zinc-300">{lastCommand?.capability || "—"}</span>
+            <span className="text-zinc-300">{toText(lastCommand?.capability)}</span>
           </div>
           <div>
-            Last activity:{" "}
-            <span className="text-zinc-300">{lastActivity}</span>
+            Last activity: <span className="text-zinc-300">{lastActivity}</span>
           </div>
           <div>
             Last status:{" "}
@@ -452,8 +339,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </div>
 
         <div className="space-y-3">
-          {sortedCommands.map((cmd, index) => {
-            const isLast = index === sortedCommands.length - 1;
+          {commands.map((cmd, index) => {
+            const isLast = index === commands.length - 1;
             const displayStep =
               typeof cmd.step_index === "number" ? cmd.step_index : index + 1;
 
@@ -474,12 +361,12 @@ export default async function FlowDetailPage({ params }: PageProps) {
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0 flex-1 space-y-3">
                       <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                        {cmd.capability || "Unknown capability"}
+                        {toText(cmd.capability, "Unknown capability")}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="text-base font-semibold text-white">
-                          {cmd.capability || "Unknown capability"}
+                          {toText(cmd.capability, "Unknown capability")}
                         </div>
 
                         <span
@@ -508,14 +395,9 @@ export default async function FlowDetailPage({ params }: PageProps) {
                       </div>
 
                       <div className="mt-2 flex flex-wrap gap-4 text-xs text-zinc-400">
-                        <span>
-                          Priority:{" "}
-                          {typeof cmd.priority === "number" ? cmd.priority : "—"}
-                        </span>
-                        <span>Flow: {cmd.flow_id || cmd.flowid || "—"}</span>
-                        <span>
-                          Root event: {cmd.root_event_id || cmd.rooteventid || "—"}
-                        </span>
+                        <span>Priority: {toText(cmd.priority)}</span>
+                        <span>Flow: {toText(cmd.flow_id)}</span>
+                        <span>Root event: {toText(cmd.root_event_id)}</span>
                         <span>
                           Parent command:{" "}
                           {cmd.parent_command_id ? (
@@ -537,8 +419,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
                               ? "Graph root"
                               : "Child node"}
                         </span>
-                        <span>Worker: {cmd.worker || "—"}</span>
-                        <span>Workspace: {cmd.workspace_id || "—"}</span>
+                        <span>Worker: {toText(cmd.worker)}</span>
+                        <span>Workspace: {toText(cmd.workspace_id)}</span>
                         <span>Created: {formatDate(cmd.created_at)}</span>
                         <span>Started: {formatDate(cmd.started_at)}</span>
                         <span>Finished: {formatDate(cmd.finished_at)}</span>
