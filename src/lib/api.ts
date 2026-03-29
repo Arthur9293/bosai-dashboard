@@ -1,29 +1,32 @@
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_BOSAI_API_URL?.replace(/\/$/, "") ||
   process.env.NEXT_PUBLIC_BOSAI_WORKER_BASE_URL?.replace(/\/$/, "") ||
-  "";
+  "http://localhost:8000";
 
 async function fetchJson<T>(path: string): Promise<T> {
-  if (!API_BASE_URL) {
-    throw new Error(
-      "NEXT_PUBLIC_BOSAI_API_URL ou NEXT_PUBLIC_BOSAI_WORKER_BASE_URL manquant"
-    );
+  const url = `${API_BASE_URL}${path}`;
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`API ${path} failed: ${response.status} ${text}`);
+    }
+
+    return response.json() as Promise<T>;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "unknown fetch error";
+
+    throw new Error(`Fetch failed for ${url}: ${message}`);
   }
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "GET",
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`API ${path} failed: ${response.status} ${text}`);
-  }
-
-  return response.json() as Promise<T>;
 }
 
 export type HealthScoreResponse = {
