@@ -116,7 +116,7 @@ function cardClassName() {
 }
 
 function isRootCommand(cmd: CommandItem) {
-  return !String(cmd.parent_command_id || "").trim();
+  return typeof cmd.step_index === "number" && cmd.step_index === 1;
 }
 
 function lineageBadge(cmd: CommandItem) {
@@ -397,6 +397,10 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <h2 className="text-lg font-semibold text-white">Flow identity</h2>
         </div>
 
+        <div className="mb-4 text-xs uppercase tracking-[0.18em] text-zinc-500">
+          START → END
+        </div>
+
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
             Flow key: <span className="break-all text-zinc-300">{flow.flowId}</span>
@@ -431,6 +435,10 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <h2 className="text-lg font-semibold text-white">Execution timeline</h2>
         </div>
 
+        <div className="mb-4 text-xs uppercase tracking-[0.18em] text-zinc-500">
+          START → END
+        </div>
+
         <div className="space-y-3">
           {sortedCommands.map((cmd, index) => {
             const isLast = index === sortedCommands.length - 1;
@@ -441,8 +449,10 @@ export default async function FlowDetailPage({ params }: PageProps) {
               <div key={cmd.id} className="flex gap-3">
                 <div className="flex flex-col items-center">
                   <div
-                    className={`h-3 w-3 rounded-full ${
-                      isRootCommand(cmd) ? "bg-white" : "bg-zinc-500"
+                    className={`h-3 w-3 rounded-full shadow-lg ${
+                      isRootCommand(cmd)
+                        ? "bg-white shadow-white/30"
+                        : "bg-zinc-500 shadow-zinc-500/20"
                     }`}
                   />
                   {!isLast && <div className="w-px flex-1 bg-white/10" />}
