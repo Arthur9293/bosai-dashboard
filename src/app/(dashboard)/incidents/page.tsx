@@ -41,15 +41,51 @@ function getIncidentSeverityRaw(incident: IncidentItem) {
 
 function getIncidentStatusNormalized(incident: IncidentItem) {
   const raw = getIncidentStatusRaw(incident).toLowerCase();
+  const sla = (incident.sla_status || "").trim().toLowerCase();
+  const hasResolvedAt = Boolean(incident.resolved_at);
+
+  if (hasResolvedAt) {
+    return "resolved";
+  }
 
   if (!raw) {
-    if ((incident.sla_status || "").toLowerCase() === "breached") return "open";
+    if (sla === "breached") return "open";
     return "open";
   }
 
-  if (["open", "opened", "new", "active", "en cours"].includes(raw)) return "open";
-  if (["escalated", "escalade", "escaladé"].includes(raw)) return "escalated";
-  if (["resolved", "closed", "done", "résolu"].includes(raw)) return "resolved";
+  if (
+    [
+      "open",
+      "opened",
+      "new",
+      "active",
+      "en cours",
+    ].includes(raw)
+  ) {
+    return "open";
+  }
+
+  if (
+    [
+      "escalated",
+      "escalade",
+      "escaladé",
+    ].includes(raw)
+  ) {
+    return "escalated";
+  }
+
+  if (
+    [
+      "resolved",
+      "closed",
+      "done",
+      "résolu",
+      "resolve",
+    ].includes(raw)
+  ) {
+    return "resolved";
+  }
 
   return raw;
 }
@@ -142,7 +178,15 @@ function getUpdatedAt(incident: IncidentItem) {
 }
 
 function getResolvedAt(incident: IncidentItem) {
-  return incident.resolved_at;
+  if (incident.resolved_at) {
+    return incident.resolved_at;
+  }
+
+  if (getIncidentStatusNormalized(incident) === "resolved") {
+    return incident.updated_at || incident.created_at;
+  }
+
+  return undefined;
 }
 
 function getWorkspace(incident: IncidentItem) {
@@ -231,7 +275,7 @@ function normalizeIncident(incident: IncidentItem): NormalizedIncident {
     category: getCategory(incident),
     reason: getReason(incident),
     suggestedAction: getSuggestedAction(incident),
-    sortDate: new Date(updatedAt || openedAt || resolvedAt || 0).getTime(),
+    sortDate: new Date(resolvedAt || updatedAt || openedAt || 0).getTime(),
   };
 }
 
