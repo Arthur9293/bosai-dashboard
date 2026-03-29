@@ -36,6 +36,12 @@ function formatDate(value?: string) {
   }).format(d);
 }
 
+function toText(value?: string | number | null) {
+  if (value === null || value === undefined) return "—";
+  const text = String(value).trim();
+  return text || "—";
+}
+
 function tone(status?: string) {
   const s = (status || "").toLowerCase();
 
@@ -71,13 +77,13 @@ function cardClassName() {
 }
 
 type PageProps = {
-  params: Promise<{
+  params: {
     id: string;
-  }>;
+  };
 };
 
 export default async function CommandDetailPage({ params }: PageProps) {
-  const { id } = await params;
+  const { id } = params;
 
   let command: CommandItem | null = null;
 
@@ -91,9 +97,13 @@ export default async function CommandDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const hasFlow = !!String(command.flow_id || "").trim();
-  const hasEvent = !!String(command.root_event_id || "").trim();
-  const hasParent = !!String(command.parent_command_id || "").trim();
+  const flowId = String(command.flow_id || "").trim();
+  const rootEventId = String(command.root_event_id || "").trim();
+  const parentCommandId = String(command.parent_command_id || "").trim();
+
+  const hasFlow = flowId.length > 0;
+  const hasEvent = rootEventId.length > 0;
+  const hasParent = parentCommandId.length > 0;
 
   return (
     <div className="space-y-6">
@@ -101,9 +111,11 @@ export default async function CommandDetailPage({ params }: PageProps) {
         <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
           COMMAND
         </div>
+
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          {command.capability || "Command detail"}
+          {toText(command.capability, "Command detail")}
         </h1>
+
         <p className="mt-2 max-w-3xl text-sm text-zinc-400 sm:text-base">
           Vue détaillée d’une commande BOSAI.
         </p>
@@ -120,44 +132,45 @@ export default async function CommandDetailPage({ params }: PageProps) {
               command.status
             )}`}
           >
-            {(command.status || "unknown").toUpperCase()}
+            {toText(command.status, "unknown").toUpperCase()}
           </span>
         </div>
 
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
-            ID: <span className="break-all text-zinc-300">{command.id}</span>
+            ID: <span className="break-all text-zinc-300">{toText(command.id)}</span>
           </div>
+
           <div>
-            Capability: <span className="text-zinc-300">{command.capability || "—"}</span>
+            Capability: <span className="text-zinc-300">{toText(command.capability)}</span>
           </div>
+
           <div>
-            Priority: <span className="text-zinc-300">{command.priority ?? "—"}</span>
+            Priority: <span className="text-zinc-300">{toText(command.priority)}</span>
           </div>
+
           <div>
-            Flow: <span className="break-all text-zinc-300">{command.flow_id || "—"}</span>
+            Flow: <span className="break-all text-zinc-300">{toText(flowId)}</span>
           </div>
+
           <div>
-            Root event:{" "}
-            <span className="break-all text-zinc-300">
-              {command.root_event_id || "—"}
-            </span>
+            Root event: <span className="break-all text-zinc-300">{toText(rootEventId)}</span>
           </div>
+
           <div>
             Parent command:{" "}
-            <span className="break-all text-zinc-300">
-              {command.parent_command_id || "—"}
-            </span>
+            <span className="break-all text-zinc-300">{toText(parentCommandId)}</span>
           </div>
+
           <div>
-            Workspace: <span className="text-zinc-300">{command.workspace_id || "—"}</span>
+            Workspace: <span className="text-zinc-300">{toText(command.workspace_id)}</span>
           </div>
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
           {hasFlow ? (
             <Link
-              href={`/flows/${encodeURIComponent(String(command.flow_id))}`}
+              href={`/flows/${encodeURIComponent(flowId)}`}
               className="inline-flex rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10"
             >
               Voir Flow
@@ -166,7 +179,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
           {hasEvent ? (
             <Link
-              href={`/events/${encodeURIComponent(String(command.root_event_id))}`}
+              href={`/events/${encodeURIComponent(rootEventId)}`}
               className="inline-flex rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10"
             >
               Voir Event source
@@ -175,7 +188,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
           {hasParent ? (
             <Link
-              href={`/commands/${encodeURIComponent(String(command.parent_command_id))}`}
+              href={`/commands/${encodeURIComponent(parentCommandId)}`}
               className="inline-flex rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10"
             >
               Voir parent
@@ -191,24 +204,27 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
-            Worker: <span className="text-zinc-300">{command.worker || "—"}</span>
+            Worker: <span className="text-zinc-300">{toText(command.worker)}</span>
           </div>
+
           <div>
             Created: <span className="text-zinc-300">{formatDate(command.created_at)}</span>
           </div>
+
           <div>
             Started: <span className="text-zinc-300">{formatDate(command.started_at)}</span>
           </div>
+
           <div>
             Finished: <span className="text-zinc-300">{formatDate(command.finished_at)}</span>
           </div>
+
           <div>
-            Scheduled:{" "}
-            <span className="text-zinc-300">{formatDate(command.scheduled_at)}</span>
+            Scheduled: <span className="text-zinc-300">{formatDate(command.scheduled_at)}</span>
           </div>
+
           <div>
-            Next retry:{" "}
-            <span className="text-zinc-300">{formatDate(command.next_retry_at)}</span>
+            Next retry: <span className="text-zinc-300">{formatDate(command.next_retry_at)}</span>
           </div>
         </div>
       </section>
@@ -220,11 +236,13 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
-            Retry count: <span className="text-zinc-300">{command.retry_count ?? "—"}</span>
+            Retry count: <span className="text-zinc-300">{toText(command.retry_count)}</span>
           </div>
+
           <div>
-            Retry max: <span className="text-zinc-300">{command.retry_max ?? "—"}</span>
+            Retry max: <span className="text-zinc-300">{toText(command.retry_max)}</span>
           </div>
+
           <div>
             Locked:{" "}
             <span className="text-zinc-300">
@@ -235,13 +253,15 @@ export default async function CommandDetailPage({ params }: PageProps) {
                 : "—"}
             </span>
           </div>
+
           <div>
-            Locked by: <span className="text-zinc-300">{command.locked_by || "—"}</span>
+            Locked by: <span className="text-zinc-300">{toText(command.locked_by)}</span>
           </div>
+
           <div className="md:col-span-2 xl:col-span-3">
             Idempotency key:{" "}
             <span className="break-all text-zinc-300">
-              {command.idempotency_key || "—"}
+              {toText(command.idempotency_key)}
             </span>
           </div>
         </div>
