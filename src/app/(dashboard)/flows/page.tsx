@@ -12,6 +12,7 @@ type CommandItem = {
   root_event_id?: string;
   rooteventid?: string;
   event_id?: string;
+  parent_command_id?: string;
   worker?: string;
   workspace_id?: string;
   started_at?: string;
@@ -145,10 +146,7 @@ function getCommandFlowId(cmd: CommandItem): string | null {
 
   const inputObj = safeObject(cmd.input) || parseInputJson(cmd.input_json);
 
-  const candidate =
-    inputObj?.flow_id ||
-    inputObj?.flowid ||
-    inputObj?.flowId;
+  const candidate = inputObj?.flow_id || inputObj?.flowid || inputObj?.flowId;
 
   if (typeof candidate === "string" && candidate.trim()) {
     return candidate.trim();
@@ -157,9 +155,7 @@ function getCommandFlowId(cmd: CommandItem): string | null {
   const resultObj = parseInputJson(cmd.result_json);
 
   const resultCandidate =
-    resultObj?.flow_id ||
-    resultObj?.flowid ||
-    resultObj?.flowId;
+    resultObj?.flow_id || resultObj?.flowid || resultObj?.flowId;
 
   if (typeof resultCandidate === "string" && resultCandidate.trim()) {
     return resultCandidate.trim();
@@ -169,10 +165,7 @@ function getCommandFlowId(cmd: CommandItem): string | null {
 }
 
 function getCommandRootEventId(cmd: CommandItem): string | undefined {
-  const direct =
-    cmd.root_event_id ||
-    cmd.rooteventid ||
-    cmd.event_id;
+  const direct = cmd.root_event_id || cmd.rooteventid || cmd.event_id;
 
   if (typeof direct === "string" && direct.trim()) {
     return direct.trim();
@@ -181,9 +174,7 @@ function getCommandRootEventId(cmd: CommandItem): string | undefined {
   const inputObj = safeObject(cmd.input) || parseInputJson(cmd.input_json);
 
   const candidate =
-    inputObj?.root_event_id ||
-    inputObj?.rooteventid ||
-    inputObj?.event_id;
+    inputObj?.root_event_id || inputObj?.rooteventid || inputObj?.event_id;
 
   if (typeof candidate === "string" && candidate.trim()) {
     return candidate.trim();
@@ -192,8 +183,7 @@ function getCommandRootEventId(cmd: CommandItem): string | undefined {
   const resultObj = parseInputJson(cmd.result_json);
 
   const resultCandidate =
-    resultObj?.root_event_id ||
-    resultObj?.rooteventid;
+    resultObj?.root_event_id || resultObj?.rooteventid;
 
   if (typeof resultCandidate === "string" && resultCandidate.trim()) {
     return resultCandidate.trim();
@@ -220,6 +210,32 @@ function flowKindTone(flow: FlowGroup) {
     : "bg-sky-500/15 text-sky-300 border border-sky-500/20";
 }
 
+function isFlowStart(cmd: CommandItem) {
+  return typeof cmd.step_index === "number" && cmd.step_index === 1;
+}
+
+function isGraphRoot(cmd: CommandItem) {
+  return !String(cmd.parent_command_id || "").trim();
+}
+
+function lineageBadge(cmd: CommandItem) {
+  if (isFlowStart(cmd)) return "START";
+  if (isGraphRoot(cmd)) return "ROOT";
+  return "CHILD";
+}
+
+function lineageTone(cmd: CommandItem) {
+  if (isFlowStart(cmd)) {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  if (isGraphRoot(cmd)) {
+    return "bg-white/10 text-zinc-200 border border-white/10";
+  }
+
+  return "bg-white/5 text-zinc-300 border border-white/10";
+}
+
 function getFlowStatus(commands: CommandItem[]) {
   const statuses = commands.map((cmd) => (cmd.status || "").toLowerCase());
 
@@ -238,14 +254,32 @@ function getFlowStatus(commands: CommandItem[]) {
 }
 
 function getFlowSummary(commands: CommandItem[]) {
-  const done = commands.filter((c) => (c.status || "").toLowerCase() === "done").length;
-  const running = commands.filter((c) => (c.status || "").toLowerCase() === "running").length;
-  const retry = commands.filter((c) => (c.status || "").toLowerCase() === "retry").length;
+  const done = commands.filter(
+    (c) => (c.status || "").toLowerCase() === "done"
+  ).length;
+  const running = commands.filter(
+    (c) => (c.status || "").toLowerCase() === "running"
+  ).length;
+  const retry = commands.filter(
+    (c) => (c.status || "").toLowerCase() === "retry"
+  ).length;
   const failed = commands.filter((c) =>
     ["error", "failed", "dead"].includes((c.status || "").toLowerCase())
   ).length;
 
   return { done, running, retry, failed };
+}
+
+function getLastCommand(commands: CommandItem[]) {
+  if (commands.length === 0) return null;
+  return commands[commands.length - 1];
+}
+
+function getLastActivity(commands: CommandItem[]) {
+  const last = getLastCommand(commands);
+  if (!last) return "—";
+
+  return formatDate(last.finished_at || last.started_at || last.created_at);
 }
 
 export default async function FlowsPage() {
@@ -299,7 +333,10 @@ export default async function FlowsPage() {
           return aStep - bStep;
         }
 
-        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+        return (
+          new Date(a.created_at || 0).getTime() -
+          new Date(b.created_at || 0).getTime()
+        );
       });
 
       return {
@@ -329,6 +366,8 @@ export default async function FlowsPage() {
     const fallbackKey = getFallbackFlowKey(flow);
     const flowStatus = getFlowStatus(flow.commands);
     const summary = getFlowSummary(flow.commands);
+    const lastCommand = getLastCommand(flow.commands);
+    const lastActivity = getLastActivity(flow.commands);
 
     return (
       <Link
@@ -380,6 +419,20 @@ export default async function FlowsPage() {
             <span>Retry: {summary.retry}</span>
             <span>Failed: {summary.failed}</span>
           </div>
+
+          <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
+            <span>
+              Last step:{" "}
+              <span className="text-zinc-300">{lastCommand?.capability || "—"}</span>
+            </span>
+            <span>
+              Last activity: <span className="text-zinc-300">{lastActivity}</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="mb-4 text-xs uppercase tracking-[0.18em] text-zinc-500">
+          START → END
         </div>
 
         <div className="space-y-3">
@@ -391,7 +444,13 @@ export default async function FlowsPage() {
             return (
               <div key={cmd.id} className="flex gap-3">
                 <div className="flex flex-col items-center">
-                  <div className="h-3 w-3 rounded-full bg-white" />
+                  <div
+                    className={`h-3 w-3 rounded-full shadow-lg ${
+                      isFlowStart(cmd)
+                        ? "bg-white shadow-white/30"
+                        : "bg-zinc-500 shadow-zinc-500/20"
+                    }`}
+                  />
                   {!isLast && <div className="w-px flex-1 bg-white/10" />}
                 </div>
 
@@ -418,10 +477,29 @@ export default async function FlowsPage() {
                         <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
                           STEP {displayStep}
                         </span>
+
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${lineageTone(
+                            cmd
+                          )}`}
+                        >
+                          {lineageBadge(cmd)}
+                        </span>
                       </div>
 
                       <div className="break-all text-sm text-zinc-400">
                         ID: <span className="text-zinc-300">{cmd.id}</span>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-4 text-xs text-zinc-400">
+                        <span>
+                          Command role:{" "}
+                          {isFlowStart(cmd)
+                            ? "Flow start"
+                            : isGraphRoot(cmd)
+                              ? "Graph root"
+                              : "Child node"}
+                        </span>
                       </div>
                     </div>
 
