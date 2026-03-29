@@ -78,6 +78,25 @@ function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
+function InfoRow({
+  label,
+  value,
+  breakAll = false,
+}: {
+  label: string;
+  value?: string | number | null;
+  breakAll?: boolean;
+}) {
+  return (
+    <div>
+      {label}:{" "}
+      <span className={breakAll ? "break-all text-zinc-300" : "text-zinc-300"}>
+        {toText(value)}
+      </span>
+    </div>
+  );
+}
+
 type PageProps = {
   params: Promise<{
     id: string;
@@ -120,7 +139,8 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
           <div className="space-y-3 text-sm text-zinc-400">
             <div>
-              Requested ID: <span className="break-all text-zinc-300">{toText(id)}</span>
+              Requested ID:{" "}
+              <span className="break-all text-zinc-300">{toText(id)}</span>
             </div>
 
             <div>
@@ -147,6 +167,8 @@ export default async function CommandDetailPage({ params }: PageProps) {
   const flowId = String(command.flow_id || "").trim();
   const rootEventId = String(command.root_event_id || "").trim();
   const parentCommandId = String(command.parent_command_id || "").trim();
+  const workspaceId = String(command.workspace_id || "").trim();
+  const workerName = String(command.worker || "").trim();
 
   const hasFlow = flowId.length > 0;
   const hasEvent = rootEventId.length > 0;
@@ -159,7 +181,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
           COMMAND
         </div>
 
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+        <h1 className="mt-2 break-all text-3xl font-semibold tracking-tight text-white sm:text-4xl">
           {toText(command.capability, "Command detail")}
         </h1>
 
@@ -182,34 +204,13 @@ export default async function CommandDetailPage({ params }: PageProps) {
         </div>
 
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            ID: <span className="break-all text-zinc-300">{toText(command.id)}</span>
-          </div>
-
-          <div>
-            Capability: <span className="text-zinc-300">{toText(command.capability)}</span>
-          </div>
-
-          <div>
-            Priority: <span className="text-zinc-300">{toText(command.priority)}</span>
-          </div>
-
-          <div>
-            Flow: <span className="break-all text-zinc-300">{toText(flowId)}</span>
-          </div>
-
-          <div>
-            Root event: <span className="break-all text-zinc-300">{toText(rootEventId)}</span>
-          </div>
-
-          <div>
-            Parent command:{" "}
-            <span className="break-all text-zinc-300">{toText(parentCommandId)}</span>
-          </div>
-
-          <div>
-            Workspace: <span className="text-zinc-300">{toText(command.workspace_id)}</span>
-          </div>
+          <InfoRow label="ID" value={command.id} breakAll />
+          <InfoRow label="Capability" value={command.capability} />
+          <InfoRow label="Priority" value={command.priority} />
+          <InfoRow label="Flow" value={flowId} breakAll />
+          <InfoRow label="Root event" value={rootEventId} breakAll />
+          <InfoRow label="Parent command" value={parentCommandId} breakAll />
+          <InfoRow label="Workspace" value={workspaceId} />
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
@@ -240,18 +241,35 @@ export default async function CommandDetailPage({ params }: PageProps) {
             </Link>
           )}
         </div>
+
+        {(!hasFlow || !hasEvent || !hasParent || !workspaceId || !workerName) && (
+          <div className="mt-5 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            Certaines métadonnées de navigation ne sont pas encore présentes sur cette
+            commande côté API ou source de données.
+          </div>
+        )}
       </section>
 
       <section className={cardClassName()}>
         <h2 className="mb-4 text-lg font-semibold text-white">Execution</h2>
 
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <div>Worker: <span className="text-zinc-300">{toText(command.worker)}</span></div>
-          <div>Created: <span className="text-zinc-300">{formatDate(command.created_at)}</span></div>
-          <div>Started: <span className="text-zinc-300">{formatDate(command.started_at)}</span></div>
-          <div>Finished: <span className="text-zinc-300">{formatDate(command.finished_at)}</span></div>
-          <div>Scheduled: <span className="text-zinc-300">{formatDate(command.scheduled_at)}</span></div>
-          <div>Next retry: <span className="text-zinc-300">{formatDate(command.next_retry_at)}</span></div>
+          <InfoRow label="Worker" value={workerName} />
+          <div>
+            Created: <span className="text-zinc-300">{formatDate(command.created_at)}</span>
+          </div>
+          <div>
+            Started: <span className="text-zinc-300">{formatDate(command.started_at)}</span>
+          </div>
+          <div>
+            Finished: <span className="text-zinc-300">{formatDate(command.finished_at)}</span>
+          </div>
+          <div>
+            Scheduled: <span className="text-zinc-300">{formatDate(command.scheduled_at)}</span>
+          </div>
+          <div>
+            Next retry: <span className="text-zinc-300">{formatDate(command.next_retry_at)}</span>
+          </div>
         </div>
       </section>
 
@@ -259,19 +277,21 @@ export default async function CommandDetailPage({ params }: PageProps) {
         <h2 className="mb-4 text-lg font-semibold text-white">Control / Retry</h2>
 
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <div>Retry count: <span className="text-zinc-300">{toText(command.retry_count)}</span></div>
-          <div>Retry max: <span className="text-zinc-300">{toText(command.retry_max)}</span></div>
+          <InfoRow label="Retry count" value={command.retry_count} />
+          <InfoRow label="Retry max" value={command.retry_max} />
 
           <div>
             Locked:{" "}
             <span className="text-zinc-300">
               {typeof command.is_locked === "boolean"
-                ? command.is_locked ? "Yes" : "No"
+                ? command.is_locked
+                  ? "Yes"
+                  : "No"
                 : "—"}
             </span>
           </div>
 
-          <div>Locked by: <span className="text-zinc-300">{toText(command.locked_by)}</span></div>
+          <InfoRow label="Locked by" value={command.locked_by} />
 
           <div className="md:col-span-2 xl:col-span-3">
             Idempotency key:{" "}
