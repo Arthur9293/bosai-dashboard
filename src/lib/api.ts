@@ -136,10 +136,21 @@ export type EventsResponse = {
 export type IncidentItem = {
   id: string;
   title?: string;
+  name?: string;
+  error_id?: string;
   status?: string;
+  statut_incident?: string;
   severity?: string;
   sla_status?: string;
+  sla_remaining_minutes?: number;
+  workspace_id?: string;
+  workspace?: string;
+  linked_run?: string;
+  linked_command?: string;
+  command_id?: string;
+  run_id?: string;
   created_at?: string;
+  updated_at?: string;
   source?: string;
   worker?: string;
 };
@@ -206,6 +217,98 @@ export type PoliciesResponse = {
   policies?: PolicyItem[];
 };
 
+type RawIncidentItem = Record<string, unknown>;
+
+function toStringSafe(value: unknown): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  const text = String(value).trim();
+  return text ? text : undefined;
+}
+
+function toNumberSafe(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const text = toStringSafe(value);
+    if (text) return text;
+  }
+  return undefined;
+}
+
+function normalizeIncident(item: RawIncidentItem): IncidentItem {
+  const id =
+    firstString(
+      item.id,
+      item.record_id,
+      item.incident_record_id,
+      item.incidentid
+    ) || "unknown_incident";
+
+  const severity = firstString(
+    item.severity,
+    item.Severity,
+    item.urgence,
+    item.priority
+  );
+
+  const slaStatus = firstString(
+    item.sla_status,
+    item.SLA_Status,
+    item.slaStatus,
+    item.status_sla
+  );
+
+  const status = firstString(
+    item.status,
+    item.Status,
+    item.Status_select,
+    item.status_select
+  );
+
+  const title = firstString(
+    item.title,
+    item.name,
+    item.Name,
+    item.error_id,
+    item.incident_code
+  );
+
+  return {
+    id,
+    title,
+    name: firstString(item.name, item.Name),
+    error_id: firstString(item.error_id, item.errorId, item.incident_code),
+    status,
+    statut_incident: firstString(item.statut_incident),
+    severity,
+    sla_status: slaStatus,
+    sla_remaining_minutes: toNumberSafe(
+      item.sla_remaining_minutes ?? item.SLA_Remaining_Minutes
+    ),
+    workspace_id: firstString(
+      item.workspace_id,
+      item.workspaceId,
+      item.Workspace_ID
+    ),
+    workspace: firstString(item.workspace, item.workspace_name),
+    linked_run: firstString(item.linked_run, item.Linked_Run),
+    linked_command: firstString(item.linked_command, item.Linked_Command),
+    command_id: firstString(item.command_id, item.Command_ID),
+    run_id: firstString(item.run_id, item.Run_ID),
+    created_at: firstString(item.created_at, item.Created_At, item.createdTime),
+    updated_at: firstString(item.updated_at, item.Updated_At, item.lastModified),
+    source: firstString(item.source),
+    worker: firstString(item.worker),
+  };
+}
+
 export async function fetchHealthScore() {
   return fetchJson<HealthScoreResponse>("/health/score");
 }
@@ -243,8 +346,26 @@ export async function fetchEvents() {
   return fetchJson<EventsResponse>("/events?limit=20");
 }
 
-export async function fetchIncidents() {
-  return fetchJson<IncidentsResponse>("/incidents");
+export async function fetchIncidents(): Promise<IncidentsResponse> {
+  const raw = await fetchJson<{
+    ok?: boolean;
+    count?: number;
+    stats?: IncidentsResponse["stats"];
+    incidents?: RawIncidentItem[];
+    ts?: string;
+  }>("/incidents");
+
+  const incidents = Array.isArray(raw?.incidents)
+    ? raw.incidents.map(normalizeIncident)
+    : [];
+
+  return {
+    ok: raw?.ok,
+    count: raw?.count ?? incidents.length,
+    stats: raw?.stats,
+    incidents,
+    ts: raw?.ts,
+  };
 }
 
 export async function fetchSla() {
