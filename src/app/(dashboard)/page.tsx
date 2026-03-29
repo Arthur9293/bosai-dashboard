@@ -4,6 +4,14 @@ import {
   fetchHealthScore,
   fetchIncidents,
   fetchRuns,
+  type CommandItem,
+  type EventItem,
+  type HealthScoreResponse,
+  type IncidentItem,
+  type RunsResponse,
+  type CommandsResponse,
+  type EventsResponse,
+  type IncidentsResponse,
 } from "@/lib/api";
 
 function formatNumber(value?: number) {
@@ -35,11 +43,11 @@ type CommandStatsCompat = {
 };
 
 export default async function OverviewPage() {
-  let health = null;
-  let runs = null;
-  let commands = null;
-  let events = null;
-  let incidents = null;
+  let health: HealthScoreResponse | null = null;
+  let runs: RunsResponse | null = null;
+  let commands: CommandsResponse | null = null;
+  let events: EventsResponse | null = null;
+  let incidents: IncidentsResponse | null = null;
 
   try {
     health = await fetchHealthScore();
@@ -79,6 +87,8 @@ export default async function OverviewPage() {
   const openIncidents = incidents?.stats?.open ?? 0;
   const criticalIncidents = incidents?.stats?.critical ?? 0;
   const warningIncidents = incidents?.stats?.warning ?? 0;
+
+  const incidentItems: IncidentItem[] = incidents?.incidents ?? [];
 
   return (
     <div className="space-y-6">
@@ -216,31 +226,35 @@ export default async function OverviewPage() {
           <div className="mb-4 text-lg font-medium">Incidents actifs</div>
 
           <div className="space-y-3 text-sm">
-            {(incidents?.incidents ?? []).slice(0, 5).map((incident: any) => (
-              <div
-                key={incident.id}
-                className="flex flex-col gap-3 rounded-xl border border-white/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-medium">
-                    {incident.title ||
-                      incident.name ||
-                      incident.error_id ||
-                      "Untitled incident"}
+            {incidentItems.slice(0, 5).map((incident) => {
+              const incidentTitle =
+                incident.title || "Untitled incident";
+
+              const incidentSubline =
+                incident.sla_status || incident.status || "—";
+
+              const incidentSeverity = incident.severity || "—";
+              const incidentStatus = incident.status || "—";
+
+              return (
+                <div
+                  key={incident.id}
+                  className="flex flex-col gap-3 rounded-xl border border-white/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{incidentTitle}</div>
+                    <div className="mt-1 text-zinc-500">{incidentSubline}</div>
                   </div>
-                  <div className="mt-1 text-zinc-500">
-                    {incident.sla_status || incident.status || "—"}
+
+                  <div className="text-left text-zinc-400 sm:text-right">
+                    <div>{incidentSeverity}</div>
+                    <div>{incidentStatus}</div>
                   </div>
                 </div>
+              );
+            })}
 
-                <div className="text-left text-zinc-400 sm:text-right">
-                  <div>{incident.severity || "—"}</div>
-                  <div>{incident.status || incident.statut_incident || "—"}</div>
-                </div>
-              </div>
-            ))}
-
-            {(incidents?.incidents ?? []).length === 0 && (
+            {incidentItems.length === 0 && (
               <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-sm text-zinc-500">
                 Aucun incident affiché.
               </div>
