@@ -4,10 +4,8 @@ import {
   fetchHealthScore,
   fetchIncidents,
   fetchRuns,
-  type CommandItem,
-  type EventItem,
-  type HealthScoreResponse,
   type IncidentItem,
+  type HealthScoreResponse,
   type RunsResponse,
   type CommandsResponse,
   type EventsResponse,
@@ -41,6 +39,14 @@ type CommandStatsCompat = {
   retry?: number;
   dead?: number;
 };
+
+function getIncidentTitle(incident: IncidentItem) {
+  return incident.title || incident.name || incident.error_id || "Untitled incident";
+}
+
+function getIncidentStatus(incident: IncidentItem) {
+  return incident.status || incident.statut_incident || "—";
+}
 
 export default async function OverviewPage() {
   let health: HealthScoreResponse | null = null;
@@ -227,14 +233,11 @@ export default async function OverviewPage() {
 
           <div className="space-y-3 text-sm">
             {incidentItems.slice(0, 5).map((incident) => {
-              const incidentTitle =
-                incident.title || "Untitled incident";
-
+              const incidentTitle = getIncidentTitle(incident);
               const incidentSubline =
-                incident.sla_status || incident.status || "—";
-
+                incident.sla_status || getIncidentStatus(incident) || "—";
               const incidentSeverity = incident.severity || "—";
-              const incidentStatus = incident.status || "—";
+              const incidentStatus = getIncidentStatus(incident);
 
               return (
                 <div
