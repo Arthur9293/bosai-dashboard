@@ -1,4 +1,4 @@
-import { fetchIncidents } from "../../../lib/api";
+import { fetchIncidents, type IncidentsResponse } from "@/lib/api";
 
 type IncidentItem = {
   id: string;
@@ -108,7 +108,7 @@ function cardClassName() {
 }
 
 export default async function IncidentsPage() {
-  let data: any = null;
+  let data: IncidentsResponse | null = null;
 
   try {
     data = await fetchIncidents();
@@ -116,7 +116,9 @@ export default async function IncidentsPage() {
     data = null;
   }
 
-  const incidents: IncidentItem[] = data?.incidents ?? [];
+  const incidents: IncidentItem[] = Array.isArray(data?.incidents)
+    ? (data?.incidents as IncidentItem[])
+    : [];
 
   const openCount = incidents.length;
 
@@ -132,9 +134,7 @@ export default async function IncidentsPage() {
     (i) => (i.sla_status || "").toLowerCase() === "breached"
   ).length;
 
-  const linkedRunCount = incidents.filter(
-    (i) => getLinkedRun(i) !== "—"
-  ).length;
+  const linkedRunCount = incidents.filter((i) => getLinkedRun(i) !== "—").length;
 
   const linkedCommandCount = incidents.filter(
     (i) => getLinkedCommand(i) !== "—"
@@ -239,7 +239,7 @@ export default async function IncidentsPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-base font-semibold text-white break-all">
+                      <div className="break-all text-base font-semibold text-white">
                         {getIncidentTitle(incident)}
                       </div>
 
@@ -260,7 +260,7 @@ export default async function IncidentsPage() {
                       </span>
                     </div>
 
-                    <div className="text-sm text-zinc-400 break-all">
+                    <div className="break-all text-sm text-zinc-400">
                       ID: <span className="text-zinc-300">{incident.id}</span>
                     </div>
 
@@ -290,14 +290,14 @@ export default async function IncidentsPage() {
 
                       <div>
                         Linked run:{" "}
-                        <span className="text-zinc-300 break-all">
+                        <span className="break-all text-zinc-300">
                           {getLinkedRun(incident)}
                         </span>
                       </div>
 
                       <div>
                         Linked command:{" "}
-                        <span className="text-zinc-300 break-all">
+                        <span className="break-all text-zinc-300">
                           {getLinkedCommand(incident)}
                         </span>
                       </div>
