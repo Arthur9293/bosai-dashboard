@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { fetchIncidents, type IncidentItem, type IncidentsResponse } from "@/lib/api";
+import {
+  fetchIncidents,
+  type IncidentItem,
+  type IncidentsResponse,
+} from "@/lib/api";
 
 function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
@@ -159,11 +163,11 @@ function getCommandRecord(incident: IncidentItem) {
 }
 
 function getFlowId(incident: IncidentItem) {
-  return incident.flow_id || "";
+  return (incident.flow_id || "").trim();
 }
 
 function getRootEventId(incident: IncidentItem) {
-  return incident.root_event_id || "";
+  return (incident.root_event_id || "").trim();
 }
 
 function getCategory(incident: IncidentItem) {
@@ -294,7 +298,7 @@ function IncidentCard({ incident }: { incident: NormalizedIncident }) {
 
         <div className="break-all">
           Flow:{" "}
-          {incident.flowId !== "—" && incident.flowId ? (
+          {incident.flowId ? (
             <Link
               href={`/flows/${encodeURIComponent(incident.flowId)}`}
               className="text-zinc-300 underline decoration-white/20 underline-offset-4 transition hover:text-white"
@@ -345,7 +349,7 @@ export default async function IncidentsPage() {
     data = null;
   }
 
-  const incidents: IncidentItem[] = Array.isArray(data?.incidents) ? data!.incidents! : [];
+  const incidents: IncidentItem[] = Array.isArray(data?.incidents) ? data.incidents : [];
 
   const normalized = incidents
     .map(normalizeIncident)
