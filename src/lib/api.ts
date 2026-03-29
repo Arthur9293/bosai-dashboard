@@ -218,7 +218,7 @@ export async function fetchCommands() {
   return fetchJson<CommandsResponse>("/commands?limit=20");
 }
 
-export async function fetchCommandById(id: string) {
+export async function fetchCommandById(id: string): Promise<CommandItem> {
   if (!id?.trim()) {
     throw new Error("fetchCommandById: id manquant");
   }
@@ -227,11 +227,16 @@ export async function fetchCommandById(id: string) {
     `/commands/${encodeURIComponent(id)}`
   );
 
-  if ("command" in data && data.command) {
-    return data.command;
+  const command =
+    typeof data === "object" && data !== null && "command" in data
+      ? data.command
+      : data;
+
+  if (!command || typeof command !== "object" || !("id" in command)) {
+    throw new Error("fetchCommandById: réponse invalide");
   }
 
-  return data;
+  return command as CommandItem;
 }
 
 export async function fetchEvents() {
