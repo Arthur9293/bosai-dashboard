@@ -1,9 +1,13 @@
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_BOSAI_API_URL?.replace(/\/$/, "") || "";
+  process.env.NEXT_PUBLIC_BOSAI_API_URL?.replace(/\/$/, "") ||
+  process.env.NEXT_PUBLIC_BOSAI_WORKER_BASE_URL?.replace(/\/$/, "") ||
+  "";
 
 async function fetchJson<T>(path: string): Promise<T> {
   if (!API_BASE_URL) {
-    throw new Error("NEXT_PUBLIC_BOSAI_API_URL manquant");
+    throw new Error(
+      "NEXT_PUBLIC_BOSAI_API_URL ou NEXT_PUBLIC_BOSAI_WORKER_BASE_URL manquant"
+    );
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -215,8 +219,19 @@ export async function fetchCommands() {
 }
 
 export async function fetchCommandById(id: string) {
-  const data = await fetchJson<any>(`/commands/${encodeURIComponent(id)}`);
-  return data?.command || data;
+  if (!id?.trim()) {
+    throw new Error("fetchCommandById: id manquant");
+  }
+
+  const data = await fetchJson<{ command?: CommandItem } | CommandItem>(
+    `/commands/${encodeURIComponent(id)}`
+  );
+
+  if ("command" in data && data.command) {
+    return data.command;
+  }
+
+  return data;
 }
 
 export async function fetchEvents() {
