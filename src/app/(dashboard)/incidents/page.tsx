@@ -31,6 +31,8 @@ type IncidentItem = {
   Resolved_At?: string;
   workspace_id?: string;
   Workspace_ID?: string;
+  sla_status?: string;
+  sla_remaining_minutes?: number;
 };
 
 function cardClassName() {
@@ -54,13 +56,26 @@ function getIncidentName(item: IncidentItem) {
 }
 
 function getIncidentStatus(item: IncidentItem) {
-  return String(
+  const direct = String(
     item.Status_select ||
       item.status_select ||
       item.status ||
       item.Status ||
-      "Unknown"
+      ""
   ).trim();
+
+  if (direct) return direct;
+
+  const sla = String(item.sla_status || "").trim().toLowerCase();
+  const remaining =
+    typeof item.sla_remaining_minutes === "number"
+      ? item.sla_remaining_minutes
+      : undefined;
+
+  if (sla === "breached") return "Open";
+  if (remaining !== undefined && remaining < 0) return "Open";
+
+  return "Unknown";
 }
 
 function getIncidentSeverity(item: IncidentItem) {
@@ -132,7 +147,7 @@ function statusTone(status?: string) {
 function severityTone(severity?: string) {
   const s = (severity || "").toLowerCase();
 
-  if (s === "critical") {
+  if (s === "critical" || s === "critique") {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
   }
 
@@ -165,7 +180,7 @@ function statusLabel(status?: string) {
 function severityLabel(severity?: string) {
   const s = (severity || "").toLowerCase();
 
-  if (s === "critical") return "CRITICAL";
+  if (s === "critical" || s === "critique") return "CRITICAL";
   if (s === "high") return "HIGH";
   if (s === "medium") return "MEDIUM";
   if (s === "low") return "LOW";
@@ -209,6 +224,8 @@ export default async function IncidentsPage() {
       openedAt,
       updatedAt,
       resolvedAt,
+      slaStatus: item.sla_status,
+      slaRemainingMinutes: item.sla_remaining_minutes,
       sortDate: new Date(updatedAt || openedAt || resolvedAt || 0).getTime(),
     };
   });
@@ -227,9 +244,10 @@ export default async function IncidentsPage() {
     (item) => item.status.toLowerCase() === "resolved"
   );
 
-  const criticalIncidents = sortedIncidents.filter(
-    (item) => item.severity.toLowerCase() === "critical"
-  );
+  const criticalIncidents = sortedIncidents.filter((item) => {
+    const s = item.severity.toLowerCase();
+    return s === "critical" || s === "critique";
+  });
 
   return (
     <div className="space-y-6">
@@ -396,9 +414,10 @@ export default async function IncidentsPage() {
                         <span className="text-zinc-300">
                           {incident.status.toLowerCase() === "escalated"
                             ? "Review escalated incident"
-                            : incident.severity.toLowerCase() === "critical"
-                              ? "Prioritize immediate review"
-                              : "Monitor flow and resolution"}
+                            : incident.severity.toLowerCase() === "critical" ||
+                              incident.severity.toLowerCase() === "critique"
+                            ? "Prioritize immediate review"
+                            : "Monitor flow and resolution"}
                         </span>
                       </div>
                     </div>
