@@ -166,6 +166,8 @@ export type IncidentItem = {
   opened_at?: string;
   source?: string;
   worker?: string;
+  resolution_note?: string;
+  last_action?: string;
 };
 
 export type IncidentsResponse = {
@@ -414,6 +416,16 @@ function normalizeIncident(item: RawIncidentItem): IncidentItem {
     opened_at: firstString(item.opened_at, item.Opened_At),
     source: firstString(item.source),
     worker: firstString(item.worker),
+    resolution_note: firstString(
+      item.resolution_note,
+      item.Resolution_Note,
+      item.resolutionNote
+    ),
+    last_action: firstString(
+      item.last_action,
+      item.Last_Action,
+      item.lastAction
+    ),
   };
 }
 
