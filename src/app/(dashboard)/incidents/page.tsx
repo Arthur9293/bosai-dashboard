@@ -270,9 +270,6 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   const title = getIncidentTitle(incident).trim().toLowerCase();
   const category = getCategory(incident).trim().toLowerCase();
   const reason = getReason(incident).trim().toLowerCase();
-  const flowId = getFlowId(incident);
-  const rootEventId = getRootEventId(incident);
-  const commandRecord = getCommandRecord(incident);
   const errorId = (incident.error_id || "").trim();
   const resolutionNote = (incident.resolution_note || "").trim();
   const lastAction = (incident.last_action || "").trim();
@@ -286,27 +283,23 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   const isGenericReason =
     reason === "" || reason === "—" || reason === "incident_create";
 
+  const isPurePlaceholder =
+    isGenericTitle && isGenericCategory && isGenericReason;
+
+  if (isPurePlaceholder) {
+    return true;
+  }
+
   const hasStrongBusinessSignal =
     errorId !== "" ||
     resolutionNote !== "" ||
     lastAction !== "" ||
-    flowId !== "" ||
-    rootEventId !== "" ||
-    (commandRecord !== "" && commandRecord !== "—") ||
     category === "http_failure" ||
     reason === "http_5xx_exhausted" ||
     reason === "http_status_error" ||
     reason === "forbidden_host";
 
-  if (hasStrongBusinessSignal) {
-    return false;
-  }
-
-  return isGenericTitle && isGenericCategory && isGenericReason;
-}
-
-function isDisplayableIncident(incident: IncidentItem) {
-  return !isLegacyNoiseIncident(incident);
+  return !hasStrongBusinessSignal && isGenericCategory && isGenericReason;
 }
 
 type NormalizedIncident = {
@@ -483,16 +476,18 @@ export default async function IncidentsPage() {
 
   const incidents: IncidentItem[] = Array.isArray(data?.incidents) ? data.incidents : [];
 
-  const displayableIncidents = incidents.filter(isDisplayableIncident);
-
-  const normalized = displayableIncidents
+  const normalized = incidents
     .map(normalizeIncident)
     .sort((a, b) => b.sortDate - a.sortDate);
 
-  const openIncidents = normalized.filter((item) => item.status === "open");
-  const escalatedIncidents = normalized.filter((item) => item.status === "escalated");
-  const resolvedIncidents = normalized.filter((item) => item.status === "resolved");
-  const criticalIncidents = normalized.filter((item) => item.severity === "critical");
+  const cleanNormalized = normalized.filter(
+    (item) => !isLegacyNoiseIncident(item.raw)
+  );
+
+  const openIncidents = cleanNormalized.filter((item) => item.status === "open");
+  const escalatedIncidents = cleanNormalized.filter((item) => item.status === "escalated");
+  const resolvedIncidents = cleanNormalized.filter((item) => item.status === "resolved");
+  const criticalIncidents = cleanNormalized.filter((item) => item.severity === "critical");
 
   const activeIncidents = [...openIncidents, ...escalatedIncidents].sort(
     (a, b) => b.sortDate - a.sortDate
@@ -544,7 +539,7 @@ export default async function IncidentsPage() {
         </div>
       </section>
 
-      {normalized.length === 0 ? (
+      {cleanNormalized.length === 0 ? (
         <section className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500">
           Aucun incident visible pour le moment.
         </section>
