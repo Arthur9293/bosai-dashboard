@@ -53,37 +53,15 @@ function getIncidentStatusNormalized(incident: IncidentItem) {
     return "open";
   }
 
-  if (
-    [
-      "open",
-      "opened",
-      "new",
-      "active",
-      "en cours",
-    ].includes(raw)
-  ) {
+  if (["open", "opened", "new", "active", "en cours"].includes(raw)) {
     return "open";
   }
 
-  if (
-    [
-      "escalated",
-      "escalade",
-      "escaladé",
-    ].includes(raw)
-  ) {
+  if (["escalated", "escalade", "escaladé"].includes(raw)) {
     return "escalated";
   }
 
-  if (
-    [
-      "resolved",
-      "closed",
-      "done",
-      "résolu",
-      "resolve",
-    ].includes(raw)
-  ) {
+  if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw)) {
     return "resolved";
   }
 
@@ -169,6 +147,65 @@ function severityTone(incident: IncidentItem) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function getSlaLabel(incident: IncidentItem) {
+  const resolvedLike =
+    Boolean(incident.resolved_at) ||
+    getIncidentStatusNormalized(incident) === "resolved";
+
+  if (resolvedLike) {
+    return "RESOLVED";
+  }
+
+  const sla = (incident.sla_status || "").trim();
+  if (sla) return sla.toUpperCase();
+
+  if (
+    typeof incident.sla_remaining_minutes === "number" &&
+    incident.sla_remaining_minutes < 0
+  ) {
+    return "BREACHED";
+  }
+
+  return "—";
+}
+
+function getSlaTone(incident: IncidentItem) {
+  const resolvedLike =
+    Boolean(incident.resolved_at) ||
+    getIncidentStatusNormalized(incident) === "resolved";
+
+  if (resolvedLike) {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  const sla = (incident.sla_status || "").toLowerCase();
+
+  if (sla === "breached") {
+    return "bg-red-500/15 text-red-300 border border-red-500/20";
+  }
+
+  if (sla === "warning") {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  if (sla === "ok") {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  if (sla === "open") {
+    return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+  }
+
+  if (
+    typeof incident.sla_remaining_minutes === "number" &&
+    incident.sla_remaining_minutes < 0
+  ) {
+    return "bg-red-500/15 text-red-300 border border-red-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
 function getOpenedAt(incident: IncidentItem) {
   return incident.opened_at || incident.created_at;
 }
@@ -237,6 +274,7 @@ type NormalizedIncident = {
   statusLabel: string;
   severity: string;
   severityLabel: string;
+  slaLabel: string;
   openedAt?: string;
   updatedAt?: string;
   resolvedAt?: string;
@@ -264,6 +302,7 @@ function normalizeIncident(incident: IncidentItem): NormalizedIncident {
     statusLabel: getIncidentStatusLabel(incident),
     severity: getIncidentSeverityNormalized(incident),
     severityLabel: getIncidentSeverityLabel(incident),
+    slaLabel: getSlaLabel(incident),
     openedAt,
     updatedAt,
     resolvedAt,
@@ -309,6 +348,14 @@ function IncidentCard({ incident }: { incident: NormalizedIncident }) {
             )}`}
           >
             {incident.severityLabel}
+          </span>
+
+          <span
+            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getSlaTone(
+              incident.raw
+            )}`}
+          >
+            SLA {incident.slaLabel}
           </span>
         </div>
 
@@ -406,6 +453,10 @@ export default async function IncidentsPage() {
     (a, b) => b.sortDate - a.sortDate
   );
 
+  const sortedResolvedIncidents = [...resolvedIncidents].sort(
+    (a, b) => b.sortDate - a.sortDate
+  );
+
   return (
     <div className="space-y-6">
       <div className="border-b border-white/10 pb-4">
@@ -479,13 +530,13 @@ export default async function IncidentsPage() {
               <span className="text-sm text-zinc-400">{resolvedIncidents.length}</span>
             </div>
 
-            {resolvedIncidents.length === 0 ? (
+            {sortedResolvedIncidents.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500">
                 Aucun incident résolu.
               </div>
             ) : (
               <div className="space-y-4">
-                {resolvedIncidents.map((incident) => (
+                {sortedResolvedIncidents.map((incident) => (
                   <IncidentCard key={incident.id} incident={incident} />
                 ))}
               </div>
