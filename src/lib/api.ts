@@ -1,541 +1,540 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_BOSAI_API_URL?.replace(/\/$/, "") ||
-  process.env.NEXT_PUBLIC_BOSAI_WORKER_BASE_URL?.replace(/\/$/, "") ||
-  "http://localhost:8000";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import {
+  fetchIncidents,
+  type IncidentItem,
+  type IncidentsResponse,
+} from "@/lib/api";
 
-async function fetchJson<T>(path: string): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
+type PageProps = {
+  params: Promise<{
+    id: string;
+  }>;
+};
+
+function cardClassName() {
+  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "—";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(d);
+}
+
+function toText(value: unknown, fallback = "—") {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  return text || fallback;
+}
+
+function getIncidentTitle(incident: IncidentItem) {
+  return incident.title || incident.name || incident.error_id || "Untitled incident";
+}
+
+function getIncidentStatusRaw(incident: IncidentItem) {
+  return (incident.status || incident.statut_incident || "").trim();
+}
+
+function getIncidentSeverityRaw(incident: IncidentItem) {
+  return (incident.severity || "").trim();
+}
+
+function getIncidentStatusNormalized(incident: IncidentItem) {
+  const raw = getIncidentStatusRaw(incident).toLowerCase();
+  const sla = (incident.sla_status || "").trim().toLowerCase();
+  const hasResolvedAt = Boolean(incident.resolved_at);
+
+  if (hasResolvedAt) {
+    return "resolved";
+  }
+
+  if (!raw) {
+    if (sla === "breached") return "open";
+    return "open";
+  }
+
+  if (["open", "opened", "new", "active", "en cours"].includes(raw)) return "open";
+  if (["escalated", "escalade", "escaladé"].includes(raw)) return "escalated";
+  if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw)) return "resolved";
+
+  return raw;
+}
+
+function getIncidentStatusLabel(incident: IncidentItem) {
+  const normalized = getIncidentStatusNormalized(incident);
+
+  if (normalized === "open") return "OPEN";
+  if (normalized === "escalated") return "ESCALATED";
+  if (normalized === "resolved") return "RESOLVED";
+
+  const raw = getIncidentStatusRaw(incident);
+  return raw ? raw.toUpperCase() : "OPEN";
+}
+
+function getIncidentSeverityNormalized(incident: IncidentItem) {
+  const raw = getIncidentSeverityRaw(incident).toLowerCase();
+
+  if (!raw) {
+    if ((incident.sla_status || "").toLowerCase() === "breached") return "critical";
+    return "unknown";
+  }
+
+  if (["critical", "critique"].includes(raw)) return "critical";
+  if (["high", "élevé", "eleve"].includes(raw)) return "high";
+  if (["warning", "warn", "medium", "moyen"].includes(raw)) return "medium";
+  if (["low", "faible"].includes(raw)) return "low";
+
+  return raw;
+}
+
+function getIncidentSeverityLabel(incident: IncidentItem) {
+  const normalized = getIncidentSeverityNormalized(incident);
+
+  if (normalized === "critical") return "CRITICAL";
+  if (normalized === "high") return "HIGH";
+  if (normalized === "medium") return "MEDIUM";
+  if (normalized === "low") return "LOW";
+
+  const raw = getIncidentSeverityRaw(incident);
+  return raw ? raw.toUpperCase() : "UNKNOWN";
+}
+
+function statusTone(incident: IncidentItem) {
+  const status = getIncidentStatusNormalized(incident);
+
+  if (status === "resolved") {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  if (status === "escalated") {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  if (status === "open") {
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
+function severityTone(incident: IncidentItem) {
+  const severity = getIncidentSeverityNormalized(incident);
+
+  if (severity === "critical") {
+    return "bg-red-500/15 text-red-300 border border-red-500/20";
+  }
+
+  if (severity === "high") {
+    return "bg-orange-500/15 text-orange-300 border border-orange-500/20";
+  }
+
+  if (severity === "medium") {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  if (severity === "low") {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
+function getOpenedAt(incident: IncidentItem) {
+  return incident.opened_at || incident.created_at;
+}
+
+function getUpdatedAt(incident: IncidentItem) {
+  return incident.updated_at || incident.created_at;
+}
+
+function getResolvedAt(incident: IncidentItem) {
+  if (incident.resolved_at) {
+    return incident.resolved_at;
+  }
+
+  if (getIncidentStatusNormalized(incident) === "resolved") {
+    return incident.updated_at || incident.created_at;
+  }
+
+  return undefined;
+}
+
+function getWorkspace(incident: IncidentItem) {
+  return incident.workspace_id || incident.workspace || "—";
+}
+
+function getRunRecord(incident: IncidentItem) {
+  return incident.run_record_id || incident.linked_run || incident.run_id || "—";
+}
+
+function getCommandRecord(incident: IncidentItem) {
+  return incident.command_id || incident.linked_command || "—";
+}
+
+function getFlowId(incident: IncidentItem) {
+  return (incident.flow_id || "").trim();
+}
+
+function getRootEventId(incident: IncidentItem) {
+  return (incident.root_event_id || "").trim();
+}
+
+function getCategory(incident: IncidentItem) {
+  return incident.category || "—";
+}
+
+function getReason(incident: IncidentItem) {
+  return incident.reason || "—";
+}
+
+function getSuggestedAction(incident: IncidentItem) {
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+
+  if (status === "escalated") return "Review escalated incident";
+  if (severity === "critical") return "Prioritize immediate review";
+  if ((incident.sla_status || "").toLowerCase() === "breached") return "Review SLA breach";
+  if (status === "resolved") return "Verify final resolution state";
+
+  return "Monitor flow and resolution";
+}
+
+function getSlaLabel(incident: IncidentItem) {
+  const resolvedLike =
+    Boolean(incident.resolved_at) ||
+    getIncidentStatusNormalized(incident) === "resolved";
+
+  if (resolvedLike) {
+    return "RESOLVED";
+  }
+
+  const sla = (incident.sla_status || "").trim();
+  if (sla) return sla.toUpperCase();
+
+  if (
+    typeof incident.sla_remaining_minutes === "number" &&
+    incident.sla_remaining_minutes < 0
+  ) {
+    return "BREACHED";
+  }
+
+  return "—";
+}
+
+function getSlaTone(incident: IncidentItem) {
+  const resolvedLike =
+    Boolean(incident.resolved_at) ||
+    getIncidentStatusNormalized(incident) === "resolved";
+
+  if (resolvedLike) {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  const sla = (incident.sla_status || "").toLowerCase();
+
+  if (sla === "breached") {
+    return "bg-red-500/15 text-red-300 border border-red-500/20";
+  }
+
+  if (sla === "warning") {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  if (sla === "ok") {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  if (sla === "open") {
+    return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+  }
+
+  if (
+    typeof incident.sla_remaining_minutes === "number" &&
+    incident.sla_remaining_minutes < 0
+  ) {
+    return "bg-red-500/15 text-red-300 border border-red-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
+function getResolutionNote(incident: IncidentItem) {
+  return toText(incident.resolution_note);
+}
+
+function getLastAction(incident: IncidentItem) {
+  return toText(incident.last_action);
+}
+
+export default async function IncidentDetailPage({ params }: PageProps) {
+  const { id } = await params;
+
+  let data: IncidentsResponse | null = null;
 
   try {
-    const response = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`API ${path} failed: ${response.status} ${text}`);
-    }
-
-    return response.json() as Promise<T>;
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "unknown fetch error";
-
-    throw new Error(`Fetch failed for ${url}: ${message}`);
+    data = await fetchIncidents();
+  } catch {
+    data = null;
   }
-}
 
-export type HealthScoreResponse = {
-  ok?: boolean;
-  score?: number;
-  issues?: string[];
-  ts?: string;
-};
+  const incidents: IncidentItem[] = Array.isArray(data?.incidents) ? data.incidents : [];
+  const incident = incidents.find((item) => item.id === id);
 
-export type RunItem = {
-  id: string;
-  run_id?: string;
-  worker?: string;
-  capability?: string;
-  status?: string;
-  priority?: number;
-  started_at?: string;
-  finished_at?: string;
-  dry_run?: boolean | null;
-};
-
-export type RunsResponse = {
-  ok?: boolean;
-  count?: number;
-  stats?: {
-    running?: number;
-    done?: number;
-    error?: number;
-    unsupported?: number;
-    other?: number;
-  };
-  runs?: RunItem[];
-  ts?: string;
-};
-
-export type CommandItem = {
-  id: string;
-  capability?: string;
-  status?: string;
-  priority?: number;
-  retry_count?: number;
-  retry_max?: number;
-  scheduled_at?: string;
-  next_retry_at?: string;
-  is_locked?: boolean;
-  locked_by?: string;
-  idempotency_key?: string;
-  flow_id?: string;
-  flowid?: string;
-  root_event_id?: string;
-  rooteventid?: string;
-  event_id?: string;
-  parent_command_id?: string;
-  worker?: string;
-  workspace_id?: string;
-  started_at?: string;
-  finished_at?: string;
-  created_at?: string;
-  step_index?: number;
-  input?: Record<string, unknown>;
-  input_json?: Record<string, unknown> | string | null;
-  result_json?: Record<string, unknown> | string | null;
-};
-
-export type CommandsResponse = {
-  ok?: boolean;
-  count?: number;
-  stats?: {
-    queued?: number;
-    running?: number;
-    retry?: number;
-    done?: number;
-    dead?: number;
-    blocked?: number;
-    unsupported?: number;
-    error?: number;
-    other?: number;
-  };
-  commands?: CommandItem[];
-  ts?: string;
-};
-
-export type EventItem = {
-  id: string;
-  event_type?: string;
-  status?: string;
-  command_created?: boolean;
-  linked_command?: string[];
-  mapped_capability?: string;
-  processed_at?: string;
-  source?: string | null;
-  run_id?: string | null;
-  command_id?: string | null;
-  flow_id?: string | null;
-  payload?: Record<string, unknown>;
-};
-
-export type EventsResponse = {
-  ok?: boolean;
-  count?: number;
-  stats?: {
-    new?: number;
-    queued?: number;
-    processed?: number;
-    ignored?: number;
-    error?: number;
-    other?: number;
-  };
-  events?: EventItem[];
-  ts?: string;
-};
-
-export type IncidentItem = {
-  id: string;
-  title?: string;
-  name?: string;
-  error_id?: string;
-  status?: string;
-  statut_incident?: string;
-  severity?: string;
-  sla_status?: string;
-  sla_remaining_minutes?: number;
-  workspace_id?: string;
-  workspace?: string;
-  linked_run?: string;
-  linked_command?: string;
-  command_id?: string;
-  run_id?: string;
-  run_record_id?: string;
-  flow_id?: string;
-  root_event_id?: string;
-  category?: string;
-  reason?: string;
-  created_at?: string;
-  updated_at?: string;
-  resolved_at?: string;
-  opened_at?: string;
-  source?: string;
-  worker?: string;
-  resolution_note?: string;
-  last_action?: string;
-};
-
-export type IncidentsResponse = {
-  ok?: boolean;
-  count?: number;
-  stats?: {
-    open?: number;
-    critical?: number;
-    warning?: number;
-    resolved?: number;
-    other?: number;
-  };
-  incidents?: IncidentItem[];
-  ts?: string;
-};
-
-export type SlaItem = {
-  id: string;
-  name?: string;
-  sla_status?: string;
-  sla_remaining_minutes?: number;
-  escalation_queued?: boolean;
-  last_sla_check?: string;
-  linked_run?: string[] | string | null;
-};
-
-export type SlaResponse = {
-  ok?: boolean;
-  count?: number;
-  stats?: {
-    ok?: number;
-    warning?: number;
-    breached?: number;
-    escalated?: number;
-    unknown?: number;
-    escalation_queued?: number;
-  };
-  incidents?: SlaItem[];
-  ts?: string;
-};
-
-export type ToolItem = {
-  name: string;
-  status?: string;
-  description?: string;
-};
-
-export type ToolsResponse = {
-  ok?: boolean;
-  tools?: ToolItem[];
-};
-
-export type PolicyItem = {
-  id: string;
-  name?: string;
-  value?: string | number | boolean;
-  description?: string;
-};
-
-export type PoliciesResponse = {
-  ok?: boolean;
-  policies?: PolicyItem[];
-};
-
-export type FlowCommandItem = {
-  id: string;
-  capability?: string;
-  status?: string;
-  priority?: number;
-  retry_count?: number;
-  retry_max?: number;
-  scheduled_at?: string;
-  next_retry_at?: string;
-  is_locked?: boolean;
-  locked_by?: string;
-  idempotency_key?: string;
-  flow_id?: string;
-  root_event_id?: string;
-  parent_command_id?: string;
-  step_index?: number;
-  input_json?: Record<string, unknown> | string | null;
-  result_json?: Record<string, unknown> | string | null;
-  worker?: string;
-  workspace_id?: string;
-  started_at?: string;
-  finished_at?: string;
-  created_at?: string;
-};
-
-export type FlowItem = {
-  id: string;
-  flow_id?: string;
-  root_event_id?: string;
-  workspace_id?: string;
-  count?: number;
-  is_synthetic?: boolean;
-  commands?: FlowCommandItem[];
-  stats?: {
-    queued?: number;
-    running?: number;
-    retry?: number;
-    done?: number;
-    dead?: number;
-    blocked?: number;
-    unsupported?: number;
-    error?: number;
-    other?: number;
-  };
-  started_at?: string;
-  finished_at?: string;
-  created_at?: string;
-};
-
-export type FlowsResponse = {
-  ok?: boolean;
-  count?: number;
-  stats?: {
-    linked?: number;
-    synthetic?: number;
-  };
-  flows?: FlowItem[];
-  ts?: string;
-};
-
-export type FlowDetail = {
-  id: string;
-  flow_id?: string;
-  count?: number;
-  root_event_id?: string;
-  workspace_id?: string;
-  stats?: {
-    queued?: number;
-    running?: number;
-    retry?: number;
-    done?: number;
-    dead?: number;
-    blocked?: number;
-    unsupported?: number;
-    error?: number;
-    other?: number;
-  };
-  commands?: FlowCommandItem[];
-};
-
-type RawIncidentItem = Record<string, unknown>;
-
-function toStringSafe(value: unknown): string | undefined {
-  if (value === null || value === undefined) return undefined;
-  const text = String(value).trim();
-  return text ? text : undefined;
-}
-
-function toNumberSafe(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim() !== "") {
-    const n = Number(value);
-    if (Number.isFinite(n)) return n;
+  if (!incident) {
+    notFound();
   }
-  return undefined;
-}
 
-function firstString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    const text = toStringSafe(value);
-    if (text) return text;
-  }
-  return undefined;
-}
+  const title = getIncidentTitle(incident);
+  const statusLabel = getIncidentStatusLabel(incident);
+  const severityLabel = getIncidentSeverityLabel(incident);
+  const openedAt = getOpenedAt(incident);
+  const updatedAt = getUpdatedAt(incident);
+  const resolvedAt = getResolvedAt(incident);
+  const flowId = getFlowId(incident);
+  const commandRecord = getCommandRecord(incident);
+  const runRecord = getRunRecord(incident);
+  const rootEventId = getRootEventId(incident);
+  const workspace = getWorkspace(incident);
+  const category = getCategory(incident);
+  const reason = getReason(incident);
+  const suggestedAction = getSuggestedAction(incident);
+  const slaLabel = getSlaLabel(incident);
+  const resolutionNote = getResolutionNote(incident);
+  const lastAction = getLastAction(incident);
 
-function normalizeIncident(item: RawIncidentItem): IncidentItem {
-  const id =
-    firstString(
-      item.id,
-      item.record_id,
-      item.incident_record_id,
-      item.incidentid
-    ) || "unknown_incident";
+  return (
+    <div className="space-y-6">
+      <div className="border-b border-white/10 pb-4">
+        <div className="text-sm text-zinc-400">
+          <Link
+            href="/incidents"
+            className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+          >
+            Incidents
+          </Link>{" "}
+          / {title}
+        </div>
 
-  const severity = firstString(
-    item.severity,
-    item.Severity,
-    item.urgence,
-    item.priority
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+          {title}
+        </h1>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span
+            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${statusTone(
+              incident
+            )}`}
+          >
+            {statusLabel}
+          </span>
+
+          <span
+            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${severityTone(
+              incident
+            )}`}
+          >
+            {severityLabel}
+          </span>
+
+          <span
+            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${getSlaTone(
+              incident
+            )}`}
+          >
+            SLA {slaLabel}
+          </span>
+        </div>
+      </div>
+
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Opened</div>
+          <div className="mt-3 text-xl font-semibold text-white">
+            {formatDate(openedAt)}
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Updated</div>
+          <div className="mt-3 text-xl font-semibold text-white">
+            {formatDate(updatedAt)}
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Resolved</div>
+          <div className="mt-3 text-xl font-semibold text-white">
+            {formatDate(resolvedAt)}
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">SLA Remaining</div>
+          <div className="mt-3 text-xl font-semibold text-white">
+            {typeof incident.sla_remaining_minutes === "number"
+              ? `${incident.sla_remaining_minutes} min`
+              : "—"}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className={`${cardClassName()} xl:col-span-2`}>
+          <div className="mb-4 text-lg font-medium text-white">
+            Incident context
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
+            <div>
+              Category: <span className="text-zinc-200">{category}</span>
+            </div>
+            <div>
+              Reason: <span className="text-zinc-200">{reason}</span>
+            </div>
+            <div>
+              Workspace: <span className="text-zinc-200">{workspace}</span>
+            </div>
+            <div>
+              Source: <span className="text-zinc-200">{toText(incident.source)}</span>
+            </div>
+            <div>
+              Worker: <span className="text-zinc-200">{toText(incident.worker)}</span>
+            </div>
+            <div>
+              Error ID: <span className="text-zinc-200">{toText(incident.error_id)}</span>
+            </div>
+            <div>
+              Last action: <span className="text-zinc-200">{lastAction}</span>
+            </div>
+            <div>
+              Resolution note: <span className="text-zinc-200">{resolutionNote}</span>
+            </div>
+            <div className="md:col-span-2">
+              Suggested action: <span className="text-zinc-200">{suggestedAction}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="mb-4 text-lg font-medium text-white">
+            Incident stats
+          </div>
+
+          <div className="space-y-3 text-sm">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Status</span>
+              <span className="text-zinc-200">{statusLabel}</span>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Severity</span>
+              <span className="text-zinc-200">{severityLabel}</span>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">SLA</span>
+              <span className="text-zinc-200">{slaLabel}</span>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Record ID</span>
+              <span className="break-all text-zinc-200">{incident.id}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className={`${cardClassName()} xl:col-span-2`}>
+          <div className="mb-4 text-lg font-medium text-white">
+            Flow links
+          </div>
+
+          <div className="space-y-4 text-sm text-zinc-400">
+            <div className="break-all">
+              Flow:{" "}
+              {flowId ? (
+                <Link
+                  href={`/flows/${encodeURIComponent(flowId)}`}
+                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  {flowId}
+                </Link>
+              ) : (
+                <span className="text-zinc-200">—</span>
+              )}
+            </div>
+
+            <div className="break-all">
+              Root event: <span className="text-zinc-200">{toText(rootEventId)}</span>
+            </div>
+
+            <div className="break-all">
+              Run record: <span className="text-zinc-200">{toText(runRecord)}</span>
+            </div>
+
+            <div className="break-all">
+              Command:{" "}
+              {commandRecord !== "—" && commandRecord ? (
+                <Link
+                  href={`/commands/${encodeURIComponent(commandRecord)}`}
+                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  {commandRecord}
+                </Link>
+              ) : (
+                <span className="text-zinc-200">—</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="mb-4 text-lg font-medium text-white">
+            Navigation
+          </div>
+
+          <div className="space-y-3 text-sm">
+            <div>
+              <Link
+                href="/incidents"
+                className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+              >
+                Retour à la liste incidents
+              </Link>
+            </div>
+
+            {flowId ? (
+              <div>
+                <Link
+                  href={`/flows/${encodeURIComponent(flowId)}`}
+                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  Ouvrir le flow lié
+                </Link>
+              </div>
+            ) : null}
+
+            {commandRecord !== "—" && commandRecord ? (
+              <div>
+                <Link
+                  href={`/commands/${encodeURIComponent(commandRecord)}`}
+                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  Ouvrir la command liée
+                </Link>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
+    </div>
   );
-
-  const slaStatus = firstString(
-    item.sla_status,
-    item.SLA_Status,
-    item.slaStatus,
-    item.status_sla
-  );
-
-  const status = firstString(
-    item.status_select,
-    item.Status_select,
-    item.Status,
-    item.status,
-    item.statut_incident
-  );
-
-  const title = firstString(
-    item.title,
-    item.name,
-    item.Name,
-    item.error_id,
-    item.incident_code
-  );
-
-  const runRecordId = firstString(
-    item.run_record_id,
-    item.Run_Record_ID,
-    item.run_id,
-    item.Run_ID
-  );
-
-  return {
-    id,
-    title,
-    name: firstString(item.name, item.Name),
-    error_id: firstString(item.error_id, item.errorId, item.incident_code),
-    status,
-    statut_incident: firstString(item.statut_incident),
-    severity,
-    sla_status: slaStatus,
-    sla_remaining_minutes: toNumberSafe(
-      item.sla_remaining_minutes ?? item.SLA_Remaining_Minutes
-    ),
-    workspace_id: firstString(
-      item.workspace_id,
-      item.workspaceId,
-      item.Workspace_ID
-    ),
-    workspace: firstString(item.workspace, item.workspace_name),
-    linked_run: firstString(item.linked_run, item.Linked_Run, runRecordId),
-    linked_command: firstString(item.linked_command, item.Linked_Command),
-    command_id: firstString(item.command_id, item.Command_ID),
-    run_id: firstString(item.run_id, item.Run_ID, runRecordId),
-    run_record_id: runRecordId,
-    flow_id: firstString(item.flow_id, item.Flow_ID),
-    root_event_id: firstString(item.root_event_id, item.Root_Event_ID),
-    category: firstString(item.category, item.Category),
-    reason: firstString(item.reason, item.Reason),
-    created_at: firstString(item.created_at, item.Created_At, item.createdTime),
-    updated_at: firstString(item.updated_at, item.Updated_At, item.lastModified),
-    resolved_at: firstString(item.resolved_at, item.Resolved_At),
-    opened_at: firstString(item.opened_at, item.Opened_At),
-    source: firstString(item.source),
-    worker: firstString(item.worker),
-    resolution_note: firstString(
-      item.resolution_note,
-      item.Resolution_Note,
-      item.resolutionNote
-    ),
-    last_action: firstString(
-      item.last_action,
-      item.Last_Action,
-      item.lastAction
-    ),
-  };
-}
-
-export async function fetchHealthScore() {
-  return fetchJson<HealthScoreResponse>("/health/score");
-}
-
-export async function fetchRuns() {
-  return fetchJson<RunsResponse>("/runs?limit=20");
-}
-
-export async function fetchCommands() {
-  return fetchJson<CommandsResponse>("/commands?limit=20");
-}
-
-export async function fetchCommandById(id: string): Promise<CommandItem> {
-  if (!id?.trim()) {
-    throw new Error("fetchCommandById: id manquant");
-  }
-
-  const data = await fetchJson<{ command?: CommandItem } | CommandItem>(
-    `/commands/${encodeURIComponent(id)}`
-  );
-
-  const command =
-    typeof data === "object" && data !== null && "command" in data
-      ? data.command
-      : data;
-
-  if (!command || typeof command !== "object" || !("id" in command)) {
-    throw new Error("fetchCommandById: réponse invalide");
-  }
-
-  return command as CommandItem;
-}
-
-export async function fetchEvents() {
-  return fetchJson<EventsResponse>("/events?limit=20");
-}
-
-export async function fetchIncidents(): Promise<IncidentsResponse> {
-  const raw = await fetchJson<{
-    ok?: boolean;
-    count?: number;
-    stats?: IncidentsResponse["stats"];
-    incidents?: RawIncidentItem[];
-    ts?: string;
-  }>("/incidents");
-
-  const incidents = Array.isArray(raw?.incidents)
-    ? raw.incidents.map(normalizeIncident)
-    : [];
-
-  return {
-    ok: raw?.ok,
-    count: raw?.count ?? incidents.length,
-    stats: raw?.stats,
-    incidents,
-    ts: raw?.ts,
-  };
-}
-
-export async function fetchIncidentsByFlowId(
-  flowId: string
-): Promise<IncidentItem[]> {
-  if (!flowId?.trim()) {
-    return [];
-  }
-
-  const raw = await fetchJson<{
-    ok?: boolean;
-    count?: number;
-    stats?: IncidentsResponse["stats"];
-    incidents?: RawIncidentItem[];
-    ts?: string;
-  }>(`/incidents?flow_id=${encodeURIComponent(flowId)}`);
-
-  return Array.isArray(raw?.incidents)
-    ? raw.incidents.map(normalizeIncident)
-    : [];
-}
-
-export async function fetchSla() {
-  return fetchJson<SlaResponse>("/sla?limit=20");
-}
-
-export async function fetchTools() {
-  return fetchJson<ToolsResponse>("/tools");
-}
-
-export async function fetchPolicies() {
-  return fetchJson<PoliciesResponse>("/policies");
-}
-
-export async function fetchFlows() {
-  return fetchJson<FlowsResponse>("/flows?limit=50");
-}
-
-export async function fetchFlowById(id: string): Promise<FlowDetail> {
-  if (!id?.trim()) {
-    throw new Error("fetchFlowById: id manquant");
-  }
-
-  const data = await fetchJson<{ ok?: boolean; flow?: FlowDetail }>(
-    `/flows/${encodeURIComponent(id)}`
-  );
-
-  if (!data?.flow) {
-    throw new Error("fetchFlowById: réponse invalide");
-  }
-
-  return data.flow;
 }
