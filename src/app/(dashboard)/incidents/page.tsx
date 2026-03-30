@@ -27,6 +27,15 @@ function toText(value: unknown, fallback = "—") {
   return text || fallback;
 }
 
+function toNumber(value: unknown, fallback = 0) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+}
+
 function getIncidentTitle(incident: IncidentItem) {
   return incident.title || incident.name || incident.error_id || "Untitled incident";
 }
@@ -147,6 +156,44 @@ function severityTone(incident: IncidentItem) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function getDecisionStatus(incident: IncidentItem) {
+  return toText(incident.decision_status, "");
+}
+
+function getDecisionReason(incident: IncidentItem) {
+  return toText(incident.decision_reason, "");
+}
+
+function getNextAction(incident: IncidentItem) {
+  return toText(incident.next_action, "");
+}
+
+function getPriorityScore(incident: IncidentItem) {
+  return toNumber(incident.priority_score, 0);
+}
+
+function getDecisionTone(incident: IncidentItem) {
+  const decision = getDecisionStatus(incident).toLowerCase();
+
+  if (["escalate", "escalated"].includes(decision)) {
+    return "bg-orange-500/15 text-orange-300 border border-orange-500/20";
+  }
+
+  if (["resolve", "resolved"].includes(decision)) {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  if (["retry", "retriable"].includes(decision)) {
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+  }
+
+  if (decision) {
+    return "bg-purple-500/15 text-purple-300 border border-purple-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
 function getSlaLabel(incident: IncidentItem) {
   const resolvedLike =
     Boolean(incident.resolved_at) ||
@@ -255,6 +302,9 @@ function getReason(incident: IncidentItem) {
 }
 
 function getSuggestedAction(incident: IncidentItem) {
+  const nextAction = getNextAction(incident);
+  if (nextAction) return nextAction;
+
   const status = getIncidentStatusNormalized(incident);
   const severity = getIncidentSeverityNormalized(incident);
 
@@ -311,6 +361,10 @@ type NormalizedIncident = {
   severity: string;
   severityLabel: string;
   slaLabel: string;
+  decisionStatus: string;
+  decisionReason: string;
+  nextAction: string;
+  priorityScore: number;
   openedAt?: string;
   updatedAt?: string;
   resolvedAt?: string;
@@ -339,6 +393,10 @@ function normalizeIncident(incident: IncidentItem): NormalizedIncident {
     severity: getIncidentSeverityNormalized(incident),
     severityLabel: getIncidentSeverityLabel(incident),
     slaLabel: getSlaLabel(incident),
+    decisionStatus: getDecisionStatus(incident),
+    decisionReason: getDecisionReason(incident),
+    nextAction: getNextAction(incident),
+    priorityScore: getPriorityScore(incident),
     openedAt,
     updatedAt,
     resolvedAt,
@@ -393,6 +451,16 @@ function IncidentCard({ incident }: { incident: NormalizedIncident }) {
           >
             SLA {incident.slaLabel}
           </span>
+
+          {incident.decisionStatus ? (
+            <span
+              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getDecisionTone(
+                incident.raw
+              )}`}
+            >
+              DECISION {incident.decisionStatus.toUpperCase()}
+            </span>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
@@ -459,6 +527,21 @@ function IncidentCard({ incident }: { incident: NormalizedIncident }) {
 
         <div className="md:col-span-2 xl:col-span-3">
           Action suggested: <span className="text-zinc-300">{incident.suggestedAction}</span>
+        </div>
+
+        <div className="md:col-span-2 xl:col-span-3 space-y-1 border-t border-white/10 pt-3">
+          <div>
+            Decision: <span className="text-purple-300">{incident.decisionStatus || "—"}</span>
+          </div>
+          <div>
+            Decision reason: <span className="text-zinc-300">{incident.decisionReason || "—"}</span>
+          </div>
+          <div>
+            Next action: <span className="text-zinc-300">{incident.nextAction || "—"}</span>
+          </div>
+          <div>
+            Priority score: <span className="text-zinc-300">{incident.priorityScore}</span>
+          </div>
         </div>
       </div>
     </article>
