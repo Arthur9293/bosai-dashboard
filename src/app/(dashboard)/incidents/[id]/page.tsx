@@ -48,15 +48,21 @@ function getIncidentSeverityRaw(incident: IncidentItem) {
 
 function getIncidentStatusNormalized(incident: IncidentItem) {
   const raw = getIncidentStatusRaw(incident).toLowerCase();
+  const sla = (incident.sla_status || "").trim().toLowerCase();
+  const hasResolvedAt = Boolean(incident.resolved_at);
+
+  if (hasResolvedAt) {
+    return "resolved";
+  }
 
   if (!raw) {
-    if ((incident.sla_status || "").toLowerCase() === "breached") return "open";
+    if (sla === "breached") return "open";
     return "open";
   }
 
   if (["open", "opened", "new", "active", "en cours"].includes(raw)) return "open";
   if (["escalated", "escalade", "escaladé"].includes(raw)) return "escalated";
-  if (["resolved", "closed", "done", "résolu"].includes(raw)) return "resolved";
+  if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw)) return "resolved";
 
   return raw;
 }
@@ -149,7 +155,15 @@ function getUpdatedAt(incident: IncidentItem) {
 }
 
 function getResolvedAt(incident: IncidentItem) {
-  return incident.resolved_at;
+  if (incident.resolved_at) {
+    return incident.resolved_at;
+  }
+
+  if (getIncidentStatusNormalized(incident) === "resolved") {
+    return incident.updated_at || incident.created_at;
+  }
+
+  return undefined;
 }
 
 function getWorkspace(incident: IncidentItem) {
@@ -231,6 +245,14 @@ function getSlaTone(incident: IncidentItem) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function getResolutionNote(incident: IncidentItem) {
+  return toText(incident.resolution_note);
+}
+
+function getLastAction(incident: IncidentItem) {
+  return toText(incident.last_action);
+}
+
 export default async function IncidentDetailPage({ params }: PageProps) {
   const { id } = await params;
 
@@ -264,6 +286,8 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const reason = getReason(incident);
   const suggestedAction = getSuggestedAction(incident);
   const slaLabel = getSlaLabel(incident);
+  const resolutionNote = getResolutionNote(incident);
+  const lastAction = getLastAction(incident);
 
   return (
     <div className="space-y-6">
@@ -365,6 +389,12 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             </div>
             <div>
               Error ID: <span className="text-zinc-200">{toText(incident.error_id)}</span>
+            </div>
+            <div>
+              Last action: <span className="text-zinc-200">{lastAction}</span>
+            </div>
+            <div>
+              Resolution note: <span className="text-zinc-200">{resolutionNote}</span>
             </div>
             <div className="md:col-span-2">
               Suggested action: <span className="text-zinc-200">{suggestedAction}</span>
