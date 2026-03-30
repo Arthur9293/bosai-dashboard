@@ -266,39 +266,47 @@ function getSuggestedAction(incident: IncidentItem) {
   return "Monitor flow and resolution";
 }
 
-function hasMeaningfulContext(incident: IncidentItem) {
+function isLegacyNoiseIncident(incident: IncidentItem) {
+  const title = getIncidentTitle(incident).trim().toLowerCase();
+  const category = getCategory(incident).trim().toLowerCase();
+  const reason = getReason(incident).trim().toLowerCase();
   const flowId = getFlowId(incident);
   const rootEventId = getRootEventId(incident);
   const commandRecord = getCommandRecord(incident);
-  const category = getCategory(incident);
-  const reason = getReason(incident);
-  const title = getIncidentTitle(incident);
-  const runRecord = getRunRecord(incident);
+  const errorId = (incident.error_id || "").trim();
+  const resolutionNote = (incident.resolution_note || "").trim();
+  const lastAction = (incident.last_action || "").trim();
 
-  const hasUsefulLinking =
+  const isGenericTitle =
+    title === "incident" || title === "untitled incident";
+
+  const isGenericCategory =
+    category === "" || category === "—" || category === "unknown_incident";
+
+  const isGenericReason =
+    reason === "" || reason === "—" || reason === "incident_create";
+
+  const hasStrongBusinessSignal =
+    errorId !== "" ||
+    resolutionNote !== "" ||
+    lastAction !== "" ||
     flowId !== "" ||
     rootEventId !== "" ||
-    (commandRecord !== "—" && commandRecord !== "") ||
-    (runRecord !== "—" && runRecord !== "");
+    (commandRecord !== "" && commandRecord !== "—") ||
+    category === "http_failure" ||
+    reason === "http_5xx_exhausted" ||
+    reason === "http_status_error" ||
+    reason === "forbidden_host";
 
-  const hasUsefulBusinessContext =
-    category !== "—" &&
-    category !== "unknown_incident";
+  if (hasStrongBusinessSignal) {
+    return false;
+  }
 
-  const hasUsefulReason =
-    reason !== "—" &&
-    reason !== "incident_create";
+  return isGenericTitle && isGenericCategory && isGenericReason;
+}
 
-  const hasUsefulTitle =
-    title !== "Incident" &&
-    title !== "Untitled incident";
-
-  return (
-    hasUsefulLinking ||
-    hasUsefulBusinessContext ||
-    hasUsefulReason ||
-    hasUsefulTitle
-  );
+function isDisplayableIncident(incident: IncidentItem) {
+  return !isLegacyNoiseIncident(incident);
 }
 
 type NormalizedIncident = {
@@ -475,7 +483,9 @@ export default async function IncidentsPage() {
 
   const incidents: IncidentItem[] = Array.isArray(data?.incidents) ? data.incidents : [];
 
-  const normalized = incidents
+  const displayableIncidents = incidents.filter(isDisplayableIncident);
+
+  const normalized = displayableIncidents
     .map(normalizeIncident)
     .sort((a, b) => b.sortDate - a.sortDate);
 
@@ -484,12 +494,13 @@ export default async function IncidentsPage() {
   const resolvedIncidents = normalized.filter((item) => item.status === "resolved");
   const criticalIncidents = normalized.filter((item) => item.severity === "critical");
 
-  const activeIncidents = [...openIncidents, ...escalatedIncidents]
-    .filter((item) => hasMeaningfulContext(item.raw))
-    .sort((a, b) => b.sortDate - a.sortDate);
+  const activeIncidents = [...openIncidents, ...escalatedIncidents].sort(
+    (a, b) => b.sortDate - a.sortDate
+  );
 
-  const sortedResolvedIncidents = [...resolvedIncidents]
-    .sort((a, b) => b.sortDate - a.sortDate);
+  const sortedResolvedIncidents = [...resolvedIncidents].sort(
+    (a, b) => b.sortDate - a.sortDate
+  );
 
   return (
     <div className="space-y-6">
