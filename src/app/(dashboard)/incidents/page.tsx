@@ -266,6 +266,41 @@ function getSuggestedAction(incident: IncidentItem) {
   return "Monitor flow and resolution";
 }
 
+function hasMeaningfulContext(incident: IncidentItem) {
+  const flowId = getFlowId(incident);
+  const rootEventId = getRootEventId(incident);
+  const commandRecord = getCommandRecord(incident);
+  const category = getCategory(incident);
+  const reason = getReason(incident);
+  const title = getIncidentTitle(incident);
+  const runRecord = getRunRecord(incident);
+
+  const hasUsefulLinking =
+    flowId !== "" ||
+    rootEventId !== "" ||
+    (commandRecord !== "—" && commandRecord !== "") ||
+    (runRecord !== "—" && runRecord !== "");
+
+  const hasUsefulBusinessContext =
+    category !== "—" &&
+    category !== "unknown_incident";
+
+  const hasUsefulReason =
+    reason !== "—" &&
+    reason !== "incident_create";
+
+  const hasUsefulTitle =
+    title !== "Incident" &&
+    title !== "Untitled incident";
+
+  return (
+    hasUsefulLinking ||
+    hasUsefulBusinessContext ||
+    hasUsefulReason ||
+    hasUsefulTitle
+  );
+}
+
 type NormalizedIncident = {
   raw: IncidentItem;
   id: string;
@@ -449,13 +484,12 @@ export default async function IncidentsPage() {
   const resolvedIncidents = normalized.filter((item) => item.status === "resolved");
   const criticalIncidents = normalized.filter((item) => item.severity === "critical");
 
-  const activeIncidents = [...openIncidents, ...escalatedIncidents].sort(
-    (a, b) => b.sortDate - a.sortDate
-  );
+  const activeIncidents = [...openIncidents, ...escalatedIncidents]
+    .filter((item) => hasMeaningfulContext(item.raw))
+    .sort((a, b) => b.sortDate - a.sortDate);
 
-  const sortedResolvedIncidents = [...resolvedIncidents].sort(
-    (a, b) => b.sortDate - a.sortDate
-  );
+  const sortedResolvedIncidents = [...resolvedIncidents]
+    .sort((a, b) => b.sortDate - a.sortDate);
 
   return (
     <div className="space-y-6">
@@ -527,7 +561,7 @@ export default async function IncidentsPage() {
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">Resolved incidents</h2>
-              <span className="text-sm text-zinc-400">{resolvedIncidents.length}</span>
+              <span className="text-sm text-zinc-400">{sortedResolvedIncidents.length}</span>
             </div>
 
             {sortedResolvedIncidents.length === 0 ? (
