@@ -146,6 +146,65 @@ function severityTone(incident: IncidentItem) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function getSlaLabel(incident: IncidentItem) {
+  const resolvedLike =
+    Boolean(incident.resolved_at) ||
+    getIncidentStatusNormalized(incident) === "resolved";
+
+  if (resolvedLike) {
+    return "RESOLVED";
+  }
+
+  const sla = (incident.sla_status || "").trim();
+  if (sla) return sla.toUpperCase();
+
+  if (
+    typeof incident.sla_remaining_minutes === "number" &&
+    incident.sla_remaining_minutes < 0
+  ) {
+    return "BREACHED";
+  }
+
+  return "—";
+}
+
+function getSlaTone(incident: IncidentItem) {
+  const resolvedLike =
+    Boolean(incident.resolved_at) ||
+    getIncidentStatusNormalized(incident) === "resolved";
+
+  if (resolvedLike) {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  const sla = (incident.sla_status || "").toLowerCase();
+
+  if (sla === "breached") {
+    return "bg-red-500/15 text-red-300 border border-red-500/20";
+  }
+
+  if (sla === "warning") {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  if (sla === "ok") {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  if (sla === "open") {
+    return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+  }
+
+  if (
+    typeof incident.sla_remaining_minutes === "number" &&
+    incident.sla_remaining_minutes < 0
+  ) {
+    return "bg-red-500/15 text-red-300 border border-red-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
 function getOpenedAt(incident: IncidentItem) {
   return incident.opened_at || incident.created_at;
 }
@@ -206,51 +265,52 @@ function getSuggestedAction(incident: IncidentItem) {
   return "Monitor flow and resolution";
 }
 
-function getSlaLabel(incident: IncidentItem) {
-  const sla = (incident.sla_status || "").trim();
-  if (sla) return sla.toUpperCase();
-
-  if (
-    typeof incident.sla_remaining_minutes === "number" &&
-    incident.sla_remaining_minutes < 0
-  ) {
-    return "BREACHED";
-  }
-
-  return "—";
-}
-
-function getSlaTone(incident: IncidentItem) {
-  const sla = (incident.sla_status || "").toLowerCase();
-
-  if (sla === "breached") {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  if (sla === "warning") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (sla === "ok") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (
-    typeof incident.sla_remaining_minutes === "number" &&
-    incident.sla_remaining_minutes < 0
-  ) {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-}
-
 function getResolutionNote(incident: IncidentItem) {
   return toText(incident.resolution_note);
 }
 
 function getLastAction(incident: IncidentItem) {
   return toText(incident.last_action);
+}
+
+function isLegacyNoiseIncident(incident: IncidentItem) {
+  const title = getIncidentTitle(incident).trim().toLowerCase();
+  const category = getCategory(incident).trim().toLowerCase();
+  const reason = getReason(incident).trim().toLowerCase();
+  const errorId = (incident.error_id || "").trim();
+  const resolutionNote = (incident.resolution_note || "").trim();
+  const lastAction = (incident.last_action || "").trim();
+  const flowId = getFlowId(incident);
+  const rootEventId = getRootEventId(incident);
+  const commandRecord = getCommandRecord(incident);
+  const runRecord = getRunRecord(incident);
+
+  const isGenericTitle =
+    title === "incident" || title === "untitled incident";
+
+  const isGenericCategory =
+    category === "" || category === "—" || category === "unknown_incident";
+
+  const isGenericReason =
+    reason === "" || reason === "—" || reason === "incident_create";
+
+  const hasNoLinking =
+    flowId === "" &&
+    rootEventId === "" &&
+    (commandRecord === "" || commandRecord === "—") &&
+    (runRecord === "" || runRecord === "—");
+
+  const hasStrongBusinessSignal =
+    errorId !== "" ||
+    resolutionNote !== "" ||
+    lastAction !== "" ||
+    category === "http_failure" ||
+    reason === "http_5xx_exhausted" ||
+    reason === "http_status_error" ||
+    reason === "forbidden_host" ||
+    !hasNoLinking;
+
+  return isGenericTitle && isGenericCategory && isGenericReason && !hasStrongBusinessSignal;
 }
 
 export default async function IncidentDetailPage({ params }: PageProps) {
@@ -265,7 +325,8 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   }
 
   const incidents: IncidentItem[] = Array.isArray(data?.incidents) ? data.incidents : [];
-  const incident = incidents.find((item) => item.id === id);
+  const cleanIncidents = incidents.filter((item) => !isLegacyNoiseIncident(item));
+  const incident = cleanIncidents.find((item) => item.id === id);
 
   if (!incident) {
     notFound();
@@ -288,6 +349,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const slaLabel = getSlaLabel(incident);
   const resolutionNote = getResolutionNote(incident);
   const lastAction = getLastAction(incident);
+  const errorId = toText(incident.error_id);
 
   return (
     <div className="space-y-6">
@@ -388,7 +450,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
               Worker: <span className="text-zinc-200">{toText(incident.worker)}</span>
             </div>
             <div>
-              Error ID: <span className="text-zinc-200">{toText(incident.error_id)}</span>
+              Error ID: <span className="text-zinc-200">{errorId}</span>
             </div>
             <div>
               Last action: <span className="text-zinc-200">{lastAction}</span>
