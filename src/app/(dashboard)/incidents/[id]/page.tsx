@@ -34,6 +34,15 @@ function toText(value: unknown, fallback = "—") {
   return text || fallback;
 }
 
+function toNumber(value: unknown, fallback = 0) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+}
+
 function getIncidentTitle(incident: IncidentItem) {
   return incident.title || incident.name || incident.error_id || "Untitled incident";
 }
@@ -141,6 +150,44 @@ function severityTone(incident: IncidentItem) {
 
   if (severity === "low") {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
+function getDecisionStatus(incident: IncidentItem) {
+  return toText(incident.decision_status, "");
+}
+
+function getDecisionReason(incident: IncidentItem) {
+  return toText(incident.decision_reason, "");
+}
+
+function getNextAction(incident: IncidentItem) {
+  return toText(incident.next_action, "");
+}
+
+function getPriorityScore(incident: IncidentItem) {
+  return toNumber(incident.priority_score, 0);
+}
+
+function getDecisionTone(incident: IncidentItem) {
+  const decision = getDecisionStatus(incident).toLowerCase();
+
+  if (["escalate", "escalated"].includes(decision)) {
+    return "bg-orange-500/15 text-orange-300 border border-orange-500/20";
+  }
+
+  if (["resolve", "resolved"].includes(decision)) {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  if (["retry", "retriable"].includes(decision)) {
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+  }
+
+  if (decision) {
+    return "bg-purple-500/15 text-purple-300 border border-purple-500/20";
   }
 
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
@@ -254,6 +301,9 @@ function getReason(incident: IncidentItem) {
 }
 
 function getSuggestedAction(incident: IncidentItem) {
+  const nextAction = getNextAction(incident);
+  if (nextAction) return nextAction;
+
   const status = getIncidentStatusNormalized(incident);
   const severity = getIncidentSeverityNormalized(incident);
 
@@ -350,6 +400,10 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const resolutionNote = getResolutionNote(incident);
   const lastAction = getLastAction(incident);
   const errorId = toText(incident.error_id);
+  const decisionStatus = getDecisionStatus(incident);
+  const decisionReason = getDecisionReason(incident);
+  const nextAction = getNextAction(incident);
+  const priorityScore = getPriorityScore(incident);
 
   return (
     <div className="space-y-6">
@@ -392,6 +446,16 @@ export default async function IncidentDetailPage({ params }: PageProps) {
           >
             SLA {slaLabel}
           </span>
+
+          {decisionStatus ? (
+            <span
+              className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${getDecisionTone(
+                incident
+              )}`}
+            >
+              DECISION {decisionStatus.toUpperCase()}
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -458,6 +522,18 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             <div>
               Resolution note: <span className="text-zinc-200">{resolutionNote}</span>
             </div>
+            <div>
+              Decision status: <span className="text-purple-300">{decisionStatus || "—"}</span>
+            </div>
+            <div>
+              Decision reason: <span className="text-zinc-200">{decisionReason || "—"}</span>
+            </div>
+            <div>
+              Next action: <span className="text-zinc-200">{nextAction || "—"}</span>
+            </div>
+            <div>
+              Priority score: <span className="text-zinc-200">{priorityScore}</span>
+            </div>
             <div className="md:col-span-2">
               Suggested action: <span className="text-zinc-200">{suggestedAction}</span>
             </div>
@@ -483,6 +559,11 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             <div className="flex items-center justify-between gap-4">
               <span className="text-zinc-400">SLA</span>
               <span className="text-zinc-200">{slaLabel}</span>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Priority</span>
+              <span className="text-zinc-200">{priorityScore}</span>
             </div>
 
             <div className="flex items-center justify-between gap-4">
