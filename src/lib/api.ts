@@ -117,6 +117,23 @@ export type IncidentsResponse = {
   };
 };
 
+export type ToolItem = {
+  id: string;
+  name?: string;
+  description?: string;
+  status?: string;
+  category?: string;
+  tool_key?: string;
+  tool_mode?: string;
+  enabled?: boolean;
+  [key: string]: unknown;
+};
+
+export type ToolsResponse = {
+  count?: number;
+  tools?: ToolItem[];
+};
+
 export async function fetchHealthScore(): Promise<HealthScoreResponse> {
   return safeFetch<HealthScoreResponse>("/health/score");
 }
@@ -135,4 +152,8 @@ export async function fetchEvents(): Promise<EventsResponse> {
 
 export async function fetchIncidents(): Promise<IncidentsResponse> {
   return safeFetch<IncidentsResponse>("/incidents");
+}
+
+export async function fetchTools(): Promise<ToolsResponse> {
+  return safeFetch<ToolsResponse>("/tools");
 }
