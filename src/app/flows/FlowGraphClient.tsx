@@ -14,6 +14,7 @@ type FlowCommand = {
   capability?: string;
   status?: string;
   parent_command_id?: string;
+  flow_id?: string;
 };
 
 type Props = {
@@ -37,7 +38,9 @@ function statusLabel(status?: string) {
 }
 
 export default function FlowGraphClient({ commands }: Props) {
-  const nodes: Node[] = commands.map((cmd, index) => ({
+  const safeCommands = Array.isArray(commands) ? commands : [];
+
+  const nodes: Node[] = safeCommands.map((cmd, index) => ({
     id: String(cmd.id),
     position: { x: index * 220, y: 80 },
     data: {
@@ -101,7 +104,7 @@ export default function FlowGraphClient({ commands }: Props) {
     },
   }));
 
-  const edges: Edge[] = commands
+  const edges: Edge[] = safeCommands
     .filter((cmd) => cmd.parent_command_id)
     .map((cmd) => ({
       id: `e-${cmd.parent_command_id}-${cmd.id}`,
