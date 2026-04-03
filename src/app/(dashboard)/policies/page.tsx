@@ -54,9 +54,7 @@ export default async function PoliciesPage() {
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {policies.map((p) => (
           <DashboardCard key={p.id}>
-            <div className="text-sm text-zinc-400">
-              {p.name || p.id}
-            </div>
+            <div className="text-sm text-zinc-400">{p.name || p.id}</div>
             <div className="mt-3 text-2xl font-semibold text-white">
               {renderPolicyValue(p.value)}
             </div>
