@@ -9,6 +9,30 @@ const fallbackPolicies: PolicyItem[] = [
   { id: "sla_warning", name: "SLA warning (min)", value: 15 },
 ];
 
+function renderPolicyValue(value: unknown): string {
+  if (typeof value === "boolean") {
+    return value ? "Enabled" : "Disabled";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  if (value === null || value === undefined) {
+    return "—";
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "Unsupported value";
+  }
+}
+
 export default async function PoliciesPage() {
   let policies: PolicyItem[] = fallbackPolicies;
 
@@ -34,11 +58,7 @@ export default async function PoliciesPage() {
               {p.name || p.id}
             </div>
             <div className="mt-3 text-2xl font-semibold text-white">
-              {typeof p.value === "boolean"
-                ? p.value
-                  ? "Enabled"
-                  : "Disabled"
-                : p.value ?? "—"}
+              {renderPolicyValue(p.value)}
             </div>
           </DashboardCard>
         ))}
