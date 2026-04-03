@@ -21,7 +21,7 @@ export default async function FlowsPage() {
     commands = allCommands
       .filter(isFlowCommand)
       .sort((a, b) => getSortTime(a) - getSortTime(b))
-      .slice(0, 20);
+      .slice(-8);
   } catch {
     commands = [];
   }
