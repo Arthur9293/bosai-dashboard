@@ -4,7 +4,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   type Node,
   type Edge,
 } from "@xyflow/react";
@@ -40,22 +39,24 @@ function statusLabel(status?: string) {
 export default function FlowGraphClient({ commands }: Props) {
   const nodes: Node[] = commands.map((cmd, index) => ({
     id: String(cmd.id),
-    position: { x: index * 260, y: 100 },
+    position: { x: index * 220, y: 80 },
     data: {
       label: (
         <div
           style={{
-            minWidth: 180,
+            minWidth: 150,
+            maxWidth: 170,
             color: "white",
           }}
         >
           <div
             style={{
-              fontSize: 11,
+              fontSize: 10,
               letterSpacing: "0.08em",
               textTransform: "uppercase",
               opacity: 0.7,
-              marginBottom: 8,
+              marginBottom: 6,
+              wordBreak: "break-word",
             }}
           >
             {cmd.capability || "unknown"}
@@ -63,10 +64,11 @@ export default function FlowGraphClient({ commands }: Props) {
 
           <div
             style={{
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: 700,
               marginBottom: 10,
               wordBreak: "break-word",
+              lineHeight: 1.2,
             }}
           >
             {cmd.capability || "Unknown capability"}
@@ -75,7 +77,7 @@ export default function FlowGraphClient({ commands }: Props) {
           <div
             style={{
               display: "inline-block",
-              fontSize: 11,
+              fontSize: 10,
               fontWeight: 700,
               padding: "4px 8px",
               borderRadius: 999,
@@ -88,6 +90,8 @@ export default function FlowGraphClient({ commands }: Props) {
         </div>
       ),
     },
+    draggable: false,
+    selectable: true,
     style: {
       background: "#0f172a",
       border: `1px solid ${statusColor(cmd.status)}`,
@@ -114,7 +118,8 @@ export default function FlowGraphClient({ commands }: Props) {
     <div
       style={{
         width: "100%",
-        height: 560,
+        height: "min(72vh, 560px)",
+        minHeight: 380,
         borderRadius: 20,
         overflow: "hidden",
         border: "1px solid rgba(255,255,255,0.08)",
@@ -122,16 +127,23 @@ export default function FlowGraphClient({ commands }: Props) {
           "radial-gradient(circle at top left, rgba(29,78,216,0.18), transparent 28%), #020617",
       }}
     >
-      <ReactFlow nodes={nodes} edges={edges} fitView>
-        <MiniMap
-          pannable
-          zoomable
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        fitView
+        fitViewOptions={{ padding: 0.25, minZoom: 0.55, maxZoom: 1.1 }}
+        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+        minZoom={0.35}
+        maxZoom={1.5}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Controls
+          showInteractive={false}
           style={{
             background: "#020617",
             border: "1px solid rgba(255,255,255,0.08)",
           }}
         />
-        <Controls />
         <Background gap={20} size={1} color="#1e293b" />
       </ReactFlow>
     </div>
