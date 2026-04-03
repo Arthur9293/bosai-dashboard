@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   ReactFlow,
   Background,
@@ -40,89 +41,98 @@ function statusLabel(status?: string) {
 export default function FlowGraphClient({ commands }: Props) {
   const safeCommands = Array.isArray(commands) ? commands : [];
 
-  const nodes: Node[] = safeCommands.map((cmd, index) => ({
-    id: String(cmd.id),
-    position: { x: index * 220, y: 80 },
-    data: {
-      label: (
-        <div
-          style={{
-            minWidth: 150,
-            maxWidth: 170,
-            color: "white",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 10,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              opacity: 0.7,
-              marginBottom: 6,
-              wordBreak: "break-word",
-            }}
-          >
-            {cmd.capability || "unknown"}
-          </div>
+  const isMobile =
+    typeof window !== "undefined" ? window.innerWidth < 768 : false;
 
+  const { nodes, edges } = useMemo(() => {
+    const builtNodes: Node[] = safeCommands.map((cmd, index) => ({
+      id: String(cmd.id),
+      position: isMobile
+        ? { x: 40, y: index * 150 + 40 }
+        : { x: index * 220 + 40, y: 100 },
+      data: {
+        label: (
           <div
             style={{
-              fontSize: 14,
-              fontWeight: 700,
-              marginBottom: 10,
-              wordBreak: "break-word",
-              lineHeight: 1.2,
-            }}
-          >
-            {cmd.capability || "Unknown capability"}
-          </div>
-
-          <div
-            style={{
-              display: "inline-block",
-              fontSize: 10,
-              fontWeight: 700,
-              padding: "4px 8px",
-              borderRadius: 999,
-              background: statusColor(cmd.status),
+              minWidth: 150,
+              maxWidth: 170,
               color: "white",
             }}
           >
-            {statusLabel(cmd.status)}
-          </div>
-        </div>
-      ),
-    },
-    draggable: false,
-    selectable: true,
-    style: {
-      background: "#0f172a",
-      border: `1px solid ${statusColor(cmd.status)}`,
-      borderRadius: 16,
-      padding: 12,
-      boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-    },
-  }));
+            <div
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                opacity: 0.7,
+                marginBottom: 6,
+                wordBreak: "break-word",
+              }}
+            >
+              {cmd.capability || "unknown"}
+            </div>
 
-  const edges: Edge[] = safeCommands
-    .filter((cmd) => cmd.parent_command_id)
-    .map((cmd) => ({
-      id: `e-${cmd.parent_command_id}-${cmd.id}`,
-      source: String(cmd.parent_command_id),
-      target: String(cmd.id),
-      animated: true,
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                marginBottom: 10,
+                wordBreak: "break-word",
+                lineHeight: 1.2,
+              }}
+            >
+              {cmd.capability || "Unknown capability"}
+            </div>
+
+            <div
+              style={{
+                display: "inline-block",
+                fontSize: 10,
+                fontWeight: 700,
+                padding: "4px 8px",
+                borderRadius: 999,
+                background: statusColor(cmd.status),
+                color: "white",
+              }}
+            >
+              {statusLabel(cmd.status)}
+            </div>
+          </div>
+        ),
+      },
+      draggable: false,
+      selectable: true,
       style: {
-        stroke: "#94a3b8",
-        strokeWidth: 2,
+        background: "#0f172a",
+        border: `1px solid ${statusColor(cmd.status)}`,
+        borderRadius: 16,
+        padding: 12,
+        boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
       },
     }));
+
+    const builtEdges: Edge[] = safeCommands
+      .filter((cmd) => cmd.parent_command_id)
+      .map((cmd) => ({
+        id: `e-${cmd.parent_command_id}-${cmd.id}`,
+        source: String(cmd.parent_command_id),
+        target: String(cmd.id),
+        animated: true,
+        style: {
+          stroke: "#94a3b8",
+          strokeWidth: 2,
+        },
+      }));
+
+    return { nodes: builtNodes, edges: builtEdges };
+  }, [safeCommands, isMobile]);
 
   return (
     <div
       style={{
         width: "100%",
-        height: "min(72vh, 560px)",
-        minHeight: 380,
+        height: isMobile ? "70vh" : "min(72vh, 560px)",
+        minHeight: isMobile ? 520 : 380,
         borderRadius: 20,
         overflow: "hidden",
         border: "1px solid rgba(255,255,255,0.08)",
@@ -134,9 +144,13 @@ export default function FlowGraphClient({ commands }: Props) {
         nodes={nodes}
         edges={edges}
         fitView
-        fitViewOptions={{ padding: 0.25, minZoom: 0.55, maxZoom: 1.1 }}
-        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-        minZoom={0.35}
+        fitViewOptions={{
+          padding: isMobile ? 0.4 : 0.25,
+          minZoom: isMobile ? 0.45 : 0.55,
+          maxZoom: 1.1,
+        }}
+        defaultViewport={{ x: 0, y: 0, zoom: isMobile ? 0.65 : 0.8 }}
+        minZoom={0.3}
         maxZoom={1.5}
         proOptions={{ hideAttribution: true }}
       >
