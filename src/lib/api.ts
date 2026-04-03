@@ -41,9 +41,30 @@ export type RunsResponse = {
   };
 };
 
+export type CommandItem = {
+  id: string;
+  name?: string;
+  status?: string;
+  capability?: string;
+  tool_key?: string;
+  tool_mode?: string;
+  workspace_id?: string;
+  flow_id?: string;
+  root_event_id?: string;
+  linked_run?: string;
+  run_record_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  finished_at?: string;
+  error?: string;
+  result?: unknown;
+  input?: unknown;
+  [key: string]: unknown;
+};
+
 export type CommandsResponse = {
   count?: number;
-  commands?: Array<Record<string, unknown>>;
+  commands?: CommandItem[];
   stats?: {
     queue?: number;
     queued?: number;
@@ -144,6 +165,13 @@ export async function fetchRuns(): Promise<RunsResponse> {
 
 export async function fetchCommands(): Promise<CommandsResponse> {
   return safeFetch<CommandsResponse>("/commands");
+}
+
+export async function fetchCommandById(id: string): Promise<CommandItem | null> {
+  const data = await fetchCommands();
+  const commands = Array.isArray(data?.commands) ? data.commands : [];
+  const match = commands.find((item) => String(item.id) === String(id));
+  return match ?? null;
 }
 
 export async function fetchEvents(): Promise<EventsResponse> {
