@@ -19,6 +19,15 @@ type EventItem = {
   [key: string]: unknown;
 };
 
+type EventStats = {
+  new?: number;
+  queued?: number;
+  processed?: number;
+  ignored?: number;
+  error?: number;
+  other?: number;
+};
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
 
@@ -61,17 +70,47 @@ function badgeTone(status?: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function cardClassName() {
+  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+}
+
 export default async function EventsPage() {
   let events: EventItem[] = [];
+  let stats: EventStats = {};
+  let sourceConnected = false;
 
   try {
     const data = await fetchEvents();
+
     if (Array.isArray(data?.events)) {
       events = data.events as EventItem[];
     }
+
+    if (data?.stats && typeof data.stats === "object") {
+      stats = data.stats as EventStats;
+    }
+
+    sourceConnected = Boolean(data?.events || data?.stats);
   } catch {
     events = [];
+    stats = {};
+    sourceConnected = false;
   }
+
+  const newCount = stats.new ?? 0;
+  const queuedCount = stats.queued ?? 0;
+  const processedCount = stats.processed ?? 0;
+  const ignoredCount = stats.ignored ?? 0;
+  const errorCount = stats.error ?? 0;
+  const otherCount = stats.other ?? 0;
+
+  const list = [...events]
+    .sort(
+      (a, b) =>
+        new Date(getEventDate(b) || 0).getTime() -
+        new Date(getEventDate(a) || 0).getTime()
+    )
+    .slice(0, 50);
 
   return (
     <div className="space-y-6">
@@ -84,13 +123,38 @@ export default async function EventsPage() {
         </p>
       </div>
 
+      <section className="grid grid-cols-2 gap-4 md:grid-cols-6">
+        {[
+          ["New", newCount],
+          ["Queued", queuedCount],
+          ["Processed", processedCount],
+          ["Ignored", ignoredCount],
+          ["Errors", errorCount],
+          ["Other", otherCount],
+        ].map(([label, value]) => (
+          <div key={label} className={cardClassName()}>
+            <div className="text-sm text-zinc-400">{label}</div>
+            <div className="mt-2 text-3xl font-semibold text-white">
+              {value}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <div className={cardClassName()}>
+        <div className="text-sm text-zinc-400">Source status</div>
+        <div className="mt-2 text-lg font-semibold text-white">
+          {sourceConnected ? "Connected" : "Unavailable"}
+        </div>
+      </div>
+
       <section className="grid grid-cols-1 gap-4">
-        {events.length === 0 ? (
+        {list.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
             Aucun événement affiché.
           </div>
         ) : (
-          events.map((event) => (
+          list.map((event) => (
             <div
               key={event.id}
               className="rounded-2xl border border-white/10 bg-white/5 p-5"
