@@ -37,8 +37,16 @@ export default function FlowsPage() {
   ];
 
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">BOSAI Flow</h1>
+    <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 space-y-4">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          BOSAI Flow
+        </h1>
+        <p className="text-sm text-zinc-400">
+          Visualisation du pipeline Event → Command → Capability.
+        </p>
+      </div>
+
       <FlowGraphClient commands={commands} />
     </div>
   );
