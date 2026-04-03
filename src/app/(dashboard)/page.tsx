@@ -13,7 +13,9 @@ import {
 } from "@/lib/api";
 
 function formatNumber(value?: number) {
-  return typeof value === "number" ? value.toString() : "0";
+  return typeof value === "number" && Number.isFinite(value)
+    ? value.toString()
+    : "0";
 }
 
 function healthLabel(score: number) {
@@ -85,6 +87,16 @@ function isWarningIncident(incident: IncidentItem) {
     severity === "medium" ||
     severity === "moyen"
   );
+}
+
+function statusTone(status: string) {
+  const normalized = status.trim().toLowerCase();
+
+  if (normalized === "open") return "text-red-400";
+  if (normalized === "resolved" || normalized === "closed") {
+    return "text-emerald-400";
+  }
+  return "text-zinc-300";
 }
 
 export default async function OverviewPage() {
@@ -298,9 +310,9 @@ export default async function OverviewPage() {
                     <div className="mt-1 text-zinc-500">{incidentSubline}</div>
                   </div>
 
-                  <div className="text-left text-zinc-400 sm:text-right">
-                    <div>{incidentSeverity}</div>
-                    <div>{incidentStatus}</div>
+                  <div className="text-left sm:text-right">
+                    <div className="text-zinc-400">{incidentSeverity}</div>
+                    <div className={statusTone(incidentStatus)}>{incidentStatus}</div>
                   </div>
                 </div>
               );
