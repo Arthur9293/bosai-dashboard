@@ -4,31 +4,37 @@ import { fetchTools, type ToolItem } from "../../../lib/api";
 
 const fallbackTools: ToolItem[] = [
   {
+    id: "http_exec",
     name: "http_exec",
     description: "Exécution HTTP contrôlée avec garde-fous BOSAI.",
     status: "active",
   },
   {
+    id: "decision_router",
     name: "decision_router",
     description: "Routage décisionnel des flows BOSAI.",
     status: "active",
   },
   {
+    id: "incident_router",
     name: "incident_router",
     description: "Création et orientation des incidents.",
     status: "active",
   },
   {
+    id: "retry_router",
     name: "retry_router",
     description: "Gestion des retries et réinjection dans le pipeline.",
     status: "active",
   },
   {
+    id: "complete_flow_demo",
     name: "complete_flow_demo",
     description: "Terminaison propre d’un flow BOSAI.",
     status: "active",
   },
   {
+    id: "event_engine",
     name: "event_engine",
     description: "Transformation Event → Command.",
     status: "active",
@@ -74,7 +80,7 @@ export default async function ToolsPage() {
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {tools.map((tool) => (
           <DashboardCard
-            key={tool.name}
+            key={tool.id}
             rightSlot={
               <span
                 className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
@@ -85,7 +91,9 @@ export default async function ToolsPage() {
               </span>
             }
           >
-            <div className="text-lg font-semibold text-white">{tool.name}</div>
+            <div className="text-lg font-semibold text-white">
+              {tool.name || tool.id}
+            </div>
             <p className="mt-2 text-sm text-zinc-400">
               {tool.description || "No description"}
             </p>
