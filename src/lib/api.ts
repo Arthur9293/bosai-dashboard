@@ -81,9 +81,26 @@ export type CommandsResponse = {
   };
 };
 
+export type EventItem = {
+  id: string;
+  event_type?: string;
+  type?: string;
+  status?: string;
+  workspace_id?: string;
+  flow_id?: string;
+  root_event_id?: string;
+  command_id?: string;
+  mapped_capability?: string;
+  created_at?: string;
+  updated_at?: string;
+  processed_at?: string;
+  payload?: unknown;
+  [key: string]: unknown;
+};
+
 export type EventsResponse = {
   count?: number;
-  events?: Array<Record<string, unknown>>;
+  events?: EventItem[];
   stats?: {
     new?: number;
     queued?: number;
