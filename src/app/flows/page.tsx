@@ -1,40 +1,30 @@
-"use client";
-
 import FlowGraphClient from "./FlowGraphClient";
+import { fetchCommands, type CommandItem } from "@/lib/api";
 
-type CommandItem = {
-  id: string;
-  capability?: string;
-  status?: string;
-  parent_command_id?: string;
-};
+function isFlowCommand(cmd: CommandItem) {
+  return Boolean(cmd.flow_id || cmd.parent_command_id);
+}
 
-export default function FlowsPage() {
-  const commands: CommandItem[] = [
-    {
-      id: "1",
-      capability: "event_engine",
-      status: "done",
-    },
-    {
-      id: "2",
-      capability: "command_orchestrator",
-      status: "done",
-      parent_command_id: "1",
-    },
-    {
-      id: "3",
-      capability: "http_exec",
-      status: "done",
-      parent_command_id: "2",
-    },
-    {
-      id: "4",
-      capability: "decision_router",
-      status: "done",
-      parent_command_id: "3",
-    },
-  ];
+function getSortTime(cmd: CommandItem) {
+  return new Date(
+    cmd.started_at || cmd.created_at || cmd.updated_at || cmd.finished_at || 0
+  ).getTime();
+}
+
+export default async function FlowsPage() {
+  let commands: CommandItem[] = [];
+
+  try {
+    const data = await fetchCommands();
+    const allCommands = Array.isArray(data?.commands) ? data.commands : [];
+
+    commands = allCommands
+      .filter(isFlowCommand)
+      .sort((a, b) => getSortTime(a) - getSortTime(b))
+      .slice(0, 20);
+  } catch {
+    commands = [];
+  }
 
   return (
     <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 space-y-4">
