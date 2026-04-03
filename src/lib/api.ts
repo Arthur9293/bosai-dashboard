@@ -159,6 +159,23 @@ export type ToolsResponse = {
   tools?: ToolItem[];
 };
 
+export type PolicyItem = {
+  id: string;
+  name?: string;
+  description?: string;
+  status?: string;
+  type?: string;
+  category?: string;
+  enabled?: boolean;
+  value?: unknown;
+  [key: string]: unknown;
+};
+
+export type PoliciesResponse = {
+  count?: number;
+  policies?: PolicyItem[];
+};
+
 export type FlowDetail = {
   id?: string;
   flow_id?: string;
@@ -211,6 +228,10 @@ export async function fetchIncidents(): Promise<IncidentsResponse> {
 
 export async function fetchTools(): Promise<ToolsResponse> {
   return safeFetch<ToolsResponse>("/tools");
+}
+
+export async function fetchPolicies(): Promise<PoliciesResponse> {
+  return safeFetch<PoliciesResponse>("/policies");
 }
 
 export async function fetchFlows(): Promise<FlowsResponse> {
