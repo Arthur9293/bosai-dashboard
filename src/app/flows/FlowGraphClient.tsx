@@ -48,7 +48,7 @@ export default function FlowGraphClient({ commands }: Props) {
     const builtNodes: Node[] = safeCommands.map((cmd, index) => ({
       id: String(cmd.id),
       position: isMobile
-        ? { x: 40, y: index * 150 + 40 }
+        ? { x: 40, y: index * 150 + 80 }
         : { x: index * 220 + 40, y: 100 },
       data: {
         label: (
