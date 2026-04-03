@@ -56,6 +56,10 @@ export type CommandItem = {
   created_at?: string;
   updated_at?: string;
   finished_at?: string;
+  started_at?: string;
+  parent_command_id?: string;
+  step_index?: number;
+  worker?: string;
   error?: string;
   result?: unknown;
   input?: unknown;
@@ -155,6 +159,29 @@ export type ToolsResponse = {
   tools?: ToolItem[];
 };
 
+export type FlowDetail = {
+  id?: string;
+  flow_id?: string;
+  root_event_id?: string;
+  workspace_id?: string;
+  count?: number;
+  commands?: CommandItem[];
+  stats?: {
+    done?: number;
+    error?: number;
+    dead?: number;
+    running?: number;
+    retry?: number;
+    [key: string]: number | undefined;
+  };
+  [key: string]: unknown;
+};
+
+export type FlowsResponse = {
+  count?: number;
+  flows?: FlowDetail[];
+};
+
 export async function fetchHealthScore(): Promise<HealthScoreResponse> {
   return safeFetch<HealthScoreResponse>("/health/score");
 }
@@ -184,4 +211,30 @@ export async function fetchIncidents(): Promise<IncidentsResponse> {
 
 export async function fetchTools(): Promise<ToolsResponse> {
   return safeFetch<ToolsResponse>("/tools");
+}
+
+export async function fetchFlows(): Promise<FlowsResponse> {
+  return safeFetch<FlowsResponse>("/flows");
+}
+
+export async function fetchFlowById(id: string): Promise<FlowDetail | null> {
+  const data = await fetchFlows();
+  const flows = Array.isArray(data?.flows) ? data.flows : [];
+
+  const match = flows.find(
+    (item) =>
+      String(item.id || "") === String(id) ||
+      String(item.flow_id || "") === String(id)
+  );
+
+  return match ?? null;
+}
+
+export async function fetchIncidentsByFlowId(flowId: string): Promise<IncidentItem[]> {
+  const data = await fetchIncidents();
+  const incidents = Array.isArray(data?.incidents) ? data.incidents : [];
+
+  return incidents.filter(
+    (item) => String(item.flow_id || "") === String(flowId)
+  );
 }
