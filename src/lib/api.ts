@@ -3,7 +3,9 @@ const BASE_URL =
   process.env.NEXT_PUBLIC_BOSAI_WORKER_BASE_URL ||
   "";
 
-async function safeFetch<T>(path: string): Promise<T> {
+type JsonRecord = Record<string, unknown>;
+
+async function safeFetch<T = unknown>(path: string): Promise<T> {
   if (!BASE_URL) {
     throw new Error("Missing BOSAI worker base URL");
   }
@@ -21,6 +23,104 @@ async function safeFetch<T>(path: string): Promise<T> {
   }
 
   return res.json() as Promise<T>;
+}
+
+function toRecord(value: unknown): JsonRecord {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as JsonRecord;
+  }
+  return {};
+}
+
+function unwrapRecord(value: unknown): JsonRecord {
+  const record = toRecord(value);
+  const fields = toRecord(record.fields);
+  return {
+    ...fields,
+    ...record,
+  };
+}
+
+function firstDefined(record: JsonRecord, keys: string[]): unknown {
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null) {
+      return record[key];
+    }
+  }
+  return undefined;
+}
+
+function asString(value: unknown): string | undefined {
+  if (value === null || value === undefined) return undefined;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const v = asString(item);
+      if (v) return v;
+    }
+    return undefined;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.replace(",", ".").trim();
+    if (!normalized) return undefined;
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "oui"].includes(normalized)) return true;
+    if (["false", "0", "no", "non"].includes(normalized)) return false;
+  }
+
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+
+  return undefined;
+}
+
+function asArray<T = unknown>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function normalizeStatsObject(value: unknown): Record<string, number | undefined> {
+  const record = toRecord(value);
+  const normalized: Record<string, number | undefined> = {};
+
+  for (const [key, raw] of Object.entries(record)) {
+    normalized[key] = asNumber(raw);
+  }
+
+  return normalized;
 }
 
 export type HealthScoreResponse = {
@@ -216,16 +316,427 @@ export type FlowsResponse = {
   flows?: FlowDetail[];
 };
 
+function normalizeCommandItem(raw: unknown): CommandItem {
+  const record = unwrapRecord(raw);
+
+  return {
+    ...record,
+    id:
+      asString(
+        firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
+      ) || "",
+    name: asString(firstDefined(record, ["name", "Name", "title", "Title"])),
+    status: asString(
+      firstDefined(record, [
+        "status",
+        "Status",
+        "status_select",
+        "Status_select",
+        "state",
+        "State",
+      ])
+    ),
+    capability: asString(
+      firstDefined(record, ["capability", "Capability", "name", "Name"])
+    ),
+    tool_key: asString(firstDefined(record, ["tool_key", "Tool_Key", "toolKey"])),
+    tool_mode: asString(
+      firstDefined(record, ["tool_mode", "Tool_Mode", "toolMode"])
+    ),
+    workspace_id: asString(
+      firstDefined(record, ["workspace_id", "Workspace_ID", "workspace", "Workspace"])
+    ),
+    flow_id: asString(
+      firstDefined(record, ["flow_id", "Flow_ID", "flowId", "FlowId"])
+    ),
+    root_event_id: asString(
+      firstDefined(record, [
+        "root_event_id",
+        "Root_Event_ID",
+        "rootEventId",
+        "RootEventId",
+      ])
+    ),
+    linked_run: asString(
+      firstDefined(record, ["linked_run", "Linked_Run", "run_id", "Run_ID"])
+    ),
+    run_record_id: asString(
+      firstDefined(record, ["run_record_id", "Run_Record_ID", "linked_run"])
+    ),
+    created_at: asString(
+      firstDefined(record, ["created_at", "Created_At", "createdAt"])
+    ),
+    updated_at: asString(
+      firstDefined(record, ["updated_at", "Updated_At", "updatedAt"])
+    ),
+    finished_at: asString(
+      firstDefined(record, ["finished_at", "Finished_At", "finishedAt"])
+    ),
+    started_at: asString(
+      firstDefined(record, ["started_at", "Started_At", "startedAt"])
+    ),
+    parent_command_id: asString(
+      firstDefined(record, [
+        "parent_command_id",
+        "Parent_Command_ID",
+        "parent_id",
+        "Parent_ID",
+      ])
+    ),
+    step_index: asNumber(
+      firstDefined(record, ["step_index", "Step_Index", "step", "Step"])
+    ),
+    worker: asString(firstDefined(record, ["worker", "Worker"])),
+    error: asString(
+      firstDefined(record, ["error", "Error", "last_error", "Last_Error"])
+    ),
+    result: firstDefined(record, [
+      "result",
+      "Result",
+      "result_json",
+      "Result_JSON",
+      "Result JSON",
+    ]),
+    input: firstDefined(record, [
+      "input",
+      "Input",
+      "input_json",
+      "Input_JSON",
+      "command_input_json",
+      "Command_Input_JSON",
+      "payload",
+      "Payload",
+      "payload_json",
+      "Payload_JSON",
+    ]),
+  };
+}
+
+function normalizeEventItem(raw: unknown): EventItem {
+  const record = unwrapRecord(raw);
+
+  return {
+    ...record,
+    id:
+      asString(
+        firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
+      ) || "",
+    event_type: asString(
+      firstDefined(record, ["event_type", "Event_Type", "type", "Type"])
+    ),
+    type: asString(firstDefined(record, ["type", "Type", "event_type", "Event_Type"])),
+    status: asString(
+      firstDefined(record, ["status", "Status", "status_select", "Status_select"])
+    ),
+    workspace_id: asString(
+      firstDefined(record, ["workspace_id", "Workspace_ID", "workspace", "Workspace"])
+    ),
+    flow_id: asString(
+      firstDefined(record, ["flow_id", "Flow_ID", "flowId", "FlowId"])
+    ),
+    root_event_id: asString(
+      firstDefined(record, [
+        "root_event_id",
+        "Root_Event_ID",
+        "rootEventId",
+        "RootEventId",
+      ])
+    ),
+    command_id: asString(
+      firstDefined(record, ["command_id", "Command_ID", "linked_command", "Linked_Command"])
+    ),
+    mapped_capability: asString(
+      firstDefined(record, ["mapped_capability", "Mapped_Capability"])
+    ),
+    created_at: asString(
+      firstDefined(record, ["created_at", "Created_At", "createdAt"])
+    ),
+    updated_at: asString(
+      firstDefined(record, ["updated_at", "Updated_At", "updatedAt"])
+    ),
+    processed_at: asString(
+      firstDefined(record, ["processed_at", "Processed_At", "processedAt"])
+    ),
+    payload: firstDefined(record, ["payload", "Payload", "payload_json", "Payload_JSON"]),
+  };
+}
+
+function normalizeIncidentItem(raw: unknown): IncidentItem {
+  const record = unwrapRecord(raw);
+
+  const status =
+    asString(
+      firstDefined(record, [
+        "status",
+        "Status",
+        "status_select",
+        "Status_select",
+        "statut_incident",
+        "Statut_incident",
+        "Statut incident",
+      ])
+    ) || undefined;
+
+  return {
+    ...record,
+    id:
+      asString(
+        firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
+      ) || "",
+    title: asString(firstDefined(record, ["title", "Title", "name", "Name"])),
+    name: asString(firstDefined(record, ["name", "Name", "title", "Title"])),
+    status,
+    statut_incident: asString(
+      firstDefined(record, [
+        "statut_incident",
+        "Statut_incident",
+        "Statut incident",
+        "status",
+        "Status",
+        "status_select",
+        "Status_select",
+      ])
+    ),
+    severity: asString(firstDefined(record, ["severity", "Severity"])),
+    sla_status: asString(
+      firstDefined(record, ["sla_status", "SLA_Status", "SLA status"])
+    ),
+    sla_remaining_minutes: asNumber(
+      firstDefined(record, [
+        "sla_remaining_minutes",
+        "SLA_Remaining_Minutes",
+        "Temps restant SLA",
+      ])
+    ),
+    opened_at: asString(
+      firstDefined(record, ["opened_at", "Opened_At", "created_at", "Created_At"])
+    ),
+    created_at: asString(
+      firstDefined(record, ["created_at", "Created_At", "createdAt"])
+    ),
+    updated_at: asString(
+      firstDefined(record, ["updated_at", "Updated_At", "updatedAt"])
+    ),
+    resolved_at: asString(
+      firstDefined(record, ["resolved_at", "Resolved_At", "resolvedAt"])
+    ),
+    workspace_id: asString(
+      firstDefined(record, [
+        "workspace_id",
+        "Workspace_ID",
+        "workspace",
+        "Workspace",
+      ])
+    ),
+    workspace: asString(firstDefined(record, ["workspace", "Workspace"])),
+    run_record_id: asString(
+      firstDefined(record, ["run_record_id", "Run_Record_ID", "linked_run", "Linked_Run"])
+    ),
+    linked_run: asString(
+      firstDefined(record, ["linked_run", "Linked_Run", "run_record_id", "Run_Record_ID"])
+    ),
+    run_id: asString(firstDefined(record, ["run_id", "Run_ID"])),
+    command_id: asString(
+      firstDefined(record, ["command_id", "Command_ID", "linked_command", "Linked_Command"])
+    ),
+    linked_command: asString(
+      firstDefined(record, ["linked_command", "Linked_Command", "command_id", "Command_ID"])
+    ),
+    flow_id: asString(
+      firstDefined(record, ["flow_id", "Flow_ID", "flowId", "FlowId"])
+    ),
+    root_event_id: asString(
+      firstDefined(record, [
+        "root_event_id",
+        "Root_Event_ID",
+        "rootEventId",
+        "RootEventId",
+      ])
+    ),
+    category: asString(firstDefined(record, ["category", "Category"])),
+    reason: asString(firstDefined(record, ["reason", "Reason"])),
+    source: asString(firstDefined(record, ["source", "Source"])),
+    worker: asString(firstDefined(record, ["worker", "Worker"])),
+    error_id: asString(firstDefined(record, ["error_id", "Error_ID"])),
+    resolution_note: asString(
+      firstDefined(record, ["resolution_note", "Resolution_Note"])
+    ),
+    last_action: asString(firstDefined(record, ["last_action", "Last_Action"])),
+    decision_status: asString(
+      firstDefined(record, ["decision_status", "Decision_Status"])
+    ),
+    decision_reason: asString(
+      firstDefined(record, ["decision_reason", "Decision_Reason"])
+    ),
+    next_action: asString(firstDefined(record, ["next_action", "Next_Action"])),
+    priority_score:
+      asNumber(firstDefined(record, ["priority_score", "Priority_Score"])) ??
+      asString(firstDefined(record, ["priority_score", "Priority_Score"])),
+  };
+}
+
+function normalizeToolItem(raw: unknown): ToolItem {
+  const record = unwrapRecord(raw);
+
+  return {
+    ...record,
+    id:
+      asString(
+        firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
+      ) || "",
+    name: asString(firstDefined(record, ["name", "Name", "title", "Title"])),
+    description: asString(
+      firstDefined(record, ["description", "Description"])
+    ),
+    status: asString(firstDefined(record, ["status", "Status"])),
+    category: asString(firstDefined(record, ["category", "Category"])),
+    tool_key: asString(firstDefined(record, ["tool_key", "Tool_Key", "toolKey"])),
+    tool_mode: asString(
+      firstDefined(record, ["tool_mode", "Tool_Mode", "toolMode"])
+    ),
+    enabled: asBoolean(firstDefined(record, ["enabled", "Enabled"])),
+  };
+}
+
+function normalizePolicyItem(raw: unknown): PolicyItem {
+  const record = unwrapRecord(raw);
+
+  return {
+    ...record,
+    id:
+      asString(
+        firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
+      ) || "",
+    name: asString(firstDefined(record, ["name", "Name", "title", "Title"])),
+    description: asString(
+      firstDefined(record, ["description", "Description"])
+    ),
+    status: asString(firstDefined(record, ["status", "Status"])),
+    type: asString(firstDefined(record, ["type", "Type"])),
+    category: asString(firstDefined(record, ["category", "Category"])),
+    enabled: asBoolean(firstDefined(record, ["enabled", "Enabled"])),
+    value: firstDefined(record, ["value", "Value"]),
+  };
+}
+
+function normalizeFlowDetail(raw: unknown): FlowDetail {
+  const record = unwrapRecord(raw);
+  const statsRaw =
+    firstDefined(record, ["stats", "Stats"]) ||
+    {
+      done: firstDefined(record, ["done", "Done"]),
+      error: firstDefined(record, ["error", "Error"]),
+      dead: firstDefined(record, ["dead", "Dead"]),
+      running: firstDefined(record, ["running", "Running"]),
+      retry: firstDefined(record, ["retry", "Retry"]),
+    };
+
+  const commandsRaw = firstDefined(record, ["commands", "Commands"]);
+
+  return {
+    ...record,
+    id: asString(firstDefined(record, ["id", "ID", "record_id", "Record_ID"])),
+    flow_id: asString(
+      firstDefined(record, ["flow_id", "Flow_ID", "flowId", "FlowId"])
+    ),
+    root_event_id: asString(
+      firstDefined(record, [
+        "root_event_id",
+        "Root_Event_ID",
+        "rootEventId",
+        "RootEventId",
+      ])
+    ),
+    workspace_id: asString(
+      firstDefined(record, ["workspace_id", "Workspace_ID", "workspace", "Workspace"])
+    ),
+    count:
+      asNumber(firstDefined(record, ["count", "Count"])) ??
+      asArray(commandsRaw).length,
+    commands: asArray(commandsRaw).map((item) => normalizeCommandItem(item)),
+    stats: normalizeStatsObject(statsRaw),
+  };
+}
+
+function enrichIncidentsFromCommands(
+  incidents: IncidentItem[],
+  commands: CommandItem[]
+): IncidentItem[] {
+  const byCommandId = new Map<string, CommandItem>();
+
+  for (const cmd of commands) {
+    const id = asString(cmd.id);
+    if (id) {
+      byCommandId.set(id, cmd);
+    }
+  }
+
+  return incidents.map((incident) => {
+    const linkedCommandId =
+      incident.command_id ||
+      incident.linked_command ||
+      undefined;
+
+    const linkedCommand = linkedCommandId
+      ? byCommandId.get(String(linkedCommandId))
+      : undefined;
+
+    if (!linkedCommand) {
+      return incident;
+    }
+
+    return {
+      ...incident,
+      command_id: incident.command_id || linkedCommand.id,
+      linked_command: incident.linked_command || linkedCommand.id,
+      flow_id: incident.flow_id || linkedCommand.flow_id,
+      root_event_id: incident.root_event_id || linkedCommand.root_event_id,
+      workspace_id: incident.workspace_id || linkedCommand.workspace_id,
+      run_record_id: incident.run_record_id || linkedCommand.run_record_id,
+      linked_run: incident.linked_run || linkedCommand.linked_run,
+      worker: incident.worker || linkedCommand.worker,
+    };
+  });
+}
+
 export async function fetchHealthScore(): Promise<HealthScoreResponse> {
-  return safeFetch<HealthScoreResponse>("/health/score");
+  const data = await safeFetch<JsonRecord>("/health/score");
+  return {
+    ...data,
+    score: asNumber(firstDefined(data, ["score", "Score"])),
+    status: asString(firstDefined(data, ["status", "Status"])),
+    details: toRecord(firstDefined(data, ["details", "Details"])),
+  };
 }
 
 export async function fetchRuns(): Promise<RunsResponse> {
-  return safeFetch<RunsResponse>("/runs");
+  const data = await safeFetch<JsonRecord>("/runs");
+  const runs = asArray<Record<string, unknown>>(firstDefined(data, ["runs", "Runs"]));
+  const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
+
+  return {
+    ...data,
+    count:
+      asNumber(firstDefined(data, ["count", "Count"])) ?? runs.length,
+    runs,
+    stats,
+  };
 }
 
 export async function fetchCommands(): Promise<CommandsResponse> {
-  return safeFetch<CommandsResponse>("/commands");
+  const data = await safeFetch<JsonRecord>("/commands");
+  const commands = asArray(firstDefined(data, ["commands", "Commands"])).map((item) =>
+    normalizeCommandItem(item)
+  );
+  const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
+
+  return {
+    ...data,
+    count:
+      asNumber(firstDefined(data, ["count", "Count"])) ?? commands.length,
+    commands,
+    stats,
+  };
 }
 
 export async function fetchCommandById(id: string): Promise<CommandItem | null> {
@@ -236,34 +747,108 @@ export async function fetchCommandById(id: string): Promise<CommandItem | null> 
 }
 
 export async function fetchEvents(): Promise<EventsResponse> {
-  return safeFetch<EventsResponse>("/events");
+  const data = await safeFetch<JsonRecord>("/events");
+  const events = asArray(firstDefined(data, ["events", "Events"])).map((item) =>
+    normalizeEventItem(item)
+  );
+  const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
+
+  return {
+    ...data,
+    count:
+      asNumber(firstDefined(data, ["count", "Count"])) ?? events.length,
+    events,
+    stats,
+  };
 }
 
 export async function fetchIncidents(): Promise<IncidentsResponse> {
-  return safeFetch<IncidentsResponse>("/incidents");
+  const data = await safeFetch<JsonRecord>("/incidents");
+  let incidents = asArray(firstDefined(data, ["incidents", "Incidents"])).map((item) =>
+    normalizeIncidentItem(item)
+  );
+
+  try {
+    const commandsData = await fetchCommands();
+    const commands = Array.isArray(commandsData?.commands)
+      ? commandsData.commands
+      : [];
+    incidents = enrichIncidentsFromCommands(incidents, commands);
+  } catch {
+    // Keep incident payload usable even if command enrichment fails.
+  }
+
+  const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
+
+  return {
+    ...data,
+    count:
+      asNumber(firstDefined(data, ["count", "Count"])) ?? incidents.length,
+    incidents,
+    stats,
+  };
 }
 
 export async function fetchTools(): Promise<ToolsResponse> {
-  return safeFetch<ToolsResponse>("/tools");
+  const data = await safeFetch<JsonRecord>("/tools");
+  const tools = asArray(firstDefined(data, ["tools", "Tools"])).map((item) =>
+    normalizeToolItem(item)
+  );
+
+  return {
+    ...data,
+    count:
+      asNumber(firstDefined(data, ["count", "Count"])) ?? tools.length,
+    tools,
+  };
 }
 
 export async function fetchPolicies(): Promise<PoliciesResponse> {
-  return safeFetch<PoliciesResponse>("/policies");
+  const data = await safeFetch<JsonRecord>("/policies");
+  const policies = asArray(firstDefined(data, ["policies", "Policies"])).map((item) =>
+    normalizePolicyItem(item)
+  );
+
+  return {
+    ...data,
+    count:
+      asNumber(firstDefined(data, ["count", "Count"])) ?? policies.length,
+    policies,
+  };
 }
 
 export async function fetchFlows(): Promise<FlowsResponse> {
-  return safeFetch<FlowsResponse>("/flows");
+  const data = await safeFetch<JsonRecord>("/flows");
+  const flows = asArray(firstDefined(data, ["flows", "Flows"])).map((item) =>
+    normalizeFlowDetail(item)
+  );
+
+  return {
+    ...data,
+    count:
+      asNumber(firstDefined(data, ["count", "Count"])) ?? flows.length,
+    flows,
+  };
 }
 
 export async function fetchFlowById(id: string): Promise<FlowDetail | null> {
   const data = await fetchFlows();
   const flows = Array.isArray(data?.flows) ? data.flows : [];
 
-  const match = flows.find(
-    (item) =>
-      String(item.id || "") === String(id) ||
-      String(item.flow_id || "") === String(id)
-  );
+  const target = String(id);
+
+  const match = flows.find((item) => {
+    const candidates = [
+      String(item.id || ""),
+      String(item.flow_id || ""),
+      String(item.root_event_id || ""),
+      String(encodeURIComponent(String(item.id || ""))),
+      String(encodeURIComponent(String(item.flow_id || ""))),
+      String(encodeURIComponent(String(item.root_event_id || ""))),
+    ];
+
+    return candidates.includes(target);
+  });
 
   return match ?? null;
 }
@@ -273,6 +858,8 @@ export async function fetchIncidentsByFlowId(flowId: string): Promise<IncidentIt
   const incidents = Array.isArray(data?.incidents) ? data.incidents : [];
 
   return incidents.filter(
-    (item) => String(item.flow_id || "") === String(flowId)
+    (item) =>
+      String(item.flow_id || "") === String(flowId) ||
+      String(item.root_event_id || "") === String(flowId)
   );
 }
