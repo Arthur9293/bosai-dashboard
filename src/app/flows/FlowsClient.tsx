@@ -155,6 +155,16 @@ export default function FlowsClient({
     };
   }, [countsBase]);
 
+  const priorityFlow = useMemo(() => {
+    return (
+      flows.find((flow) => flow.status === "running") ||
+      flows.find((flow) => flow.status === "failed") ||
+      flows.find((flow) => flow.status === "retry") ||
+      flows[0] ||
+      null
+    );
+  }, [flows]);
+
   const firstRunning = useMemo(
     () => flows.find((flow) => flow.status === "running") || null,
     [flows]
@@ -227,6 +237,39 @@ export default function FlowsClient({
     }
   }
 
+  function clearSearch() {
+    setSearch("");
+  }
+
+  function resetView() {
+    setSearch("");
+    setFilter("all");
+
+    if (priorityFlow) {
+      setSelectedKey(priorityFlow.key);
+      scrollToPreview();
+    }
+  }
+
+  function goToPriorityFlow() {
+    if (!priorityFlow) return;
+
+    setSearch("");
+
+    if (
+      priorityFlow.status === "running" ||
+      priorityFlow.status === "failed" ||
+      priorityFlow.status === "retry"
+    ) {
+      setFilter(priorityFlow.status);
+    } else {
+      setFilter("all");
+    }
+
+    setSelectedKey(priorityFlow.key);
+    scrollToPreview();
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 space-y-6">
       <div className="space-y-2">
@@ -258,7 +301,9 @@ export default function FlowsClient({
                   >
                     RUNNING
                   </span>
-                  <span className="text-sm text-sky-200">{flows.filter((f) => f.status === "running").length}</span>
+                  <span className="text-sm text-sky-200">
+                    {flows.filter((f) => f.status === "running").length}
+                  </span>
                 </div>
 
                 <div className="mt-4 break-all text-lg font-semibold text-white">
@@ -291,7 +336,9 @@ export default function FlowsClient({
                   >
                     FAILED
                   </span>
-                  <span className="text-sm text-rose-200">{flows.filter((f) => f.status === "failed").length}</span>
+                  <span className="text-sm text-rose-200">
+                    {flows.filter((f) => f.status === "failed").length}
+                  </span>
                 </div>
 
                 <div className="mt-4 break-all text-lg font-semibold text-white">
@@ -324,7 +371,9 @@ export default function FlowsClient({
                   >
                     RETRY
                   </span>
-                  <span className="text-sm text-violet-200">{flows.filter((f) => f.status === "retry").length}</span>
+                  <span className="text-sm text-violet-200">
+                    {flows.filter((f) => f.status === "retry").length}
+                  </span>
                 </div>
 
                 <div className="mt-4 break-all text-lg font-semibold text-white">
@@ -368,6 +417,32 @@ export default function FlowsClient({
           placeholder="Rechercher par flowId, rootEventId, capability..."
           className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:border-emerald-500/30 focus:bg-white/10"
         />
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={clearSearch}
+            className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+          >
+            Effacer
+          </button>
+
+          <button
+            type="button"
+            onClick={resetView}
+            className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+          >
+            Réinitialiser la vue
+          </button>
+
+          <button
+            type="button"
+            onClick={goToPriorityFlow}
+            className="inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20"
+          >
+            Revenir au flow prioritaire
+          </button>
+        </div>
 
         {hasSearch ? (
           <div className="mt-3 text-sm text-zinc-400">
