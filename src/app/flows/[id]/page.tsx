@@ -112,6 +112,10 @@ function severityTone(value?: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function neutralTone() {
+  return "bg-white/5 text-zinc-300 border border-white/10";
+}
+
 function formatDate(value?: string | number | null): string {
   if (value === null || value === undefined || value === "") return "—";
 
@@ -238,6 +242,31 @@ function getTerminalCommand(commands: CommandItem[]): CommandItem | null {
   )[0] ?? null;
 }
 
+function getRootIds(commands: CommandItem[]): Set<string> {
+  const ids = new Set(commands.map((cmd) => String(cmd.id)));
+
+  return new Set(
+    commands
+      .filter((cmd) => {
+        const parentId = text(cmd.parent_command_id);
+        return !parentId || !ids.has(parentId);
+      })
+      .map((cmd) => String(cmd.id))
+  );
+}
+
+function getTerminalIds(commands: CommandItem[]): Set<string> {
+  const referencedAsParent = new Set(
+    commands.map((cmd) => text(cmd.parent_command_id)).filter(Boolean)
+  );
+
+  return new Set(
+    commands
+      .filter((cmd) => !referencedAsParent.has(String(cmd.id)))
+      .map((cmd) => String(cmd.id))
+  );
+}
+
 export default async function FlowDetailPage({ params }: PageProps) {
   const { id } = await params;
   const requestedId = decodeURIComponent(id);
@@ -294,6 +323,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const terminalCommand = getTerminalCommand(causalCommands);
   const lastActivityTs = Math.max(...causalCommands.map(getCommandActivityTs), 0);
   const graphCommands = causalCommands.map(toGraphCommand);
+  const rootIds = getRootIds(causalCommands);
+  const terminalIds = getTerminalIds(causalCommands);
 
   let linkedIncident: IncidentItem | null = null;
 
@@ -478,72 +509,96 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </div>
 
         <div className="space-y-3">
-          {orderedSteps.map(({ command: step, stepNumber }) => (
-            <div
-              key={String(step.id)}
-              className="rounded-2xl border border-white/10 bg-white/5 p-4"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="text-sm font-semibold text-white">
-                  {text(step.capability) || "Unknown capability"}
+          {orderedSteps.map(({ command: step, stepNumber }) => {
+            const stepId = String(step.id);
+            const isRoot = rootIds.has(stepId);
+            const isTerminal = terminalIds.has(stepId);
+
+            return (
+              <div
+                key={stepId}
+                className="rounded-2xl border border-white/10 bg-white/5 p-4"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-sm font-semibold text-white">
+                    {text(step.capability) || "Unknown capability"}
+                  </div>
+
+                  <span
+                    className={`inline-flex rounded-full px-3 py-1 text-[11px] font-medium ${badgeTone(
+                      getStatusKind(step.status) === "done"
+                        ? "success"
+                        : getStatusKind(step.status) === "running"
+                        ? "running"
+                        : getStatusKind(step.status) === "failed"
+                        ? "failed"
+                        : "unknown"
+                    )}`}
+                  >
+                    {(text(step.status) || "UNKNOWN").toUpperCase()}
+                  </span>
+
+                  <span
+                    className={`inline-flex rounded-full px-3 py-1 text-[11px] font-medium ${neutralTone()}`}
+                  >
+                    STEP {stepNumber}
+                  </span>
+
+                  {isRoot ? (
+                    <span
+                      className={`inline-flex rounded-full px-3 py-1 text-[11px] font-medium ${neutralTone()}`}
+                    >
+                      ROOT
+                    </span>
+                  ) : null}
+
+                  {isTerminal ? (
+                    <span
+                      className={`inline-flex rounded-full px-3 py-1 text-[11px] font-medium ${neutralTone()}`}
+                    >
+                      TERMINAL
+                    </span>
+                  ) : null}
                 </div>
 
-                <span
-                  className={`inline-flex rounded-full px-3 py-1 text-[11px] font-medium ${badgeTone(
-                    getStatusKind(step.status) === "done"
-                      ? "success"
-                      : getStatusKind(step.status) === "running"
-                      ? "running"
-                      : getStatusKind(step.status) === "failed"
-                      ? "failed"
-                      : "unknown"
-                  )}`}
-                >
-                  {(text(step.status) || "UNKNOWN").toUpperCase()}
-                </span>
-
-                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-zinc-300">
-                  STEP {stepNumber}
-                </span>
+                <div className="mt-3 grid gap-2 text-sm text-white/65 sm:grid-cols-2 xl:grid-cols-3">
+                  <div>
+                    ID: <span className="text-zinc-200 break-all">{step.id}</span>
+                  </div>
+                  <div>
+                    Parent:{" "}
+                    <span className="text-zinc-200 break-all">
+                      {text(step.parent_command_id) || "—"}
+                    </span>
+                  </div>
+                  <div>
+                    Worker:{" "}
+                    <span className="text-zinc-200">
+                      {text(step.worker) || "—"}
+                    </span>
+                  </div>
+                  <div>
+                    Started:{" "}
+                    <span className="text-zinc-200">
+                      {formatDate(step.started_at)}
+                    </span>
+                  </div>
+                  <div>
+                    Finished:{" "}
+                    <span className="text-zinc-200">
+                      {formatDate(step.finished_at)}
+                    </span>
+                  </div>
+                  <div>
+                    Flow:{" "}
+                    <span className="text-zinc-200 break-all">
+                      {text(step.flow_id) || "—"}
+                    </span>
+                  </div>
+                </div>
               </div>
-
-              <div className="mt-3 grid gap-2 text-sm text-white/65 sm:grid-cols-2 xl:grid-cols-3">
-                <div>
-                  ID: <span className="text-zinc-200 break-all">{step.id}</span>
-                </div>
-                <div>
-                  Parent:{" "}
-                  <span className="text-zinc-200 break-all">
-                    {text(step.parent_command_id) || "—"}
-                  </span>
-                </div>
-                <div>
-                  Worker:{" "}
-                  <span className="text-zinc-200">
-                    {text(step.worker) || "—"}
-                  </span>
-                </div>
-                <div>
-                  Started:{" "}
-                  <span className="text-zinc-200">
-                    {formatDate(step.started_at)}
-                  </span>
-                </div>
-                <div>
-                  Finished:{" "}
-                  <span className="text-zinc-200">
-                    {formatDate(step.finished_at)}
-                  </span>
-                </div>
-                <div>
-                  Flow:{" "}
-                  <span className="text-zinc-200 break-all">
-                    {text(step.flow_id) || "—"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
