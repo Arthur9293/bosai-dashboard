@@ -9,6 +9,7 @@ import {
 } from "@/lib/api";
 
 type FlowStatus = "running" | "failed" | "retry" | "success" | "unknown";
+type FlowFilter = "all" | FlowStatus;
 type FlowReadMode = "causal" | "registry_only";
 
 type FlowGraphCommand = {
@@ -31,6 +32,7 @@ type FlowSummary = {
   durationMs: number;
   lastActivityTs: number;
   hasIncident: boolean;
+  incidentCount: number;
   incidentLabel: string;
   incidentStatus: string;
   incidentSeverity: string;
@@ -40,6 +42,13 @@ type FlowSummary = {
   readMode: FlowReadMode;
   partial: boolean;
   commands: FlowGraphCommand[];
+};
+
+type IncidentMatchContext = {
+  flowId?: string;
+  rootEventId?: string;
+  linkedRunId?: string;
+  sourceRecordId?: string;
 };
 
 function text(value: unknown): string {
@@ -64,19 +73,9 @@ function toTs(value?: string | number | null): number {
   return Number.isNaN(ts) ? 0 : ts;
 }
 
-function addCandidate(target: Set<string>, value: unknown) {
-  const v = text(value);
-  if (v) target.add(v);
-}
+function getCommandActivityTs(cmd?: CommandItem | null): number {
+  if (!cmd) return 0;
 
-function getNumericStat(obj: unknown, key: string): number {
-  if (!obj || typeof obj !== "object") return 0;
-  const value = (obj as Record<string, unknown>)[key];
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function getCommandActivityTs(cmd: CommandItem): number {
   return Math.max(
     toTs(cmd.finished_at),
     toTs(cmd.updated_at),
@@ -85,23 +84,27 @@ function getCommandActivityTs(cmd: CommandItem): number {
   );
 }
 
-function getCommandStartTs(cmd: CommandItem): number {
+function getCommandStartTs(cmd?: CommandItem | null): number {
+  if (!cmd) return 0;
   return Math.max(toTs(cmd.started_at), toTs(cmd.created_at));
 }
 
-function getIncidentActivityTs(incident: IncidentItem): number {
+function getIncidentActivityTs(incident?: IncidentItem | null): number {
+  if (!incident) return 0;
+
   return Math.max(
     toTs(incident.updated_at),
     toTs(incident.resolved_at),
     toTs(incident.opened_at),
-    toTs(incident.created_at)
+    toTs(incident.created_at),
+    toTs(incident.last_action)
   );
 }
 
 function getStatusKind(
   status?: string
 ): "done" | "running" | "failed" | "retry" | "other" {
-  const s = (status || "").toLowerCase();
+  const s = text(status).toLowerCase();
 
   if (["done", "success", "resolved", "ok"].includes(s)) return "done";
   if (s === "retry") return "retry";
@@ -117,6 +120,7 @@ function computeFlowStatusFromCommands(commands: CommandItem[]): FlowStatus {
   if (kinds.includes("running")) return "running";
   if (kinds.includes("failed")) return "failed";
   if (kinds.includes("retry")) return "retry";
+
   if (kinds.length > 0 && kinds.every((k) => k === "done" || k === "other")) {
     return "success";
   }
@@ -125,34 +129,17 @@ function computeFlowStatusFromCommands(commands: CommandItem[]): FlowStatus {
 }
 
 function computeRegistryStatus(flow: FlowDetail): FlowStatus {
-  const explicit = firstText(
-    (flow as Record<string, unknown>).status,
-    (flow as Record<string, unknown>).state,
-    (flow as Record<string, unknown>).status_select
-  );
+  const stats = flow.stats || {};
 
-  if (explicit) {
-    const kind = getStatusKind(explicit);
-    if (kind === "running") return "running";
-    if (kind === "failed") return "failed";
-    if (kind === "retry") return "retry";
-    if (kind === "done") return "success";
-  }
+  const running = Number(stats.running || 0);
+  const retry = Number(stats.retry || 0);
+  const failed = Number(stats.error || 0) + Number(stats.dead || 0);
+  const done = Number(stats.done || 0);
 
-  const stats = flow.stats;
-
-  if (getNumericStat(stats, "running") > 0 || getNumericStat(stats, "queued") > 0) {
-    return "running";
-  }
-  if (getNumericStat(stats, "error") > 0 || getNumericStat(stats, "dead") > 0) {
-    return "failed";
-  }
-  if (getNumericStat(stats, "retry") > 0) {
-    return "retry";
-  }
-  if (getNumericStat(stats, "done") > 0) {
-    return "success";
-  }
+  if (running > 0) return "running";
+  if (failed > 0) return "failed";
+  if (retry > 0) return "retry";
+  if (done > 0) return "success";
 
   return "unknown";
 }
@@ -237,9 +224,11 @@ function getTerminalCommand(commands: CommandItem[]): CommandItem | null {
 
   const source = leafCandidates.length > 0 ? leafCandidates : commands;
 
-  return [...source].sort(
-    (a, b) => getCommandActivityTs(b) - getCommandActivityTs(a)
-  )[0] ?? null;
+  return (
+    [...source].sort(
+      (a, b) => getCommandActivityTs(b) - getCommandActivityTs(a)
+    )[0] ?? null
+  );
 }
 
 function toGraphCommand(cmd: CommandItem): FlowGraphCommand {
@@ -252,7 +241,7 @@ function toGraphCommand(cmd: CommandItem): FlowGraphCommand {
   };
 }
 
-function getCommandGroupKey(cmd: CommandItem): string {
+function getCommandFlowGroupKey(cmd: CommandItem): string {
   const flowId = text(cmd.flow_id);
   if (flowId) return `flow:${flowId}`;
 
@@ -262,63 +251,47 @@ function getCommandGroupKey(cmd: CommandItem): string {
   return "";
 }
 
-function collectIncidentKeys(incident: IncidentItem): Set<string> {
-  const keys = new Set<string>();
-
-  addCandidate(keys, incident.id);
-  addCandidate(keys, incident.flow_id);
-  addCandidate(keys, incident.root_event_id);
-  addCandidate(keys, incident.run_record_id);
-  addCandidate(keys, incident.linked_run);
-  addCandidate(keys, incident.run_id);
-  addCandidate(keys, incident.command_id);
-  addCandidate(keys, incident.linked_command);
-
-  return keys;
+function getIncidentLabel(incident?: IncidentItem | null): string {
+  return firstText(incident?.title, incident?.name, "Incident");
 }
 
-function findLinkedIncident(
+function collectLinkedIncidents(
   incidents: IncidentItem[],
-  values: {
-    flowId?: string;
-    rootEventId?: string;
-    sourceRecordId?: string;
-    linkedRunId?: string;
-  }
-): IncidentItem | null {
-  const wanted = new Set<string>();
+  ctx: IncidentMatchContext
+): IncidentItem[] {
+  const flowId = firstText(ctx.flowId);
+  const rootEventId = firstText(ctx.rootEventId);
+  const linkedRunId = firstText(ctx.linkedRunId);
+  const sourceRecordId = firstText(ctx.sourceRecordId);
 
-  addCandidate(wanted, values.flowId);
-  addCandidate(wanted, values.rootEventId);
-  addCandidate(wanted, values.sourceRecordId);
-  addCandidate(wanted, values.linkedRunId);
+  const matches = incidents.filter((incident) => {
+    const incidentFlowId = firstText(incident.flow_id);
+    const incidentRootId = firstText(incident.root_event_id);
+    const incidentLinkedRun = firstText(
+      incident.linked_run,
+      incident.run_record_id,
+      incident.run_id
+    );
+    const incidentLinkedCommand = firstText(
+      incident.linked_command,
+      incident.command_id
+    );
+    const incidentOwnId = firstText(incident.id);
+    const incidentErrorId = firstText(incident.error_id);
 
-  if (wanted.size === 0) return null;
+    return (
+      (flowId && incidentFlowId === flowId) ||
+      (rootEventId && incidentRootId === rootEventId) ||
+      (linkedRunId && incidentLinkedRun === linkedRunId) ||
+      (sourceRecordId && incidentRootId === sourceRecordId) ||
+      (sourceRecordId && incidentLinkedCommand === sourceRecordId) ||
+      (sourceRecordId && incidentOwnId === sourceRecordId) ||
+      (sourceRecordId && incidentErrorId === sourceRecordId)
+    );
+  });
 
-  const candidates = incidents
-    .filter((incident) => {
-      const keys = collectIncidentKeys(incident);
-      for (const wantedKey of wanted) {
-        if (keys.has(wantedKey)) return true;
-      }
-      return false;
-    })
-    .sort((a, b) => getIncidentActivityTs(b) - getIncidentActivityTs(a));
-
-  return candidates[0] ?? null;
-}
-
-function getIncidentLabel(incident: IncidentItem | null): string {
-  if (!incident) return "Aucun incident";
-
-  return (
-    firstText(
-      incident.title,
-      incident.name,
-      incident.status,
-      incident.statut_incident,
-      incident.id
-    ) || "Incident détecté"
+  return matches.sort(
+    (a, b) => getIncidentActivityTs(b) - getIncidentActivityTs(a)
   );
 }
 
@@ -329,7 +302,7 @@ function buildCommandFlowSummaries(
   const groups = new Map<string, CommandItem[]>();
 
   for (const cmd of commands) {
-    const key = getCommandGroupKey(cmd);
+    const key = getCommandFlowGroupKey(cmd);
     if (!key) continue;
 
     const existing = groups.get(key) ?? [];
@@ -344,24 +317,18 @@ function buildCommandFlowSummaries(
     const rootCommand = ordered[0] ?? null;
     const terminalCommand = getTerminalCommand(ordered);
 
-    const flowId =
-      ordered.map((cmd) => text(cmd.flow_id)).find(Boolean) || "";
+    const flowId = ordered.map((cmd) => text(cmd.flow_id)).find(Boolean) || "";
     const rootEventId =
       ordered.map((cmd) => text(cmd.root_event_id)).find(Boolean) || "";
     const workspaceId =
       ordered.map((cmd) => text(cmd.workspace_id)).find(Boolean) ||
       "production";
-
     const linkedRunId =
       ordered
-        .map((cmd) =>
-          firstText(
-            (cmd as Record<string, unknown>).linked_run,
-            (cmd as Record<string, unknown>).run_record_id
-          )
-        )
+        .map((cmd) => firstText(cmd.linked_run, cmd.run_record_id))
         .find(Boolean) || "";
 
+    const sourceRecordId = firstText(rootEventId, flowId);
     const lastActivityTs = Math.max(...ordered.map(getCommandActivityTs), 0);
 
     const validStarts = ordered.map(getCommandStartTs).filter((ts) => ts > 0);
@@ -373,12 +340,15 @@ function buildCommandFlowSummaries(
         ? Math.max(0, lastActivityTs - earliestStartTs)
         : 0;
 
-    const linkedIncident = findLinkedIncident(incidents, {
+    const linkedIncidents = collectLinkedIncidents(incidents, {
       flowId,
       rootEventId,
       linkedRunId,
-      sourceRecordId: "",
+      sourceRecordId,
     });
+
+    const linkedIncident = linkedIncidents[0] ?? null;
+    const incidentCount = linkedIncidents.length;
 
     summaries.push({
       key,
@@ -392,15 +362,16 @@ function buildCommandFlowSummaries(
       durationMs,
       lastActivityTs,
       hasIncident: Boolean(linkedIncident),
+      incidentCount,
       incidentLabel: getIncidentLabel(linkedIncident),
       incidentStatus: firstText(
         linkedIncident?.status,
         linkedIncident?.statut_incident
       ),
       incidentSeverity: text(linkedIncident?.severity),
-      incidentUpdatedTs: getIncidentActivityTs(linkedIncident as IncidentItem),
+      incidentUpdatedTs: getIncidentActivityTs(linkedIncident),
       linkedRunId,
-      sourceRecordId: firstText(rootEventId, flowId),
+      sourceRecordId,
       readMode: "causal",
       partial: false,
       commands: ordered.map(toGraphCommand),
@@ -411,51 +382,53 @@ function buildCommandFlowSummaries(
 }
 
 function applyRegistryOnlyFlows(
+  summaries: FlowSummary[],
   registryFlows: FlowDetail[],
-  summaries: Map<string, FlowSummary>,
   incidents: IncidentItem[]
-) {
+): FlowSummary[] {
+  const summaryMap = new Map<string, FlowSummary>();
+
+  for (const summary of summaries) {
+    summaryMap.set(summary.key, summary);
+  }
+
   for (const flow of registryFlows) {
     const flowId = firstText(flow.flow_id);
     const rootEventId = firstText(flow.root_event_id);
-    const sourceRecordId = firstText(
-      (flow as Record<string, unknown>).id,
-      (flow as Record<string, unknown>).source_record_id,
-      rootEventId,
-      flowId
-    );
-    const linkedRunId = firstText(
-      (flow as Record<string, unknown>).linked_run,
-      (flow as Record<string, unknown>).run_record_id,
-      (flow as Record<string, unknown>).run_id
-    );
+    const sourceRecordId = firstText(flow.id, rootEventId, flowId);
+    const workspaceId = firstText(flow.workspace_id, "production");
 
-    const key =
-      flowId
-        ? `flow:${flowId}`
-        : rootEventId
-        ? `root:${rootEventId}`
-        : sourceRecordId
-        ? `registry:${sourceRecordId}`
-        : "";
+    const key = flowId
+      ? `flow:${flowId}`
+      : rootEventId
+      ? `root:${rootEventId}`
+      : sourceRecordId
+      ? `registry:${sourceRecordId}`
+      : "";
 
     if (!key) continue;
 
-    const linkedIncident = findLinkedIncident(incidents, {
+    const linkedIncidents = collectLinkedIncidents(incidents, {
       flowId,
       rootEventId,
       sourceRecordId,
-      linkedRunId,
     });
 
-    const existing = summaries.get(key);
+    const linkedIncident = linkedIncidents[0] ?? null;
+    const incidentCount = linkedIncidents.length;
+
+    const flowActivityTs = Math.max(
+      toTs((flow as Record<string, unknown>).updated_at as string),
+      toTs((flow as Record<string, unknown>).created_at as string),
+      getIncidentActivityTs(linkedIncident)
+    );
+
+    const existing = summaryMap.get(key);
 
     if (existing) {
-      if (!existing.sourceRecordId) existing.sourceRecordId = sourceRecordId;
-      if (!existing.linkedRunId) existing.linkedRunId = linkedRunId;
-
       if (!existing.hasIncident && linkedIncident) {
         existing.hasIncident = true;
+        existing.incidentCount = incidentCount;
         existing.incidentLabel = getIncidentLabel(linkedIncident);
         existing.incidentStatus = firstText(
           linkedIncident.status,
@@ -468,40 +441,41 @@ function applyRegistryOnlyFlows(
       continue;
     }
 
-    const lastActivityTs = Math.max(
-      toTs((flow as Record<string, unknown>).updated_at as string),
-      toTs((flow as Record<string, unknown>).created_at as string),
-      getIncidentActivityTs(linkedIncident as IncidentItem)
-    );
-
-    summaries.set(key, {
+    summaryMap.set(key, {
       key,
       flowId: flowId || rootEventId || sourceRecordId || key,
       rootEventId: rootEventId || sourceRecordId || "—",
-      workspaceId:
-        firstText(flow.workspace_id, (flow as Record<string, unknown>).workspace) ||
-        "production",
+      workspaceId,
       status: computeRegistryStatus(flow),
       steps: Array.isArray(flow.commands) ? flow.commands.length : 0,
       rootCapability: "",
       terminalCapability: "",
       durationMs: 0,
-      lastActivityTs,
+      lastActivityTs: flowActivityTs,
       hasIncident: Boolean(linkedIncident),
+      incidentCount,
       incidentLabel: getIncidentLabel(linkedIncident),
       incidentStatus: firstText(
         linkedIncident?.status,
         linkedIncident?.statut_incident
       ),
       incidentSeverity: text(linkedIncident?.severity),
-      incidentUpdatedTs: getIncidentActivityTs(linkedIncident as IncidentItem),
-      linkedRunId,
+      incidentUpdatedTs: getIncidentActivityTs(linkedIncident),
+      linkedRunId: "",
       sourceRecordId,
       readMode: "registry_only",
       partial: true,
       commands: [],
     });
   }
+
+  return [...summaryMap.values()].sort((a, b) => {
+    const priorityDiff =
+      getFlowStatusPriority(a.status) - getFlowStatusPriority(b.status);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    return b.lastActivityTs - a.lastActivityTs;
+  });
 }
 
 export default async function FlowsPage() {
@@ -530,25 +504,12 @@ export default async function FlowsPage() {
     allRegistryFlows = [];
   }
 
-  const summaryMap = new Map<string, FlowSummary>();
-
-  for (const summary of buildCommandFlowSummaries(allCommands, allIncidents)) {
-    summaryMap.set(summary.key, summary);
-  }
-
-  applyRegistryOnlyFlows(allRegistryFlows, summaryMap, allIncidents);
-
-  const flows = [...summaryMap.values()].sort((a, b) => {
-    const statusDiff =
-      getFlowStatusPriority(a.status) - getFlowStatusPriority(b.status);
-    if (statusDiff !== 0) return statusDiff;
-
-    if (a.partial !== b.partial) {
-      return a.partial ? 1 : -1;
-    }
-
-    return b.lastActivityTs - a.lastActivityTs;
-  });
+  const commandFlows = buildCommandFlowSummaries(allCommands, allIncidents);
+  const flows = applyRegistryOnlyFlows(
+    commandFlows,
+    allRegistryFlows,
+    allIncidents
+  );
 
   const initialSelectedKey =
     flows.find((flow) => flow.status === "running")?.key ||
@@ -557,7 +518,7 @@ export default async function FlowsPage() {
     flows[0]?.key ||
     "";
 
-  const initialFilter: "all" | FlowStatus =
+  const initialFilter: FlowFilter =
     flows.some((flow) => flow.status === "running")
       ? "running"
       : flows.some((flow) => flow.status === "failed")
