@@ -30,16 +30,19 @@ function text(value: unknown): string {
   return "";
 }
 
-function getSortTime(cmd: CommandItem): number {
-  return new Date(
-    cmd.started_at || cmd.created_at || cmd.updated_at || cmd.finished_at || 0
-  ).getTime();
+function toTs(value?: string | number | null): number {
+  if (value === null || value === undefined || value === "") return 0;
+  const ts = new Date(value).getTime();
+  return Number.isNaN(ts) ? 0 : ts;
 }
 
-function getStepIndex(cmd: CommandItem): number {
-  return typeof cmd.step_index === "number"
-    ? cmd.step_index
-    : Number.MAX_SAFE_INTEGER;
+function getCommandActivityTs(cmd: CommandItem): number {
+  return Math.max(
+    toTs(cmd.finished_at),
+    toTs(cmd.updated_at),
+    toTs(cmd.started_at),
+    toTs(cmd.created_at)
+  );
 }
 
 function getStatusKind(
@@ -83,6 +86,10 @@ function badgeTone(status: string) {
     return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
   }
 
+  if (s === "retry") {
+    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
+  }
+
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
@@ -117,13 +124,12 @@ function formatDate(value?: string | number | null): string {
 }
 
 function getIncidentSortTs(incident: IncidentItem): number {
-  return new Date(
-    incident.updated_at ||
-      incident.opened_at ||
-      incident.created_at ||
-      incident.resolved_at ||
-      0
-  ).getTime();
+  return Math.max(
+    toTs(incident.updated_at),
+    toTs(incident.opened_at),
+    toTs(incident.created_at),
+    toTs(incident.resolved_at)
+  );
 }
 
 function statCard(
@@ -151,6 +157,75 @@ function toGraphCommand(cmd: CommandItem): GraphCommand {
   };
 }
 
+function buildExecutionOrder(commands: CommandItem[]): CommandItem[] {
+  if (commands.length <= 1) return [...commands];
+
+  const byId = new Map<string, CommandItem>();
+  const childrenMap = new Map<string, CommandItem[]>();
+
+  for (const cmd of commands) {
+    const id = String(cmd.id);
+    byId.set(id, cmd);
+    childrenMap.set(id, []);
+  }
+
+  const roots: CommandItem[] = [];
+
+  for (const cmd of commands) {
+    const parentId = text(cmd.parent_command_id);
+
+    if (parentId && byId.has(parentId)) {
+      childrenMap.get(parentId)?.push(cmd);
+    } else {
+      roots.push(cmd);
+    }
+  }
+
+  const sortByActivityAsc = (a: CommandItem, b: CommandItem) =>
+    getCommandActivityTs(a) - getCommandActivityTs(b);
+
+  roots.sort(sortByActivityAsc);
+  childrenMap.forEach((children) => children.sort(sortByActivityAsc));
+
+  const ordered: CommandItem[] = [];
+  const visited = new Set<string>();
+
+  function walk(cmd: CommandItem) {
+    const id = String(cmd.id);
+    if (visited.has(id)) return;
+
+    visited.add(id);
+    ordered.push(cmd);
+
+    const children = childrenMap.get(id) ?? [];
+    for (const child of children) {
+      walk(child);
+    }
+  }
+
+  for (const root of roots) {
+    walk(root);
+  }
+
+  const leftovers = commands
+    .filter((cmd) => !visited.has(String(cmd.id)))
+    .sort(sortByActivityAsc);
+
+  for (const cmd of leftovers) {
+    walk(cmd);
+  }
+
+  return ordered;
+}
+
+function getLatestCommand(commands: CommandItem[]): CommandItem | null {
+  if (commands.length === 0) return null;
+
+  return [...commands].sort(
+    (a, b) => getCommandActivityTs(b) - getCommandActivityTs(a)
+  )[0] ?? null;
+}
+
 export default async function FlowDetailPage({ params }: PageProps) {
   const { id } = await params;
   const requestedId = decodeURIComponent(id);
@@ -172,19 +247,17 @@ export default async function FlowDetailPage({ params }: PageProps) {
     (cmd) => text(cmd.root_event_id) === requestedId
   );
 
-  const matchedCommands = (byFlowId.length > 0 ? byFlowId : byRootEventId).sort(
-    (a, b) => {
-      const stepDiff = getStepIndex(a) - getStepIndex(b);
-      if (stepDiff !== 0) return stepDiff;
-      return getSortTime(a) - getSortTime(b);
-    }
-  );
+  const rawMatchedCommands = byFlowId.length > 0 ? byFlowId : byRootEventId;
 
-  if (matchedCommands.length === 0) {
+  if (rawMatchedCommands.length === 0) {
     notFound();
   }
 
-  const effectiveFlowId = text(matchedCommands[0]?.flow_id) || requestedId;
+  const matchedCommands = buildExecutionOrder(rawMatchedCommands);
+  const latestCommand = getLatestCommand(rawMatchedCommands);
+
+  const effectiveFlowId =
+    matchedCommands.map((cmd) => text(cmd.flow_id)).find(Boolean) || requestedId;
 
   const rootEventId =
     matchedCommands.map((cmd) => text(cmd.root_event_id)).find(Boolean) || "—";
@@ -193,26 +266,35 @@ export default async function FlowDetailPage({ params }: PageProps) {
     matchedCommands.map((cmd) => text(cmd.workspace_id)).find(Boolean) ||
     "production";
 
-  const flowStatus = computeFlowStatus(matchedCommands);
+  const flowStatus = computeFlowStatus(rawMatchedCommands);
 
-  const doneCount = matchedCommands.filter(
+  const doneCount = rawMatchedCommands.filter(
     (cmd) => getStatusKind(cmd.status) === "done"
   ).length;
 
-  const runningCount = matchedCommands.filter(
+  const runningCount = rawMatchedCommands.filter(
     (cmd) => getStatusKind(cmd.status) === "running"
   ).length;
 
-  const failedCount = matchedCommands.filter(
+  const failedCount = rawMatchedCommands.filter(
     (cmd) => getStatusKind(cmd.status) === "failed"
   ).length;
 
-  const lastCommand =
-    matchedCommands.length > 0
-      ? matchedCommands[matchedCommands.length - 1]
-      : null;
-
   const graphCommands = matchedCommands.map(toGraphCommand);
+
+  const flowCommandIds = new Set(
+    matchedCommands.map((cmd) => String(cmd.id)).filter(Boolean)
+  );
+
+  const flowRunIds = new Set(
+    matchedCommands
+      .flatMap((cmd) => [
+        text(cmd.linked_run),
+        text(cmd.run_record_id),
+        text((cmd as Record<string, unknown>)["run_id"]),
+      ])
+      .filter(Boolean)
+  );
 
   let linkedIncident: IncidentItem | null = null;
 
@@ -225,10 +307,28 @@ export default async function FlowDetailPage({ params }: PageProps) {
         const incidentFlowId = text(incident.flow_id);
         const incidentRootId = text(incident.root_event_id);
 
-        return (
-          incidentFlowId === effectiveFlowId ||
-          (rootEventId !== "—" && incidentRootId === rootEventId)
+        const incidentCommandIds = [
+          text(incident.command_id),
+          text(incident.linked_command),
+        ].filter(Boolean);
+
+        const incidentRunIds = [
+          text(incident.run_record_id),
+          text(incident.linked_run),
+          text(incident.run_id),
+        ].filter(Boolean);
+
+        const sameFlow =
+          (effectiveFlowId && incidentFlowId === effectiveFlowId) ||
+          (rootEventId !== "—" && incidentRootId === rootEventId);
+
+        const sameCommand = incidentCommandIds.some((id) =>
+          flowCommandIds.has(id)
         );
+
+        const sameRun = incidentRunIds.some((id) => flowRunIds.has(id));
+
+        return sameFlow || sameCommand || sameRun;
       })
       .sort((a, b) => getIncidentSortTs(b) - getIncidentSortTs(a));
 
@@ -299,17 +399,17 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <div>
             Last step:{" "}
             <span className="text-zinc-200">
-              {text(lastCommand?.capability) || "—"}
+              {text(latestCommand?.capability) || "—"}
             </span>
           </div>
           <div>
             Last activity:{" "}
             <span className="text-zinc-200">
               {formatDate(
-                lastCommand?.finished_at ||
-                  lastCommand?.started_at ||
-                  lastCommand?.updated_at ||
-                  lastCommand?.created_at
+                latestCommand?.finished_at ||
+                  latestCommand?.started_at ||
+                  latestCommand?.updated_at ||
+                  latestCommand?.created_at
               )}
             </span>
           </div>
@@ -324,10 +424,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
         <div className="mb-2 text-xs uppercase tracking-[0.2em] text-white/50">
           Execution graph
         </div>
-
-        <div className="mb-4 text-sm text-white/55">
-          Touchez un nœud du graphe pour aller directement à l’étape
-          correspondante dans la timeline.
+        <div className="mb-4 text-sm text-white/45">
+          Touchez un nœud du graphe pour aller directement à l’étape correspondante dans la timeline.
         </div>
 
         <FlowGraphClient commands={graphCommands} anchorPrefix="cmd-" />
@@ -407,78 +505,90 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </div>
 
         <div className="space-y-3">
-          {matchedCommands.map((step, index) => (
-            <div
-              key={`${step.id || index}`}
-              id={`cmd-${step.id}`}
-              data-command-id={String(step.id)}
-              style={{ scrollMarginTop: "24px" }}
-              className="rounded-2xl border border-white/10 bg-white/5 p-4"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="text-sm font-semibold text-white">
-                  {text(step.capability) || "Unknown capability"}
+          {matchedCommands.map((step, index) => {
+            const isRoot = index === 0;
+            const isTerminal = index === matchedCommands.length - 1;
+
+            return (
+              <div
+                id={`cmd-${step.id}`}
+                key={`${step.id || index}`}
+                className="rounded-2xl border border-white/10 bg-white/5 p-4 scroll-mt-24"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-sm font-semibold text-white">
+                    {text(step.capability) || "Unknown capability"}
+                  </div>
+
+                  <span
+                    className={`inline-flex rounded-full px-3 py-1 text-[11px] font-medium ${badgeTone(
+                      getStatusKind(step.status) === "done"
+                        ? "success"
+                        : getStatusKind(step.status) === "running"
+                        ? "running"
+                        : getStatusKind(step.status) === "failed"
+                        ? "failed"
+                        : text(step.status) || "unknown"
+                    )}`}
+                  >
+                    {(text(step.status) || "UNKNOWN").toUpperCase()}
+                  </span>
+
+                  <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-zinc-300">
+                    STEP {index + 1}
+                  </span>
+
+                  {isRoot ? (
+                    <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-zinc-300">
+                      ROOT
+                    </span>
+                  ) : null}
+
+                  {isTerminal ? (
+                    <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-zinc-300">
+                      TERMINAL
+                    </span>
+                  ) : null}
                 </div>
 
-                <span
-                  className={`inline-flex rounded-full px-3 py-1 text-[11px] font-medium ${badgeTone(
-                    getStatusKind(step.status) === "done"
-                      ? "success"
-                      : getStatusKind(step.status) === "running"
-                      ? "running"
-                      : getStatusKind(step.status) === "failed"
-                      ? "failed"
-                      : "unknown"
-                  )}`}
-                >
-                  {(text(step.status) || "UNKNOWN").toUpperCase()}
-                </span>
-
-                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-zinc-300">
-                  STEP{" "}
-                  {typeof step.step_index === "number"
-                    ? step.step_index
-                    : index + 1}
-                </span>
+                <div className="mt-3 grid gap-2 text-sm text-white/65 sm:grid-cols-2 xl:grid-cols-3">
+                  <div>
+                    ID: <span className="text-zinc-200 break-all">{step.id}</span>
+                  </div>
+                  <div>
+                    Parent:{" "}
+                    <span className="text-zinc-200 break-all">
+                      {text(step.parent_command_id) || "—"}
+                    </span>
+                  </div>
+                  <div>
+                    Worker:{" "}
+                    <span className="text-zinc-200">
+                      {text(step.worker) || "—"}
+                    </span>
+                  </div>
+                  <div>
+                    Started:{" "}
+                    <span className="text-zinc-200">
+                      {formatDate(step.started_at)}
+                    </span>
+                  </div>
+                  <div>
+                    Finished:{" "}
+                    <span className="text-zinc-200">
+                      {formatDate(step.finished_at)}
+                    </span>
+                  </div>
+                  <div>
+                    Flow:{" "}
+                    <span className="text-zinc-200 break-all">
+                      {text(step.flow_id) || "—"}
+                    </span>
+                  </div>
+                </div>
               </div>
-
-              <div className="mt-3 grid gap-2 text-sm text-white/65 sm:grid-cols-2 xl:grid-cols-3">
-                <div>
-                  ID: <span className="text-zinc-200 break-all">{step.id}</span>
-                </div>
-                <div>
-                  Parent:{" "}
-                  <span className="text-zinc-200 break-all">
-                    {text(step.parent_command_id) || "—"}
-                  </span>
-                </div>
-                <div>
-                  Worker:{" "}
-                  <span className="text-zinc-200">
-                    {text(step.worker) || "—"}
-                  </span>
-                </div>
-                <div>
-                  Started:{" "}
-                  <span className="text-zinc-200">
-                    {formatDate(step.started_at)}
-                  </span>
-                </div>
-                <div>
-                  Finished:{" "}
-                  <span className="text-zinc-200">
-                    {formatDate(step.finished_at)}
-                  </span>
-                </div>
-                <div>
-                  Flow:{" "}
-                  <span className="text-zinc-200 break-all">
-                    {text(step.flow_id) || "—"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
