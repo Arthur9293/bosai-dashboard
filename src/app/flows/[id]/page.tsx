@@ -3,8 +3,10 @@ import { notFound } from "next/navigation";
 import FlowGraphClient from "../FlowGraphClient";
 import {
   fetchCommands,
+  fetchFlows,
   fetchIncidents,
   type CommandItem,
+  type FlowDetail,
   type IncidentItem,
 } from "@/lib/api";
 
@@ -38,20 +40,6 @@ type FlowSummary = {
   isPartial?: boolean;
 };
 
-type TimelineItem = {
-  id: string;
-  capability: string;
-  status: string;
-  parentCommandId: string;
-  flowId: string;
-  startedAt: string;
-  finishedAt: string;
-  worker: string;
-  stepIndex: number;
-  isRoot: boolean;
-  isTerminal: boolean;
-};
-
 function text(value: unknown): string {
   if (typeof value === "string") {
     const v = value.trim();
@@ -66,105 +54,20 @@ function toTs(value?: string | number | null): number {
   return Number.isNaN(ts) ? 0 : ts;
 }
 
-function formatDate(ts?: number): string {
-  if (!ts || Number.isNaN(ts)) return "—";
-
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(ts));
-}
-
-function formatDuration(ms?: number): string {
-  if (!ms || ms <= 0 || Number.isNaN(ms)) return "—";
-
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
-}
-
-function badgeTone(status: string) {
-  const s = status.toLowerCase();
-
-  if (s === "success" || s === "done") {
-    return "border border-emerald-500/20 bg-emerald-500/15 text-emerald-300";
-  }
-
-  if (s === "running") {
-    return "border border-sky-500/20 bg-sky-500/15 text-sky-300";
-  }
-
-  if (s === "failed" || s === "error") {
-    return "border border-rose-500/20 bg-rose-500/15 text-rose-300";
-  }
-
-  if (s === "retry") {
-    return "border border-violet-500/20 bg-violet-500/15 text-violet-300";
-  }
-
-  if (s === "partial") {
-    return "border border-amber-500/20 bg-amber-500/15 text-amber-300";
-  }
-
-  return "border border-zinc-700 bg-zinc-800 text-zinc-300";
-}
-
-function statCard(label: string, value: string | number) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="text-sm text-zinc-400">{label}</div>
-      <div className="mt-2 break-words text-3xl font-semibold text-white">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function detailCard(label: string, value: string | number) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="text-sm text-zinc-400">{label}</div>
-      <div className="mt-3 break-words text-2xl font-semibold text-white">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function idCard(label: string, value?: string) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="text-sm text-zinc-400">{label}</div>
-      <div className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-black/10 px-3 py-2">
-        <div className="min-w-max font-mono text-sm text-zinc-200">
-          {value || "Non disponible"}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function getCommandActivityTs(cmd: CommandItem): number {
   return Math.max(
-    toTs(cmd.finished_at),
-    toTs(cmd.updated_at),
-    toTs(cmd.started_at),
-    toTs(cmd.created_at)
+    toTs(cmd.finished_at as string | number | null | undefined),
+    toTs(cmd.updated_at as string | number | null | undefined),
+    toTs(cmd.started_at as string | number | null | undefined),
+    toTs(cmd.created_at as string | number | null | undefined)
   );
 }
 
 function getCommandStartTs(cmd: CommandItem): number {
-  return Math.max(toTs(cmd.started_at), toTs(cmd.created_at));
-}
-
-function toStepIndex(value: unknown, fallback: number): number {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
+  return Math.max(
+    toTs(cmd.started_at as string | number | null | undefined),
+    toTs(cmd.created_at as string | number | null | undefined)
+  );
 }
 
 function getStatusKind(
@@ -174,21 +77,20 @@ function getStatusKind(
 
   if (["done", "success", "resolved", "ok"].includes(s)) return "done";
   if (s === "retry") return "retry";
-  if (["running", "queued", "pending", "open", "monitor"].includes(s)) {
-    return "running";
-  }
-  if (["error", "failed", "dead", "breached"].includes(s)) return "failed";
+  if (["running", "queued", "pending"].includes(s)) return "running";
+  if (["error", "failed", "dead"].includes(s)) return "failed";
 
   return "other";
 }
 
 function computeFlowStatus(commands: CommandItem[]): FlowStatus {
-  const kinds = commands.map((cmd) => getStatusKind(text(cmd.status)));
+  const kinds = commands.map((cmd) => getStatusKind(cmd.status));
 
   if (kinds.includes("running")) return "running";
   if (kinds.includes("failed")) return "failed";
   if (kinds.includes("retry")) return "retry";
-  if (kinds.length > 0 && kinds.every((k) => k === "done" || k === "other")) {
+
+  if (kinds.length > 0 && kinds.every((kind) => kind === "done" || kind === "other")) {
     return "success";
   }
 
@@ -275,9 +177,10 @@ function getTerminalCommand(commands: CommandItem[]): CommandItem | null {
 
   const source = leafCandidates.length > 0 ? leafCandidates : commands;
 
-  return [...source].sort(
-    (a, b) => getCommandActivityTs(b) - getCommandActivityTs(a)
-  )[0] ?? null;
+  return (
+    [...source].sort((a, b) => getCommandActivityTs(b) - getCommandActivityTs(a))[0] ??
+    null
+  );
 }
 
 function toGraphCommand(cmd: CommandItem): FlowGraphCommand {
@@ -290,7 +193,7 @@ function toGraphCommand(cmd: CommandItem): FlowGraphCommand {
   };
 }
 
-function getCommandGroupKey(cmd: CommandItem): string {
+function getFlowGroupKey(cmd: CommandItem): string {
   const flowId = text(cmd.flow_id);
   if (flowId) return `flow:${flowId}`;
 
@@ -300,114 +203,49 @@ function getCommandGroupKey(cmd: CommandItem): string {
   return "";
 }
 
-function getIncidentGroupKey(incident: IncidentItem): string {
-  const flowId = text(incident.flow_id);
-  if (flowId) return `flow:${flowId}`;
+function matchIncidents(
+  incidents: IncidentItem[],
+  flowId: string,
+  rootEventId: string
+): IncidentItem[] {
+  return incidents.filter((incident) => {
+    const incidentFlowId = text(incident.flow_id);
+    const incidentRootEventId = text(incident.root_event_id);
 
-  const rootEventId =
-    text(incident.root_event_id) ||
-    text(incident.linked_run) ||
-    text(incident.run_record_id) ||
-    text(incident.id);
-
-  if (rootEventId) return `root:${rootEventId}`;
-
-  return "";
+    return (
+      (flowId && incidentFlowId === flowId) ||
+      (rootEventId && incidentRootEventId === rootEventId)
+    );
+  });
 }
 
-function computeIncidentOnlyStatus(incident: IncidentItem): FlowStatus {
-  const raw = [
-    text(incident.status),
-    text(incident.statut_incident),
-    text(incident.sla_status),
-    text(incident.decision_status),
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  if (
-    raw.includes("failed") ||
-    raw.includes("error") ||
-    raw.includes("breach") ||
-    raw.includes("échec")
-  ) {
-    return "failed";
-  }
-
-  if (raw.includes("retry")) {
-    return "retry";
-  }
-
-  if (
-    raw.includes("resolved") ||
-    raw.includes("closed") ||
-    raw.includes("done") ||
-    raw.includes("success")
-  ) {
-    return "success";
-  }
-
-  if (
-    raw.includes("open") ||
-    raw.includes("monitor") ||
-    raw.includes("warning") ||
-    raw.includes("running")
-  ) {
-    return "running";
-  }
-
-  return "running";
-}
-
-function buildFlowSummaries(
+function buildEnrichedFlowSummaries(
   commands: CommandItem[],
   incidents: IncidentItem[]
 ): FlowSummary[] {
-  const commandGroups = new Map<string, CommandItem[]>();
+  const groups = new Map<string, CommandItem[]>();
 
   for (const cmd of commands) {
-    const key = getCommandGroupKey(cmd);
+    const key = getFlowGroupKey(cmd);
     if (!key) continue;
 
-    const existing = commandGroups.get(key) ?? [];
+    const existing = groups.get(key) ?? [];
     existing.push(cmd);
-    commandGroups.set(key, existing);
-  }
-
-  const incidentGroups = new Map<string, IncidentItem[]>();
-
-  for (const incident of incidents) {
-    const key = getIncidentGroupKey(incident);
-    if (!key) continue;
-
-    const existing = incidentGroups.get(key) ?? [];
-    existing.push(incident);
-    incidentGroups.set(key, existing);
+    groups.set(key, existing);
   }
 
   const summaries: FlowSummary[] = [];
 
-  for (const [key, group] of commandGroups.entries()) {
+  for (const [key, group] of groups.entries()) {
     const ordered = buildExecutionOrder(group);
     const rootCommand = ordered[0] ?? null;
     const terminalCommand = getTerminalCommand(ordered);
 
-    const flowId =
-      ordered.map((cmd) => text(cmd.flow_id)).find(Boolean) || "";
+    const flowId = ordered.map((cmd) => text(cmd.flow_id)).find(Boolean) || "";
     const rootEventId =
       ordered.map((cmd) => text(cmd.root_event_id)).find(Boolean) || "";
     const workspaceId =
       ordered.map((cmd) => text(cmd.workspace_id)).find(Boolean) || "production";
-
-    const matchingIncidents = incidents.filter((incident) => {
-      const incidentFlowId = text(incident.flow_id);
-      const incidentRootId = text(incident.root_event_id);
-
-      return (
-        (flowId && incidentFlowId === flowId) ||
-        (rootEventId && incidentRootId === rootEventId)
-      );
-    });
 
     const lastActivityTs = Math.max(...ordered.map(getCommandActivityTs), 0);
 
@@ -420,23 +258,23 @@ function buildFlowSummaries(
         ? Math.max(0, lastActivityTs - earliestStartTs)
         : 0;
 
-    const status = computeFlowStatus(ordered);
+    const linkedIncidents = matchIncidents(incidents, flowId, rootEventId);
 
     summaries.push({
       key,
       flowId: flowId || rootEventId || key,
       rootEventId: rootEventId || "—",
       workspaceId,
-      status,
+      status: computeFlowStatus(ordered),
       steps: ordered.length,
       rootCapability: text(rootCommand?.capability) || "Non disponible",
-      terminalCapability:
-        text(terminalCommand?.capability) || "Non disponible",
+      terminalCapability: text(terminalCommand?.capability) || "Non disponible",
       durationMs,
       lastActivityTs,
-      hasIncident: matchingIncidents.length > 0,
-      incidentCount: matchingIncidents.length,
-      firstIncidentId: text(matchingIncidents[0]?.id) || undefined,
+      hasIncident: linkedIncidents.length > 0,
+      incidentCount: linkedIncidents.length,
+      firstIncidentId:
+        linkedIncidents.length > 0 ? String(linkedIncidents[0].id) : undefined,
       commands: ordered.map(toGraphCommand),
       readingMode: "enriched",
       sourceRecordId: undefined,
@@ -444,55 +282,100 @@ function buildFlowSummaries(
     });
   }
 
-  for (const [key, group] of incidentGroups.entries()) {
-    if (commandGroups.has(key)) continue;
+  return summaries;
+}
 
-    const first = group[0];
-    const flowId = text(first.flow_id) || key.replace(/^flow:/, "");
-    const sourceRecordId =
-      text(first.root_event_id) ||
-      text(first.linked_run) ||
-      text(first.run_record_id) ||
-      text(first.id) ||
-      key.replace(/^root:/, "");
+function computeRegistryStatus(flow: FlowDetail): FlowStatus {
+  const stats = flow.stats || {};
 
-    const workspaceId =
-      text(first.workspace_id) || text(first.workspace) || "production";
+  const running =
+    Number(stats.running || 0) + Number(stats.queued || 0) > 0;
+  const failed = Number(stats.error || 0) + Number(stats.dead || 0) > 0;
+  const retry = Number(stats.retry || 0) > 0;
+  const success =
+    Number(stats.done || 0) > 0 &&
+    !running &&
+    !failed &&
+    !retry;
 
-    const lastActivityTs = Math.max(
-      ...group.map((incident) =>
-        Math.max(
-          toTs(incident.updated_at),
-          toTs(incident.created_at),
-          toTs(incident.opened_at),
-          toTs(incident.resolved_at)
-        )
-      ),
-      0
-    );
+  if (running) return "running";
+  if (failed) return "failed";
+  if (retry) return "retry";
+  if (success) return "success";
+  return "unknown";
+}
+
+function buildRegistryOnlyFlowSummaries(
+  registryFlows: FlowDetail[],
+  enrichedFlows: FlowSummary[],
+  incidents: IncidentItem[]
+): FlowSummary[] {
+  const enrichedCandidates = new Set<string>();
+
+  for (const flow of enrichedFlows) {
+    [flow.flowId, flow.rootEventId, flow.sourceRecordId, flow.key]
+      .filter(Boolean)
+      .forEach((value) => enrichedCandidates.add(String(value)));
+  }
+
+  const summaries: FlowSummary[] = [];
+
+  for (const flow of registryFlows) {
+    const sourceRecordId = text(flow.id);
+    const flowId = text(flow.flow_id) || sourceRecordId || text(flow.root_event_id);
+    const rootEventId =
+      text(flow.root_event_id) || sourceRecordId || flowId || "—";
+    const workspaceId = text(flow.workspace_id) || "production";
+
+    const shouldSkip =
+      [sourceRecordId, flowId, rootEventId].filter(Boolean).some((value) => {
+        return enrichedCandidates.has(String(value));
+      });
+
+    if (shouldSkip) {
+      continue;
+    }
+
+    const linkedIncidents = matchIncidents(incidents, flowId, rootEventId);
 
     summaries.push({
-      key,
-      flowId: flowId || sourceRecordId || key,
-      rootEventId: sourceRecordId || "—",
+      key: `registry:${sourceRecordId || flowId || rootEventId}`,
+      flowId: flowId || rootEventId || "registry-flow",
+      rootEventId: rootEventId || "—",
       workspaceId,
-      status: computeIncidentOnlyStatus(first),
+      status: computeRegistryStatus(flow),
       steps: 0,
       rootCapability: "Non disponible",
       terminalCapability: "Non disponible",
       durationMs: 0,
-      lastActivityTs,
-      hasIncident: group.length > 0,
-      incidentCount: group.length,
-      firstIncidentId: text(first.id) || undefined,
+      lastActivityTs: 0,
+      hasIncident: linkedIncidents.length > 0,
+      incidentCount: linkedIncidents.length,
+      firstIncidentId:
+        linkedIncidents.length > 0 ? String(linkedIncidents[0].id) : undefined,
       commands: [],
       readingMode: "registry-only",
-      sourceRecordId: sourceRecordId || undefined,
+      sourceRecordId: sourceRecordId || rootEventId || flowId,
       isPartial: true,
     });
   }
 
-  return summaries.sort((a, b) => {
+  return summaries;
+}
+
+function buildAllFlowSummaries(
+  commands: CommandItem[],
+  registryFlows: FlowDetail[],
+  incidents: IncidentItem[]
+): FlowSummary[] {
+  const enriched = buildEnrichedFlowSummaries(commands, incidents);
+  const registryOnly = buildRegistryOnlyFlowSummaries(
+    registryFlows,
+    enriched,
+    incidents
+  );
+
+  return [...enriched, ...registryOnly].sort((a, b) => {
     const priorityDiff =
       getFlowStatusPriority(a.status) - getFlowStatusPriority(b.status);
     if (priorityDiff !== 0) return priorityDiff;
@@ -500,58 +383,117 @@ function buildFlowSummaries(
   });
 }
 
-function buildTimeline(commands: CommandItem[]): TimelineItem[] {
-  const ordered = buildExecutionOrder(commands);
+function formatDate(ts?: number): string {
+  if (!ts || Number.isNaN(ts)) return "—";
 
-  const parentIds = new Set(
-    ordered.map((cmd) => text(cmd.parent_command_id)).filter(Boolean)
-  );
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(ts));
+}
 
-  return ordered.map((cmd, index) => {
-    const id = String(cmd.id);
-    const parentCommandId = text(cmd.parent_command_id);
-    const isRoot = !parentCommandId;
-    const isTerminal = !parentIds.has(id);
+function formatDuration(ms?: number): string {
+  if (!ms || ms <= 0 || Number.isNaN(ms)) return "—";
 
-    return {
-      id,
-      capability: text(cmd.capability) || "Non disponible",
-      status: text(cmd.status) || "unknown",
-      parentCommandId,
-      flowId: text(cmd.flow_id) || "",
-      startedAt: text(cmd.started_at) || text(cmd.created_at) || "",
-      finishedAt: text(cmd.finished_at) || "",
-      worker: text(cmd.worker) || "—",
-      stepIndex: toStepIndex(cmd.step_index, index + 1),
-      isRoot,
-      isTerminal,
-    };
-  });
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function badgeTone(status: string) {
+  const s = status.toLowerCase();
+
+  if (s === "success") {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  if (s === "running") {
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+  }
+
+  if (s === "failed") {
+    return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
+  }
+
+  if (s === "retry") {
+    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
+  }
+
+  if (s === "partial") {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
+function formatFlowActivity(flow: FlowSummary): string {
+  if (flow.lastActivityTs > 0) {
+    return formatDate(flow.lastActivityTs);
+  }
+
+  if (flow.readingMode === "registry-only") {
+    return "Registre uniquement";
+  }
+
+  return "—";
+}
+
+function incidentLabel(flow: FlowSummary): string {
+  if (!flow.hasIncident || flow.incidentCount <= 0) {
+    return "Aucun incident";
+  }
+
+  if (flow.incidentCount === 1) {
+    return "1 incident";
+  }
+
+  return `${flow.incidentCount} incidents`;
 }
 
 function matchesRouteId(flow: FlowSummary, routeId: string): boolean {
+  const cleanRouteId = decodeURIComponent(String(routeId || "")).trim();
+
   const candidates = [
-    flow.flowId,
-    flow.rootEventId,
-    flow.key,
     flow.sourceRecordId || "",
-  ].filter(Boolean);
+    flow.flowId || "",
+    flow.rootEventId || "",
+    flow.key || "",
+  ]
+    .map((value) => String(value).trim())
+    .filter(Boolean);
 
   return candidates.some((candidate) => {
-    return candidate === routeId || encodeURIComponent(candidate) === routeId;
+    return (
+      candidate === cleanRouteId ||
+      encodeURIComponent(candidate) === cleanRouteId
+    );
+  });
+}
+
+function timelineCommands(commands: FlowGraphCommand[]): FlowGraphCommand[] {
+  return [...commands].sort((a, b) => {
+    const aStep = Number((a as { step_index?: number }).step_index || 0);
+    const bStep = Number((b as { step_index?: number }).step_index || 0);
+    return aStep - bStep;
   });
 }
 
 export default async function FlowDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: { id: string } | Promise<{ id: string }>;
 }) {
-  const { id } = await params;
-  const routeId = decodeURIComponent(id);
+  const resolvedParams = await Promise.resolve(params);
+  const routeId = resolvedParams.id;
 
   let allCommands: CommandItem[] = [];
   let allIncidents: IncidentItem[] = [];
+  let registryFlows: FlowDetail[] = [];
 
   try {
     const data = await fetchCommands();
@@ -567,41 +509,44 @@ export default async function FlowDetailPage({
     allIncidents = [];
   }
 
-  const flows = buildFlowSummaries(allCommands, allIncidents);
+  try {
+    const data = await fetchFlows();
+    registryFlows = Array.isArray(data?.flows) ? data.flows : [];
+  } catch {
+    registryFlows = [];
+  }
+
+  const flows = buildAllFlowSummaries(allCommands, registryFlows, allIncidents);
 
   const flow =
-    flows.find((item) => matchesRouteId(item, routeId)) ||
-    flows.find((item) => item.flowId === routeId) ||
-    null;
+    flows.find((item) => matchesRouteId(item, routeId)) || null;
 
   if (!flow) {
     notFound();
   }
 
-  const commandGroup = allCommands.filter((cmd) => {
-    const cmdFlowId = text(cmd.flow_id);
-    const cmdRootEventId = text(cmd.root_event_id);
+  const commandItems = allCommands.filter((cmd) => {
+    const flowId = text(cmd.flow_id);
+    const rootEventId = text(cmd.root_event_id);
 
     return (
-      (flow.flowId && cmdFlowId === flow.flowId) ||
-      (flow.rootEventId && cmdRootEventId === flow.rootEventId)
+      (flow.flowId && flowId === flow.flowId) ||
+      (flow.rootEventId && rootEventId === flow.rootEventId)
     );
   });
 
-  const orderedCommands = buildExecutionOrder(commandGroup);
-  const timeline = buildTimeline(commandGroup);
-
+  const orderedCommands = buildExecutionOrder(commandItems);
   const doneCount = orderedCommands.filter(
-    (cmd) => getStatusKind(text(cmd.status)) === "done"
+    (cmd) => getStatusKind(cmd.status) === "done"
   ).length;
-
-  const runningCount = orderedCommands.filter(
-    (cmd) => getStatusKind(text(cmd.status)) === "running"
+  const runningCount = orderedCommands.filter((cmd) =>
+    ["running", "retry"].includes(getStatusKind(cmd.status))
   ).length;
-
   const failedCount = orderedCommands.filter(
-    (cmd) => getStatusKind(text(cmd.status)) === "failed"
+    (cmd) => getStatusKind(cmd.status) === "failed"
   ).length;
+
+  const timeline = timelineCommands(flow.commands);
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
@@ -617,13 +562,13 @@ export default async function FlowDetailPage({
           Flow
         </div>
 
-        <h1 className="break-words text-4xl font-semibold tracking-tight text-white">
+        <h1 className="break-all text-4xl font-semibold tracking-tight text-white">
           {flow.flowId}
         </h1>
 
         <p className="text-white/55">Vue détaillée du flow BOSAI.</p>
 
-        <div className="flex flex-wrap gap-2 pt-2">
+        <div className="flex flex-wrap gap-2">
           <span
             className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
               flow.status
@@ -662,20 +607,33 @@ export default async function FlowDetailPage({
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {detailCard("Type de lecture", "Registry-only")}
-            {idCard(
-              "Source / Root record",
-              flow.sourceRecordId || flow.rootEventId || "Non disponible"
-            )}
-            {detailCard("Workspace", flow.workspaceId || "production")}
-            {detailCard(
-              "Incident lié",
-              flow.incidentCount > 0
-                ? flow.incidentCount === 1
-                  ? "1 incident"
-                  : `${flow.incidentCount} incidents`
-                : "Aucun incident"
-            )}
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Type de lecture</div>
+              <div className="mt-2 text-xl font-semibold text-white">
+                Registry-only
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Source / Root record</div>
+              <div className="mt-2 break-all font-mono text-xl font-semibold text-white">
+                {flow.sourceRecordId || "Non disponible"}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Workspace</div>
+              <div className="mt-2 text-xl font-semibold text-white">
+                {flow.workspaceId || "production"}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Incident lié</div>
+              <div className="mt-2 text-xl font-semibold text-white">
+                {incidentLabel(flow)}
+              </div>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -700,11 +658,7 @@ export default async function FlowDetailPage({
               </div>
               <div>
                 Activité:{" "}
-                <span className="text-zinc-200">
-                  {flow.lastActivityTs > 0
-                    ? formatDate(flow.lastActivityTs)
-                    : "Registre uniquement"}
-                </span>
+                <span className="text-zinc-200">{formatFlowActivity(flow)}</span>
               </div>
             </div>
           </div>
@@ -721,28 +675,62 @@ export default async function FlowDetailPage({
         </>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {statCard("Commands", orderedCommands.length)}
-            {statCard("Done", doneCount)}
-            {statCard("Running/Queued", runningCount)}
-            {statCard("Failed", failedCount)}
-          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Commands</div>
+              <div className="mt-2 text-4xl font-semibold text-white">
+                {orderedCommands.length}
+              </div>
+            </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {detailCard("Root capability", flow.rootCapability || "Non disponible")}
-            {detailCard(
-              "Terminal capability",
-              flow.terminalCapability || "Non disponible"
-            )}
-            {detailCard("Durée totale", formatDuration(flow.durationMs))}
-            {detailCard(
-              "Incident lié",
-              flow.incidentCount > 0
-                ? flow.incidentCount === 1
-                  ? "1 incident"
-                  : `${flow.incidentCount} incidents`
-                : "Aucun incident"
-            )}
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Done</div>
+              <div className="mt-2 text-4xl font-semibold text-emerald-300">
+                {doneCount}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Running/Queued</div>
+              <div className="mt-2 text-4xl font-semibold text-sky-300">
+                {runningCount}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Failed</div>
+              <div className="mt-2 text-4xl font-semibold text-rose-300">
+                {failedCount}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Root capability</div>
+              <div className="mt-2 break-all text-2xl font-semibold text-white">
+                {flow.rootCapability}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Terminal capability</div>
+              <div className="mt-2 break-all text-2xl font-semibold text-white">
+                {flow.terminalCapability}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Durée totale</div>
+              <div className="mt-2 text-2xl font-semibold text-white">
+                {formatDuration(flow.durationMs)}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Incident lié</div>
+              <div className="mt-2 text-2xl font-semibold text-white">
+                {incidentLabel(flow)}
+              </div>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -750,7 +738,7 @@ export default async function FlowDetailPage({
               Flow identity
             </div>
 
-            <div className="grid gap-3 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-3">
               <div>
                 Flow key:{" "}
                 <span className="break-all text-zinc-200">{flow.flowId}</span>
@@ -771,22 +759,18 @@ export default async function FlowDetailPage({
               </div>
               <div>
                 Last activity:{" "}
-                <span className="text-zinc-200">
-                  {formatDate(flow.lastActivityTs)}
-                </span>
+                <span className="text-zinc-200">{formatDate(flow.lastActivityTs)}</span>
               </div>
               <div>
                 Last status:{" "}
-                <span className="text-zinc-200">
-                  {flow.status.toUpperCase()}
-                </span>
+                <span className="text-zinc-200">{flow.status.toUpperCase()}</span>
               </div>
             </div>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="mb-2 text-xs uppercase tracking-[0.2em] text-white/50">
-              Execution Graph
+              Execution graph
             </div>
             <p className="mb-4 text-sm text-white/55">
               Touchez un nœud du graphe pour aller directement à l’étape
@@ -804,84 +788,102 @@ export default async function FlowDetailPage({
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
-              Execution Timeline
+              Execution timeline
             </div>
 
             <div className="space-y-4">
-              {timeline.map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="break-all text-xl font-semibold text-white">
-                      {item.capability}
-                    </div>
+              {timeline.map((cmd, index) => {
+                const step = index + 1;
+                const isRoot = !cmd.parent_command_id;
+                const isTerminal = index === timeline.length - 1;
 
-                    <span
-                      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
-                        item.status
-                      )}`}
-                    >
-                      {item.status.toUpperCase()}
-                    </span>
+                const originalCommand = orderedCommands.find(
+                  (item) => String(item.id) === String(cmd.id)
+                );
 
-                    <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
-                      STEP {item.stepIndex}
-                    </span>
+                return (
+                  <div
+                    key={cmd.id}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="break-all text-xl font-semibold text-white">
+                        {cmd.capability || "unknown"}
+                      </div>
 
-                    {item.isRoot ? (
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
+                          cmd.status || "unknown"
+                        )}`}
+                      >
+                        {(cmd.status || "unknown").toUpperCase()}
+                      </span>
+
                       <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
-                        ROOT
+                        STEP {step}
                       </span>
-                    ) : null}
 
-                    {item.isTerminal ? (
-                      <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
-                        TERMINAL
-                      </span>
-                    ) : null}
-                  </div>
+                      {isRoot ? (
+                        <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
+                          ROOT
+                        </span>
+                      ) : null}
 
-                  <div className="mt-4 grid gap-3 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-3">
-                    <div>
-                      ID:{" "}
-                      <span className="break-all text-zinc-200">{item.id}</span>
+                      {isTerminal ? (
+                        <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
+                          TERMINAL
+                        </span>
+                      ) : null}
                     </div>
-                    <div>
-                      Parent:{" "}
-                      <span className="break-all text-zinc-200">
-                        {item.parentCommandId || "—"}
-                      </span>
-                    </div>
-                    <div>
-                      Worker: <span className="text-zinc-200">{item.worker}</span>
-                    </div>
-                    <div>
-                      Started:{" "}
-                      <span className="text-zinc-200">
-                        {item.startedAt ? formatDate(toTs(item.startedAt)) : "—"}
-                      </span>
-                    </div>
-                    <div>
-                      Finished:{" "}
-                      <span className="text-zinc-200">
-                        {item.finishedAt ? formatDate(toTs(item.finishedAt)) : "—"}
-                      </span>
-                    </div>
-                    <div>
-                      Flow:{" "}
-                      <span className="break-all text-zinc-200">
-                        {item.flowId || "—"}
-                      </span>
+
+                    <div className="mt-4 space-y-2 text-sm text-white/70">
+                      <div>
+                        ID:{" "}
+                        <span className="break-all text-zinc-200">{cmd.id}</span>
+                      </div>
+                      <div>
+                        Parent:{" "}
+                        <span className="break-all text-zinc-200">
+                          {cmd.parent_command_id || "—"}
+                        </span>
+                      </div>
+                      <div>
+                        Worker:{" "}
+                        <span className="text-zinc-200">
+                          {text(originalCommand?.worker) || "—"}
+                        </span>
+                      </div>
+                      <div>
+                        Started:{" "}
+                        <span className="text-zinc-200">
+                          {formatDate(
+                            getCommandStartTs(
+                              originalCommand || ({ id: cmd.id } as CommandItem)
+                            )
+                          )}
+                        </span>
+                      </div>
+                      <div>
+                        Finished:{" "}
+                        <span className="text-zinc-200">
+                          {formatDate(
+                            getCommandActivityTs(
+                              originalCommand || ({ id: cmd.id } as CommandItem)
+                            )
+                          )}
+                        </span>
+                      </div>
+                      <div>
+                        Flow: <span className="text-zinc-200">{flow.flowId}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {timeline.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
-                  Aucune timeline détaillée disponible.
+                  Aucune timeline disponible pour ce flow.
                 </div>
               ) : null}
             </div>
