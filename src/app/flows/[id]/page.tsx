@@ -45,7 +45,60 @@ function text(value: unknown): string {
     const v = value.trim();
     return v || "";
   }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value).trim();
+  }
+
   return "";
+}
+
+function uniqueTexts(values: string[]): string[] {
+  return Array.from(new Set(values.map((v) => text(v)).filter(Boolean)));
+}
+
+function flattenTextValues(value: unknown): string[] {
+  if (value === null || value === undefined) return [];
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    const clean = text(value);
+    return clean ? [clean] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return uniqueTexts(value.flatMap((item) => flattenTextValues(item)));
+  }
+
+  if (typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+
+    return uniqueTexts([
+      ...flattenTextValues(rec.id),
+      ...flattenTextValues(rec.recordId),
+      ...flattenTextValues(rec.record_id),
+      ...flattenTextValues(rec.value),
+      ...flattenTextValues(rec.name),
+      ...flattenTextValues(rec.text),
+      ...flattenTextValues(rec.label),
+    ]);
+  }
+
+  return [];
+}
+
+function recordTexts(obj: unknown, keys: string[]): string[] {
+  const rec =
+    obj && typeof obj === "object" ? (obj as Record<string, unknown>) : {};
+
+  return uniqueTexts(keys.flatMap((key) => flattenTextValues(rec[key])));
+}
+
+function recordText(obj: unknown, keys: string[]): string {
+  return recordTexts(obj, keys)[0] || "";
 }
 
 function toTs(value?: string | number | null): number {
@@ -213,36 +266,34 @@ type IncidentMatchInput = {
   commands?: CommandItem[];
 };
 
-function recordText(obj: unknown, keys: string[]): string {
-  const rec =
-    obj && typeof obj === "object" ? (obj as Record<string, unknown>) : {};
-
-  for (const key of keys) {
-    const clean = text(rec[key]);
-    if (clean) return clean;
-  }
-
-  return "";
-}
-
-function uniqueTexts(values: string[]): string[] {
-  return Array.from(new Set(values.map((v) => text(v)).filter(Boolean)));
-}
-
 function getCommandIncidentKeys(cmd: CommandItem): string[] {
+  const inputObj =
+    cmd.input && typeof cmd.input === "object"
+      ? (cmd.input as Record<string, unknown>)
+      : {};
+  const resultObj =
+    cmd.result && typeof cmd.result === "object"
+      ? (cmd.result as Record<string, unknown>)
+      : {};
+
   return uniqueTexts([
     String(cmd.id ?? ""),
     text(cmd.flow_id),
     text(cmd.root_event_id),
-    recordText(cmd, [
+
+    ...recordTexts(cmd, [
       "linked_command",
       "linkedCommand",
+      "linked_command_id",
+      "linkedCommandId",
       "command_id",
       "commandId",
       "Command_ID",
       "Linked_Command",
+      "Linked_Command_ID",
     ]),
-    recordText(cmd, [
+
+    ...recordTexts(cmd, [
       "linked_run",
       "linkedRun",
       "run_record_id",
@@ -250,29 +301,153 @@ function getCommandIncidentKeys(cmd: CommandItem): string[] {
       "run_id",
       "runId",
       "Run_Record_ID",
+      "Run_ID",
       "Linked_Run",
+    ]),
+
+    ...recordTexts(inputObj, [
+      "linked_command",
+      "linkedCommand",
+      "linked_command_id",
+      "linkedCommandId",
+      "command_id",
+      "commandId",
+      "Command_ID",
+      "Linked_Command",
+      "Linked_Command_ID",
+      "linked_run",
+      "linkedRun",
+      "run_record_id",
+      "runRecordId",
+      "run_id",
+      "runId",
+      "Run_Record_ID",
+      "Run_ID",
+      "Linked_Run",
+      "flow_id",
+      "flowId",
+      "Flow_ID",
+      "root_event_id",
+      "rootEventId",
+      "Root_Event_ID",
+    ]),
+
+    ...recordTexts(resultObj, [
+      "linked_command",
+      "linkedCommand",
+      "linked_command_id",
+      "linkedCommandId",
+      "command_id",
+      "commandId",
+      "Command_ID",
+      "Linked_Command",
+      "Linked_Command_ID",
+      "linked_run",
+      "linkedRun",
+      "run_record_id",
+      "runRecordId",
+      "run_id",
+      "runId",
+      "Run_Record_ID",
+      "Run_ID",
+      "Linked_Run",
+      "flow_id",
+      "flowId",
+      "Flow_ID",
+      "root_event_id",
+      "rootEventId",
+      "Root_Event_ID",
     ]),
   ]);
 }
 
 function getIncidentCandidates(incident: IncidentItem): string[] {
-  const fields = (
-    (incident as Record<string, unknown>).fields ?? {}
-  ) as Record<string, unknown>;
+  const fields =
+    incident && typeof incident === "object"
+      ? (((incident as Record<string, unknown>).fields ?? {}) as Record<
+          string,
+          unknown
+        >)
+      : {};
 
-  const pick = (...keys: string[]) =>
-    uniqueTexts([recordText(incident, keys), recordText(fields, keys)]);
+  const topLevel = (keys: string[]) => recordTexts(incident, keys);
+  const nestedFields = (keys: string[]) => recordTexts(fields, keys);
 
   return uniqueTexts([
-    ...pick("id"),
-    ...pick("flow_id", "flowId", "Flow_ID"),
-    ...pick("root_event_id", "rootEventId", "Root_Event_ID"),
-    ...pick("linked_command", "linkedCommand", "Linked_Command"),
-    ...pick("command_id", "commandId", "Command_ID"),
-    ...pick("linked_run", "linkedRun", "Linked_Run"),
-    ...pick("run_record_id", "runRecordId", "Run_Record_ID"),
-    ...pick("run_id", "runId", "Run_ID"),
-    ...pick("name", "Name"),
+    ...topLevel(["id"]),
+    ...topLevel(["title", "Title", "name", "Name"]),
+
+    ...topLevel(["flow_id", "flowId", "Flow_ID"]),
+    ...nestedFields(["flow_id", "flowId", "Flow_ID"]),
+
+    ...topLevel(["root_event_id", "rootEventId", "Root_Event_ID"]),
+    ...nestedFields(["root_event_id", "rootEventId", "Root_Event_ID"]),
+
+    ...topLevel([
+      "linked_command",
+      "linkedCommand",
+      "linked_command_id",
+      "linkedCommandId",
+      "Linked_Command",
+      "Linked_Command_ID",
+      "command_id",
+      "commandId",
+      "Command_ID",
+    ]),
+    ...nestedFields([
+      "linked_command",
+      "linkedCommand",
+      "linked_command_id",
+      "linkedCommandId",
+      "Linked_Command",
+      "Linked_Command_ID",
+      "command_id",
+      "commandId",
+      "Command_ID",
+    ]),
+
+    ...topLevel([
+      "linked_run",
+      "linkedRun",
+      "run_record_id",
+      "runRecordId",
+      "run_id",
+      "runId",
+      "Linked_Run",
+      "Run_Record_ID",
+      "Run_ID",
+    ]),
+    ...nestedFields([
+      "linked_run",
+      "linkedRun",
+      "run_record_id",
+      "runRecordId",
+      "run_id",
+      "runId",
+      "Linked_Run",
+      "Run_Record_ID",
+      "Run_ID",
+    ]),
+
+    ...topLevel([
+      "incident_record_id",
+      "incidentRecordId",
+      "Incident_Record_ID",
+      "incident_record",
+      "incidentRecord",
+      "Incident_Record",
+    ]),
+    ...nestedFields([
+      "incident_record_id",
+      "incidentRecordId",
+      "Incident_Record_ID",
+      "incident_record",
+      "incidentRecord",
+      "Incident_Record",
+    ]),
+
+    ...topLevel(["error_id", "errorId", "Error_ID"]),
+    ...nestedFields(["error_id", "errorId", "Error_ID"]),
   ]);
 }
 
@@ -855,7 +1030,9 @@ export default async function FlowDetailPage({
               </div>
               <div>
                 Last activity:{" "}
-                <span className="text-zinc-200">{formatDate(flow.lastActivityTs)}</span>
+                <span className="text-zinc-200">
+                  {formatDate(flow.lastActivityTs)}
+                </span>
               </div>
               <div>
                 Last status:{" "}
