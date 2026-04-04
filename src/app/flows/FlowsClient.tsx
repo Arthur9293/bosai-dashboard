@@ -148,6 +148,14 @@ function safeCapabilityLabel(value: string) {
   return v && v !== "—" ? v : "Non disponible";
 }
 
+function partialActivityLabel(flow: FlowSummary) {
+  if (flow.lastActivityTs > 0) {
+    return formatDate(flow.lastActivityTs);
+  }
+
+  return "Registre uniquement";
+}
+
 export default function FlowsClient({
   flows,
   initialSelectedKey = "",
@@ -328,9 +336,23 @@ export default function FlowsClient({
             </div>
 
             <div className="mt-3 space-y-1 text-sm text-white/70">
-              <div>Steps: {flow.steps}</div>
-              <div className="break-all">Root: {flow.rootEventId}</div>
-              <div>Activité: {formatDate(flow.lastActivityTs)}</div>
+              {hasExecution ? (
+                <div>Steps: {flow.steps}</div>
+              ) : (
+                <div>Lecture: Registry-only</div>
+              )}
+
+              <div className="break-all">
+                {hasExecution ? "Root: " : "Source / Root record: "}
+                {flow.rootEventId}
+              </div>
+
+              <div>
+                Activité:{" "}
+                {hasExecution
+                  ? formatDate(flow.lastActivityTs)
+                  : partialActivityLabel(flow)}
+              </div>
             </div>
           </div>
 
@@ -418,7 +440,10 @@ export default function FlowsClient({
                 </div>
 
                 <div className="mt-2 text-sm text-white/70">
-                  Activité: {formatDate(firstRunning.lastActivityTs)}
+                  Activité:{" "}
+                  {flowHasExecutionData(firstRunning)
+                    ? formatDate(firstRunning.lastActivityTs)
+                    : partialActivityLabel(firstRunning)}
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -453,7 +478,10 @@ export default function FlowsClient({
                 </div>
 
                 <div className="mt-2 text-sm text-white/70">
-                  Activité: {formatDate(firstFailed.lastActivityTs)}
+                  Activité:{" "}
+                  {flowHasExecutionData(firstFailed)
+                    ? formatDate(firstFailed.lastActivityTs)
+                    : partialActivityLabel(firstFailed)}
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -488,7 +516,10 @@ export default function FlowsClient({
                 </div>
 
                 <div className="mt-2 text-sm text-white/70">
-                  Activité: {formatDate(firstRetry.lastActivityTs)}
+                  Activité:{" "}
+                  {flowHasExecutionData(firstRetry)
+                    ? formatDate(firstRetry.lastActivityTs)
+                    : partialActivityLabel(firstRetry)}
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -610,9 +641,17 @@ export default function FlowsClient({
               {selectedFlow.status.toUpperCase()}
             </span>
 
-            <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
-              {selectedFlow.steps} steps
-            </span>
+            {selectedHasExecutionData ? (
+              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
+                {selectedFlow.steps} steps
+              </span>
+            ) : (
+              <span
+                className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${partialTone()}`}
+              >
+                PARTIAL
+              </span>
+            )}
 
             <span
               className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${incidentTone(
@@ -621,14 +660,6 @@ export default function FlowsClient({
             >
               {incidentLabel(selectedFlow)}
             </span>
-
-            {!selectedHasExecutionData ? (
-              <span
-                className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${partialTone()}`}
-              >
-                PARTIAL
-              </span>
-            ) : null}
           </div>
 
           {!selectedHasExecutionData ? (
@@ -644,18 +675,27 @@ export default function FlowsClient({
             </div>
           ) : null}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {statCard(
-              "Root capability",
-              safeCapabilityLabel(selectedFlow.rootCapability)
-            )}
-            {statCard(
-              "Terminal capability",
-              safeCapabilityLabel(selectedFlow.terminalCapability)
-            )}
-            {statCard("Durée totale", formatDuration(selectedFlow.durationMs))}
-            {statCard("Incident lié", incidentLabel(selectedFlow))}
-          </div>
+          {selectedHasExecutionData ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {statCard(
+                "Root capability",
+                safeCapabilityLabel(selectedFlow.rootCapability)
+              )}
+              {statCard(
+                "Terminal capability",
+                safeCapabilityLabel(selectedFlow.terminalCapability)
+              )}
+              {statCard("Durée totale", formatDuration(selectedFlow.durationMs))}
+              {statCard("Incident lié", incidentLabel(selectedFlow))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {statCard("Type de lecture", "Registry-only")}
+              {statCard("Source / Root record", selectedFlow.rootEventId)}
+              {statCard("Workspace", selectedFlow.workspaceId)}
+              {statCard("Incident lié", incidentLabel(selectedFlow))}
+            </div>
+          )}
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
@@ -682,7 +722,9 @@ export default function FlowsClient({
               <div>
                 Activité:{" "}
                 <span className="text-zinc-200">
-                  {formatDate(selectedFlow.lastActivityTs)}
+                  {selectedHasExecutionData
+                    ? formatDate(selectedFlow.lastActivityTs)
+                    : partialActivityLabel(selectedFlow)}
                 </span>
               </div>
             </div>
