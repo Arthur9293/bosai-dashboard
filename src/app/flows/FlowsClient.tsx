@@ -59,10 +59,12 @@ function badgeTone(status: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function booleanTone(value: boolean) {
-  return value
-    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
-    : "bg-zinc-800 text-zinc-300 border border-white/10";
+function incidentTone(count: number) {
+  if (count > 0) {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-white/10";
 }
 
 function formatDate(ts?: number): string {
@@ -123,6 +125,23 @@ function flowMatchesSearch(flow: FlowSummary, rawSearch: string) {
   );
 
   return haystack.includes(q);
+}
+
+function flowHasExecutionData(flow: FlowSummary) {
+  return Array.isArray(flow.commands) && flow.commands.length > 0;
+}
+
+function incidentLabel(flow: FlowSummary) {
+  if (flow.incidentCount > 0) {
+    return `${flow.incidentCount} incident${flow.incidentCount > 1 ? "s" : ""}`;
+  }
+
+  return "Aucun incident";
+}
+
+function safeCapabilityLabel(value: string) {
+  const v = value?.trim();
+  return v && v !== "—" ? v : "Non disponible";
 }
 
 export default function FlowsClient({
@@ -196,6 +215,10 @@ export default function FlowsClient({
       null
     );
   }, [filteredFlows, selectedKey]);
+
+  const selectedHasExecutionData = selectedFlow
+    ? flowHasExecutionData(selectedFlow)
+    : false;
 
   const filterTabs: Array<{ key: FlowFilter; label: string; count: number }> = [
     { key: "all", label: "All", count: counts.all },
@@ -509,41 +532,38 @@ export default function FlowsClient({
             </span>
 
             <span
-              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
-                selectedFlow.hasIncident
-                  ? "bg-amber-500/15 text-amber-300 border border-amber-500/20"
-                  : "bg-zinc-800 text-zinc-300 border border-white/10"
-              }`}
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${incidentTone(
+                selectedFlow.incidentCount
+              )}`}
             >
-              {selectedFlow.hasIncident
-                ? `Incident ${selectedFlow.incidentCount}`
-                : "Aucun incident"}
+              {incidentLabel(selectedFlow)}
             </span>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {statCard("Root capability", selectedFlow.rootCapability)}
-            {statCard("Terminal capability", selectedFlow.terminalCapability)}
-            {statCard("Durée totale", formatDuration(selectedFlow.durationMs))}
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="text-sm text-zinc-400">Incident lié</div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span
-                  className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${booleanTone(
-                    selectedFlow.hasIncident
-                  )}`}
-                >
-                  {selectedFlow.hasIncident ? "OUI" : "NON"}
-                </span>
-
-                {selectedFlow.hasIncident ? (
-                  <span className="inline-flex rounded-full px-3 py-1 text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/20">
-                    {selectedFlow.incidentCount} incident
-                    {selectedFlow.incidentCount > 1 ? "s" : ""}
-                  </span>
-                ) : null}
+          {!selectedHasExecutionData ? (
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+              <div className="text-sm font-medium text-amber-200">
+                Observabilité partielle
               </div>
+              <p className="mt-2 text-sm text-amber-100/80">
+                Ce flow est bien présent dans le registre BOSAI, mais aucune
+                commande détaillée n’a encore été chargée pour construire la
+                lecture causale complète.
+              </p>
             </div>
+          ) : null}
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {statCard(
+              "Root capability",
+              safeCapabilityLabel(selectedFlow.rootCapability)
+            )}
+            {statCard(
+              "Terminal capability",
+              safeCapabilityLabel(selectedFlow.terminalCapability)
+            )}
+            {statCard("Durée totale", formatDuration(selectedFlow.durationMs))}
+            {statCard("Incident lié", incidentLabel(selectedFlow))}
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -577,13 +597,25 @@ export default function FlowsClient({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
-              Aperçu graphique
-            </div>
+          {selectedHasExecutionData ? (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
+                Aperçu graphique
+              </div>
 
-            <FlowGraphClient commands={selectedFlow.commands} />
-          </div>
+              <FlowGraphClient commands={selectedFlow.commands} />
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
+                Aperçu graphique
+              </div>
+
+              <div className="rounded-2xl border border-dashed border-white/10 bg-black/10 p-6 text-sm text-zinc-400">
+                Graphe indisponible pour ce flow pour le moment.
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
@@ -625,14 +657,6 @@ export default function FlowsClient({
                         <div className="break-all">Root: {flow.rootEventId}</div>
                         <div>Activité: {formatDate(flow.lastActivityTs)}</div>
                       </div>
-
-                      {flow.hasIncident ? (
-                        <div className="mt-4">
-                          <span className="inline-flex rounded-full px-3 py-1 text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/20">
-                            Incident {flow.incidentCount}
-                          </span>
-                        </div>
-                      ) : null}
                     </div>
 
                     <span
