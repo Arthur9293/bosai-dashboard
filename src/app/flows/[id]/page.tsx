@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import FlowGraphClient from "../FlowGraphClient";
 import {
   fetchCommands,
   fetchIncidents,
@@ -11,6 +12,14 @@ type PageProps = {
   params: Promise<{
     id: string;
   }>;
+};
+
+type GraphCommand = {
+  id: string;
+  capability?: string;
+  status?: string;
+  parent_command_id?: string;
+  flow_id?: string;
 };
 
 function text(value: unknown): string {
@@ -81,6 +90,24 @@ function badgeTone(status: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function severityTone(value?: string) {
+  const s = (value || "").toLowerCase();
+
+  if (["critical", "high"].includes(s)) {
+    return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
+  }
+
+  if (["medium", "warning"].includes(s)) {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  if (["low", "info"].includes(s)) {
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
 function formatDate(value?: string | number | null): string {
   if (value === null || value === undefined || value === "") return "—";
 
@@ -118,6 +145,16 @@ function statCard(
   );
 }
 
+function toGraphCommand(cmd: CommandItem): GraphCommand {
+  return {
+    id: String(cmd.id),
+    capability: text(cmd.capability) || undefined,
+    status: text(cmd.status) || undefined,
+    parent_command_id: text(cmd.parent_command_id) || undefined,
+    flow_id: text(cmd.flow_id) || undefined,
+  };
+}
+
 export default async function FlowDetailPage({ params }: PageProps) {
   const { id } = await params;
   const requestedId = decodeURIComponent(id);
@@ -151,8 +188,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const effectiveFlowId =
-    text(matchedCommands[0]?.flow_id) || requestedId;
+  const effectiveFlowId = text(matchedCommands[0]?.flow_id) || requestedId;
 
   const rootEventId =
     matchedCommands.map((cmd) => text(cmd.root_event_id)).find(Boolean) || "—";
@@ -179,6 +215,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
     matchedCommands.length > 0
       ? matchedCommands[matchedCommands.length - 1]
       : null;
+
+  const graphCommands = matchedCommands.map(toGraphCommand);
 
   let linkedIncident: IncidentItem | null = null;
 
@@ -286,6 +324,14 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </div>
       </div>
 
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
+          Execution graph
+        </div>
+
+        <FlowGraphClient commands={graphCommands} />
+      </div>
+
       {linkedIncident ? (
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
@@ -307,8 +353,16 @@ export default async function FlowDetailPage({ params }: PageProps) {
               {(text(linkedIncident.status) || "UNKNOWN").toUpperCase()}
             </span>
 
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${severityTone(
+                text(linkedIncident.severity) || "unknown"
+              )}`}
+            >
+              {(text(linkedIncident.severity) || "NO SEVERITY").toUpperCase()}
+            </span>
+
             <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
-              {text(linkedIncident.severity) || "NO SEVERITY"}
+              SLA {(text(linkedIncident.sla_status) || "—").toUpperCase()}
             </span>
           </div>
 
