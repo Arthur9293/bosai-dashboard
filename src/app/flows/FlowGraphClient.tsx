@@ -1,17 +1,6 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import ReactFlow, {
-  Background,
-  Controls,
-  Handle,
-  MarkerType,
-  Position,
-  type Edge,
-  type Node,
-  type NodeProps,
-} from "reactflow";
-import "reactflow/dist/style.css";
 
 type GraphCommand = {
   id: string;
@@ -26,9 +15,25 @@ type Props = {
   anchorPrefix?: string;
 };
 
-type FlowNodeData = {
-  label: string;
+type PositionedNode = {
+  id: string;
+  capability: string;
   status: string;
+  parent_command_id?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type GraphEdge = {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
 };
 
 function normalizeText(value?: string) {
@@ -56,47 +61,6 @@ function statusTone(status: string) {
 
   return "bg-zinc-700 text-zinc-100";
 }
-
-function FlowCommandNode({ data }: NodeProps<FlowNodeData>) {
-  const label = normalizeText(data.label) || "unknown_capability";
-  const status = normalizeText(data.status) || "unknown";
-
-  return (
-    <div className="min-w-[280px] cursor-pointer rounded-[28px] border border-cyan-400/80 bg-[#07142c] px-6 py-5 text-white shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="!h-3 !w-3 !border-2 !border-white !bg-[#07142c]"
-      />
-
-      <div className="text-[12px] uppercase tracking-[0.22em] text-white/55">
-        {label.toUpperCase()}
-      </div>
-
-      <div className="mt-2 text-[20px] font-semibold tracking-tight text-white">
-        {label}
-      </div>
-
-      <div
-        className={`mt-4 inline-flex rounded-full px-4 py-1.5 text-sm font-semibold ${statusTone(
-          status
-        )}`}
-      >
-        {status.toUpperCase()}
-      </div>
-
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="!h-3 !w-3 !border-2 !border-white !bg-[#07142c]"
-      />
-    </div>
-  );
-}
-
-const nodeTypes = {
-  flowCommand: FlowCommandNode,
-};
 
 function buildDisplayOrder(commands: GraphCommand[]): GraphCommand[] {
   if (commands.length <= 1) return commands;
@@ -149,50 +113,77 @@ function buildDisplayOrder(commands: GraphCommand[]): GraphCommand[] {
   return ordered;
 }
 
+function buildGraph(commands: GraphCommand[]) {
+  const ordered = buildDisplayOrder(commands);
+
+  const graphWidth = 920;
+  const nodeWidth = 360;
+  const nodeHeight = 156;
+  const topPadding = 56;
+  const bottomPadding = 56;
+  const gapY = 110;
+  const centerX = Math.round((graphWidth - nodeWidth) / 2);
+
+  const nodes: PositionedNode[] = ordered.map((cmd, index) => ({
+    id: String(cmd.id),
+    capability: normalizeText(cmd.capability) || "unknown_capability",
+    status: normalizeText(cmd.status) || "unknown",
+    parent_command_id: normalizeText(cmd.parent_command_id) || undefined,
+    x: centerX,
+    y: topPadding + index * (nodeHeight + gapY),
+    width: nodeWidth,
+    height: nodeHeight,
+  }));
+
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+
+  const edges: GraphEdge[] = nodes
+    .filter((node) => node.parent_command_id)
+    .map((node) => {
+      const parent = byId.get(String(node.parent_command_id));
+      if (!parent) return null;
+
+      return {
+        id: `edge-${parent.id}-${node.id}`,
+        sourceId: parent.id,
+        targetId: node.id,
+        x1: parent.x + parent.width / 2,
+        y1: parent.y + parent.height,
+        x2: node.x + node.width / 2,
+        y2: node.y,
+      };
+    })
+    .filter((edge): edge is GraphEdge => edge !== null);
+
+  const graphHeight =
+    nodes.length > 0
+      ? nodes[nodes.length - 1].y + nodeHeight + bottomPadding
+      : 520;
+
+  return {
+    width: graphWidth,
+    height: Math.max(520, graphHeight),
+    nodes,
+    edges,
+  };
+}
+
+function edgePath(edge: GraphEdge) {
+  const midOffset = Math.max(36, Math.floor((edge.y2 - edge.y1) / 2));
+
+  return [
+    `M ${edge.x1} ${edge.y1}`,
+    `C ${edge.x1} ${edge.y1 + midOffset},`,
+    `${edge.x2} ${edge.y2 - midOffset},`,
+    `${edge.x2} ${edge.y2}`,
+  ].join(" ");
+}
+
 export default function FlowGraphClient({
   commands,
   anchorPrefix = "cmd-",
 }: Props) {
-  const orderedCommands = useMemo(() => buildDisplayOrder(commands), [commands]);
-
-  const { nodes, edges } = useMemo(() => {
-    const builtNodes: Node<FlowNodeData>[] = orderedCommands.map((cmd, index) => {
-      const label = normalizeText(cmd.capability) || "unknown_capability";
-      const status = normalizeText(cmd.status) || "unknown";
-
-      return {
-        id: String(cmd.id),
-        type: "flowCommand",
-        position: { x: 0, y: index * 250 },
-        data: {
-          label,
-          status,
-        },
-        draggable: false,
-        selectable: true,
-      };
-    });
-
-    const builtEdges: Edge[] = orderedCommands
-      .filter((cmd) => normalizeText(cmd.parent_command_id))
-      .map((cmd) => ({
-        id: `edge-${cmd.parent_command_id}-${cmd.id}`,
-        source: String(cmd.parent_command_id),
-        target: String(cmd.id),
-        type: "smoothstep",
-        animated: false,
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-        },
-        style: {
-          strokeWidth: 2,
-          strokeDasharray: "8 8",
-          stroke: "rgba(203, 213, 225, 0.85)",
-        },
-      }));
-
-    return { nodes: builtNodes, edges: builtEdges };
-  }, [orderedCommands]);
+  const graph = useMemo(() => buildGraph(commands), [commands]);
 
   const jumpToTimelineCard = useCallback(
     (commandId: string) => {
@@ -208,7 +199,7 @@ export default function FlowGraphClient({
         target.animate(
           [
             { boxShadow: "0 0 0 0 rgba(16,185,129,0)" },
-            { boxShadow: "0 0 0 4px rgba(16,185,129,0.35)" },
+            { boxShadow: "0 0 0 4px rgba(16,185,129,0.30)" },
             { boxShadow: "0 0 0 0 rgba(16,185,129,0)" },
           ],
           {
@@ -223,7 +214,7 @@ export default function FlowGraphClient({
     [anchorPrefix]
   );
 
-  if (!nodes.length) {
+  if (!graph.nodes.length) {
     return (
       <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
         Graphe indisponible pour ce flow pour le moment.
@@ -232,27 +223,88 @@ export default function FlowGraphClient({
   }
 
   return (
-    <div className="h-[640px] w-full overflow-hidden rounded-[28px] border border-white/10 bg-[#03102a]">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.28 }}
-        proOptions={{ hideAttribution: true }}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable
-        zoomOnScroll
-        zoomOnPinch
-        panOnDrag
-        minZoom={0.25}
-        maxZoom={1.6}
-        onNodeClick={(_, node) => jumpToTimelineCard(node.id)}
-      >
-        <Background gap={28} size={1} color="rgba(148,163,184,0.18)" />
-        <Controls showInteractive={false} />
-      </ReactFlow>
+    <div className="w-full overflow-hidden rounded-[28px] border border-white/10 bg-[#03102a]">
+      <div className="overflow-x-auto overflow-y-hidden">
+        <div
+          className="relative mx-auto"
+          style={{
+            width: `${graph.width}px`,
+            height: `${graph.height}px`,
+          }}
+        >
+          <svg
+            width={graph.width}
+            height={graph.height}
+            className="absolute inset-0"
+            aria-hidden="true"
+          >
+            <defs>
+              <marker
+                id="flow-arrow"
+                markerWidth="10"
+                markerHeight="10"
+                refX="8"
+                refY="5"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(203,213,225,0.9)" />
+              </marker>
+            </defs>
+
+            {graph.edges.map((edge) => (
+              <path
+                key={edge.id}
+                d={edgePath(edge)}
+                fill="none"
+                stroke="rgba(203,213,225,0.88)"
+                strokeWidth="2.5"
+                strokeDasharray="8 8"
+                markerEnd="url(#flow-arrow)"
+              />
+            ))}
+          </svg>
+
+          {graph.nodes.map((node) => (
+            <button
+              key={node.id}
+              type="button"
+              onClick={() => jumpToTimelineCard(node.id)}
+              className="absolute rounded-[28px] border border-cyan-400/80 bg-[#07142c] px-6 py-5 text-left text-white shadow-[0_20px_50px_rgba(0,0,0,0.35)] transition hover:scale-[1.01] hover:border-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+              style={{
+                left: `${node.x}px`,
+                top: `${node.y}px`,
+                width: `${node.width}px`,
+                minHeight: `${node.height}px`,
+              }}
+            >
+              <div className="flex items-center justify-center">
+                <div className="h-3 w-3 rounded-full border-2 border-white bg-[#07142c]" />
+              </div>
+
+              <div className="mt-3 text-[12px] uppercase tracking-[0.22em] text-white/55">
+                {node.capability.toUpperCase()}
+              </div>
+
+              <div className="mt-2 break-all text-[20px] font-semibold tracking-tight text-white">
+                {node.capability}
+              </div>
+
+              <div
+                className={`mt-4 inline-flex rounded-full px-4 py-1.5 text-sm font-semibold ${statusTone(
+                  node.status
+                )}`}
+              >
+                {node.status.toUpperCase()}
+              </div>
+
+              <div className="mt-4 flex items-center justify-center">
+                <div className="h-3 w-3 rounded-full border-2 border-white bg-[#07142c]" />
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
