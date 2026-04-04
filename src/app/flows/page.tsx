@@ -1,9 +1,10 @@
 import FlowsClient from "./FlowsClient";
 import {
-  fetchCommands,
+  fetchFlows,
   fetchIncidents,
-  type CommandItem,
+  type FlowDetail,
   type IncidentItem,
+  type CommandItem,
 } from "@/lib/api";
 
 type FlowStatus = "running" | "failed" | "retry" | "success" | "unknown";
@@ -293,47 +294,59 @@ function toGraphCommand(cmd: CommandItem): FlowGraphCommand {
   };
 }
 
-function getFlowGroupKey(cmd: CommandItem): string {
-  const flowId = text(cmd.flow_id);
+function getSummaryKey(flow: FlowDetail, ordered: CommandItem[]): string {
+  const flowId = text(flow.flow_id);
   if (flowId) return `flow:${flowId}`;
 
-  const rootEventId = text(cmd.root_event_id);
+  const rootEventId = text(flow.root_event_id);
   if (rootEventId) return `root:${rootEventId}`;
 
-  return "";
+  const fallbackFromCommands =
+    ordered.map((cmd) => text(cmd.flow_id)).find(Boolean) ||
+    ordered.map((cmd) => text(cmd.root_event_id)).find(Boolean);
+
+  if (fallbackFromCommands) return `flow:${fallbackFromCommands}`;
+
+  if (text(flow.id)) return `id:${text(flow.id)}`;
+
+  return `flow:unknown:${Math.random().toString(36).slice(2)}`;
 }
 
 function buildFlowSummaries(
-  commands: CommandItem[],
+  flows: FlowDetail[],
   incidents: IncidentItem[]
 ): FlowSummary[] {
-  const groups = new Map<string, CommandItem[]>();
-
-  for (const cmd of commands) {
-    const key = getFlowGroupKey(cmd);
-    if (!key) continue;
-
-    const existing = groups.get(key) ?? [];
-    existing.push(cmd);
-    groups.set(key, existing);
-  }
-
   const summaries: FlowSummary[] = [];
 
-  for (const [key, group] of groups.entries()) {
-    const ordered = buildExecutionOrder(group);
+  for (const flow of flows) {
+    const rawCommands = Array.isArray(flow.commands) ? flow.commands : [];
+    const commands = rawCommands.filter(
+      (cmd): cmd is CommandItem => !!cmd && typeof cmd === "object"
+    );
+
+    const ordered = buildExecutionOrder(commands);
     const rootCommand = ordered[0] ?? null;
     const terminalCommand = getTerminalCommand(ordered);
 
     const flowId =
-      ordered.map((cmd) => text(cmd.flow_id)).find(Boolean) || "";
+      text(flow.flow_id) ||
+      ordered.map((cmd) => text(cmd.flow_id)).find(Boolean) ||
+      text(flow.id);
+
     const rootEventId =
-      ordered.map((cmd) => text(cmd.root_event_id)).find(Boolean) || "";
+      text(flow.root_event_id) ||
+      ordered.map((cmd) => text(cmd.root_event_id)).find(Boolean) ||
+      "—";
+
     const workspaceId =
+      text(flow.workspace_id) ||
       ordered.map((cmd) => text(cmd.workspace_id)).find(Boolean) ||
       "production";
 
-    const lastActivityTs = Math.max(...ordered.map(getCommandActivityTs), 0);
+    const lastActivityTs =
+      ordered.length > 0
+        ? Math.max(...ordered.map(getCommandActivityTs), 0)
+        : 0;
 
     const validStarts = ordered.map(getCommandStartTs).filter((ts) => ts > 0);
     const earliestStartTs =
@@ -359,7 +372,7 @@ function buildFlowSummaries(
 
       return (
         (flowId && incidentFlowId === flowId) ||
-        (rootEventId && incidentRootId === rootEventId) ||
+        (rootEventId !== "—" && incidentRootId === rootEventId) ||
         incidentCommandIds.some((id) => commandIds.has(id)) ||
         incidentRecordIds.some((id) => createdIncidentIds.has(id))
       );
@@ -368,15 +381,26 @@ function buildFlowSummaries(
     const incidentCount = relatedIncidents.length;
     const hasIncident = incidentCount > 0;
 
-    const status = computeFlowStatus(ordered);
+    let status = computeFlowStatus(ordered);
+
+    if (status === "unknown" && flow.stats) {
+      const stats = flow.stats;
+      if ((stats.running ?? 0) > 0) status = "running";
+      else if ((stats.error ?? 0) > 0 || (stats.dead ?? 0) > 0) status = "failed";
+      else if ((stats.retry ?? 0) > 0) status = "retry";
+      else if ((stats.done ?? 0) > 0) status = "success";
+    }
 
     summaries.push({
-      key,
-      flowId: flowId || rootEventId || key,
-      rootEventId: rootEventId || "—",
+      key: getSummaryKey(flow, ordered),
+      flowId: flowId || rootEventId || text(flow.id) || "—",
+      rootEventId,
       workspaceId,
       status,
-      steps: ordered.length,
+      steps:
+        typeof flow.count === "number" && flow.count > 0
+          ? flow.count
+          : ordered.length,
       rootCapability: text(rootCommand?.capability) || "—",
       terminalCapability: text(terminalCommand?.capability) || "—",
       durationMs,
@@ -396,14 +420,14 @@ function buildFlowSummaries(
 }
 
 export default async function FlowsPage() {
-  let allCommands: CommandItem[] = [];
+  let allFlows: FlowDetail[] = [];
   let allIncidents: IncidentItem[] = [];
 
   try {
-    const data = await fetchCommands();
-    allCommands = Array.isArray(data?.commands) ? data.commands : [];
+    const data = await fetchFlows();
+    allFlows = Array.isArray(data?.flows) ? data.flows : [];
   } catch {
-    allCommands = [];
+    allFlows = [];
   }
 
   try {
@@ -413,7 +437,7 @@ export default async function FlowsPage() {
     allIncidents = [];
   }
 
-  const flows = buildFlowSummaries(allCommands, allIncidents);
+  const flows = buildFlowSummaries(allFlows, allIncidents);
 
   const initialSelectedKey =
     flows.find((flow) => flow.status === "running")?.key ||
