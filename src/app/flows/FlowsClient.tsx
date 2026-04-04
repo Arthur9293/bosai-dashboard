@@ -289,11 +289,11 @@ export default function FlowsClient({
   }, [filteredFlows, selectedKey]);
 
   const filterTabs: Array<{ key: FlowFilter; label: string; count: number }> = [
-    { key: "all", label: "All", count: counts.all },
-    { key: "running", label: "Running", count: counts.running },
-    { key: "failed", label: "Failed", count: counts.failed },
+    { key: "all", label: "Tous", count: counts.all },
+    { key: "running", label: "En cours", count: counts.running },
+    { key: "failed", label: "Échec", count: counts.failed },
     { key: "retry", label: "Retry", count: counts.retry },
-    { key: "success", label: "Success", count: counts.success },
+    { key: "success", label: "Succès", count: counts.success },
   ];
 
   const enrichedFlows = useMemo(
@@ -389,7 +389,7 @@ export default function FlowsClient({
       {!hasSearch && (firstRunning || firstFailed || firstRetry) ? (
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
-            Needs attention
+            Attention prioritaire
           </div>
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -510,7 +510,7 @@ export default function FlowsClient({
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="mb-3 text-xs uppercase tracking-[0.2em] text-white/50">
-          Search
+          Recherche
         </div>
 
         <input
@@ -587,11 +587,11 @@ export default function FlowsClient({
 
       {!hasSearch ? (
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
-          {statCard("All", counts.all)}
-          {statCard("Running", counts.running)}
-          {statCard("Failed", counts.failed)}
+          {statCard("Tous", counts.all)}
+          {statCard("En cours", counts.running)}
+          {statCard("Échec", counts.failed)}
           {statCard("Retry", counts.retry)}
-          {statCard("Success", counts.success)}
+          {statCard("Succès", counts.success)}
         </div>
       ) : null}
 
@@ -650,7 +650,7 @@ export default function FlowsClient({
 
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
-                  Flow actif
+                  Identité du flow
                 </div>
 
                 <div className="grid gap-3 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-4">
@@ -705,7 +705,7 @@ export default function FlowsClient({
 
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
-                  Flow actif
+                  Identité du flow
                 </div>
 
                 <div className="grid gap-3 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-4">
@@ -829,7 +829,7 @@ export default function FlowsClient({
         {registryOnlyFlows.length > 0 ? (
           <div className="space-y-4">
             <div className="text-xs uppercase tracking-[0.2em] text-white/40">
-              Registry-only flows
+              Flows registry-only
             </div>
 
             <p className="text-white/65">
