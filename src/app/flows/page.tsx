@@ -7,6 +7,7 @@ import {
 } from "@/lib/api";
 
 type FlowStatus = "running" | "failed" | "retry" | "success" | "unknown";
+type FlowFilter = "all" | FlowStatus;
 
 type FlowGraphCommand = {
   id: string;
@@ -293,7 +294,20 @@ export default async function FlowsPage() {
     flows[0]?.key ||
     "";
 
+  const initialFilter: FlowFilter =
+    flows.some((flow) => flow.status === "running")
+      ? "running"
+      : flows.some((flow) => flow.status === "failed")
+      ? "failed"
+      : flows.some((flow) => flow.status === "retry")
+      ? "retry"
+      : "all";
+
   return (
-    <FlowsClient flows={flows} initialSelectedKey={initialSelectedKey} />
+    <FlowsClient
+      flows={flows}
+      initialSelectedKey={initialSelectedKey}
+      initialFilter={initialFilter}
+    />
   );
 }
