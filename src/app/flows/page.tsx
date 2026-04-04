@@ -51,7 +51,9 @@ function getStepIndex(cmd: CommandItem): number {
     : Number.MAX_SAFE_INTEGER;
 }
 
-function getStatusKind(status?: string): "done" | "running" | "failed" | "other" {
+function getStatusKind(
+  status?: string
+): "done" | "running" | "failed" | "other" {
   const s = (status || "").toLowerCase();
 
   if (["done", "success", "resolved", "ok"].includes(s)) return "done";
@@ -88,7 +90,9 @@ function badgeTone(status: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function computeFlowStatus(commands: CommandItem[]): "success" | "running" | "failed" | "unknown" {
+function computeFlowStatus(
+  commands: CommandItem[]
+): "success" | "running" | "failed" | "unknown" {
   const kinds = commands.map((cmd) => getStatusKind(cmd.status));
 
   if (kinds.includes("failed")) return "failed";
@@ -131,17 +135,22 @@ function buildLatestFlow(commands: CommandItem[]): FlowGroup | null {
   const allGroups = Array.from(groups.values());
   if (allGroups.length === 0) return null;
 
+  for (const group of allGroups) {
+    group.commands = [...group.commands].sort((a, b) => {
+      const stepDiff = getStepIndex(a) - getStepIndex(b);
+      if (stepDiff !== 0) return stepDiff;
+      return getSortTime(a) - getSortTime(b);
+    });
+  }
+
+  const multiStepGroups = allGroups.filter(
+    (group) => group.commands.length >= 2
+  );
+
+  multiStepGroups.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
   allGroups.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
 
-  const latest = allGroups[0];
-
-  latest.commands = [...latest.commands].sort((a, b) => {
-    const stepDiff = getStepIndex(a) - getStepIndex(b);
-    if (stepDiff !== 0) return stepDiff;
-    return getSortTime(a) - getSortTime(b);
-  });
-
-  return latest;
+  return multiStepGroups[0] ?? allGroups[0] ?? null;
 }
 
 function statCard(label: string, value: string | number) {
@@ -185,9 +194,15 @@ export default async function FlowsPage() {
 
   const commands = latestFlow.commands;
   const flowStatus = computeFlowStatus(commands);
-  const doneCount = commands.filter((cmd) => getStatusKind(cmd.status) === "done").length;
-  const runningCount = commands.filter((cmd) => getStatusKind(cmd.status) === "running").length;
-  const failedCount = commands.filter((cmd) => getStatusKind(cmd.status) === "failed").length;
+  const doneCount = commands.filter(
+    (cmd) => getStatusKind(cmd.status) === "done"
+  ).length;
+  const runningCount = commands.filter(
+    (cmd) => getStatusKind(cmd.status) === "running"
+  ).length;
+  const failedCount = commands.filter(
+    (cmd) => getStatusKind(cmd.status) === "failed"
+  ).length;
 
   return (
     <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 space-y-4">
@@ -224,7 +239,9 @@ export default async function FlowsPage() {
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-zinc-400">
         Dernière activité :{" "}
-        <span className="text-zinc-200">{formatDate(latestFlow.lastActivityAt)}</span>
+        <span className="text-zinc-200">
+          {formatDate(latestFlow.lastActivityAt)}
+        </span>
       </div>
 
       <FlowGraphClient commands={commands} />
