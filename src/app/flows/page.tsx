@@ -54,15 +54,18 @@ function toTs(value?: string | number | null): number {
 
 function getCommandActivityTs(cmd: CommandItem): number {
   return Math.max(
-    toTs(cmd.finished_at),
-    toTs(cmd.updated_at),
-    toTs(cmd.started_at),
-    toTs(cmd.created_at)
+    toTs(cmd.finished_at as string | number | null | undefined),
+    toTs(cmd.updated_at as string | number | null | undefined),
+    toTs(cmd.started_at as string | number | null | undefined),
+    toTs(cmd.created_at as string | number | null | undefined)
   );
 }
 
 function getCommandStartTs(cmd: CommandItem): number {
-  return Math.max(toTs(cmd.started_at), toTs(cmd.created_at));
+  return Math.max(
+    toTs(cmd.started_at as string | number | null | undefined),
+    toTs(cmd.created_at as string | number | null | undefined)
+  );
 }
 
 function getStatusKind(
@@ -84,29 +87,11 @@ function computeFlowStatus(commands: CommandItem[]): FlowStatus {
   if (kinds.includes("running")) return "running";
   if (kinds.includes("failed")) return "failed";
   if (kinds.includes("retry")) return "retry";
-  if (kinds.length > 0 && kinds.every((k) => k === "done" || k === "other")) {
-    return "success";
-  }
 
-  return "unknown";
-}
-
-function normalizeRegistryStatus(value: unknown): FlowStatus {
-  const s = text(value).toLowerCase();
-
-  if (["running", "queued", "pending", "open", "active"].includes(s)) {
-    return "running";
-  }
-
-  if (["failed", "error", "dead"].includes(s)) {
-    return "failed";
-  }
-
-  if (["retry"].includes(s)) {
-    return "retry";
-  }
-
-  if (["done", "success", "resolved", "ok", "closed"].includes(s)) {
+  if (
+    kinds.length > 0 &&
+    kinds.every((kind) => kind === "done" || kind === "other")
+  ) {
     return "success";
   }
 
@@ -193,9 +178,10 @@ function getTerminalCommand(commands: CommandItem[]): CommandItem | null {
 
   const source = leafCandidates.length > 0 ? leafCandidates : commands;
 
-  return [...source].sort(
-    (a, b) => getCommandActivityTs(b) - getCommandActivityTs(a)
-  )[0] ?? null;
+  return (
+    [...source].sort((a, b) => getCommandActivityTs(b) - getCommandActivityTs(a))[0] ??
+    null
+  );
 }
 
 function toGraphCommand(cmd: CommandItem): FlowGraphCommand {
@@ -218,31 +204,94 @@ function getFlowGroupKey(cmd: CommandItem): string {
   return "";
 }
 
-function incidentMatchesFlow(
-  incident: IncidentItem,
-  flowId: string,
-  rootEventId: string,
-  commandIds: string[]
-): boolean {
-  const incidentFlowId = text(incident.flow_id);
-  const incidentRootId = text(incident.root_event_id);
-  const incidentCommandId = text(incident.command_id);
-  const incidentLinkedCommand = text(incident.linked_command);
+type IncidentMatchInput = {
+  flowId?: string;
+  rootEventId?: string;
+  sourceRecordId?: string;
+  commands?: CommandItem[];
+};
 
-  if (flowId && incidentFlowId === flowId) return true;
-  if (rootEventId && rootEventId !== "—" && incidentRootId === rootEventId) {
-    return true;
+function recordText(obj: unknown, keys: string[]): string {
+  const rec =
+    obj && typeof obj === "object" ? (obj as Record<string, unknown>) : {};
+
+  for (const key of keys) {
+    const clean = text(rec[key]);
+    if (clean) return clean;
   }
 
-  if (
-    commandIds.length > 0 &&
-    (commandIds.includes(incidentCommandId) ||
-      commandIds.includes(incidentLinkedCommand))
-  ) {
-    return true;
-  }
+  return "";
+}
 
-  return false;
+function uniqueTexts(values: string[]): string[] {
+  return Array.from(new Set(values.map((v) => text(v)).filter(Boolean)));
+}
+
+function getCommandIncidentKeys(cmd: CommandItem): string[] {
+  return uniqueTexts([
+    String(cmd.id ?? ""),
+    text(cmd.flow_id),
+    text(cmd.root_event_id),
+    recordText(cmd, [
+      "linked_command",
+      "linkedCommand",
+      "command_id",
+      "commandId",
+      "Command_ID",
+      "Linked_Command",
+    ]),
+    recordText(cmd, [
+      "linked_run",
+      "linkedRun",
+      "run_record_id",
+      "runRecordId",
+      "run_id",
+      "runId",
+      "Run_Record_ID",
+      "Linked_Run",
+    ]),
+  ]);
+}
+
+function getIncidentCandidates(incident: IncidentItem): string[] {
+  const fields = (
+    (incident as Record<string, unknown>).fields ?? {}
+  ) as Record<string, unknown>;
+
+  const pick = (...keys: string[]) =>
+    uniqueTexts([recordText(incident, keys), recordText(fields, keys)]);
+
+  return uniqueTexts([
+    ...pick("id"),
+    ...pick("flow_id", "flowId", "Flow_ID"),
+    ...pick("root_event_id", "rootEventId", "Root_Event_ID"),
+    ...pick("linked_command", "linkedCommand", "Linked_Command"),
+    ...pick("command_id", "commandId", "Command_ID"),
+    ...pick("linked_run", "linkedRun", "Linked_Run"),
+    ...pick("run_record_id", "runRecordId", "Run_Record_ID"),
+    ...pick("run_id", "runId", "Run_ID"),
+    ...pick("name", "Name"),
+  ]);
+}
+
+function matchIncidents(
+  incidents: IncidentItem[],
+  input: IncidentMatchInput
+): IncidentItem[] {
+  const lookup = new Set(
+    uniqueTexts([
+      input.flowId || "",
+      input.rootEventId || "",
+      input.sourceRecordId || "",
+      ...((input.commands ?? []).flatMap(getCommandIncidentKeys)),
+    ])
+  );
+
+  if (lookup.size === 0) return [];
+
+  return incidents.filter((incident) =>
+    getIncidentCandidates(incident).some((candidate) => lookup.has(candidate))
+  );
 }
 
 function buildEnrichedFlowSummaries(
@@ -267,13 +316,11 @@ function buildEnrichedFlowSummaries(
     const rootCommand = ordered[0] ?? null;
     const terminalCommand = getTerminalCommand(ordered);
 
-    const flowId =
-      ordered.map((cmd) => text(cmd.flow_id)).find(Boolean) || "";
+    const flowId = ordered.map((cmd) => text(cmd.flow_id)).find(Boolean) || "";
     const rootEventId =
-      ordered.map((cmd) => text(cmd.root_event_id)).find(Boolean) || "—";
+      ordered.map((cmd) => text(cmd.root_event_id)).find(Boolean) || "";
     const workspaceId =
-      ordered.map((cmd) => text(cmd.workspace_id)).find(Boolean) ||
-      "production";
+      ordered.map((cmd) => text(cmd.workspace_id)).find(Boolean) || "production";
 
     const lastActivityTs = Math.max(...ordered.map(getCommandActivityTs), 0);
 
@@ -286,32 +333,27 @@ function buildEnrichedFlowSummaries(
         ? Math.max(0, lastActivityTs - earliestStartTs)
         : 0;
 
-    const commandIds = ordered.map((cmd) => String(cmd.id));
-
-    const matchedIncidents = incidents.filter((incident) =>
-      incidentMatchesFlow(incident, flowId, rootEventId, commandIds)
-    );
-
-    const incidentCount = matchedIncidents.length;
-    const firstIncidentId =
-      matchedIncidents[0]?.id ? String(matchedIncidents[0].id) : undefined;
-
-    const status = computeFlowStatus(ordered);
+    const linkedIncidents = matchIncidents(incidents, {
+      flowId,
+      rootEventId,
+      commands: ordered,
+    });
 
     summaries.push({
       key,
       flowId: flowId || rootEventId || key,
-      rootEventId,
+      rootEventId: rootEventId || "—",
       workspaceId,
-      status,
+      status: computeFlowStatus(ordered),
       steps: ordered.length,
       rootCapability: text(rootCommand?.capability) || "Non disponible",
       terminalCapability: text(terminalCommand?.capability) || "Non disponible",
       durationMs,
       lastActivityTs,
-      hasIncident: incidentCount > 0,
-      incidentCount,
-      firstIncidentId,
+      hasIncident: linkedIncidents.length > 0,
+      incidentCount: linkedIncidents.length,
+      firstIncidentId:
+        linkedIncidents.length > 0 ? String(linkedIncidents[0].id) : undefined,
       commands: ordered.map(toGraphCommand),
       readingMode: "enriched",
       sourceRecordId: undefined,
@@ -322,120 +364,99 @@ function buildEnrichedFlowSummaries(
   return summaries;
 }
 
-function getRegistryRecordStatus(flow: FlowDetail): FlowStatus {
-  const raw =
-    text((flow as Record<string, unknown>).status) ||
-    text((flow as Record<string, unknown>).status_select) ||
-    text((flow as Record<string, unknown>).flow_status) ||
-    text((flow as Record<string, unknown>).last_status) ||
-    text((flow as Record<string, unknown>).state);
+function computeRegistryStatus(flow: FlowDetail): FlowStatus {
+  const stats = flow.stats || {};
 
-  return normalizeRegistryStatus(raw);
-}
+  const running = Number(stats.running || 0) + Number(stats.queued || 0) > 0;
+  const failed = Number(stats.error || 0) + Number(stats.dead || 0) > 0;
+  const retry = Number(stats.retry || 0) > 0;
+  const success =
+    Number(stats.done || 0) > 0 && !running && !failed && !retry;
 
-function getRegistryActivityTs(flow: FlowDetail): number {
-  const source = flow as Record<string, unknown>;
-
-  return Math.max(
-    toTs(source.updated_at as string | number | null | undefined),
-    toTs(source.last_activity_ts as string | number | null | undefined),
-    toTs(source.last_activity as string | number | null | undefined),
-    toTs(source.created_at as string | number | null | undefined),
-    toTs(source.opened_at as string | number | null | undefined)
-  );
+  if (running) return "running";
+  if (failed) return "failed";
+  if (retry) return "retry";
+  if (success) return "success";
+  return "unknown";
 }
 
 function buildRegistryOnlyFlowSummaries(
   registryFlows: FlowDetail[],
-  incidents: IncidentItem[],
-  enrichedFlows: FlowSummary[]
+  enrichedFlows: FlowSummary[],
+  incidents: IncidentItem[]
 ): FlowSummary[] {
-  const enrichedFlowIds = new Set(
-    enrichedFlows.map((flow) => text(flow.flowId)).filter(Boolean)
-  );
-  const enrichedRootIds = new Set(
-    enrichedFlows.map((flow) => text(flow.rootEventId)).filter(Boolean)
-  );
+  const enrichedCandidates = new Set<string>();
 
-  const registryOnly: FlowSummary[] = [];
+  for (const flow of enrichedFlows) {
+    [flow.flowId, flow.rootEventId, flow.sourceRecordId, flow.key]
+      .filter(Boolean)
+      .forEach((value) => enrichedCandidates.add(String(value)));
+  }
 
-  for (const item of registryFlows) {
-    const flowRecord = item as Record<string, unknown>;
+  const summaries: FlowSummary[] = [];
 
+  for (const flow of registryFlows) {
+    const sourceRecordId = text(flow.id);
     const flowId =
-      text(item.flow_id) ||
-      text(flowRecord.flowId) ||
-      text(item.id) ||
-      text(item.root_event_id);
-
+      text(flow.flow_id) || sourceRecordId || text(flow.root_event_id);
     const rootEventId =
-      text(item.root_event_id) ||
-      text(flowRecord.rootEventId) ||
-      text(item.id) ||
-      "—";
+      text(flow.root_event_id) || sourceRecordId || flowId || "—";
+    const workspaceId = text(flow.workspace_id) || "production";
 
-    if (!flowId) continue;
-    if (enrichedFlowIds.has(flowId)) continue;
-    if (rootEventId !== "—" && enrichedRootIds.has(rootEventId)) continue;
+    const shouldSkip = [sourceRecordId, flowId, rootEventId]
+      .filter(Boolean)
+      .some((value) => enrichedCandidates.has(String(value)));
 
-    const workspaceId =
-      text(item.workspace_id) ||
-      text(flowRecord.workspaceId) ||
-      text(flowRecord.workspace) ||
-      "production";
+    if (shouldSkip) {
+      continue;
+    }
 
-    const lastActivityTs = getRegistryActivityTs(item);
-    const sourceRecordId =
-      text(item.id) || text(flowRecord.record_id) || rootEventId || flowId;
-
-    const matchedIncidents = incidents.filter((incident) =>
-      incidentMatchesFlow(incident, flowId, rootEventId, [])
-    );
-
-    const incidentCount = matchedIncidents.length;
-    const firstIncidentId =
-      matchedIncidents[0]?.id ? String(matchedIncidents[0].id) : undefined;
-
-    registryOnly.push({
-      key: `registry:${flowId}`,
+    const linkedIncidents = matchIncidents(incidents, {
       flowId,
       rootEventId,
+      sourceRecordId,
+    });
+
+    summaries.push({
+      key: `registry:${sourceRecordId || flowId || rootEventId}`,
+      flowId: flowId || rootEventId || "registry-flow",
+      rootEventId: rootEventId || "—",
       workspaceId,
-      status: getRegistryRecordStatus(item),
+      status: computeRegistryStatus(flow),
       steps: 0,
       rootCapability: "Non disponible",
       terminalCapability: "Non disponible",
       durationMs: 0,
-      lastActivityTs,
-      hasIncident: incidentCount > 0,
-      incidentCount,
-      firstIncidentId,
+      lastActivityTs: 0,
+      hasIncident: linkedIncidents.length > 0,
+      incidentCount: linkedIncidents.length,
+      firstIncidentId:
+        linkedIncidents.length > 0 ? String(linkedIncidents[0].id) : undefined,
       commands: [],
       readingMode: "registry-only",
-      sourceRecordId,
+      sourceRecordId: sourceRecordId || rootEventId || flowId,
       isPartial: true,
     });
   }
 
-  return registryOnly;
+  return summaries;
 }
 
-function buildFlowSummaries(
+function buildAllFlowSummaries(
   commands: CommandItem[],
-  incidents: IncidentItem[],
-  registryFlows: FlowDetail[]
+  registryFlows: FlowDetail[],
+  incidents: IncidentItem[]
 ): FlowSummary[] {
-  const enrichedFlows = buildEnrichedFlowSummaries(commands, incidents);
-  const registryOnlyFlows = buildRegistryOnlyFlowSummaries(
+  const enriched = buildEnrichedFlowSummaries(commands, incidents);
+  const registryOnly = buildRegistryOnlyFlowSummaries(
     registryFlows,
-    incidents,
-    enrichedFlows
+    enriched,
+    incidents
   );
 
-  return [...enrichedFlows, ...registryOnlyFlows].sort((a, b) => {
+  return [...enriched, ...registryOnly].sort((a, b) => {
     const priorityDiff =
       getFlowStatusPriority(a.status) - getFlowStatusPriority(b.status);
-
     if (priorityDiff !== 0) return priorityDiff;
     return b.lastActivityTs - a.lastActivityTs;
   });
@@ -467,29 +488,20 @@ export default async function FlowsPage() {
     registryFlows = [];
   }
 
-  const flows = buildFlowSummaries(allCommands, allIncidents, registryFlows);
+  const flows = buildAllFlowSummaries(allCommands, registryFlows, allIncidents);
 
-  const initialSelectedKey =
-    flows.find((flow) => flow.status === "running")?.key ||
-    flows.find((flow) => flow.status === "failed")?.key ||
-    flows.find((flow) => flow.status === "retry")?.key ||
-    flows[0]?.key ||
-    "";
-
-  const initialFilter =
-    flows.some((flow) => flow.status === "running")
-      ? "running"
-      : flows.some((flow) => flow.status === "failed")
-      ? "failed"
-      : flows.some((flow) => flow.status === "retry")
-      ? "retry"
-      : "all";
+  const priorityFlow =
+    flows.find((flow) => flow.status === "running") ||
+    flows.find((flow) => flow.status === "failed") ||
+    flows.find((flow) => flow.status === "retry") ||
+    flows[0] ||
+    null;
 
   return (
     <FlowsClient
       flows={flows}
-      initialSelectedKey={initialSelectedKey}
-      initialFilter={initialFilter}
+      initialSelectedKey={priorityFlow?.key || ""}
+      initialFilter="all"
     />
   );
 }
