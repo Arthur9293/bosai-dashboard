@@ -59,6 +59,10 @@ function badgeTone(status: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function partialTone() {
+  return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+}
+
 function incidentTone(count: number) {
   if (count > 0) {
     return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
@@ -150,7 +154,7 @@ export default function FlowsClient({
   initialFilter = "all",
 }: Props) {
   const [selectedKey, setSelectedKey] = useState(initialSelectedKey);
-  const [filter, setFilter] = useState<FlowFilter>(initialFilter);
+  const [filter, setFilter] = useState(initialFilter);
   const [search, setSearch] = useState("");
 
   const activePreviewRef = useRef<HTMLDivElement | null>(null);
@@ -219,6 +223,16 @@ export default function FlowsClient({
   const selectedHasExecutionData = selectedFlow
     ? flowHasExecutionData(selectedFlow)
     : false;
+
+  const enrichedFlows = useMemo(
+    () => filteredFlows.filter((flow) => flowHasExecutionData(flow)),
+    [filteredFlows]
+  );
+
+  const registryOnlyFlows = useMemo(
+    () => filteredFlows.filter((flow) => !flowHasExecutionData(flow)),
+    [filteredFlows]
+  );
 
   const filterTabs: Array<{ key: FlowFilter; label: string; count: number }> = [
     { key: "all", label: "All", count: counts.all },
@@ -292,6 +306,75 @@ export default function FlowsClient({
 
     setSelectedKey(priorityFlow.key);
     scrollToPreview();
+  }
+
+  function renderFlowCard(flow: FlowSummary) {
+    const selected = selectedFlow?.key === flow.key;
+    const hasExecution = flowHasExecutionData(flow);
+
+    return (
+      <div
+        key={flow.key}
+        className={`rounded-2xl border p-4 transition ${
+          selected
+            ? "border-emerald-500/30 bg-emerald-500/10"
+            : "border-white/10 bg-white/5"
+        }`}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="break-all text-xl font-semibold text-white">
+              {flow.flowId}
+            </div>
+
+            <div className="mt-3 space-y-1 text-sm text-white/70">
+              <div>Steps: {flow.steps}</div>
+              <div className="break-all">Root: {flow.rootEventId}</div>
+              <div>Activité: {formatDate(flow.lastActivityTs)}</div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
+                flow.status
+              )}`}
+            >
+              {flow.status.toUpperCase()}
+            </span>
+
+            {!hasExecution ? (
+              <span
+                className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${partialTone()}`}
+              >
+                PARTIAL
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => selectFlow(flow)}
+            className={`inline-flex rounded-full px-4 py-2 text-sm font-medium transition ${
+              selected
+                ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
+            }`}
+          >
+            {selected ? "Flow actif" : "Sélectionner"}
+          </button>
+
+          <Link
+            href={`/flows/${safeDetailId(flow)}`}
+            className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+          >
+            Voir le détail
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -538,6 +621,14 @@ export default function FlowsClient({
             >
               {incidentLabel(selectedFlow)}
             </span>
+
+            {!selectedHasExecutionData ? (
+              <span
+                className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${partialTone()}`}
+              >
+                PARTIAL
+              </span>
+            ) : null}
           </div>
 
           {!selectedHasExecutionData ? (
@@ -628,69 +719,38 @@ export default function FlowsClient({
           Flows récents
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-6">
           {filteredFlows.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
               Aucun flow pour ce filtre.
             </div>
           ) : (
-            filteredFlows.map((flow) => {
-              const selected = selectedFlow?.key === flow.key;
-
-              return (
-                <div
-                  key={flow.key}
-                  className={`rounded-2xl border p-4 transition ${
-                    selected
-                      ? "border-emerald-500/30 bg-emerald-500/10"
-                      : "border-white/10 bg-white/5"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="break-all text-xl font-semibold text-white">
-                        {flow.flowId}
-                      </div>
-
-                      <div className="mt-3 space-y-1 text-sm text-white/70">
-                        <div>Steps: {flow.steps}</div>
-                        <div className="break-all">Root: {flow.rootEventId}</div>
-                        <div>Activité: {formatDate(flow.lastActivityTs)}</div>
-                      </div>
-                    </div>
-
-                    <span
-                      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
-                        flow.status
-                      )}`}
-                    >
-                      {flow.status.toUpperCase()}
-                    </span>
+            <>
+              {enrichedFlows.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-white/45">
+                    Flows enrichis
                   </div>
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => selectFlow(flow)}
-                      className={`inline-flex rounded-full px-4 py-2 text-sm font-medium transition ${
-                        selected
-                          ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-                          : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
-                      }`}
-                    >
-                      {selected ? "Flow actif" : "Sélectionner"}
-                    </button>
-
-                    <Link
-                      href={`/flows/${safeDetailId(flow)}`}
-                      className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
-                    >
-                      Voir le détail
-                    </Link>
-                  </div>
+                  {enrichedFlows.map((flow) => renderFlowCard(flow))}
                 </div>
-              );
-            })
+              ) : null}
+
+              {registryOnlyFlows.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2">
+                    <div className="text-xs uppercase tracking-[0.2em] text-white/45">
+                      Registry-only flows
+                    </div>
+                    <div className="text-sm text-zinc-400">
+                      Flows présents dans le registre BOSAI mais sans lecture
+                      causale détaillée disponible pour le moment.
+                    </div>
+                  </div>
+
+                  {registryOnlyFlows.map((flow) => renderFlowCard(flow))}
+                </div>
+              ) : null}
+            </>
           )}
         </div>
       </div>
