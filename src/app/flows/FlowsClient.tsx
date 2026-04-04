@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import FlowGraphClient from "./FlowGraphClient";
 
 type FlowStatus = "running" | "failed" | "retry" | "success" | "unknown";
@@ -101,6 +101,10 @@ function statCard(label: string, value: string | number) {
   );
 }
 
+function normalize(text: string): string {
+  return text.toLowerCase().trim();
+}
+
 export default function FlowsClient({
   flows,
   initialSelectedKey = "",
@@ -108,6 +112,9 @@ export default function FlowsClient({
 }: Props) {
   const [selectedKey, setSelectedKey] = useState(initialSelectedKey);
   const [filter, setFilter] = useState<FlowFilter>(initialFilter);
+  const [search, setSearch] = useState("");
+
+  const activePreviewRef = useRef<HTMLDivElement | null>(null);
 
   const counts = useMemo(() => {
     return {
@@ -134,17 +141,36 @@ export default function FlowsClient({
   );
 
   const filteredFlows = useMemo(() => {
-    if (filter === "all") return flows;
-    return flows.filter((flow) => flow.status === filter);
-  }, [flows, filter]);
+    let result = flows;
+
+    if (filter !== "all") {
+      result = result.filter((flow) => flow.status === filter);
+    }
+
+    const q = normalize(search);
+
+    if (!q) return result;
+
+    return result.filter((flow) => {
+      const haystack = normalize(
+        [
+          flow.flowId,
+          flow.rootEventId,
+          flow.workspaceId,
+          flow.status,
+          flow.rootCapability,
+          flow.terminalCapability,
+          ...flow.commands.map((cmd) => cmd.capability || ""),
+        ].join(" ")
+      );
+
+      return haystack.includes(q);
+    });
+  }, [flows, filter, search]);
 
   const selectedFlow = useMemo(() => {
-    if (filter === "all") {
-      return (
-        flows.find((flow) => flow.key === selectedKey) ||
-        flows[0] ||
-        null
-      );
+    if (filter === "all" && !search.trim()) {
+      return flows.find((flow) => flow.key === selectedKey) || flows[0] || null;
     }
 
     return (
@@ -152,7 +178,7 @@ export default function FlowsClient({
       filteredFlows[0] ||
       null
     );
-  }, [flows, filteredFlows, selectedKey, filter]);
+  }, [flows, filteredFlows, selectedKey, filter, search]);
 
   const filterTabs: Array<{ key: FlowFilter; label: string; count: number }> = [
     { key: "all", label: "All", count: counts.all },
@@ -161,6 +187,20 @@ export default function FlowsClient({
     { key: "retry", label: "Retry", count: counts.retry },
     { key: "success", label: "Success", count: counts.success },
   ];
+
+  function scrollToPreview() {
+    setTimeout(() => {
+      activePreviewRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
+  }
+
+  function selectFlow(flow: FlowSummary) {
+    setSelectedKey(flow.key);
+    scrollToPreview();
+  }
 
   function focusFirst(status: FlowStatus) {
     const first =
@@ -173,9 +213,11 @@ export default function FlowsClient({
         : flows.find((flow) => flow.status === status) || null;
 
     setFilter(status);
+    setSearch("");
 
     if (first) {
       setSelectedKey(first.key);
+      scrollToPreview();
     }
   }
 
@@ -295,12 +337,32 @@ export default function FlowsClient({
                   >
                     Ouvrir le premier retry
                   </button>
+                  <Link
+                    href={`/flows/${safeDetailId(firstRetry)}`}
+                    className="inline-flex rounded-full border border-violet-500/20 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+                  >
+                    Voir le détail
+                  </Link>
                 </div>
               </div>
             ) : null}
           </div>
         </div>
       )}
+
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="mb-3 text-xs uppercase tracking-[0.2em] text-white/50">
+          Search
+        </div>
+
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Rechercher par flowId, rootEventId, capability..."
+          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:border-emerald-500/30 focus:bg-white/10"
+        />
+      </div>
 
       <div className="flex flex-wrap gap-2">
         {filterTabs.map((tab) => {
@@ -341,7 +403,7 @@ export default function FlowsClient({
       </div>
 
       {selectedFlow ? (
-        <>
+        <div ref={activePreviewRef} className="space-y-6">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
@@ -412,7 +474,7 @@ export default function FlowsClient({
 
             <FlowGraphClient commands={selectedFlow.commands} />
           </div>
-        </>
+        </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
           Aucun flow exploitable trouvé.
@@ -467,7 +529,7 @@ export default function FlowsClient({
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => setSelectedKey(flow.key)}
+                      onClick={() => selectFlow(flow)}
                       className={`inline-flex rounded-full px-4 py-2 text-sm font-medium transition ${
                         selected
                           ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
