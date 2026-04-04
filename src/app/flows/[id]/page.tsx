@@ -48,6 +48,14 @@ function text(value: unknown): string {
   return "";
 }
 
+function firstText(...values: unknown[]): string {
+  for (const value of values) {
+    const clean = text(value);
+    if (clean) return clean;
+  }
+  return "";
+}
+
 function toTs(value?: string | number | null): number {
   if (value === null || value === undefined || value === "") return 0;
   const ts = new Date(value).getTime();
@@ -483,6 +491,65 @@ function timelineCommands(commands: FlowGraphCommand[]): FlowGraphCommand[] {
   });
 }
 
+function buildCollectionHref(
+  basePath: string,
+  id: string,
+  aliases: string[]
+): string {
+  const clean = text(id);
+  if (!clean) return basePath;
+
+  const params = new URLSearchParams();
+  params.set("q", clean);
+
+  for (const alias of aliases) {
+    params.set(alias, clean);
+  }
+
+  return `${basePath}?${params.toString()}`;
+}
+
+function RelatedLinkCard({
+  title,
+  value,
+  href,
+  buttonLabel,
+}: {
+  title: string;
+  value: string;
+  href?: string;
+  buttonLabel: string;
+}) {
+  const available = Boolean(text(value));
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="text-sm text-zinc-400">{title}</div>
+
+      <div className="mt-3 rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+        <div className="break-all font-mono text-base font-semibold text-white">
+          {available ? value : "Non disponible"}
+        </div>
+      </div>
+
+      <div className="mt-4">
+        {available && href ? (
+          <Link
+            href={href}
+            className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+          >
+            {buttonLabel}
+          </Link>
+        ) : (
+          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-zinc-500">
+            Non disponible
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default async function FlowDetailPage({
   params,
 }: {
@@ -536,6 +603,10 @@ export default async function FlowDetailPage({
   });
 
   const orderedCommands = buildExecutionOrder(commandItems);
+  const terminalCommand = getTerminalCommand(orderedCommands);
+  const rootCommand = orderedCommands[0] ?? null;
+  const linkedIncidents = matchIncidents(allIncidents, flow.flowId, flow.rootEventId);
+
   const doneCount = orderedCommands.filter(
     (cmd) => getStatusKind(cmd.status) === "done"
   ).length;
@@ -547,6 +618,40 @@ export default async function FlowDetailPage({
   ).length;
 
   const timeline = timelineCommands(flow.commands);
+
+  const relatedCommandId = firstText(
+    terminalCommand?.id,
+    rootCommand?.id,
+    linkedIncidents[0]?.linked_command,
+    linkedIncidents[0]?.command_id
+  );
+
+  const relatedRunId = firstText(
+    (terminalCommand as { linked_run?: unknown })?.linked_run,
+    (terminalCommand as { run_record_id?: unknown })?.run_record_id,
+    (rootCommand as { linked_run?: unknown })?.linked_run,
+    (rootCommand as { run_record_id?: unknown })?.run_record_id,
+    linkedIncidents[0]?.linked_run,
+    linkedIncidents[0]?.run_record_id,
+    linkedIncidents[0]?.run_id
+  );
+
+  const relatedIncidentId = firstText(
+    flow.firstIncidentId,
+    linkedIncidents[0]?.id
+  );
+
+  const commandHref = relatedCommandId
+    ? buildCollectionHref("/commands", relatedCommandId, ["id", "commandId"])
+    : undefined;
+
+  const runHref = relatedRunId
+    ? buildCollectionHref("/runs", relatedRunId, ["id", "runId"])
+    : undefined;
+
+  const incidentHref = relatedIncidentId
+    ? buildCollectionHref("/incidents", relatedIncidentId, ["id", "incidentId"])
+    : undefined;
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
@@ -633,6 +738,33 @@ export default async function FlowDetailPage({
               <div className="mt-2 text-xl font-semibold text-white">
                 {incidentLabel(flow)}
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
+              Liens du flow
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <RelatedLinkCard
+                title="Commande liée"
+                value={relatedCommandId}
+                href={commandHref}
+                buttonLabel="Ouvrir Commands"
+              />
+              <RelatedLinkCard
+                title="Run lié"
+                value={relatedRunId}
+                href={runHref}
+                buttonLabel="Ouvrir Runs"
+              />
+              <RelatedLinkCard
+                title="Incident lié"
+                value={relatedIncidentId}
+                href={incidentHref}
+                buttonLabel="Ouvrir Incidents"
+              />
             </div>
           </div>
 
@@ -730,6 +862,33 @@ export default async function FlowDetailPage({
               <div className="mt-2 text-2xl font-semibold text-white">
                 {incidentLabel(flow)}
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
+              Liens du flow
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <RelatedLinkCard
+                title="Commande liée"
+                value={relatedCommandId}
+                href={commandHref}
+                buttonLabel="Ouvrir Commands"
+              />
+              <RelatedLinkCard
+                title="Run lié"
+                value={relatedRunId}
+                href={runHref}
+                buttonLabel="Ouvrir Runs"
+              />
+              <RelatedLinkCard
+                title="Incident lié"
+                value={relatedIncidentId}
+                href={incidentHref}
+                buttonLabel="Ouvrir Incidents"
+              />
             </div>
           </div>
 
