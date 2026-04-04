@@ -105,6 +105,25 @@ function normalize(text: string): string {
   return text.toLowerCase().trim();
 }
 
+function flowMatchesSearch(flow: FlowSummary, rawSearch: string) {
+  const q = normalize(rawSearch);
+  if (!q) return true;
+
+  const haystack = normalize(
+    [
+      flow.flowId,
+      flow.rootEventId,
+      flow.workspaceId,
+      flow.status,
+      flow.rootCapability,
+      flow.terminalCapability,
+      ...flow.commands.map((cmd) => cmd.capability || ""),
+    ].join(" ")
+  );
+
+  return haystack.includes(q);
+}
+
 export default function FlowsClient({
   flows,
   initialSelectedKey = "",
@@ -116,16 +135,25 @@ export default function FlowsClient({
 
   const activePreviewRef = useRef<HTMLDivElement | null>(null);
 
+  const hasSearch = search.trim().length > 0;
+
+  const searchedFlows = useMemo(() => {
+    if (!hasSearch) return flows;
+    return flows.filter((flow) => flowMatchesSearch(flow, search));
+  }, [flows, search, hasSearch]);
+
+  const countsBase = hasSearch ? searchedFlows : flows;
+
   const counts = useMemo(() => {
     return {
-      all: flows.length,
-      running: flows.filter((flow) => flow.status === "running").length,
-      failed: flows.filter((flow) => flow.status === "failed").length,
-      retry: flows.filter((flow) => flow.status === "retry").length,
-      success: flows.filter((flow) => flow.status === "success").length,
-      unknown: flows.filter((flow) => flow.status === "unknown").length,
+      all: countsBase.length,
+      running: countsBase.filter((flow) => flow.status === "running").length,
+      failed: countsBase.filter((flow) => flow.status === "failed").length,
+      retry: countsBase.filter((flow) => flow.status === "retry").length,
+      success: countsBase.filter((flow) => flow.status === "success").length,
+      unknown: countsBase.filter((flow) => flow.status === "unknown").length,
     };
-  }, [flows]);
+  }, [countsBase]);
 
   const firstRunning = useMemo(
     () => flows.find((flow) => flow.status === "running") || null,
@@ -141,44 +169,22 @@ export default function FlowsClient({
   );
 
   const filteredFlows = useMemo(() => {
-    let result = flows;
+    let result = searchedFlows;
 
     if (filter !== "all") {
       result = result.filter((flow) => flow.status === filter);
     }
 
-    const q = normalize(search);
-
-    if (!q) return result;
-
-    return result.filter((flow) => {
-      const haystack = normalize(
-        [
-          flow.flowId,
-          flow.rootEventId,
-          flow.workspaceId,
-          flow.status,
-          flow.rootCapability,
-          flow.terminalCapability,
-          ...flow.commands.map((cmd) => cmd.capability || ""),
-        ].join(" ")
-      );
-
-      return haystack.includes(q);
-    });
-  }, [flows, filter, search]);
+    return result;
+  }, [searchedFlows, filter]);
 
   const selectedFlow = useMemo(() => {
-    if (filter === "all" && !search.trim()) {
-      return flows.find((flow) => flow.key === selectedKey) || flows[0] || null;
-    }
-
     return (
       filteredFlows.find((flow) => flow.key === selectedKey) ||
       filteredFlows[0] ||
       null
     );
-  }, [flows, filteredFlows, selectedKey, filter, search]);
+  }, [filteredFlows, selectedKey]);
 
   const filterTabs: Array<{ key: FlowFilter; label: string; count: number }> = [
     { key: "all", label: "All", count: counts.all },
@@ -235,7 +241,7 @@ export default function FlowsClient({
         </p>
       </div>
 
-      {(firstRunning || firstFailed || firstRetry) && (
+      {!hasSearch && (firstRunning || firstFailed || firstRetry) && (
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
             Needs attention
@@ -252,7 +258,7 @@ export default function FlowsClient({
                   >
                     RUNNING
                   </span>
-                  <span className="text-sm text-sky-200">{counts.running}</span>
+                  <span className="text-sm text-sky-200">{flows.filter((f) => f.status === "running").length}</span>
                 </div>
 
                 <div className="mt-4 break-all text-lg font-semibold text-white">
@@ -285,7 +291,7 @@ export default function FlowsClient({
                   >
                     FAILED
                   </span>
-                  <span className="text-sm text-rose-200">{counts.failed}</span>
+                  <span className="text-sm text-rose-200">{flows.filter((f) => f.status === "failed").length}</span>
                 </div>
 
                 <div className="mt-4 break-all text-lg font-semibold text-white">
@@ -318,7 +324,7 @@ export default function FlowsClient({
                   >
                     RETRY
                   </span>
-                  <span className="text-sm text-violet-200">{counts.retry}</span>
+                  <span className="text-sm text-violet-200">{flows.filter((f) => f.status === "retry").length}</span>
                 </div>
 
                 <div className="mt-4 break-all text-lg font-semibold text-white">
@@ -362,6 +368,13 @@ export default function FlowsClient({
           placeholder="Rechercher par flowId, rootEventId, capability..."
           className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:border-emerald-500/30 focus:bg-white/10"
         />
+
+        {hasSearch ? (
+          <div className="mt-3 text-sm text-zinc-400">
+            Résultats de recherche :{" "}
+            <span className="text-zinc-200">{filteredFlows.length}</span>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -394,13 +407,15 @@ export default function FlowsClient({
         })}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
-        {statCard("All", counts.all)}
-        {statCard("Running", counts.running)}
-        {statCard("Failed", counts.failed)}
-        {statCard("Retry", counts.retry)}
-        {statCard("Success", counts.success)}
-      </div>
+      {!hasSearch && (
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
+          {statCard("All", counts.all)}
+          {statCard("Running", counts.running)}
+          {statCard("Failed", counts.failed)}
+          {statCard("Retry", counts.retry)}
+          {statCard("Success", counts.success)}
+        </div>
+      )}
 
       {selectedFlow ? (
         <div ref={activePreviewRef} className="space-y-6">
