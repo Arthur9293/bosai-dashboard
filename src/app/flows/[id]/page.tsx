@@ -50,6 +50,10 @@ function getCommandActivityTs(cmd: CommandItem): number {
   );
 }
 
+function getCommandStartTs(cmd: CommandItem): number {
+  return Math.max(toTs(cmd.started_at), toTs(cmd.created_at));
+}
+
 function getStatusKind(
   status?: string
 ): "done" | "running" | "failed" | "other" {
@@ -116,6 +120,12 @@ function neutralTone() {
   return "bg-white/5 text-zinc-300 border border-white/10";
 }
 
+function booleanTone(value: boolean) {
+  return value
+    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
+    : "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
 function formatDate(value?: string | number | null): string {
   if (value === null || value === undefined || value === "") return "—";
 
@@ -126,6 +136,25 @@ function formatDate(value?: string | number | null): string {
     dateStyle: "short",
     timeStyle: "short",
   }).format(d);
+}
+
+function formatDuration(ms?: number): string {
+  if (!ms || ms <= 0 || Number.isNaN(ms)) return "—";
+
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+
+  return `${seconds}s`;
 }
 
 function getIncidentSortTs(incident: IncidentItem): number {
@@ -326,6 +355,23 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const rootIds = getRootIds(causalCommands);
   const terminalIds = getTerminalIds(causalCommands);
 
+  const rootCommand =
+    orderedSteps.find(({ command }) => rootIds.has(String(command.id)))?.command ??
+    causalCommands[0] ??
+    null;
+
+  const earliestStartTs = Math.min(
+    ...causalCommands
+      .map(getCommandStartTs)
+      .filter((ts) => ts > 0),
+    Number.POSITIVE_INFINITY
+  );
+
+  const durationMs =
+    Number.isFinite(earliestStartTs) && lastActivityTs > 0
+      ? Math.max(0, lastActivityTs - earliestStartTs)
+      : 0;
+
   let linkedIncident: IncidentItem | null = null;
 
   try {
@@ -389,6 +435,33 @@ export default async function FlowDetailPage({ params }: PageProps) {
         {statCard("Done", doneCount, "text-emerald-300")}
         {statCard("Running/Queued", runningCount, "text-sky-300")}
         {statCard("Failed", failedCount, "text-rose-300")}
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
+          Flow summary
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {statCard("Root capability", text(rootCommand?.capability) || "—")}
+          {statCard(
+            "Terminal capability",
+            text(terminalCommand?.capability) || "—"
+          )}
+          {statCard("Durée totale", formatDuration(durationMs))}
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-sm text-zinc-400">Incident lié</div>
+            <div className="mt-3">
+              <span
+                className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${booleanTone(
+                  Boolean(linkedIncident)
+                )}`}
+              >
+                {linkedIncident ? "OUI" : "NON"}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
