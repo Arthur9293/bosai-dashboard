@@ -63,6 +63,20 @@ function getStatusKind(
   return "other";
 }
 
+function computeFlowStatus(
+  commands: CommandItem[]
+): "success" | "running" | "failed" | "unknown" {
+  const kinds = commands.map((cmd) => getStatusKind(cmd.status));
+
+  if (kinds.includes("failed")) return "failed";
+  if (kinds.includes("running")) return "running";
+  if (kinds.length > 0 && kinds.every((k) => k === "done" || k === "other")) {
+    return "success";
+  }
+
+  return "unknown";
+}
+
 function formatDate(value?: number): string {
   if (!value || Number.isNaN(value)) return "—";
 
@@ -90,21 +104,7 @@ function badgeTone(status: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function computeFlowStatus(
-  commands: CommandItem[]
-): "success" | "running" | "failed" | "unknown" {
-  const kinds = commands.map((cmd) => getStatusKind(cmd.status));
-
-  if (kinds.includes("failed")) return "failed";
-  if (kinds.includes("running")) return "running";
-  if (kinds.length > 0 && kinds.every((k) => k === "done" || k === "other")) {
-    return "success";
-  }
-
-  return "unknown";
-}
-
-function buildLatestFlow(commands: CommandItem[]): FlowGroup | null {
+function buildFlowGroups(commands: CommandItem[]): FlowGroup[] {
   const groups = new Map<string, FlowGroup>();
 
   for (const cmd of commands) {
@@ -133,7 +133,6 @@ function buildLatestFlow(commands: CommandItem[]): FlowGroup | null {
   }
 
   const allGroups = Array.from(groups.values());
-  if (allGroups.length === 0) return null;
 
   for (const group of allGroups) {
     group.commands = [...group.commands].sort((a, b) => {
@@ -143,37 +142,43 @@ function buildLatestFlow(commands: CommandItem[]): FlowGroup | null {
     });
   }
 
-  const multiStepGroups = allGroups.filter(
-    (group) => group.commands.length >= 2
-  );
-
-  multiStepGroups.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
   allGroups.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
 
-  return multiStepGroups[0] ?? allGroups[0] ?? null;
+  return allGroups;
+}
+
+function pickPrimaryFlow(groups: FlowGroup[]): FlowGroup | null {
+  if (groups.length === 0) return null;
+
+  const multiStep = groups.find((group) => group.commands.length >= 2);
+  return multiStep ?? groups[0];
 }
 
 function statCard(label: string, value: string | number) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="text-sm text-zinc-400">{label}</div>
-      <div className="mt-2 text-xl font-semibold text-white">{value}</div>
+      <div className="mt-2 text-xl font-semibold text-white break-all">
+        {value}
+      </div>
     </div>
   );
 }
 
 export default async function FlowsPage() {
-  let latestFlow: FlowGroup | null = null;
+  let groups: FlowGroup[] = [];
 
   try {
     const data = await fetchCommands();
     const allCommands = Array.isArray(data?.commands) ? data.commands : [];
-    latestFlow = buildLatestFlow(allCommands);
+    groups = buildFlowGroups(allCommands);
   } catch {
-    latestFlow = null;
+    groups = [];
   }
 
-  if (!latestFlow) {
+  const primaryFlow = pickPrimaryFlow(groups);
+
+  if (!primaryFlow) {
     return (
       <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 space-y-4">
         <div className="space-y-1">
@@ -192,7 +197,7 @@ export default async function FlowsPage() {
     );
   }
 
-  const commands = latestFlow.commands;
+  const commands = primaryFlow.commands;
   const flowStatus = computeFlowStatus(commands);
   const doneCount = commands.filter(
     (cmd) => getStatusKind(cmd.status) === "done"
@@ -203,6 +208,8 @@ export default async function FlowsPage() {
   const failedCount = commands.filter(
     (cmd) => getStatusKind(cmd.status) === "failed"
   ).length;
+
+  const recentFlows = groups.slice(0, 6);
 
   return (
     <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 space-y-4">
@@ -229,9 +236,64 @@ export default async function FlowsPage() {
         </span>
       </div>
 
+      <div className="space-y-2">
+        <div className="text-sm font-medium text-zinc-300">Flows récents</div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {recentFlows.map((flow) => {
+            const status = computeFlowStatus(flow.commands);
+            const isActive = flow.key === primaryFlow.key;
+
+            return (
+              <div
+                key={flow.key}
+                className={`rounded-2xl p-4 border ${
+                  isActive
+                    ? "border-emerald-500/30 bg-emerald-500/10"
+                    : "border-white/10 bg-white/5"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-medium text-white truncate">
+                    {flow.flowId || flow.rootEventId || "Flow sans ID"}
+                  </div>
+
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${badgeTone(
+                      status
+                    )}`}
+                  >
+                    {status.toUpperCase()}
+                  </span>
+                </div>
+
+                <div className="mt-3 space-y-1 text-xs text-zinc-400">
+                  <div>
+                    Steps:{" "}
+                    <span className="text-zinc-200">{flow.commands.length}</span>
+                  </div>
+                  <div>
+                    Root:{" "}
+                    <span className="text-zinc-200 break-all">
+                      {flow.rootEventId || "—"}
+                    </span>
+                  </div>
+                  <div>
+                    Activité:{" "}
+                    <span className="text-zinc-200">
+                      {formatDate(flow.lastActivityAt)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {statCard("Flow ID", latestFlow.flowId || "—")}
-        {statCard("Root Event", latestFlow.rootEventId || "—")}
+        {statCard("Flow ID", primaryFlow.flowId || "—")}
+        {statCard("Root Event", primaryFlow.rootEventId || "—")}
         {statCard("Done", doneCount)}
         {statCard("Running/Queued", runningCount)}
         {statCard("Failed", failedCount)}
@@ -240,7 +302,7 @@ export default async function FlowsPage() {
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-zinc-400">
         Dernière activité :{" "}
         <span className="text-zinc-200">
-          {formatDate(latestFlow.lastActivityAt)}
+          {formatDate(primaryFlow.lastActivityAt)}
         </span>
       </div>
 
