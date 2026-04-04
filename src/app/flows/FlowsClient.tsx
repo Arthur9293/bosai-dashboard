@@ -45,32 +45,32 @@ function badgeTone(status: string) {
   const s = status.toLowerCase();
 
   if (s === "success") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+    return "border border-emerald-500/20 bg-emerald-500/15 text-emerald-300";
   }
 
   if (s === "running") {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+    return "border border-sky-500/20 bg-sky-500/15 text-sky-300";
   }
 
   if (s === "failed") {
-    return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
+    return "border border-rose-500/20 bg-rose-500/15 text-rose-300";
   }
 
   if (s === "retry") {
-    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
+    return "border border-violet-500/20 bg-violet-500/15 text-violet-300";
   }
 
   if (s === "partial") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+    return "border border-amber-500/20 bg-amber-500/15 text-amber-300";
   }
 
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+  return "border border-zinc-700 bg-zinc-800 text-zinc-300";
 }
 
 function incidentTone(value: boolean) {
   return value
-    ? "bg-rose-500/15 text-rose-300 border border-rose-500/20"
-    : "bg-zinc-800 text-zinc-300 border border-white/10";
+    ? "border border-rose-500/20 bg-rose-500/15 text-rose-300"
+    : "border border-white/10 bg-zinc-800 text-zinc-300";
 }
 
 function formatDate(ts?: number): string {
@@ -105,7 +105,7 @@ function statCard(label: string, value: string | number) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="text-sm text-zinc-400">{label}</div>
-      <div className="mt-2 text-xl font-semibold text-white break-all">
+      <div className="mt-2 break-all text-xl font-semibold text-white">
         {value}
       </div>
     </div>
@@ -116,25 +116,31 @@ function normalize(text: string): string {
   return text.toLowerCase().trim();
 }
 
-function flowMatchesSearch(flow: FlowSummary, rawSearch: string) {
-  const q = normalize(rawSearch);
-  if (!q) return true;
+function capabilityLabel(value?: string): string {
+  const clean = String(value || "").trim();
+  return clean || "Non disponible";
+}
 
-  const haystack = normalize(
-    [
-      flow.flowId,
-      flow.rootEventId,
-      flow.workspaceId,
-      flow.status,
-      flow.rootCapability,
-      flow.terminalCapability,
-      flow.readingMode || "",
-      flow.sourceRecordId || "",
-      ...flow.commands.map((cmd) => cmd.capability || ""),
-    ].join(" ")
-  );
+function readingModeLabel(mode?: "enriched" | "registry-only"): string {
+  return mode === "registry-only" ? "Registry-only" : "Enrichi";
+}
 
-  return haystack.includes(q);
+function flowHasIncident(flow: FlowSummary): boolean {
+  return flow.hasIncident || flow.incidentCount > 0;
+}
+
+function incidentLabel(flow: FlowSummary): string {
+  const count = Number(flow.incidentCount || 0);
+
+  if (count <= 0 && !flow.hasIncident) {
+    return "Aucun incident";
+  }
+
+  if (count <= 1) {
+    return "1 incident";
+  }
+
+  return `${count} incidents`;
 }
 
 function hasDetailedCommands(flow: FlowSummary): boolean {
@@ -153,16 +159,60 @@ function formatFlowActivity(flow: FlowSummary): string {
   return "—";
 }
 
-function incidentLabel(flow: FlowSummary): string {
-  if (!flow.hasIncident || flow.incidentCount <= 0) {
-    return "Aucun incident";
-  }
+function flowMatchesSearch(flow: FlowSummary, rawSearch: string) {
+  const q = normalize(rawSearch);
+  if (!q) return true;
 
-  if (flow.incidentCount === 1) {
-    return "1 incident";
-  }
+  const haystack = normalize(
+    [
+      flow.flowId,
+      flow.rootEventId,
+      flow.workspaceId,
+      flow.status,
+      flow.rootCapability,
+      flow.terminalCapability,
+      flow.readingMode || "",
+      flow.sourceRecordId || "",
+      flow.firstIncidentId || "",
+      incidentLabel(flow),
+      ...flow.commands.map((cmd) => cmd.capability || ""),
+    ].join(" ")
+  );
 
-  return `${flow.incidentCount} incidents`;
+  return haystack.includes(q);
+}
+
+function FlowActionButtons({
+  flow,
+  selected,
+  onSelect,
+}: {
+  flow: FlowSummary;
+  selected: boolean;
+  onSelect: (flow: FlowSummary) => void;
+}) {
+  return (
+    <div className="mt-4 flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={() => onSelect(flow)}
+        className={`inline-flex rounded-full px-4 py-2 text-sm font-medium transition ${
+          selected
+            ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+            : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
+        }`}
+      >
+        {selected ? "Flow actif" : "Sélectionner"}
+      </button>
+
+      <Link
+        href={`/flows/${safeDetailId(flow)}`}
+        className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+      >
+        Voir le détail
+      </Link>
+    </div>
+  );
 }
 
 export default function FlowsClient({
@@ -323,7 +373,7 @@ export default function FlowsClient({
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 space-y-6">
+    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
       <div className="space-y-2">
         <div className="text-xs uppercase tracking-[0.2em] text-white/40">
           Flows
@@ -568,7 +618,7 @@ export default function FlowsClient({
 
             <span
               className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${incidentTone(
-                selectedFlow.hasIncident
+                flowHasIncident(selectedFlow)
               )}`}
             >
               {incidentLabel(selectedFlow)}
@@ -589,15 +639,10 @@ export default function FlowsClient({
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {statCard(
-                  "Type de lecture",
-                  selectedFlow.readingMode === "registry-only"
-                    ? "Registry-only"
-                    : "Enriched"
-                )}
+                {statCard("Type de lecture", readingModeLabel(selectedFlow.readingMode))}
                 {statCard(
                   "Source / Root record",
-                  selectedFlow.sourceRecordId || "Non disponible"
+                  selectedFlow.sourceRecordId || selectedFlow.rootEventId || "Non disponible"
                 )}
                 {statCard("Workspace", selectedFlow.workspaceId || "production")}
                 {statCard("Incident lié", incidentLabel(selectedFlow))}
@@ -611,20 +656,20 @@ export default function FlowsClient({
                 <div className="grid gap-3 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-4">
                   <div>
                     Flow:{" "}
-                    <span className="text-zinc-200 break-all">
+                    <span className="break-all text-zinc-200">
                       {selectedFlow.flowId}
                     </span>
                   </div>
                   <div>
                     Root:{" "}
-                    <span className="text-zinc-200 break-all">
+                    <span className="break-all text-zinc-200">
                       {selectedFlow.rootEventId}
                     </span>
                   </div>
                   <div>
                     Workspace:{" "}
                     <span className="text-zinc-200">
-                      {selectedFlow.workspaceId}
+                      {selectedFlow.workspaceId || "production"}
                     </span>
                   </div>
                   <div>
@@ -649,8 +694,11 @@ export default function FlowsClient({
           ) : (
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {statCard("Root capability", selectedFlow.rootCapability)}
-                {statCard("Terminal capability", selectedFlow.terminalCapability)}
+                {statCard("Root capability", capabilityLabel(selectedFlow.rootCapability))}
+                {statCard(
+                  "Terminal capability",
+                  capabilityLabel(selectedFlow.terminalCapability)
+                )}
                 {statCard("Durée totale", formatDuration(selectedFlow.durationMs))}
                 {statCard("Incident lié", incidentLabel(selectedFlow))}
               </div>
@@ -663,20 +711,20 @@ export default function FlowsClient({
                 <div className="grid gap-3 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-4">
                   <div>
                     Flow:{" "}
-                    <span className="text-zinc-200 break-all">
+                    <span className="break-all text-zinc-200">
                       {selectedFlow.flowId}
                     </span>
                   </div>
                   <div>
                     Root:{" "}
-                    <span className="text-zinc-200 break-all">
+                    <span className="break-all text-zinc-200">
                       {selectedFlow.rootEventId}
                     </span>
                   </div>
                   <div>
                     Workspace:{" "}
                     <span className="text-zinc-200">
-                      {selectedFlow.workspaceId}
+                      {selectedFlow.workspaceId || "production"}
                     </span>
                   </div>
                   <div>
@@ -710,7 +758,7 @@ export default function FlowsClient({
         </div>
       )}
 
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-6">
+      <div className="space-y-6 rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="text-xs uppercase tracking-[0.2em] text-white/50">
           Flows récents
         </div>
@@ -755,29 +803,22 @@ export default function FlowsClient({
                         >
                           {flow.status.toUpperCase()}
                         </span>
+
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${incidentTone(
+                            flowHasIncident(flow)
+                          )}`}
+                        >
+                          {incidentLabel(flow)}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => selectFlow(flow)}
-                        className={`inline-flex rounded-full px-4 py-2 text-sm font-medium transition ${
-                          selected
-                            ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-                            : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
-                        }`}
-                      >
-                        {selected ? "Flow actif" : "Sélectionner"}
-                      </button>
-
-                      <Link
-                        href={`/flows/${safeDetailId(flow)}`}
-                        className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
-                      >
-                        Voir le détail
-                      </Link>
-                    </div>
+                    <FlowActionButtons
+                      flow={flow}
+                      selected={selected}
+                      onSelect={selectFlow}
+                    />
                   </div>
                 );
               })}
@@ -815,15 +856,17 @@ export default function FlowsClient({
                           {flow.flowId}
                         </div>
 
-                        <div className="mt-3 space-y-1 text-sm text-white/70">
+                        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-white/70 sm:grid-cols-2">
                           <div>
                             Lecture:{" "}
-                            <span className="text-zinc-200">Registry-only</span>
+                            <span className="text-zinc-200">
+                              {readingModeLabel(flow.readingMode)}
+                            </span>
                           </div>
                           <div className="break-all">
                             Source / Root record:{" "}
                             <span className="text-zinc-200">
-                              {flow.sourceRecordId || flow.rootEventId}
+                              {flow.sourceRecordId || flow.rootEventId || "Non disponible"}
                             </span>
                           </div>
                           <div>
@@ -831,6 +874,10 @@ export default function FlowsClient({
                             <span className="text-zinc-200">
                               {formatFlowActivity(flow)}
                             </span>
+                          </div>
+                          <div>
+                            Incident:{" "}
+                            <span className="text-zinc-200">{incidentLabel(flow)}</span>
                           </div>
                         </div>
                       </div>
@@ -851,29 +898,22 @@ export default function FlowsClient({
                         >
                           PARTIAL
                         </span>
+
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${incidentTone(
+                            flowHasIncident(flow)
+                          )}`}
+                        >
+                          {incidentLabel(flow)}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => selectFlow(flow)}
-                        className={`inline-flex rounded-full px-4 py-2 text-sm font-medium transition ${
-                          selected
-                            ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-                            : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
-                        }`}
-                      >
-                        {selected ? "Flow actif" : "Sélectionner"}
-                      </button>
-
-                      <Link
-                        href={`/flows/${safeDetailId(flow)}`}
-                        className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
-                      >
-                        Voir le détail
-                      </Link>
-                    </div>
+                    <FlowActionButtons
+                      flow={flow}
+                      selected={selected}
+                      onSelect={selectFlow}
+                    />
                   </div>
                 );
               })}
