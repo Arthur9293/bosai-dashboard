@@ -105,7 +105,7 @@ function statCard(label: string, value: string | number) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="text-sm text-zinc-400">{label}</div>
-      <div className="mt-2 break-all text-xl font-semibold text-white">
+      <div className="mt-2 break-words text-xl font-semibold text-white">
         {value}
       </div>
     </div>
@@ -157,6 +157,15 @@ function formatFlowActivity(flow: FlowSummary): string {
   }
 
   return "—";
+}
+
+function truncateMiddle(value?: string, start = 10, end = 8): string {
+  const clean = String(value || "").trim();
+
+  if (!clean) return "Non disponible";
+  if (clean.length <= start + end + 1) return clean;
+
+  return `${clean.slice(0, start)}…${clean.slice(-end)}`;
 }
 
 function flowMatchesSearch(flow: FlowSummary, rawSearch: string) {
@@ -211,6 +220,25 @@ function FlowActionButtons({
       >
         Voir le détail
       </Link>
+    </div>
+  );
+}
+
+function IdDisplayCard({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-black/10 px-3 py-2">
+        <div className="min-w-max font-mono text-sm text-zinc-200">
+          {value || "Non disponible"}
+        </div>
+      </div>
     </div>
   );
 }
@@ -408,7 +436,7 @@ export default function FlowsClient({
                   </span>
                 </div>
 
-                <div className="mt-4 break-all text-lg font-semibold text-white">
+                <div className="mt-4 break-words text-lg font-semibold leading-tight text-white">
                   {firstRunning.flowId}
                 </div>
 
@@ -443,7 +471,7 @@ export default function FlowsClient({
                   </span>
                 </div>
 
-                <div className="mt-4 break-all text-lg font-semibold text-white">
+                <div className="mt-4 break-words text-lg font-semibold leading-tight text-white">
                   {firstFailed.flowId}
                 </div>
 
@@ -478,7 +506,7 @@ export default function FlowsClient({
                   </span>
                 </div>
 
-                <div className="mt-4 break-all text-lg font-semibold text-white">
+                <div className="mt-4 break-words text-lg font-semibold leading-tight text-white">
                   {firstRetry.flowId}
                 </div>
 
@@ -640,10 +668,10 @@ export default function FlowsClient({
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {statCard("Type de lecture", readingModeLabel(selectedFlow.readingMode))}
-                {statCard(
-                  "Source / Root record",
-                  selectedFlow.sourceRecordId || selectedFlow.rootEventId || "Non disponible"
-                )}
+                <IdDisplayCard
+                  label="Source / Root record"
+                  value={selectedFlow.sourceRecordId || selectedFlow.rootEventId || "Non disponible"}
+                />
                 {statCard("Workspace", selectedFlow.workspaceId || "production")}
                 {statCard("Incident lié", incidentLabel(selectedFlow))}
               </div>
@@ -782,20 +810,20 @@ export default function FlowsClient({
                         : "border-white/10 bg-white/5"
                     }`}
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="break-all text-xl font-semibold text-white">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 sm:flex-1">
+                        <div className="break-words text-xl font-semibold leading-tight text-white">
                           {flow.flowId}
                         </div>
 
                         <div className="mt-3 space-y-1 text-sm text-white/70">
                           <div>Steps: {flow.steps}</div>
-                          <div className="break-all">Root: {flow.rootEventId}</div>
+                          <div className="break-words">Root: {flow.rootEventId}</div>
                           <div>Activité: {formatFlowActivity(flow)}</div>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 sm:justify-end">
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
                             flow.status
@@ -850,31 +878,38 @@ export default function FlowsClient({
                         : "border-white/10 bg-white/5"
                     }`}
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="break-all text-xl font-semibold text-white">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 sm:flex-1">
+                        <div className="break-words text-xl font-semibold leading-tight text-white">
                           {flow.flowId}
                         </div>
 
-                        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-white/70 sm:grid-cols-2">
+                        <div className="mt-3 space-y-2 text-sm text-white/70">
                           <div>
                             Lecture:{" "}
                             <span className="text-zinc-200">
                               {readingModeLabel(flow.readingMode)}
                             </span>
                           </div>
-                          <div className="break-all">
+
+                          <div>
                             Source / Root record:{" "}
-                            <span className="text-zinc-200">
-                              {flow.sourceRecordId || flow.rootEventId || "Non disponible"}
+                            <span className="font-mono text-zinc-200">
+                              {truncateMiddle(
+                                flow.sourceRecordId || flow.rootEventId || "Non disponible",
+                                10,
+                                8
+                              )}
                             </span>
                           </div>
+
                           <div>
                             Activité:{" "}
                             <span className="text-zinc-200">
                               {formatFlowActivity(flow)}
                             </span>
                           </div>
+
                           <div>
                             Incident:{" "}
                             <span className="text-zinc-200">{incidentLabel(flow)}</span>
@@ -882,7 +917,7 @@ export default function FlowsClient({
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 sm:justify-end">
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
                             flow.status
