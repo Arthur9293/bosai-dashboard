@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import {
+import { useCallback, useMemo } from "react";
+import ReactFlow, {
   Background,
   Controls,
+  Handle,
   MarkerType,
-  ReactFlow,
+  Position,
   type Edge,
   type Node,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+  type NodeProps,
+} from "reactflow";
+import "reactflow/dist/style.css";
 
-type FlowCommand = {
+type GraphCommand = {
   id: string;
   capability?: string;
   status?: string;
@@ -20,278 +22,236 @@ type FlowCommand = {
 };
 
 type Props = {
-  commands: FlowCommand[];
+  commands: GraphCommand[];
+  anchorPrefix?: string;
 };
 
-function statusColor(status?: string) {
-  const s = (status || "").toLowerCase();
+type FlowNodeData = {
+  label: string;
+  status: string;
+};
 
-  if (s === "done") return "#10b981";
-  if (s === "running") return "#38bdf8";
-  if (s === "queued") return "#f59e0b";
-  if (s === "retry") return "#a855f7";
-  if (["error", "failed", "dead"].includes(s)) return "#ef4444";
-
-  return "#64748b";
+function normalizeText(value?: string) {
+  return (value || "").trim();
 }
 
-function statusLabel(status?: string) {
-  return (status || "unknown").toUpperCase();
+function statusTone(status: string) {
+  const s = status.toLowerCase();
+
+  if (["done", "success", "resolved", "ok"].includes(s)) {
+    return "bg-emerald-500 text-white";
+  }
+
+  if (["retry"].includes(s)) {
+    return "bg-violet-500 text-white";
+  }
+
+  if (["running", "queued", "pending"].includes(s)) {
+    return "bg-sky-500 text-white";
+  }
+
+  if (["failed", "error", "dead"].includes(s)) {
+    return "bg-rose-500 text-white";
+  }
+
+  return "bg-zinc-700 text-zinc-100";
 }
 
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false);
+function FlowCommandNode({ data }: NodeProps<FlowNodeData>) {
+  const label = normalizeText(data.label) || "unknown_capability";
+  const status = normalizeText(data.status) || "unknown";
 
-  useEffect(() => {
-    const update = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
+  return (
+    <div className="min-w-[280px] cursor-pointer rounded-[28px] border border-cyan-400/80 bg-[#07142c] px-6 py-5 text-white shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!h-3 !w-3 !border-2 !border-white !bg-[#07142c]"
+      />
 
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
+      <div className="text-[12px] uppercase tracking-[0.22em] text-white/55">
+        {label.toUpperCase()}
+      </div>
 
-  return isMobile;
+      <div className="mt-2 text-[20px] font-semibold tracking-tight text-white">
+        {label}
+      </div>
+
+      <div
+        className={`mt-4 inline-flex rounded-full px-4 py-1.5 text-sm font-semibold ${statusTone(
+          status
+        )}`}
+      >
+        {status.toUpperCase()}
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!h-3 !w-3 !border-2 !border-white !bg-[#07142c]"
+      />
+    </div>
+  );
 }
 
-export default function FlowGraphClient({ commands }: Props) {
-  const safeCommands = Array.isArray(commands) ? commands : [];
-  const isMobile = useIsMobile();
+const nodeTypes = {
+  flowCommand: FlowCommandNode,
+};
+
+function buildDisplayOrder(commands: GraphCommand[]): GraphCommand[] {
+  if (commands.length <= 1) return commands;
+
+  const byId = new Map<string, GraphCommand>();
+  const childrenMap = new Map<string, GraphCommand[]>();
+
+  for (const cmd of commands) {
+    const id = String(cmd.id);
+    byId.set(id, cmd);
+    childrenMap.set(id, []);
+  }
+
+  const roots: GraphCommand[] = [];
+
+  for (const cmd of commands) {
+    const parentId = normalizeText(cmd.parent_command_id);
+
+    if (parentId && byId.has(parentId)) {
+      childrenMap.get(parentId)?.push(cmd);
+    } else {
+      roots.push(cmd);
+    }
+  }
+
+  const ordered: GraphCommand[] = [];
+  const visited = new Set<string>();
+
+  function walk(cmd: GraphCommand) {
+    const id = String(cmd.id);
+    if (visited.has(id)) return;
+
+    visited.add(id);
+    ordered.push(cmd);
+
+    const children = childrenMap.get(id) ?? [];
+    for (const child of children) {
+      walk(child);
+    }
+  }
+
+  for (const root of roots) {
+    walk(root);
+  }
+
+  for (const cmd of commands) {
+    walk(cmd);
+  }
+
+  return ordered;
+}
+
+export default function FlowGraphClient({
+  commands,
+  anchorPrefix = "cmd-",
+}: Props) {
+  const orderedCommands = useMemo(() => buildDisplayOrder(commands), [commands]);
 
   const { nodes, edges } = useMemo(() => {
-    const commandMap = new Map<string, FlowCommand>();
-    const childrenMap = new Map<string, FlowCommand[]>();
-    const orderMap = new Map<string, number>();
-
-    safeCommands.forEach((cmd, index) => {
-      const id = String(cmd.id);
-      commandMap.set(id, cmd);
-      childrenMap.set(id, []);
-      orderMap.set(id, index);
-    });
-
-    const roots: FlowCommand[] = [];
-
-    safeCommands.forEach((cmd) => {
-      const id = String(cmd.id);
-      const parentId = cmd.parent_command_id
-        ? String(cmd.parent_command_id)
-        : "";
-
-      if (parentId && commandMap.has(parentId)) {
-        childrenMap.get(parentId)?.push(cmd);
-      } else {
-        roots.push(cmd);
-      }
-    });
-
-    childrenMap.forEach((children) => {
-      children.sort((a, b) => {
-        return (
-          (orderMap.get(String(a.id)) ?? 0) - (orderMap.get(String(b.id)) ?? 0)
-        );
-      });
-    });
-
-    if (roots.length === 0 && safeCommands.length > 0) {
-      roots.push(safeCommands[0]);
-    }
-
-    roots.sort((a, b) => {
-      return (
-        (orderMap.get(String(a.id)) ?? 0) - (orderMap.get(String(b.id)) ?? 0)
-      );
-    });
-
-    const layoutMeta = new Map<string, { depth: number; lane: number }>();
-    const placed = new Set<string>();
-    const active = new Set<string>();
-    let laneCursor = 0;
-
-    const placeNode = (id: string, depth: number): number => {
-      if (layoutMeta.has(id)) {
-        return layoutMeta.get(id)!.lane;
-      }
-
-      if (active.has(id)) {
-        const fallbackLane = laneCursor++;
-        layoutMeta.set(id, { depth, lane: fallbackLane });
-        return fallbackLane;
-      }
-
-      active.add(id);
-
-      const children = (childrenMap.get(id) ?? []).filter(
-        (child) => String(child.id) !== id
-      );
-
-      let lane: number;
-
-      if (children.length === 0) {
-        lane = laneCursor++;
-      } else {
-        const childLanes = children.map((child) =>
-          placeNode(String(child.id), depth + 1)
-        );
-        lane =
-          childLanes.reduce((sum, value) => sum + value, 0) / childLanes.length;
-      }
-
-      layoutMeta.set(id, { depth, lane });
-      active.delete(id);
-      placed.add(id);
-
-      return lane;
-    };
-
-    roots.forEach((root) => {
-      placeNode(String(root.id), 0);
-    });
-
-    safeCommands.forEach((cmd) => {
-      const id = String(cmd.id);
-      if (!placed.has(id)) {
-        placeNode(id, 0);
-      }
-    });
-
-    const depthGap = isMobile ? 190 : 270;
-    const laneGap = isMobile ? 220 : 180;
-
-    const builtNodes: Node[] = safeCommands.map((cmd) => {
-      const id = String(cmd.id);
-      const meta = layoutMeta.get(id) ?? { depth: 0, lane: 0 };
-
-      const position = isMobile
-        ? {
-            x: 40 + meta.lane * laneGap,
-            y: 40 + meta.depth * depthGap,
-          }
-        : {
-            x: 50 + meta.depth * depthGap,
-            y: 60 + meta.lane * laneGap,
-          };
+    const builtNodes: Node<FlowNodeData>[] = orderedCommands.map((cmd, index) => {
+      const label = normalizeText(cmd.capability) || "unknown_capability";
+      const status = normalizeText(cmd.status) || "unknown";
 
       return {
-        id,
-        position,
+        id: String(cmd.id),
+        type: "flowCommand",
+        position: { x: 0, y: index * 250 },
+        data: {
+          label,
+          status,
+        },
         draggable: false,
         selectable: true,
-        data: {
-          label: (
-            <div
-              style={{
-                minWidth: 160,
-                maxWidth: 180,
-                color: "white",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 10,
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  opacity: 0.7,
-                  marginBottom: 6,
-                  wordBreak: "break-word",
-                }}
-              >
-                {cmd.capability || "unknown"}
-              </div>
-
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 700,
-                  marginBottom: 10,
-                  wordBreak: "break-word",
-                  lineHeight: 1.2,
-                }}
-              >
-                {cmd.capability || "Unknown capability"}
-              </div>
-
-              <div
-                style={{
-                  display: "inline-block",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: "4px 8px",
-                  borderRadius: 999,
-                  background: statusColor(cmd.status),
-                  color: "white",
-                }}
-              >
-                {statusLabel(cmd.status)}
-              </div>
-            </div>
-          ),
-        },
-        style: {
-          background: "#0f172a",
-          border: `1px solid ${statusColor(cmd.status)}`,
-          borderRadius: 16,
-          padding: 12,
-          boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-        },
       };
     });
 
-    const builtEdges: Edge[] = safeCommands
-      .filter((cmd) => cmd.parent_command_id && commandMap.has(String(cmd.parent_command_id)))
+    const builtEdges: Edge[] = orderedCommands
+      .filter((cmd) => normalizeText(cmd.parent_command_id))
       .map((cmd) => ({
-        id: `e-${cmd.parent_command_id}-${cmd.id}`,
+        id: `edge-${cmd.parent_command_id}-${cmd.id}`,
         source: String(cmd.parent_command_id),
         target: String(cmd.id),
-        animated: true,
+        type: "smoothstep",
+        animated: false,
         markerEnd: {
           type: MarkerType.ArrowClosed,
         },
         style: {
-          stroke: "#94a3b8",
           strokeWidth: 2,
-          strokeDasharray: "6 6",
+          strokeDasharray: "8 8",
+          stroke: "rgba(203, 213, 225, 0.85)",
         },
       }));
 
     return { nodes: builtNodes, edges: builtEdges };
-  }, [safeCommands, isMobile]);
+  }, [orderedCommands]);
+
+  const jumpToTimelineCard = useCallback(
+    (commandId: string) => {
+      const target = document.getElementById(`${anchorPrefix}${commandId}`);
+      if (!target) return;
+
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+
+      try {
+        target.animate(
+          [
+            { boxShadow: "0 0 0 0 rgba(16,185,129,0)" },
+            { boxShadow: "0 0 0 4px rgba(16,185,129,0.35)" },
+            { boxShadow: "0 0 0 0 rgba(16,185,129,0)" },
+          ],
+          {
+            duration: 1400,
+            easing: "ease-out",
+          }
+        );
+      } catch {
+        // no-op
+      }
+    },
+    [anchorPrefix]
+  );
+
+  if (!nodes.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
+        Graphe indisponible pour ce flow pour le moment.
+      </div>
+    );
+  }
 
   return (
-    <div
-      style={{
-        width: "100%",
-        height: isMobile ? "72vh" : "min(72vh, 620px)",
-        minHeight: isMobile ? 560 : 420,
-        borderRadius: 20,
-        overflow: "hidden",
-        border: "1px solid rgba(255,255,255,0.08)",
-        background:
-          "radial-gradient(circle at top left, rgba(29,78,216,0.18), transparent 28%), #020617",
-      }}
-    >
+    <div className="h-[640px] w-full overflow-hidden rounded-[28px] border border-white/10 bg-[#03102a]">
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{
-          padding: isMobile ? 0.35 : 0.2,
-          minZoom: isMobile ? 0.35 : 0.5,
-          maxZoom: 1.15,
-        }}
-        minZoom={0.25}
-        maxZoom={1.5}
+        fitViewOptions={{ padding: 0.28 }}
         proOptions={{ hideAttribution: true }}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable
+        zoomOnScroll
+        zoomOnPinch
+        panOnDrag
+        minZoom={0.25}
+        maxZoom={1.6}
+        onNodeClick={(_, node) => jumpToTimelineCard(node.id)}
       >
-        <Controls
-          showInteractive={false}
-          style={{
-            background: "#020617",
-            border: "1px solid rgba(255,255,255,0.08)",
-          }}
-        />
-        <Background gap={20} size={1} color="#1e293b" />
+        <Background gap={28} size={1} color="rgba(148,163,184,0.18)" />
+        <Controls showInteractive={false} />
       </ReactFlow>
     </div>
   );
