@@ -27,6 +27,7 @@ type FlowSummary = {
   durationMs: number;
   lastActivityTs: number;
   hasIncident: boolean;
+  incidentCount: number;
   commands: FlowGraphCommand[];
 };
 
@@ -506,6 +507,18 @@ export default function FlowsClient({
             <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
               {selectedFlow.steps} steps
             </span>
+
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+                selectedFlow.hasIncident
+                  ? "bg-amber-500/15 text-amber-300 border border-amber-500/20"
+                  : "bg-zinc-800 text-zinc-300 border border-white/10"
+              }`}
+            >
+              {selectedFlow.hasIncident
+                ? `Incident ${selectedFlow.incidentCount}`
+                : "Aucun incident"}
+            </span>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -514,7 +527,7 @@ export default function FlowsClient({
             {statCard("Durée totale", formatDuration(selectedFlow.durationMs))}
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="text-sm text-zinc-400">Incident lié</div>
-              <div className="mt-3">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <span
                   className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${booleanTone(
                     selectedFlow.hasIncident
@@ -522,6 +535,13 @@ export default function FlowsClient({
                 >
                   {selectedFlow.hasIncident ? "OUI" : "NON"}
                 </span>
+
+                {selectedFlow.hasIncident ? (
+                  <span className="inline-flex rounded-full px-3 py-1 text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/20">
+                    {selectedFlow.incidentCount} incident
+                    {selectedFlow.incidentCount > 1 ? "s" : ""}
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
@@ -605,6 +625,14 @@ export default function FlowsClient({
                         <div className="break-all">Root: {flow.rootEventId}</div>
                         <div>Activité: {formatDate(flow.lastActivityTs)}</div>
                       </div>
+
+                      {flow.hasIncident ? (
+                        <div className="mt-4">
+                          <span className="inline-flex rounded-full px-3 py-1 text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/20">
+                            Incident {flow.incidentCount}
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
 
                     <span
