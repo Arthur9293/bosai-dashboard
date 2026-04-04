@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import FlowGraphClient from "./FlowGraphClient";
 
-type FlowCommand = {
+type FlowGraphCommand = {
   id: string;
   capability?: string;
   status?: string;
@@ -12,52 +12,25 @@ type FlowCommand = {
   flow_id?: string;
 };
 
-type FlowGroup = {
+type FlowSummary = {
   key: string;
   flowId: string;
   rootEventId: string;
-  commands: FlowCommand[];
-  lastActivityAt: number;
+  workspaceId: string;
+  status: "success" | "running" | "failed" | "unknown";
+  steps: number;
+  rootCapability: string;
+  terminalCapability: string;
+  durationMs: number;
+  lastActivityTs: number;
+  hasIncident: boolean;
+  commands: FlowGraphCommand[];
 };
 
 type Props = {
-  groups: FlowGroup[];
+  flows: FlowSummary[];
+  initialSelectedKey?: string;
 };
-
-function getStatusKind(
-  status?: string
-): "done" | "running" | "failed" | "other" {
-  const s = (status || "").toLowerCase();
-
-  if (["done", "success", "resolved", "ok"].includes(s)) return "done";
-  if (["running", "queued", "pending", "retry"].includes(s)) return "running";
-  if (["error", "failed", "dead"].includes(s)) return "failed";
-
-  return "other";
-}
-
-function computeFlowStatus(
-  commands: FlowCommand[]
-): "success" | "running" | "failed" | "unknown" {
-  const kinds = commands.map((cmd) => getStatusKind(cmd.status));
-
-  if (kinds.includes("failed")) return "failed";
-  if (kinds.includes("running")) return "running";
-  if (kinds.length > 0 && kinds.every((k) => k === "done" || k === "other")) {
-    return "success";
-  }
-
-  return "unknown";
-}
-
-function formatDate(value?: number): string {
-  if (!value || Number.isNaN(value)) return "—";
-
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
 
 function badgeTone(status: string) {
   const s = status.toLowerCase();
@@ -77,6 +50,38 @@ function badgeTone(status: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function booleanTone(value: boolean) {
+  return value
+    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
+    : "bg-zinc-800 text-zinc-300 border border-white/10";
+}
+
+function formatDate(ts?: number): string {
+  if (!ts || Number.isNaN(ts)) return "—";
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(ts));
+}
+
+function formatDuration(ms?: number): string {
+  if (!ms || ms <= 0 || Number.isNaN(ms)) return "—";
+
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function safeDetailId(flow: FlowSummary): string {
+  return encodeURIComponent(flow.flowId || flow.rootEventId || flow.key);
+}
+
 function statCard(label: string, value: string | number) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -88,163 +93,184 @@ function statCard(label: string, value: string | number) {
   );
 }
 
-export default function FlowsClient({ groups }: Props) {
-  const initialKey =
-    groups.find((group) => group.commands.length >= 2)?.key ?? groups[0]?.key;
+export default function FlowsClient({
+  flows,
+  initialSelectedKey = "",
+}: Props) {
+  const [selectedKey, setSelectedKey] = useState(initialSelectedKey);
 
-  const [selectedKey, setSelectedKey] = useState(initialKey);
-
-  const primaryFlow = useMemo(
-    () => groups.find((group) => group.key === selectedKey) ?? groups[0],
-    [groups, selectedKey]
-  );
-
-  const commands = primaryFlow?.commands ?? [];
-  const flowStatus = computeFlowStatus(commands);
-
-  const doneCount = commands.filter(
-    (cmd) => getStatusKind(cmd.status) === "done"
-  ).length;
-  const runningCount = commands.filter(
-    (cmd) => getStatusKind(cmd.status) === "running"
-  ).length;
-  const failedCount = commands.filter(
-    (cmd) => getStatusKind(cmd.status) === "failed"
-  ).length;
+  const selectedFlow = useMemo(() => {
+    return (
+      flows.find((flow) => flow.key === selectedKey) ||
+      flows[0] ||
+      null
+    );
+  }, [flows, selectedKey]);
 
   return (
-    <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 space-y-4">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          BOSAI Flow
+    <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 space-y-6">
+      <div className="space-y-2">
+        <div className="text-xs uppercase tracking-[0.2em] text-white/40">
+          Flows
+        </div>
+        <h1 className="text-4xl font-semibold tracking-tight text-white">
+          BOSAI Flows
         </h1>
-        <p className="text-sm text-zinc-400">
-          Visualisation d’un flow BOSAI réel et récent.
+        <p className="text-white/55">
+          Supervision des flows récents avec lecture causale et aperçu direct.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
-            flowStatus
-          )}`}
-        >
-          {flowStatus.toUpperCase()}
-        </span>
+      {selectedFlow ? (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
+                selectedFlow.status
+              )}`}
+            >
+              {selectedFlow.status.toUpperCase()}
+            </span>
 
-        <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
-          {commands.length} steps
-        </span>
-      </div>
+            <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
+              {selectedFlow.steps} steps
+            </span>
+          </div>
 
-      <div className="space-y-2">
-        <div className="text-sm font-medium text-zinc-300">Flows récents</div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {statCard("Root capability", selectedFlow.rootCapability)}
+            {statCard("Terminal capability", selectedFlow.terminalCapability)}
+            {statCard("Durée totale", formatDuration(selectedFlow.durationMs))}
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-zinc-400">Incident lié</div>
+              <div className="mt-3">
+                <span
+                  className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${booleanTone(
+                    selectedFlow.hasIncident
+                  )}`}
+                >
+                  {selectedFlow.hasIncident ? "OUI" : "NON"}
+                </span>
+              </div>
+            </div>
+          </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {groups.map((flow) => {
-            const status = computeFlowStatus(flow.commands);
-            const isActive = flow.key === primaryFlow.key;
-            const hasDetail = Boolean(flow.flowId);
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
+              Flow actif
+            </div>
 
-            return (
-              <div
-                key={flow.key}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedKey(flow.key)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setSelectedKey(flow.key);
-                  }
-                }}
-                className={`rounded-2xl p-4 border text-left transition cursor-pointer ${
-                  isActive
-                    ? "border-emerald-500/30 bg-emerald-500/10"
-                    : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.07]"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium text-white truncate">
-                    {flow.flowId || flow.rootEventId || "Flow sans ID"}
-                  </div>
+            <div className="grid gap-3 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-4">
+              <div>
+                Flow:{" "}
+                <span className="text-zinc-200 break-all">
+                  {selectedFlow.flowId}
+                </span>
+              </div>
+              <div>
+                Root:{" "}
+                <span className="text-zinc-200 break-all">
+                  {selectedFlow.rootEventId}
+                </span>
+              </div>
+              <div>
+                Workspace:{" "}
+                <span className="text-zinc-200">{selectedFlow.workspaceId}</span>
+              </div>
+              <div>
+                Activité:{" "}
+                <span className="text-zinc-200">
+                  {formatDate(selectedFlow.lastActivityTs)}
+                </span>
+              </div>
+            </div>
+          </div>
 
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${badgeTone(
-                      status
-                    )}`}
-                  >
-                    {status.toUpperCase()}
-                  </span>
-                </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
+              Aperçu graphique
+            </div>
 
-                <div className="mt-3 space-y-1 text-xs text-zinc-400">
-                  <div>
-                    Steps:{" "}
-                    <span className="text-zinc-200">{flow.commands.length}</span>
-                  </div>
-                  <div>
-                    Root:{" "}
-                    <span className="text-zinc-200 break-all">
-                      {flow.rootEventId || "—"}
+            <FlowGraphClient commands={selectedFlow.commands} />
+          </div>
+        </>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
+          Aucun flow exploitable trouvé.
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
+          Flows récents
+        </div>
+
+        <div className="space-y-4">
+          {flows.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
+              Aucun flow récent.
+            </div>
+          ) : (
+            flows.map((flow) => {
+              const selected = selectedFlow?.key === flow.key;
+
+              return (
+                <div
+                  key={flow.key}
+                  className={`rounded-2xl border p-4 transition ${
+                    selected
+                      ? "border-emerald-500/30 bg-emerald-500/10"
+                      : "border-white/10 bg-white/5"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="break-all text-xl font-semibold text-white">
+                        {flow.flowId}
+                      </div>
+
+                      <div className="mt-3 space-y-1 text-sm text-white/70">
+                        <div>Steps: {flow.steps}</div>
+                        <div className="break-all">Root: {flow.rootEventId}</div>
+                        <div>Activité: {formatDate(flow.lastActivityTs)}</div>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
+                        flow.status
+                      )}`}
+                    >
+                      {flow.status.toUpperCase()}
                     </span>
                   </div>
-                  <div>
-                    Activité:{" "}
-                    <span className="text-zinc-200">
-                      {formatDate(flow.lastActivityAt)}
-                    </span>
-                  </div>
-                </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedKey(flow.key);
-                    }}
-                    className={`inline-flex rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                      isActive
-                        ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-                        : "border border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
-                    }`}
-                  >
-                    {isActive ? "Flow actif" : "Sélectionner"}
-                  </button>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedKey(flow.key)}
+                      className={`inline-flex rounded-full px-4 py-2 text-sm font-medium transition ${
+                        selected
+                          ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                          : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
+                      }`}
+                    >
+                      {selected ? "Flow actif" : "Sélectionner"}
+                    </button>
 
-                  {hasDetail ? (
                     <Link
-                      href={`/flows/${encodeURIComponent(flow.flowId)}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-200 transition hover:bg-white/10"
+                      href={`/flows/${safeDetailId(flow)}`}
+                      className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
                     >
                       Voir le détail
                     </Link>
-                  ) : null}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {statCard("Flow ID", primaryFlow?.flowId || "—")}
-        {statCard("Root Event", primaryFlow?.rootEventId || "—")}
-        {statCard("Done", doneCount)}
-        {statCard("Running/Queued", runningCount)}
-        {statCard("Failed", failedCount)}
-      </div>
-
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-zinc-400">
-        Dernière activité :{" "}
-        <span className="text-zinc-200">
-          {formatDate(primaryFlow?.lastActivityAt)}
-        </span>
-      </div>
-
-      <FlowGraphClient commands={commands} />
     </div>
   );
 }
