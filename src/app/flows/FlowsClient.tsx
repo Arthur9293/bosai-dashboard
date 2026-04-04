@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import FlowGraphClient from "./FlowGraphClient";
 
@@ -143,13 +144,21 @@ export default function FlowsClient({ groups }: Props) {
           {groups.map((flow) => {
             const status = computeFlowStatus(flow.commands);
             const isActive = flow.key === primaryFlow.key;
+            const hasDetail = Boolean(flow.flowId);
 
             return (
-              <button
+              <div
                 key={flow.key}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => setSelectedKey(flow.key)}
-                className={`rounded-2xl p-4 border text-left transition ${
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedKey(flow.key);
+                  }
+                }}
+                className={`rounded-2xl p-4 border text-left transition cursor-pointer ${
                   isActive
                     ? "border-emerald-500/30 bg-emerald-500/10"
                     : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.07]"
@@ -187,7 +196,34 @@ export default function FlowsClient({ groups }: Props) {
                     </span>
                   </div>
                 </div>
-              </button>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedKey(flow.key);
+                    }}
+                    className={`inline-flex rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                      isActive
+                        ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                        : "border border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                    }`}
+                  >
+                    {isActive ? "Flow actif" : "Sélectionner"}
+                  </button>
+
+                  {hasDetail ? (
+                    <Link
+                      href={`/flows/${encodeURIComponent(flow.flowId)}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-200 transition hover:bg-white/10"
+                    >
+                      Voir le détail
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
             );
           })}
         </div>
