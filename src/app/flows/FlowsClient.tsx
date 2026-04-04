@@ -108,7 +108,7 @@ function statCard(label: string, value: string | number) {
   );
 }
 
-function normalize(text: string): string {
+function normalize(text: string) {
   return text.toLowerCase().trim();
 }
 
@@ -156,13 +156,19 @@ function partialActivityLabel(flow: FlowSummary) {
   return "Registre uniquement";
 }
 
+function compactRecordId(value: string, head = 8, tail = 6) {
+  if (!value) return "—";
+  if (value.length <= head + tail + 3) return value;
+  return `${value.slice(0, head)}...${value.slice(-tail)}`;
+}
+
 export default function FlowsClient({
   flows,
   initialSelectedKey = "",
   initialFilter = "all",
 }: Props) {
   const [selectedKey, setSelectedKey] = useState(initialSelectedKey);
-  const [filter, setFilter] = useState(initialFilter);
+  const [filter, setFilter] = useState<FlowFilter>(initialFilter);
   const [search, setSearch] = useState("");
 
   const activePreviewRef = useRef<HTMLDivElement | null>(null);
@@ -335,25 +341,42 @@ export default function FlowsClient({
               {flow.flowId}
             </div>
 
-            <div className="mt-3 space-y-1 text-sm text-white/70">
-              {hasExecution ? (
+            {hasExecution ? (
+              <div className="mt-3 space-y-1 text-sm text-white/70">
                 <div>Steps: {flow.steps}</div>
-              ) : (
-                <div>Lecture: Registry-only</div>
-              )}
-
-              <div className="break-all">
-                {hasExecution ? "Root: " : "Source / Root record: "}
-                {flow.rootEventId}
+                <div className="break-all">Root: {flow.rootEventId}</div>
+                <div>Activité: {formatDate(flow.lastActivityTs)}</div>
               </div>
+            ) : (
+              <div className="mt-3 grid gap-2 text-sm text-white/70">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-zinc-400">Lecture</span>
+                  <span className="text-zinc-200">Registry-only</span>
+                </div>
 
-              <div>
-                Activité:{" "}
-                {hasExecution
-                  ? formatDate(flow.lastActivityTs)
-                  : partialActivityLabel(flow)}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-zinc-400">Source</span>
+                  <span
+                    className="font-mono text-zinc-200 break-all"
+                    title={flow.rootEventId}
+                  >
+                    {compactRecordId(flow.rootEventId)}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-zinc-400">Workspace</span>
+                  <span className="text-zinc-200">{flow.workspaceId}</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-zinc-400">Activité</span>
+                  <span className="text-zinc-200">
+                    {partialActivityLabel(flow)}
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-2">
