@@ -33,6 +33,7 @@ type FlowSummary = {
 type Props = {
   flows: FlowSummary[];
   initialSelectedKey?: string;
+  initialFilter?: FlowFilter;
 };
 
 function badgeTone(status: string) {
@@ -103,9 +104,10 @@ function statCard(label: string, value: string | number) {
 export default function FlowsClient({
   flows,
   initialSelectedKey = "",
+  initialFilter = "all",
 }: Props) {
   const [selectedKey, setSelectedKey] = useState(initialSelectedKey);
-  const [filter, setFilter] = useState<FlowFilter>("all");
+  const [filter, setFilter] = useState<FlowFilter>(initialFilter);
 
   const counts = useMemo(() => {
     return {
@@ -118,20 +120,39 @@ export default function FlowsClient({
     };
   }, [flows]);
 
+  const firstRunning = useMemo(
+    () => flows.find((flow) => flow.status === "running") || null,
+    [flows]
+  );
+  const firstFailed = useMemo(
+    () => flows.find((flow) => flow.status === "failed") || null,
+    [flows]
+  );
+  const firstRetry = useMemo(
+    () => flows.find((flow) => flow.status === "retry") || null,
+    [flows]
+  );
+
   const filteredFlows = useMemo(() => {
     if (filter === "all") return flows;
     return flows.filter((flow) => flow.status === filter);
   }, [flows, filter]);
 
   const selectedFlow = useMemo(() => {
+    if (filter === "all") {
+      return (
+        flows.find((flow) => flow.key === selectedKey) ||
+        flows[0] ||
+        null
+      );
+    }
+
     return (
       filteredFlows.find((flow) => flow.key === selectedKey) ||
       filteredFlows[0] ||
-      flows.find((flow) => flow.key === selectedKey) ||
-      flows[0] ||
       null
     );
-  }, [flows, filteredFlows, selectedKey]);
+  }, [flows, filteredFlows, selectedKey, filter]);
 
   const filterTabs: Array<{ key: FlowFilter; label: string; count: number }> = [
     { key: "all", label: "All", count: counts.all },
@@ -140,6 +161,23 @@ export default function FlowsClient({
     { key: "retry", label: "Retry", count: counts.retry },
     { key: "success", label: "Success", count: counts.success },
   ];
+
+  function focusFirst(status: FlowStatus) {
+    const first =
+      status === "running"
+        ? firstRunning
+        : status === "failed"
+        ? firstFailed
+        : status === "retry"
+        ? firstRetry
+        : flows.find((flow) => flow.status === status) || null;
+
+    setFilter(status);
+
+    if (first) {
+      setSelectedKey(first.key);
+    }
+  }
 
   return (
     <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 space-y-6">
@@ -154,6 +192,115 @@ export default function FlowsClient({
           Supervision des flows récents avec lecture causale et aperçu direct.
         </p>
       </div>
+
+      {(firstRunning || firstFailed || firstRetry) && (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
+            Needs attention
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {firstRunning ? (
+              <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
+                      "running"
+                    )}`}
+                  >
+                    RUNNING
+                  </span>
+                  <span className="text-sm text-sky-200">{counts.running}</span>
+                </div>
+
+                <div className="mt-4 break-all text-lg font-semibold text-white">
+                  {firstRunning.flowId}
+                </div>
+
+                <div className="mt-2 text-sm text-white/70">
+                  Activité: {formatDate(firstRunning.lastActivityTs)}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => focusFirst("running")}
+                    className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-200 transition hover:bg-sky-500/20"
+                  >
+                    Ouvrir le premier running
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {firstFailed ? (
+              <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
+                      "failed"
+                    )}`}
+                  >
+                    FAILED
+                  </span>
+                  <span className="text-sm text-rose-200">{counts.failed}</span>
+                </div>
+
+                <div className="mt-4 break-all text-lg font-semibold text-white">
+                  {firstFailed.flowId}
+                </div>
+
+                <div className="mt-2 text-sm text-white/70">
+                  Activité: {formatDate(firstFailed.lastActivityTs)}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => focusFirst("failed")}
+                    className="inline-flex rounded-full border border-rose-500/30 bg-rose-500/15 px-4 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/20"
+                  >
+                    Ouvrir le premier failed
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {firstRetry ? (
+              <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
+                      "retry"
+                    )}`}
+                  >
+                    RETRY
+                  </span>
+                  <span className="text-sm text-violet-200">{counts.retry}</span>
+                </div>
+
+                <div className="mt-4 break-all text-lg font-semibold text-white">
+                  {firstRetry.flowId}
+                </div>
+
+                <div className="mt-2 text-sm text-white/70">
+                  Activité: {formatDate(firstRetry.lastActivityTs)}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => focusFirst("retry")}
+                    className="inline-flex rounded-full border border-violet-500/30 bg-violet-500/15 px-4 py-2 text-sm font-medium text-violet-200 transition hover:bg-violet-500/20"
+                  >
+                    Ouvrir le premier retry
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {filterTabs.map((tab) => {
