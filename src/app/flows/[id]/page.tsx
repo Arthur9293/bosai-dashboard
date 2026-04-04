@@ -48,14 +48,6 @@ function text(value: unknown): string {
   return "";
 }
 
-function firstText(...values: unknown[]): string {
-  for (const value of values) {
-    const clean = text(value);
-    if (clean) return clean;
-  }
-  return "";
-}
-
 function toTs(value?: string | number | null): number {
   if (value === null || value === undefined || value === "") return 0;
   const ts = new Date(value).getTime();
@@ -98,7 +90,10 @@ function computeFlowStatus(commands: CommandItem[]): FlowStatus {
   if (kinds.includes("failed")) return "failed";
   if (kinds.includes("retry")) return "retry";
 
-  if (kinds.length > 0 && kinds.every((kind) => kind === "done" || kind === "other")) {
+  if (
+    kinds.length > 0 &&
+    kinds.every((kind) => kind === "done" || kind === "other")
+  ) {
     return "success";
   }
 
@@ -211,20 +206,94 @@ function getFlowGroupKey(cmd: CommandItem): string {
   return "";
 }
 
+type IncidentMatchInput = {
+  flowId?: string;
+  rootEventId?: string;
+  sourceRecordId?: string;
+  commands?: CommandItem[];
+};
+
+function recordText(obj: unknown, keys: string[]): string {
+  const rec =
+    obj && typeof obj === "object" ? (obj as Record<string, unknown>) : {};
+
+  for (const key of keys) {
+    const clean = text(rec[key]);
+    if (clean) return clean;
+  }
+
+  return "";
+}
+
+function uniqueTexts(values: string[]): string[] {
+  return Array.from(new Set(values.map((v) => text(v)).filter(Boolean)));
+}
+
+function getCommandIncidentKeys(cmd: CommandItem): string[] {
+  return uniqueTexts([
+    String(cmd.id ?? ""),
+    text(cmd.flow_id),
+    text(cmd.root_event_id),
+    recordText(cmd, [
+      "linked_command",
+      "linkedCommand",
+      "command_id",
+      "commandId",
+      "Command_ID",
+      "Linked_Command",
+    ]),
+    recordText(cmd, [
+      "linked_run",
+      "linkedRun",
+      "run_record_id",
+      "runRecordId",
+      "run_id",
+      "runId",
+      "Run_Record_ID",
+      "Linked_Run",
+    ]),
+  ]);
+}
+
+function getIncidentCandidates(incident: IncidentItem): string[] {
+  const fields = (
+    (incident as Record<string, unknown>).fields ?? {}
+  ) as Record<string, unknown>;
+
+  const pick = (...keys: string[]) =>
+    uniqueTexts([recordText(incident, keys), recordText(fields, keys)]);
+
+  return uniqueTexts([
+    ...pick("id"),
+    ...pick("flow_id", "flowId", "Flow_ID"),
+    ...pick("root_event_id", "rootEventId", "Root_Event_ID"),
+    ...pick("linked_command", "linkedCommand", "Linked_Command"),
+    ...pick("command_id", "commandId", "Command_ID"),
+    ...pick("linked_run", "linkedRun", "Linked_Run"),
+    ...pick("run_record_id", "runRecordId", "Run_Record_ID"),
+    ...pick("run_id", "runId", "Run_ID"),
+    ...pick("name", "Name"),
+  ]);
+}
+
 function matchIncidents(
   incidents: IncidentItem[],
-  flowId: string,
-  rootEventId: string
+  input: IncidentMatchInput
 ): IncidentItem[] {
-  return incidents.filter((incident) => {
-    const incidentFlowId = text(incident.flow_id);
-    const incidentRootEventId = text(incident.root_event_id);
+  const lookup = new Set(
+    uniqueTexts([
+      input.flowId || "",
+      input.rootEventId || "",
+      input.sourceRecordId || "",
+      ...((input.commands ?? []).flatMap(getCommandIncidentKeys)),
+    ])
+  );
 
-    return (
-      (flowId && incidentFlowId === flowId) ||
-      (rootEventId && incidentRootEventId === rootEventId)
-    );
-  });
+  if (lookup.size === 0) return [];
+
+  return incidents.filter((incident) =>
+    getIncidentCandidates(incident).some((candidate) => lookup.has(candidate))
+  );
 }
 
 function buildEnrichedFlowSummaries(
@@ -266,7 +335,11 @@ function buildEnrichedFlowSummaries(
         ? Math.max(0, lastActivityTs - earliestStartTs)
         : 0;
 
-    const linkedIncidents = matchIncidents(incidents, flowId, rootEventId);
+    const linkedIncidents = matchIncidents(incidents, {
+      flowId,
+      rootEventId,
+      commands: ordered,
+    });
 
     summaries.push({
       key,
@@ -296,15 +369,11 @@ function buildEnrichedFlowSummaries(
 function computeRegistryStatus(flow: FlowDetail): FlowStatus {
   const stats = flow.stats || {};
 
-  const running =
-    Number(stats.running || 0) + Number(stats.queued || 0) > 0;
+  const running = Number(stats.running || 0) + Number(stats.queued || 0) > 0;
   const failed = Number(stats.error || 0) + Number(stats.dead || 0) > 0;
   const retry = Number(stats.retry || 0) > 0;
   const success =
-    Number(stats.done || 0) > 0 &&
-    !running &&
-    !failed &&
-    !retry;
+    Number(stats.done || 0) > 0 && !running && !failed && !retry;
 
   if (running) return "running";
   if (failed) return "failed";
@@ -330,21 +399,25 @@ function buildRegistryOnlyFlowSummaries(
 
   for (const flow of registryFlows) {
     const sourceRecordId = text(flow.id);
-    const flowId = text(flow.flow_id) || sourceRecordId || text(flow.root_event_id);
+    const flowId =
+      text(flow.flow_id) || sourceRecordId || text(flow.root_event_id);
     const rootEventId =
       text(flow.root_event_id) || sourceRecordId || flowId || "—";
     const workspaceId = text(flow.workspace_id) || "production";
 
-    const shouldSkip =
-      [sourceRecordId, flowId, rootEventId].filter(Boolean).some((value) => {
-        return enrichedCandidates.has(String(value));
-      });
+    const shouldSkip = [sourceRecordId, flowId, rootEventId]
+      .filter(Boolean)
+      .some((value) => enrichedCandidates.has(String(value)));
 
     if (shouldSkip) {
       continue;
     }
 
-    const linkedIncidents = matchIncidents(incidents, flowId, rootEventId);
+    const linkedIncidents = matchIncidents(incidents, {
+      flowId,
+      rootEventId,
+      sourceRecordId,
+    });
 
     summaries.push({
       key: `registry:${sourceRecordId || flowId || rootEventId}`,
@@ -491,65 +564,6 @@ function timelineCommands(commands: FlowGraphCommand[]): FlowGraphCommand[] {
   });
 }
 
-function buildCollectionHref(
-  basePath: string,
-  id: string,
-  aliases: string[]
-): string {
-  const clean = text(id);
-  if (!clean) return basePath;
-
-  const params = new URLSearchParams();
-  params.set("q", clean);
-
-  for (const alias of aliases) {
-    params.set(alias, clean);
-  }
-
-  return `${basePath}?${params.toString()}`;
-}
-
-function RelatedLinkCard({
-  title,
-  value,
-  href,
-  buttonLabel,
-}: {
-  title: string;
-  value: string;
-  href?: string;
-  buttonLabel: string;
-}) {
-  const available = Boolean(text(value));
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="text-sm text-zinc-400">{title}</div>
-
-      <div className="mt-3 rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
-        <div className="break-all font-mono text-base font-semibold text-white">
-          {available ? value : "Non disponible"}
-        </div>
-      </div>
-
-      <div className="mt-4">
-        {available && href ? (
-          <Link
-            href={href}
-            className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
-          >
-            {buttonLabel}
-          </Link>
-        ) : (
-          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-zinc-500">
-            Non disponible
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default async function FlowDetailPage({
   params,
 }: {
@@ -585,8 +599,7 @@ export default async function FlowDetailPage({
 
   const flows = buildAllFlowSummaries(allCommands, registryFlows, allIncidents);
 
-  const flow =
-    flows.find((item) => matchesRouteId(item, routeId)) || null;
+  const flow = flows.find((item) => matchesRouteId(item, routeId)) || null;
 
   if (!flow) {
     notFound();
@@ -603,9 +616,13 @@ export default async function FlowDetailPage({
   });
 
   const orderedCommands = buildExecutionOrder(commandItems);
-  const terminalCommand = getTerminalCommand(orderedCommands);
-  const rootCommand = orderedCommands[0] ?? null;
-  const linkedIncidents = matchIncidents(allIncidents, flow.flowId, flow.rootEventId);
+
+  const linkedIncidents = matchIncidents(allIncidents, {
+    flowId: flow.flowId,
+    rootEventId: flow.rootEventId,
+    sourceRecordId: flow.sourceRecordId,
+    commands: orderedCommands,
+  });
 
   const doneCount = orderedCommands.filter(
     (cmd) => getStatusKind(cmd.status) === "done"
@@ -618,40 +635,6 @@ export default async function FlowDetailPage({
   ).length;
 
   const timeline = timelineCommands(flow.commands);
-
-  const relatedCommandId = firstText(
-    terminalCommand?.id,
-    rootCommand?.id,
-    linkedIncidents[0]?.linked_command,
-    linkedIncidents[0]?.command_id
-  );
-
-  const relatedRunId = firstText(
-    (terminalCommand as { linked_run?: unknown })?.linked_run,
-    (terminalCommand as { run_record_id?: unknown })?.run_record_id,
-    (rootCommand as { linked_run?: unknown })?.linked_run,
-    (rootCommand as { run_record_id?: unknown })?.run_record_id,
-    linkedIncidents[0]?.linked_run,
-    linkedIncidents[0]?.run_record_id,
-    linkedIncidents[0]?.run_id
-  );
-
-  const relatedIncidentId = firstText(
-    flow.firstIncidentId,
-    linkedIncidents[0]?.id
-  );
-
-  const commandHref = relatedCommandId
-    ? buildCollectionHref("/commands", relatedCommandId, ["id", "commandId"])
-    : undefined;
-
-  const runHref = relatedRunId
-    ? buildCollectionHref("/runs", relatedRunId, ["id", "runId"])
-    : undefined;
-
-  const incidentHref = relatedIncidentId
-    ? buildCollectionHref("/incidents", relatedIncidentId, ["id", "incidentId"])
-    : undefined;
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
@@ -736,35 +719,12 @@ export default async function FlowDetailPage({
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="text-sm text-zinc-400">Incident lié</div>
               <div className="mt-2 text-xl font-semibold text-white">
-                {incidentLabel(flow)}
+                {linkedIncidents.length > 0
+                  ? linkedIncidents.length === 1
+                    ? "1 incident"
+                    : `${linkedIncidents.length} incidents`
+                  : incidentLabel(flow)}
               </div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
-              Liens du flow
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <RelatedLinkCard
-                title="Commande liée"
-                value={relatedCommandId}
-                href={commandHref}
-                buttonLabel="Ouvrir Commands"
-              />
-              <RelatedLinkCard
-                title="Run lié"
-                value={relatedRunId}
-                href={runHref}
-                buttonLabel="Ouvrir Runs"
-              />
-              <RelatedLinkCard
-                title="Incident lié"
-                value={relatedIncidentId}
-                href={incidentHref}
-                buttonLabel="Ouvrir Incidents"
-              />
             </div>
           </div>
 
@@ -860,35 +820,12 @@ export default async function FlowDetailPage({
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="text-sm text-zinc-400">Incident lié</div>
               <div className="mt-2 text-2xl font-semibold text-white">
-                {incidentLabel(flow)}
+                {linkedIncidents.length > 0
+                  ? linkedIncidents.length === 1
+                    ? "1 incident"
+                    : `${linkedIncidents.length} incidents`
+                  : incidentLabel(flow)}
               </div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
-              Liens du flow
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <RelatedLinkCard
-                title="Commande liée"
-                value={relatedCommandId}
-                href={commandHref}
-                buttonLabel="Ouvrir Commands"
-              />
-              <RelatedLinkCard
-                title="Run lié"
-                value={relatedRunId}
-                href={runHref}
-                buttonLabel="Ouvrir Runs"
-              />
-              <RelatedLinkCard
-                title="Incident lié"
-                value={relatedIncidentId}
-                href={incidentHref}
-                buttonLabel="Ouvrir Incidents"
-              />
             </div>
           </div>
 
