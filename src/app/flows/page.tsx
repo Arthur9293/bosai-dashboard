@@ -29,6 +29,7 @@ type FlowSummary = {
   durationMs: number;
   lastActivityTs: number;
   hasIncident: boolean;
+  incidentCount: number;
   commands: FlowGraphCommand[];
 };
 
@@ -231,7 +232,7 @@ function buildFlowSummaries(
         ? Math.max(0, lastActivityTs - earliestStartTs)
         : 0;
 
-    const hasIncident = incidents.some((incident) => {
+    const relatedIncidents = incidents.filter((incident) => {
       const incidentFlowId = text(incident.flow_id);
       const incidentRootId = text(incident.root_event_id);
 
@@ -240,6 +241,9 @@ function buildFlowSummaries(
         (rootEventId && incidentRootId === rootEventId)
       );
     });
+
+    const incidentCount = relatedIncidents.length;
+    const hasIncident = incidentCount > 0;
 
     const status = computeFlowStatus(ordered);
 
@@ -255,6 +259,7 @@ function buildFlowSummaries(
       durationMs,
       lastActivityTs,
       hasIncident,
+      incidentCount,
       commands: ordered.map(toGraphCommand),
     });
   }
