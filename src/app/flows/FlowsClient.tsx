@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import FlowGraphClient from "./FlowGraphClient";
 
+type FlowStatus = "running" | "failed" | "retry" | "success" | "unknown";
+type FlowFilter = "all" | FlowStatus;
+
 type FlowGraphCommand = {
   id: string;
   capability?: string;
@@ -17,7 +20,7 @@ type FlowSummary = {
   flowId: string;
   rootEventId: string;
   workspaceId: string;
-  status: "success" | "running" | "failed" | "unknown";
+  status: FlowStatus;
   steps: number;
   rootCapability: string;
   terminalCapability: string;
@@ -45,6 +48,10 @@ function badgeTone(status: string) {
 
   if (s === "failed") {
     return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
+  }
+
+  if (s === "retry") {
+    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
   }
 
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
@@ -98,14 +105,41 @@ export default function FlowsClient({
   initialSelectedKey = "",
 }: Props) {
   const [selectedKey, setSelectedKey] = useState(initialSelectedKey);
+  const [filter, setFilter] = useState<FlowFilter>("all");
+
+  const counts = useMemo(() => {
+    return {
+      all: flows.length,
+      running: flows.filter((flow) => flow.status === "running").length,
+      failed: flows.filter((flow) => flow.status === "failed").length,
+      retry: flows.filter((flow) => flow.status === "retry").length,
+      success: flows.filter((flow) => flow.status === "success").length,
+      unknown: flows.filter((flow) => flow.status === "unknown").length,
+    };
+  }, [flows]);
+
+  const filteredFlows = useMemo(() => {
+    if (filter === "all") return flows;
+    return flows.filter((flow) => flow.status === filter);
+  }, [flows, filter]);
 
   const selectedFlow = useMemo(() => {
     return (
+      filteredFlows.find((flow) => flow.key === selectedKey) ||
+      filteredFlows[0] ||
       flows.find((flow) => flow.key === selectedKey) ||
       flows[0] ||
       null
     );
-  }, [flows, selectedKey]);
+  }, [flows, filteredFlows, selectedKey]);
+
+  const filterTabs: Array<{ key: FlowFilter; label: string; count: number }> = [
+    { key: "all", label: "All", count: counts.all },
+    { key: "running", label: "Running", count: counts.running },
+    { key: "failed", label: "Failed", count: counts.failed },
+    { key: "retry", label: "Retry", count: counts.retry },
+    { key: "success", label: "Success", count: counts.success },
+  ];
 
   return (
     <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 space-y-6">
@@ -119,6 +153,44 @@ export default function FlowsClient({
         <p className="text-white/55">
           Supervision des flows récents avec lecture causale et aperçu direct.
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {filterTabs.map((tab) => {
+          const active = filter === tab.key;
+
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setFilter(tab.key)}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                active
+                  ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                  : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10"
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs ${
+                  active
+                    ? "bg-emerald-500/20 text-emerald-200"
+                    : "bg-white/5 text-zinc-400"
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
+        {statCard("All", counts.all)}
+        {statCard("Running", counts.running)}
+        {statCard("Failed", counts.failed)}
+        {statCard("Retry", counts.retry)}
+        {statCard("Success", counts.success)}
       </div>
 
       {selectedFlow ? (
@@ -206,12 +278,12 @@ export default function FlowsClient({
         </div>
 
         <div className="space-y-4">
-          {flows.length === 0 ? (
+          {filteredFlows.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
-              Aucun flow récent.
+              Aucun flow pour ce filtre.
             </div>
           ) : (
-            flows.map((flow) => {
+            filteredFlows.map((flow) => {
               const selected = selectedFlow?.key === flow.key;
 
               return (
