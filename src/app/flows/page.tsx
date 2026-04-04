@@ -232,13 +232,18 @@ function buildFlowSummaries(
         ? Math.max(0, lastActivityTs - earliestStartTs)
         : 0;
 
+    const commandIds = new Set(ordered.map((cmd) => String(cmd.id)));
+
     const relatedIncidents = incidents.filter((incident) => {
       const incidentFlowId = text(incident.flow_id);
       const incidentRootId = text(incident.root_event_id);
+      const incidentCommandId =
+        text(incident.command_id) || text(incident.linked_command);
 
       return (
         (flowId && incidentFlowId === flowId) ||
-        (rootEventId && incidentRootId === rootEventId)
+        (rootEventId && incidentRootId === rootEventId) ||
+        (incidentCommandId && commandIds.has(incidentCommandId))
       );
     });
 
