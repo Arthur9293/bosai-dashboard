@@ -30,20 +30,19 @@ function text(value: unknown): string {
   return "";
 }
 
-function getSortTime(cmd: CommandItem): number {
-  return new Date(
-    cmd.started_at ||
-      cmd.created_at ||
-      cmd.updated_at ||
-      cmd.finished_at ||
-      0
-  ).getTime();
+function toTs(value?: string | number | null): number {
+  if (value === null || value === undefined || value === "") return 0;
+  const ts = new Date(value).getTime();
+  return Number.isNaN(ts) ? 0 : ts;
 }
 
-function getStepIndex(cmd: CommandItem): number {
-  return typeof cmd.step_index === "number"
-    ? cmd.step_index
-    : Number.MAX_SAFE_INTEGER;
+function getCommandActivityTs(cmd: CommandItem): number {
+  return Math.max(
+    toTs(cmd.finished_at),
+    toTs(cmd.updated_at),
+    toTs(cmd.started_at),
+    toTs(cmd.created_at)
+  );
 }
 
 function getStatusKind(
@@ -121,13 +120,12 @@ function formatDate(value?: string | number | null): string {
 }
 
 function getIncidentSortTs(incident: IncidentItem): number {
-  return new Date(
-    incident.updated_at ||
-      incident.opened_at ||
-      incident.created_at ||
-      incident.resolved_at ||
-      0
-  ).getTime();
+  return Math.max(
+    toTs(incident.updated_at),
+    toTs(incident.opened_at),
+    toTs(incident.created_at),
+    toTs(incident.resolved_at)
+  );
 }
 
 function statCard(
@@ -155,6 +153,83 @@ function toGraphCommand(cmd: CommandItem): GraphCommand {
   };
 }
 
+function buildCausalOrder(commands: CommandItem[]): CommandItem[] {
+  const map = new Map<string, CommandItem>();
+  const children = new Map<string, CommandItem[]>();
+
+  for (const cmd of commands) {
+    const id = String(cmd.id);
+    map.set(id, cmd);
+    children.set(id, []);
+  }
+
+  const roots: CommandItem[] = [];
+
+  for (const cmd of commands) {
+    const id = String(cmd.id);
+    const parentId = text(cmd.parent_command_id);
+
+    if (parentId && map.has(parentId)) {
+      children.get(parentId)?.push(cmd);
+    } else {
+      roots.push(cmd);
+    }
+  }
+
+  const sortByActivityAsc = (a: CommandItem, b: CommandItem) =>
+    getCommandActivityTs(a) - getCommandActivityTs(b);
+
+  roots.sort(sortByActivityAsc);
+  children.forEach((items) => items.sort(sortByActivityAsc));
+
+  const ordered: CommandItem[] = [];
+  const visited = new Set<string>();
+
+  function walk(cmd: CommandItem) {
+    const id = String(cmd.id);
+    if (visited.has(id)) return;
+    visited.add(id);
+    ordered.push(cmd);
+
+    const kids = children.get(id) ?? [];
+    for (const child of kids) {
+      walk(child);
+    }
+  }
+
+  for (const root of roots) {
+    walk(root);
+  }
+
+  const remaining = commands
+    .filter((cmd) => !visited.has(String(cmd.id)))
+    .sort(sortByActivityAsc);
+
+  for (const cmd of remaining) {
+    walk(cmd);
+  }
+
+  return ordered;
+}
+
+function getTerminalCommand(commands: CommandItem[]): CommandItem | null {
+  if (commands.length === 0) return null;
+
+  const parentIds = new Set(
+    commands
+      .map((cmd) => text(cmd.parent_command_id))
+      .filter(Boolean)
+  );
+
+  const terminals = commands.filter((cmd) => !parentIds.has(String(cmd.id)));
+
+  const candidates = terminals.length > 0 ? terminals : commands;
+
+  return [...candidates].sort(
+    (a, b) => getCommandActivityTs(b) - getCommandActivityTs(a)
+  )[0] ?? null;
+}
+
 export default async function FlowDetailPage({ params }: PageProps) {
   const { id } = await params;
   const requestedId = decodeURIComponent(id);
@@ -176,47 +251,39 @@ export default async function FlowDetailPage({ params }: PageProps) {
     (cmd) => text(cmd.root_event_id) === requestedId
   );
 
-  const matchedCommands = (byFlowId.length > 0 ? byFlowId : byRootEventId).sort(
-    (a, b) => {
-      const stepDiff = getStepIndex(a) - getStepIndex(b);
-      if (stepDiff !== 0) return stepDiff;
-      return getSortTime(a) - getSortTime(b);
-    }
-  );
+  const matchedCommands = byFlowId.length > 0 ? byFlowId : byRootEventId;
 
   if (matchedCommands.length === 0) {
     notFound();
   }
 
-  const effectiveFlowId = text(matchedCommands[0]?.flow_id) || requestedId;
+  const causalCommands = buildCausalOrder(matchedCommands);
+  const effectiveFlowId = text(causalCommands[0]?.flow_id) || requestedId;
 
   const rootEventId =
-    matchedCommands.map((cmd) => text(cmd.root_event_id)).find(Boolean) || "—";
+    causalCommands.map((cmd) => text(cmd.root_event_id)).find(Boolean) || "—";
 
   const workspaceId =
-    matchedCommands.map((cmd) => text(cmd.workspace_id)).find(Boolean) ||
+    causalCommands.map((cmd) => text(cmd.workspace_id)).find(Boolean) ||
     "production";
 
-  const flowStatus = computeFlowStatus(matchedCommands);
+  const flowStatus = computeFlowStatus(causalCommands);
 
-  const doneCount = matchedCommands.filter(
+  const doneCount = causalCommands.filter(
     (cmd) => getStatusKind(cmd.status) === "done"
   ).length;
 
-  const runningCount = matchedCommands.filter(
+  const runningCount = causalCommands.filter(
     (cmd) => getStatusKind(cmd.status) === "running"
   ).length;
 
-  const failedCount = matchedCommands.filter(
+  const failedCount = causalCommands.filter(
     (cmd) => getStatusKind(cmd.status) === "failed"
   ).length;
 
-  const lastCommand =
-    matchedCommands.length > 0
-      ? matchedCommands[matchedCommands.length - 1]
-      : null;
-
-  const graphCommands = matchedCommands.map(toGraphCommand);
+  const terminalCommand = getTerminalCommand(causalCommands);
+  const lastActivityTs = Math.max(...causalCommands.map(getCommandActivityTs), 0);
+  const graphCommands = causalCommands.map(toGraphCommand);
 
   let linkedIncident: IncidentItem | null = null;
 
@@ -272,12 +339,12 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </span>
 
         <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
-          {matchedCommands.length} steps
+          {causalCommands.length} steps
         </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {statCard("Commands", matchedCommands.length)}
+        {statCard("Commands", causalCommands.length)}
         {statCard("Done", doneCount, "text-emerald-300")}
         {statCard("Running/Queued", runningCount, "text-sky-300")}
         {statCard("Failed", failedCount, "text-rose-300")}
@@ -303,18 +370,13 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <div>
             Last step:{" "}
             <span className="text-zinc-200">
-              {text(lastCommand?.capability) || "—"}
+              {text(terminalCommand?.capability) || "—"}
             </span>
           </div>
           <div>
             Last activity:{" "}
             <span className="text-zinc-200">
-              {formatDate(
-                lastCommand?.finished_at ||
-                  lastCommand?.started_at ||
-                  lastCommand?.updated_at ||
-                  lastCommand?.created_at
-              )}
+              {formatDate(lastActivityTs || null)}
             </span>
           </div>
           <div>
@@ -406,7 +468,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </div>
 
         <div className="space-y-3">
-          {matchedCommands.map((step, index) => (
+          {causalCommands.map((step, index) => (
             <div
               key={`${step.id || index}`}
               className="rounded-2xl border border-white/10 bg-white/5 p-4"
@@ -431,10 +493,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
                 </span>
 
                 <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-zinc-300">
-                  STEP{" "}
-                  {typeof step.step_index === "number"
-                    ? step.step_index
-                    : index + 1}
+                  STEP {index + 1}
                 </span>
               </div>
 
