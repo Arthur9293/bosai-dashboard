@@ -22,11 +22,6 @@ type GraphCommand = {
   flow_id?: string;
 };
 
-type OrderedStep = {
-  command: CommandItem;
-  stepNumber: number;
-};
-
 function text(value: unknown): string {
   if (typeof value === "string") {
     const v = value.trim();
@@ -35,23 +30,16 @@ function text(value: unknown): string {
   return "";
 }
 
-function toTs(value?: string | number | null): number {
-  if (value === null || value === undefined || value === "") return 0;
-  const ts = new Date(value).getTime();
-  return Number.isNaN(ts) ? 0 : ts;
+function getSortTime(cmd: CommandItem): number {
+  return new Date(
+    cmd.started_at || cmd.created_at || cmd.updated_at || cmd.finished_at || 0
+  ).getTime();
 }
 
-function getCommandActivityTs(cmd: CommandItem): number {
-  return Math.max(
-    toTs(cmd.finished_at),
-    toTs(cmd.updated_at),
-    toTs(cmd.started_at),
-    toTs(cmd.created_at)
-  );
-}
-
-function getCommandStartTs(cmd: CommandItem): number {
-  return Math.max(toTs(cmd.started_at), toTs(cmd.created_at));
+function getStepIndex(cmd: CommandItem): number {
+  return typeof cmd.step_index === "number"
+    ? cmd.step_index
+    : Number.MAX_SAFE_INTEGER;
 }
 
 function getStatusKind(
@@ -116,16 +104,6 @@ function severityTone(value?: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function neutralTone() {
-  return "bg-white/5 text-zinc-300 border border-white/10";
-}
-
-function booleanTone(value: boolean) {
-  return value
-    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
-    : "bg-zinc-800 text-zinc-300 border border-zinc-700";
-}
-
 function formatDate(value?: string | number | null): string {
   if (value === null || value === undefined || value === "") return "—";
 
@@ -138,32 +116,14 @@ function formatDate(value?: string | number | null): string {
   }).format(d);
 }
 
-function formatDuration(ms?: number): string {
-  if (!ms || ms <= 0 || Number.isNaN(ms)) return "—";
-
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) {
-    return `${hours}h ${minutes}m ${seconds}s`;
-  }
-
-  if (minutes > 0) {
-    return `${minutes}m ${seconds}s`;
-  }
-
-  return `${seconds}s`;
-}
-
 function getIncidentSortTs(incident: IncidentItem): number {
-  return Math.max(
-    toTs(incident.updated_at),
-    toTs(incident.opened_at),
-    toTs(incident.created_at),
-    toTs(incident.resolved_at)
-  );
+  return new Date(
+    incident.updated_at ||
+      incident.opened_at ||
+      incident.created_at ||
+      incident.resolved_at ||
+      0
+  ).getTime();
 }
 
 function statCard(
@@ -191,111 +151,6 @@ function toGraphCommand(cmd: CommandItem): GraphCommand {
   };
 }
 
-function buildExecutionOrder(commands: CommandItem[]): OrderedStep[] {
-  const byId = new Map<string, CommandItem>();
-  const childrenMap = new Map<string, CommandItem[]>();
-
-  for (const cmd of commands) {
-    const id = String(cmd.id);
-    byId.set(id, cmd);
-    childrenMap.set(id, []);
-  }
-
-  const roots: CommandItem[] = [];
-
-  for (const cmd of commands) {
-    const parentId = text(cmd.parent_command_id);
-
-    if (parentId && byId.has(parentId)) {
-      childrenMap.get(parentId)?.push(cmd);
-    } else {
-      roots.push(cmd);
-    }
-  }
-
-  const sortByActivityAsc = (a: CommandItem, b: CommandItem) =>
-    getCommandActivityTs(a) - getCommandActivityTs(b);
-
-  roots.sort(sortByActivityAsc);
-  childrenMap.forEach((children) => children.sort(sortByActivityAsc));
-
-  const ordered: CommandItem[] = [];
-  const visited = new Set<string>();
-
-  function walk(cmd: CommandItem) {
-    const id = String(cmd.id);
-    if (visited.has(id)) return;
-
-    visited.add(id);
-    ordered.push(cmd);
-
-    const children = childrenMap.get(id) ?? [];
-    for (const child of children) {
-      walk(child);
-    }
-  }
-
-  for (const root of roots) {
-    walk(root);
-  }
-
-  const leftovers = commands
-    .filter((cmd) => !visited.has(String(cmd.id)))
-    .sort(sortByActivityAsc);
-
-  for (const cmd of leftovers) {
-    walk(cmd);
-  }
-
-  return ordered.map((command, index) => ({
-    command,
-    stepNumber: index + 1,
-  }));
-}
-
-function getTerminalCommand(commands: CommandItem[]): CommandItem | null {
-  if (commands.length === 0) return null;
-
-  const parentIds = new Set(
-    commands.map((cmd) => text(cmd.parent_command_id)).filter(Boolean)
-  );
-
-  const leafCandidates = commands.filter(
-    (cmd) => !parentIds.has(String(cmd.id))
-  );
-
-  const source = leafCandidates.length > 0 ? leafCandidates : commands;
-
-  return [...source].sort(
-    (a, b) => getCommandActivityTs(b) - getCommandActivityTs(a)
-  )[0] ?? null;
-}
-
-function getRootIds(commands: CommandItem[]): Set<string> {
-  const ids = new Set(commands.map((cmd) => String(cmd.id)));
-
-  return new Set(
-    commands
-      .filter((cmd) => {
-        const parentId = text(cmd.parent_command_id);
-        return !parentId || !ids.has(parentId);
-      })
-      .map((cmd) => String(cmd.id))
-  );
-}
-
-function getTerminalIds(commands: CommandItem[]): Set<string> {
-  const referencedAsParent = new Set(
-    commands.map((cmd) => text(cmd.parent_command_id)).filter(Boolean)
-  );
-
-  return new Set(
-    commands
-      .filter((cmd) => !referencedAsParent.has(String(cmd.id)))
-      .map((cmd) => String(cmd.id))
-  );
-}
-
 export default async function FlowDetailPage({ params }: PageProps) {
   const { id } = await params;
   const requestedId = decodeURIComponent(id);
@@ -317,60 +172,47 @@ export default async function FlowDetailPage({ params }: PageProps) {
     (cmd) => text(cmd.root_event_id) === requestedId
   );
 
-  const matchedCommands = byFlowId.length > 0 ? byFlowId : byRootEventId;
+  const matchedCommands = (byFlowId.length > 0 ? byFlowId : byRootEventId).sort(
+    (a, b) => {
+      const stepDiff = getStepIndex(a) - getStepIndex(b);
+      if (stepDiff !== 0) return stepDiff;
+      return getSortTime(a) - getSortTime(b);
+    }
+  );
 
   if (matchedCommands.length === 0) {
     notFound();
   }
 
-  const orderedSteps = buildExecutionOrder(matchedCommands);
-  const causalCommands = orderedSteps.map((step) => step.command);
-
-  const effectiveFlowId = text(causalCommands[0]?.flow_id) || requestedId;
+  const effectiveFlowId = text(matchedCommands[0]?.flow_id) || requestedId;
 
   const rootEventId =
-    causalCommands.map((cmd) => text(cmd.root_event_id)).find(Boolean) || "—";
+    matchedCommands.map((cmd) => text(cmd.root_event_id)).find(Boolean) || "—";
 
   const workspaceId =
-    causalCommands.map((cmd) => text(cmd.workspace_id)).find(Boolean) ||
+    matchedCommands.map((cmd) => text(cmd.workspace_id)).find(Boolean) ||
     "production";
 
-  const flowStatus = computeFlowStatus(causalCommands);
+  const flowStatus = computeFlowStatus(matchedCommands);
 
-  const doneCount = causalCommands.filter(
+  const doneCount = matchedCommands.filter(
     (cmd) => getStatusKind(cmd.status) === "done"
   ).length;
 
-  const runningCount = causalCommands.filter(
+  const runningCount = matchedCommands.filter(
     (cmd) => getStatusKind(cmd.status) === "running"
   ).length;
 
-  const failedCount = causalCommands.filter(
+  const failedCount = matchedCommands.filter(
     (cmd) => getStatusKind(cmd.status) === "failed"
   ).length;
 
-  const terminalCommand = getTerminalCommand(causalCommands);
-  const lastActivityTs = Math.max(...causalCommands.map(getCommandActivityTs), 0);
-  const graphCommands = causalCommands.map(toGraphCommand);
-  const rootIds = getRootIds(causalCommands);
-  const terminalIds = getTerminalIds(causalCommands);
+  const lastCommand =
+    matchedCommands.length > 0
+      ? matchedCommands[matchedCommands.length - 1]
+      : null;
 
-  const rootCommand =
-    orderedSteps.find(({ command }) => rootIds.has(String(command.id)))?.command ??
-    causalCommands[0] ??
-    null;
-
-  const earliestStartTs = Math.min(
-    ...causalCommands
-      .map(getCommandStartTs)
-      .filter((ts) => ts > 0),
-    Number.POSITIVE_INFINITY
-  );
-
-  const durationMs =
-    Number.isFinite(earliestStartTs) && lastActivityTs > 0
-      ? Math.max(0, lastActivityTs - earliestStartTs)
-      : 0;
+  const graphCommands = matchedCommands.map(toGraphCommand);
 
   let linkedIncident: IncidentItem | null = null;
 
@@ -426,42 +268,15 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </span>
 
         <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
-          {causalCommands.length} steps
+          {matchedCommands.length} steps
         </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {statCard("Commands", causalCommands.length)}
+        {statCard("Commands", matchedCommands.length)}
         {statCard("Done", doneCount, "text-emerald-300")}
         {statCard("Running/Queued", runningCount, "text-sky-300")}
         {statCard("Failed", failedCount, "text-rose-300")}
-      </div>
-
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
-          Flow summary
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {statCard("Root capability", text(rootCommand?.capability) || "—")}
-          {statCard(
-            "Terminal capability",
-            text(terminalCommand?.capability) || "—"
-          )}
-          {statCard("Durée totale", formatDuration(durationMs))}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="text-sm text-zinc-400">Incident lié</div>
-            <div className="mt-3">
-              <span
-                className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${booleanTone(
-                  Boolean(linkedIncident)
-                )}`}
-              >
-                {linkedIncident ? "OUI" : "NON"}
-              </span>
-            </div>
-          </div>
-        </div>
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -484,13 +299,18 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <div>
             Last step:{" "}
             <span className="text-zinc-200">
-              {text(terminalCommand?.capability) || "—"}
+              {text(lastCommand?.capability) || "—"}
             </span>
           </div>
           <div>
             Last activity:{" "}
             <span className="text-zinc-200">
-              {formatDate(lastActivityTs || null)}
+              {formatDate(
+                lastCommand?.finished_at ||
+                  lastCommand?.started_at ||
+                  lastCommand?.updated_at ||
+                  lastCommand?.created_at
+              )}
             </span>
           </div>
           <div>
@@ -501,11 +321,16 @@ export default async function FlowDetailPage({ params }: PageProps) {
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
+        <div className="mb-2 text-xs uppercase tracking-[0.2em] text-white/50">
           Execution graph
         </div>
 
-        <FlowGraphClient commands={graphCommands} />
+        <div className="mb-4 text-sm text-white/55">
+          Touchez un nœud du graphe pour aller directement à l’étape
+          correspondante dans la timeline.
+        </div>
+
+        <FlowGraphClient commands={graphCommands} anchorPrefix="cmd-" />
       </div>
 
       {linkedIncident ? (
@@ -582,96 +407,78 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </div>
 
         <div className="space-y-3">
-          {orderedSteps.map(({ command: step, stepNumber }) => {
-            const stepId = String(step.id);
-            const isRoot = rootIds.has(stepId);
-            const isTerminal = terminalIds.has(stepId);
-
-            return (
-              <div
-                key={stepId}
-                className="rounded-2xl border border-white/10 bg-white/5 p-4"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="text-sm font-semibold text-white">
-                    {text(step.capability) || "Unknown capability"}
-                  </div>
-
-                  <span
-                    className={`inline-flex rounded-full px-3 py-1 text-[11px] font-medium ${badgeTone(
-                      getStatusKind(step.status) === "done"
-                        ? "success"
-                        : getStatusKind(step.status) === "running"
-                        ? "running"
-                        : getStatusKind(step.status) === "failed"
-                        ? "failed"
-                        : "unknown"
-                    )}`}
-                  >
-                    {(text(step.status) || "UNKNOWN").toUpperCase()}
-                  </span>
-
-                  <span
-                    className={`inline-flex rounded-full px-3 py-1 text-[11px] font-medium ${neutralTone()}`}
-                  >
-                    STEP {stepNumber}
-                  </span>
-
-                  {isRoot ? (
-                    <span
-                      className={`inline-flex rounded-full px-3 py-1 text-[11px] font-medium ${neutralTone()}`}
-                    >
-                      ROOT
-                    </span>
-                  ) : null}
-
-                  {isTerminal ? (
-                    <span
-                      className={`inline-flex rounded-full px-3 py-1 text-[11px] font-medium ${neutralTone()}`}
-                    >
-                      TERMINAL
-                    </span>
-                  ) : null}
+          {matchedCommands.map((step, index) => (
+            <div
+              key={`${step.id || index}`}
+              id={`cmd-${step.id}`}
+              data-command-id={String(step.id)}
+              style={{ scrollMarginTop: "24px" }}
+              className="rounded-2xl border border-white/10 bg-white/5 p-4"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="text-sm font-semibold text-white">
+                  {text(step.capability) || "Unknown capability"}
                 </div>
 
-                <div className="mt-3 grid gap-2 text-sm text-white/65 sm:grid-cols-2 xl:grid-cols-3">
-                  <div>
-                    ID: <span className="text-zinc-200 break-all">{step.id}</span>
-                  </div>
-                  <div>
-                    Parent:{" "}
-                    <span className="text-zinc-200 break-all">
-                      {text(step.parent_command_id) || "—"}
-                    </span>
-                  </div>
-                  <div>
-                    Worker:{" "}
-                    <span className="text-zinc-200">
-                      {text(step.worker) || "—"}
-                    </span>
-                  </div>
-                  <div>
-                    Started:{" "}
-                    <span className="text-zinc-200">
-                      {formatDate(step.started_at)}
-                    </span>
-                  </div>
-                  <div>
-                    Finished:{" "}
-                    <span className="text-zinc-200">
-                      {formatDate(step.finished_at)}
-                    </span>
-                  </div>
-                  <div>
-                    Flow:{" "}
-                    <span className="text-zinc-200 break-all">
-                      {text(step.flow_id) || "—"}
-                    </span>
-                  </div>
+                <span
+                  className={`inline-flex rounded-full px-3 py-1 text-[11px] font-medium ${badgeTone(
+                    getStatusKind(step.status) === "done"
+                      ? "success"
+                      : getStatusKind(step.status) === "running"
+                      ? "running"
+                      : getStatusKind(step.status) === "failed"
+                      ? "failed"
+                      : "unknown"
+                  )}`}
+                >
+                  {(text(step.status) || "UNKNOWN").toUpperCase()}
+                </span>
+
+                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-zinc-300">
+                  STEP{" "}
+                  {typeof step.step_index === "number"
+                    ? step.step_index
+                    : index + 1}
+                </span>
+              </div>
+
+              <div className="mt-3 grid gap-2 text-sm text-white/65 sm:grid-cols-2 xl:grid-cols-3">
+                <div>
+                  ID: <span className="text-zinc-200 break-all">{step.id}</span>
+                </div>
+                <div>
+                  Parent:{" "}
+                  <span className="text-zinc-200 break-all">
+                    {text(step.parent_command_id) || "—"}
+                  </span>
+                </div>
+                <div>
+                  Worker:{" "}
+                  <span className="text-zinc-200">
+                    {text(step.worker) || "—"}
+                  </span>
+                </div>
+                <div>
+                  Started:{" "}
+                  <span className="text-zinc-200">
+                    {formatDate(step.started_at)}
+                  </span>
+                </div>
+                <div>
+                  Finished:{" "}
+                  <span className="text-zinc-200">
+                    {formatDate(step.finished_at)}
+                  </span>
+                </div>
+                <div>
+                  Flow:{" "}
+                  <span className="text-zinc-200 break-all">
+                    {text(step.flow_id) || "—"}
+                  </span>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </div>
     </div>
