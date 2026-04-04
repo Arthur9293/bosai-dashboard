@@ -22,6 +22,11 @@ type GraphCommand = {
   flow_id?: string;
 };
 
+type OrderedStep = {
+  command: CommandItem;
+  stepNumber: number;
+};
+
 function text(value: unknown): string {
   if (typeof value === "string") {
     const v = value.trim();
@@ -153,24 +158,23 @@ function toGraphCommand(cmd: CommandItem): GraphCommand {
   };
 }
 
-function buildCausalOrder(commands: CommandItem[]): CommandItem[] {
-  const map = new Map<string, CommandItem>();
-  const children = new Map<string, CommandItem[]>();
+function buildExecutionOrder(commands: CommandItem[]): OrderedStep[] {
+  const byId = new Map<string, CommandItem>();
+  const childrenMap = new Map<string, CommandItem[]>();
 
   for (const cmd of commands) {
     const id = String(cmd.id);
-    map.set(id, cmd);
-    children.set(id, []);
+    byId.set(id, cmd);
+    childrenMap.set(id, []);
   }
 
   const roots: CommandItem[] = [];
 
   for (const cmd of commands) {
-    const id = String(cmd.id);
     const parentId = text(cmd.parent_command_id);
 
-    if (parentId && map.has(parentId)) {
-      children.get(parentId)?.push(cmd);
+    if (parentId && byId.has(parentId)) {
+      childrenMap.get(parentId)?.push(cmd);
     } else {
       roots.push(cmd);
     }
@@ -180,7 +184,7 @@ function buildCausalOrder(commands: CommandItem[]): CommandItem[] {
     getCommandActivityTs(a) - getCommandActivityTs(b);
 
   roots.sort(sortByActivityAsc);
-  children.forEach((items) => items.sort(sortByActivityAsc));
+  childrenMap.forEach((children) => children.sort(sortByActivityAsc));
 
   const ordered: CommandItem[] = [];
   const visited = new Set<string>();
@@ -188,11 +192,12 @@ function buildCausalOrder(commands: CommandItem[]): CommandItem[] {
   function walk(cmd: CommandItem) {
     const id = String(cmd.id);
     if (visited.has(id)) return;
+
     visited.add(id);
     ordered.push(cmd);
 
-    const kids = children.get(id) ?? [];
-    for (const child of kids) {
+    const children = childrenMap.get(id) ?? [];
+    for (const child of children) {
       walk(child);
     }
   }
@@ -201,31 +206,34 @@ function buildCausalOrder(commands: CommandItem[]): CommandItem[] {
     walk(root);
   }
 
-  const remaining = commands
+  const leftovers = commands
     .filter((cmd) => !visited.has(String(cmd.id)))
     .sort(sortByActivityAsc);
 
-  for (const cmd of remaining) {
+  for (const cmd of leftovers) {
     walk(cmd);
   }
 
-  return ordered;
+  return ordered.map((command, index) => ({
+    command,
+    stepNumber: index + 1,
+  }));
 }
 
 function getTerminalCommand(commands: CommandItem[]): CommandItem | null {
   if (commands.length === 0) return null;
 
   const parentIds = new Set(
-    commands
-      .map((cmd) => text(cmd.parent_command_id))
-      .filter(Boolean)
+    commands.map((cmd) => text(cmd.parent_command_id)).filter(Boolean)
   );
 
-  const terminals = commands.filter((cmd) => !parentIds.has(String(cmd.id)));
+  const leafCandidates = commands.filter(
+    (cmd) => !parentIds.has(String(cmd.id))
+  );
 
-  const candidates = terminals.length > 0 ? terminals : commands;
+  const source = leafCandidates.length > 0 ? leafCandidates : commands;
 
-  return [...candidates].sort(
+  return [...source].sort(
     (a, b) => getCommandActivityTs(b) - getCommandActivityTs(a)
   )[0] ?? null;
 }
@@ -257,7 +265,9 @@ export default async function FlowDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const causalCommands = buildCausalOrder(matchedCommands);
+  const orderedSteps = buildExecutionOrder(matchedCommands);
+  const causalCommands = orderedSteps.map((step) => step.command);
+
   const effectiveFlowId = text(causalCommands[0]?.flow_id) || requestedId;
 
   const rootEventId =
@@ -468,9 +478,9 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </div>
 
         <div className="space-y-3">
-          {causalCommands.map((step, index) => (
+          {orderedSteps.map(({ command: step, stepNumber }) => (
             <div
-              key={`${step.id || index}`}
+              key={String(step.id)}
               className="rounded-2xl border border-white/10 bg-white/5 p-4"
             >
               <div className="flex flex-wrap items-center gap-2">
@@ -493,7 +503,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
                 </span>
 
                 <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-zinc-300">
-                  STEP {index + 1}
+                  STEP {stepNumber}
                 </span>
               </div>
 
