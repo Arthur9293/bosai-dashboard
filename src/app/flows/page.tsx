@@ -6,6 +6,8 @@ import {
   type IncidentItem,
 } from "@/lib/api";
 
+type FlowStatus = "running" | "failed" | "retry" | "success" | "unknown";
+
 type FlowGraphCommand = {
   id: string;
   capability?: string;
@@ -19,7 +21,7 @@ type FlowSummary = {
   flowId: string;
   rootEventId: string;
   workspaceId: string;
-  status: "success" | "running" | "failed" | "unknown";
+  status: FlowStatus;
   steps: number;
   rootCapability: string;
   terminalCapability: string;
@@ -58,28 +60,36 @@ function getCommandStartTs(cmd: CommandItem): number {
 
 function getStatusKind(
   status?: string
-): "done" | "running" | "failed" | "other" {
+): "done" | "running" | "failed" | "retry" | "other" {
   const s = (status || "").toLowerCase();
 
   if (["done", "success", "resolved", "ok"].includes(s)) return "done";
-  if (["running", "queued", "pending", "retry"].includes(s)) return "running";
+  if (s === "retry") return "retry";
+  if (["running", "queued", "pending"].includes(s)) return "running";
   if (["error", "failed", "dead"].includes(s)) return "failed";
 
   return "other";
 }
 
-function computeFlowStatus(
-  commands: CommandItem[]
-): "success" | "running" | "failed" | "unknown" {
+function computeFlowStatus(commands: CommandItem[]): FlowStatus {
   const kinds = commands.map((cmd) => getStatusKind(cmd.status));
 
-  if (kinds.includes("failed")) return "failed";
   if (kinds.includes("running")) return "running";
+  if (kinds.includes("failed")) return "failed";
+  if (kinds.includes("retry")) return "retry";
   if (kinds.length > 0 && kinds.every((k) => k === "done" || k === "other")) {
     return "success";
   }
 
   return "unknown";
+}
+
+function getFlowStatusPriority(status: FlowStatus): number {
+  if (status === "running") return 0;
+  if (status === "failed") return 1;
+  if (status === "retry") return 2;
+  if (status === "success") return 3;
+  return 4;
 }
 
 function buildExecutionOrder(commands: CommandItem[]): CommandItem[] {
@@ -211,13 +221,12 @@ function buildFlowSummaries(
 
     const lastActivityTs = Math.max(...ordered.map(getCommandActivityTs), 0);
 
-    const earliestStartTs = Math.min(
-      ...ordered.map(getCommandStartTs).filter((ts) => ts > 0),
-      Number.POSITIVE_INFINITY
-    );
+    const validStarts = ordered.map(getCommandStartTs).filter((ts) => ts > 0);
+    const earliestStartTs =
+      validStarts.length > 0 ? Math.min(...validStarts) : 0;
 
     const durationMs =
-      Number.isFinite(earliestStartTs) && lastActivityTs > 0
+      earliestStartTs > 0 && lastActivityTs > 0
         ? Math.max(0, lastActivityTs - earliestStartTs)
         : 0;
 
@@ -231,12 +240,14 @@ function buildFlowSummaries(
       );
     });
 
+    const status = computeFlowStatus(ordered);
+
     summaries.push({
       key,
       flowId: flowId || rootEventId || key,
       rootEventId: rootEventId || "—",
       workspaceId,
-      status: computeFlowStatus(ordered),
+      status,
       steps: ordered.length,
       rootCapability: text(rootCommand?.capability) || "—",
       terminalCapability: text(terminalCommand?.capability) || "—",
@@ -247,7 +258,12 @@ function buildFlowSummaries(
     });
   }
 
-  return summaries.sort((a, b) => b.lastActivityTs - a.lastActivityTs);
+  return summaries.sort((a, b) => {
+    const priorityDiff =
+      getFlowStatusPriority(a.status) - getFlowStatusPriority(b.status);
+    if (priorityDiff !== 0) return priorityDiff;
+    return b.lastActivityTs - a.lastActivityTs;
+  });
 }
 
 export default async function FlowsPage() {
@@ -272,6 +288,8 @@ export default async function FlowsPage() {
 
   const initialSelectedKey =
     flows.find((flow) => flow.status === "running")?.key ||
+    flows.find((flow) => flow.status === "failed")?.key ||
+    flows.find((flow) => flow.status === "retry")?.key ||
     flows[0]?.key ||
     "";
 
