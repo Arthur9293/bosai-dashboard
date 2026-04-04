@@ -112,10 +112,6 @@ function statCard(label: string, value: string | number) {
   );
 }
 
-function normalize(text: string): string {
-  return text.toLowerCase().trim();
-}
-
 function capabilityLabel(value?: string): string {
   const clean = String(value || "").trim();
   return clean || "Non disponible";
@@ -123,6 +119,10 @@ function capabilityLabel(value?: string): string {
 
 function readingModeLabel(mode?: "enriched" | "registry-only"): string {
   return mode === "registry-only" ? "Registry-only" : "Enrichi";
+}
+
+function normalize(text: string): string {
+  return text.toLowerCase().trim();
 }
 
 function flowHasIncident(flow: FlowSummary): boolean {
