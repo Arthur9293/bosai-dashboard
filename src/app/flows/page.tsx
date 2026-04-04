@@ -47,6 +47,118 @@ function toTs(value?: string | number | null): number {
   return Number.isNaN(ts) ? 0 : ts;
 }
 
+function looksLikeRecordId(value: string): boolean {
+  return /^rec[a-zA-Z0-9]{6,}$/.test(value.trim());
+}
+
+function extractRecordIds(value: unknown): string[] {
+  const out = new Set<string>();
+
+  function walk(v: unknown) {
+    if (typeof v === "string") {
+      const t = v.trim();
+      if (looksLikeRecordId(t)) out.add(t);
+      return;
+    }
+
+    if (Array.isArray(v)) {
+      v.forEach(walk);
+      return;
+    }
+
+    if (v && typeof v === "object") {
+      const obj = v as Record<string, unknown>;
+
+      for (const key of ["id", "record_id", "recordId", "Record_ID", "value"]) {
+        if (key in obj) walk(obj[key]);
+      }
+    }
+  }
+
+  walk(value);
+  return Array.from(out);
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  return null;
+}
+
+function getIncidentCommandIds(incident: IncidentItem): string[] {
+  return extractRecordIds([
+    (incident as Record<string, unknown>).linked_command,
+    (incident as Record<string, unknown>).Linked_Command,
+    (incident as Record<string, unknown>).command_id,
+    (incident as Record<string, unknown>).Command_ID,
+  ]);
+}
+
+function getIncidentRecordIds(incident: IncidentItem): string[] {
+  return extractRecordIds([
+    (incident as Record<string, unknown>).id,
+    (incident as Record<string, unknown>).record_id,
+    (incident as Record<string, unknown>).Record_ID,
+  ]);
+}
+
+function getCommandCreatedIncidentIds(cmd: CommandItem): string[] {
+  const out = new Set<string>();
+
+  const directValues = [
+    (cmd as Record<string, unknown>).incident_record_id,
+    (cmd as Record<string, unknown>).Incident_Record_ID,
+  ];
+
+  for (const value of directValues) {
+    for (const id of extractRecordIds(value)) {
+      out.add(id);
+    }
+  }
+
+  const resultCandidates = [
+    (cmd as Record<string, unknown>).result,
+    (cmd as Record<string, unknown>).result_json,
+    (cmd as Record<string, unknown>).Result_JSON,
+  ];
+
+  for (const candidate of resultCandidates) {
+    const obj = parseJsonObject(candidate);
+    if (!obj) continue;
+
+    for (const key of [
+      "incident_record_id",
+      "incidentRecordId",
+      "incident_id",
+      "incidentId",
+    ]) {
+      if (key in obj) {
+        for (const id of extractRecordIds(obj[key])) {
+          out.add(id);
+        }
+      }
+    }
+  }
+
+  return Array.from(out);
+}
+
 function getCommandActivityTs(cmd: CommandItem): number {
   return Math.max(
     toTs(cmd.finished_at),
@@ -233,17 +345,23 @@ function buildFlowSummaries(
         : 0;
 
     const commandIds = new Set(ordered.map((cmd) => String(cmd.id)));
+    const createdIncidentIds = new Set(
+      ordered.flatMap((cmd) => getCommandCreatedIncidentIds(cmd))
+    );
 
     const relatedIncidents = incidents.filter((incident) => {
-      const incidentFlowId = text(incident.flow_id);
-      const incidentRootId = text(incident.root_event_id);
-      const incidentCommandId =
-        text(incident.command_id) || text(incident.linked_command);
+      const incidentFlowId = text((incident as Record<string, unknown>).flow_id);
+      const incidentRootId = text(
+        (incident as Record<string, unknown>).root_event_id
+      );
+      const incidentCommandIds = getIncidentCommandIds(incident);
+      const incidentRecordIds = getIncidentRecordIds(incident);
 
       return (
         (flowId && incidentFlowId === flowId) ||
         (rootEventId && incidentRootId === rootEventId) ||
-        (incidentCommandId && commandIds.has(incidentCommandId))
+        incidentCommandIds.some((id) => commandIds.has(id)) ||
+        incidentRecordIds.some((id) => createdIncidentIds.has(id))
       );
     });
 
