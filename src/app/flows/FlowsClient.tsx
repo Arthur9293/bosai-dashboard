@@ -45,32 +45,32 @@ function badgeTone(status: string) {
   const s = status.toLowerCase();
 
   if (s === "success") {
-    return "border border-emerald-500/20 bg-emerald-500/15 text-emerald-300";
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
   if (s === "running") {
-    return "border border-sky-500/20 bg-sky-500/15 text-sky-300";
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
   }
 
   if (s === "failed") {
-    return "border border-rose-500/20 bg-rose-500/15 text-rose-300";
+    return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
   }
 
   if (s === "retry") {
-    return "border border-violet-500/20 bg-violet-500/15 text-violet-300";
+    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
   }
 
   if (s === "partial") {
-    return "border border-amber-500/20 bg-amber-500/15 text-amber-300";
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
   }
 
-  return "border border-zinc-700 bg-zinc-800 text-zinc-300";
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
 function incidentTone(value: boolean) {
   return value
-    ? "border border-rose-500/20 bg-rose-500/15 text-rose-300"
-    : "border border-white/10 bg-zinc-800 text-zinc-300";
+    ? "bg-rose-500/15 text-rose-300 border border-rose-500/20"
+    : "bg-zinc-800 text-zinc-300 border border-white/10";
 }
 
 function formatDate(ts?: number): string {
@@ -96,51 +96,48 @@ function formatDuration(ms?: number): string {
 }
 
 function safeDetailId(flow: FlowSummary): string {
-  return encodeURIComponent(
-    flow.flowId || flow.rootEventId || flow.sourceRecordId || flow.key
-  );
+  const detailId =
+    flow.readingMode === "registry-only"
+      ? flow.sourceRecordId || flow.rootEventId || flow.flowId || flow.key
+      : flow.flowId || flow.rootEventId || flow.sourceRecordId || flow.key;
+
+  return encodeURIComponent(detailId);
 }
 
 function statCard(label: string, value: string | number) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="text-sm text-zinc-400">{label}</div>
-      <div className="mt-2 break-words text-xl font-semibold text-white">
+      <div className="mt-2 break-all text-xl font-semibold text-white">
         {value}
       </div>
     </div>
   );
 }
 
-function capabilityLabel(value?: string): string {
-  const clean = String(value || "").trim();
-  return clean || "Non disponible";
-}
-
-function readingModeLabel(mode?: "enriched" | "registry-only"): string {
-  return mode === "registry-only" ? "Registry-only" : "Enrichi";
-}
-
 function normalize(text: string): string {
   return text.toLowerCase().trim();
 }
 
-function flowHasIncident(flow: FlowSummary): boolean {
-  return flow.hasIncident || flow.incidentCount > 0;
-}
+function flowMatchesSearch(flow: FlowSummary, rawSearch: string) {
+  const q = normalize(rawSearch);
+  if (!q) return true;
 
-function incidentLabel(flow: FlowSummary): string {
-  const count = Number(flow.incidentCount || 0);
+  const haystack = normalize(
+    [
+      flow.flowId,
+      flow.rootEventId,
+      flow.workspaceId,
+      flow.status,
+      flow.rootCapability,
+      flow.terminalCapability,
+      flow.readingMode || "",
+      flow.sourceRecordId || "",
+      ...flow.commands.map((cmd) => cmd.capability || ""),
+    ].join(" ")
+  );
 
-  if (count <= 0 && !flow.hasIncident) {
-    return "Aucun incident";
-  }
-
-  if (count <= 1) {
-    return "1 incident";
-  }
-
-  return `${count} incidents`;
+  return haystack.includes(q);
 }
 
 function hasDetailedCommands(flow: FlowSummary): boolean {
@@ -159,88 +156,16 @@ function formatFlowActivity(flow: FlowSummary): string {
   return "—";
 }
 
-function truncateMiddle(value?: string, start = 10, end = 8): string {
-  const clean = String(value || "").trim();
+function incidentLabel(flow: FlowSummary): string {
+  if (!flow.hasIncident || flow.incidentCount <= 0) {
+    return "Aucun incident";
+  }
 
-  if (!clean) return "Non disponible";
-  if (clean.length <= start + end + 1) return clean;
+  if (flow.incidentCount === 1) {
+    return "1 incident";
+  }
 
-  return `${clean.slice(0, start)}…${clean.slice(-end)}`;
-}
-
-function flowMatchesSearch(flow: FlowSummary, rawSearch: string) {
-  const q = normalize(rawSearch);
-  if (!q) return true;
-
-  const haystack = normalize(
-    [
-      flow.flowId,
-      flow.rootEventId,
-      flow.workspaceId,
-      flow.status,
-      flow.rootCapability,
-      flow.terminalCapability,
-      flow.readingMode || "",
-      flow.sourceRecordId || "",
-      flow.firstIncidentId || "",
-      incidentLabel(flow),
-      ...flow.commands.map((cmd) => cmd.capability || ""),
-    ].join(" ")
-  );
-
-  return haystack.includes(q);
-}
-
-function FlowActionButtons({
-  flow,
-  selected,
-  onSelect,
-}: {
-  flow: FlowSummary;
-  selected: boolean;
-  onSelect: (flow: FlowSummary) => void;
-}) {
-  return (
-    <div className="mt-4 flex flex-wrap gap-2">
-      <button
-        type="button"
-        onClick={() => onSelect(flow)}
-        className={`inline-flex rounded-full px-4 py-2 text-sm font-medium transition ${
-          selected
-            ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-            : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
-        }`}
-      >
-        {selected ? "Flow actif" : "Sélectionner"}
-      </button>
-
-      <Link
-        href={`/flows/${safeDetailId(flow)}`}
-        className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
-      >
-        Voir le détail
-      </Link>
-    </div>
-  );
-}
-
-function IdDisplayCard({
-  label,
-  value,
-}: {
-  label: string;
-  value?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="text-sm text-zinc-400">{label}</div>
-      <div className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-black/10 px-3 py-2">
-        <div className="min-w-max font-mono text-sm text-zinc-200">
-          {value || "Non disponible"}
-        </div>
-      </div>
-    </div>
-  );
+  return `${flow.incidentCount} incidents`;
 }
 
 export default function FlowsClient({
@@ -436,7 +361,7 @@ export default function FlowsClient({
                   </span>
                 </div>
 
-                <div className="mt-4 break-words text-lg font-semibold leading-tight text-white">
+                <div className="mt-4 break-all text-lg font-semibold text-white">
                   {firstRunning.flowId}
                 </div>
 
@@ -471,7 +396,7 @@ export default function FlowsClient({
                   </span>
                 </div>
 
-                <div className="mt-4 break-words text-lg font-semibold leading-tight text-white">
+                <div className="mt-4 break-all text-lg font-semibold text-white">
                   {firstFailed.flowId}
                 </div>
 
@@ -506,7 +431,7 @@ export default function FlowsClient({
                   </span>
                 </div>
 
-                <div className="mt-4 break-words text-lg font-semibold leading-tight text-white">
+                <div className="mt-4 break-all text-lg font-semibold text-white">
                   {firstRetry.flowId}
                 </div>
 
@@ -646,7 +571,7 @@ export default function FlowsClient({
 
             <span
               className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${incidentTone(
-                flowHasIncident(selectedFlow)
+                selectedFlow.hasIncident
               )}`}
             >
               {incidentLabel(selectedFlow)}
@@ -667,11 +592,11 @@ export default function FlowsClient({
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {statCard("Type de lecture", readingModeLabel(selectedFlow.readingMode))}
-                <IdDisplayCard
-                  label="Source / Root record"
-                  value={selectedFlow.sourceRecordId || selectedFlow.rootEventId || "Non disponible"}
-                />
+                {statCard("Type de lecture", "Registry-only")}
+                {statCard(
+                  "Source / Root record",
+                  selectedFlow.sourceRecordId || "Non disponible"
+                )}
                 {statCard("Workspace", selectedFlow.workspaceId || "production")}
                 {statCard("Incident lié", incidentLabel(selectedFlow))}
               </div>
@@ -697,7 +622,7 @@ export default function FlowsClient({
                   <div>
                     Workspace:{" "}
                     <span className="text-zinc-200">
-                      {selectedFlow.workspaceId || "production"}
+                      {selectedFlow.workspaceId}
                     </span>
                   </div>
                   <div>
@@ -722,10 +647,10 @@ export default function FlowsClient({
           ) : (
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {statCard("Root capability", capabilityLabel(selectedFlow.rootCapability))}
+                {statCard("Root capability", selectedFlow.rootCapability)}
                 {statCard(
                   "Terminal capability",
-                  capabilityLabel(selectedFlow.terminalCapability)
+                  selectedFlow.terminalCapability
                 )}
                 {statCard("Durée totale", formatDuration(selectedFlow.durationMs))}
                 {statCard("Incident lié", incidentLabel(selectedFlow))}
@@ -733,7 +658,7 @@ export default function FlowsClient({
 
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/50">
-                  Identité du flow
+                  Flow actif
                 </div>
 
                 <div className="grid gap-3 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-4">
@@ -752,7 +677,7 @@ export default function FlowsClient({
                   <div>
                     Workspace:{" "}
                     <span className="text-zinc-200">
-                      {selectedFlow.workspaceId || "production"}
+                      {selectedFlow.workspaceId}
                     </span>
                   </div>
                   <div>
@@ -810,20 +735,20 @@ export default function FlowsClient({
                         : "border-white/10 bg-white/5"
                     }`}
                   >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 sm:flex-1">
-                        <div className="break-words text-xl font-semibold leading-tight text-white">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="break-all text-xl font-semibold text-white">
                           {flow.flowId}
                         </div>
 
                         <div className="mt-3 space-y-1 text-sm text-white/70">
                           <div>Steps: {flow.steps}</div>
-                          <div className="break-words">Root: {flow.rootEventId}</div>
+                          <div className="break-all">Root: {flow.rootEventId}</div>
                           <div>Activité: {formatFlowActivity(flow)}</div>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2 sm:justify-end">
+                      <div className="flex flex-wrap gap-2">
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
                             flow.status
@@ -834,7 +759,7 @@ export default function FlowsClient({
 
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${incidentTone(
-                            flowHasIncident(flow)
+                            flow.hasIncident
                           )}`}
                         >
                           {incidentLabel(flow)}
@@ -842,11 +767,26 @@ export default function FlowsClient({
                       </div>
                     </div>
 
-                    <FlowActionButtons
-                      flow={flow}
-                      selected={selected}
-                      onSelect={selectFlow}
-                    />
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => selectFlow(flow)}
+                        className={`inline-flex rounded-full px-4 py-2 text-sm font-medium transition ${
+                          selected
+                            ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                            : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
+                        }`}
+                      >
+                        {selected ? "Flow actif" : "Sélectionner"}
+                      </button>
+
+                      <Link
+                        href={`/flows/${safeDetailId(flow)}`}
+                        className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+                      >
+                        Voir le détail
+                      </Link>
+                    </div>
                   </div>
                 );
               })}
@@ -878,28 +818,22 @@ export default function FlowsClient({
                         : "border-white/10 bg-white/5"
                     }`}
                   >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 sm:flex-1">
-                        <div className="break-words text-xl font-semibold leading-tight text-white">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="break-all text-xl font-semibold text-white">
                           {flow.flowId}
                         </div>
 
                         <div className="mt-3 space-y-2 text-sm text-white/70">
                           <div>
                             Lecture:{" "}
-                            <span className="text-zinc-200">
-                              {readingModeLabel(flow.readingMode)}
-                            </span>
+                            <span className="text-zinc-200">Registry-only</span>
                           </div>
 
-                          <div>
+                          <div className="break-all">
                             Source / Root record:{" "}
-                            <span className="font-mono text-zinc-200">
-                              {truncateMiddle(
-                                flow.sourceRecordId || flow.rootEventId || "Non disponible",
-                                10,
-                                8
-                              )}
+                            <span className="break-all font-mono text-zinc-200">
+                              {flow.sourceRecordId || flow.rootEventId}
                             </span>
                           </div>
 
@@ -912,12 +846,14 @@ export default function FlowsClient({
 
                           <div>
                             Incident:{" "}
-                            <span className="text-zinc-200">{incidentLabel(flow)}</span>
+                            <span className="text-zinc-200">
+                              {incidentLabel(flow)}
+                            </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2 sm:justify-end">
+                      <div className="flex flex-wrap gap-2">
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
                             flow.status
@@ -936,7 +872,7 @@ export default function FlowsClient({
 
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${incidentTone(
-                            flowHasIncident(flow)
+                            flow.hasIncident
                           )}`}
                         >
                           {incidentLabel(flow)}
@@ -944,11 +880,26 @@ export default function FlowsClient({
                       </div>
                     </div>
 
-                    <FlowActionButtons
-                      flow={flow}
-                      selected={selected}
-                      onSelect={selectFlow}
-                    />
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => selectFlow(flow)}
+                        className={`inline-flex rounded-full px-4 py-2 text-sm font-medium transition ${
+                          selected
+                            ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                            : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
+                        }`}
+                      >
+                        {selected ? "Flow actif" : "Sélectionner"}
+                      </button>
+
+                      <Link
+                        href={`/flows/${safeDetailId(flow)}`}
+                        className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+                      >
+                        Voir le détail
+                      </Link>
+                    </div>
                   </div>
                 );
               })}
