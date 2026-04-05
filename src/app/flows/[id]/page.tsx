@@ -774,7 +774,6 @@ function buildAllFlowSummaries(
     enriched,
     incidents
   );
-
   const incidentOnly = buildIncidentOnlyFlowSummaries(incidents, [
     ...enriched,
     ...registryOnly,
@@ -858,6 +857,43 @@ function incidentLabel(flow: FlowSummary): string {
   }
 
   return `${flow.incidentCount} incidents`;
+}
+
+function hasIncidentNavigation(flow: FlowSummary, linkedIncidents: IncidentItem[]) {
+  return (
+    linkedIncidents.length > 0 ||
+    flow.hasIncident ||
+    flow.incidentCount > 0 ||
+    Boolean(flow.firstIncidentId)
+  );
+}
+
+function incidentCtaLabel(flow: FlowSummary, linkedIncidents: IncidentItem[]) {
+  const count =
+    linkedIncidents.length > 0 ? linkedIncidents.length : flow.incidentCount;
+
+  return count > 1 ? "Voir les incidents" : "Voir l’incident";
+}
+
+function incidentsHref(flow: FlowSummary) {
+  const params = new URLSearchParams();
+
+  if (flow.flowId) {
+    params.set("flow_id", flow.flowId);
+  }
+
+  if (flow.rootEventId && flow.rootEventId !== "—") {
+    params.set("root_event_id", flow.rootEventId);
+  }
+
+  if (flow.sourceRecordId) {
+    params.set("source_record_id", flow.sourceRecordId);
+  }
+
+  params.set("from", "flows");
+
+  const query = params.toString();
+  return query ? `/incidents?${query}` : "/incidents";
 }
 
 function matchesRouteId(flow: FlowSummary, routeId: string): boolean {
@@ -1002,7 +1038,28 @@ export default async function FlowDetailPage({
               PARTIAL
             </span>
           ) : null}
+
+          {hasIncidentNavigation(flow, linkedIncidents) ? (
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
+                "failed"
+              )}`}
+            >
+              {incidentCtaLabel(flow, linkedIncidents)}
+            </span>
+          ) : null}
         </div>
+
+        {hasIncidentNavigation(flow, linkedIncidents) ? (
+          <div className="pt-2">
+            <Link
+              href={incidentsHref(flow)}
+              className="inline-flex rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15"
+            >
+              {incidentCtaLabel(flow, linkedIncidents)}
+            </Link>
+          </div>
+        ) : null}
       </div>
 
       {flow.readingMode === "registry-only" ? (
