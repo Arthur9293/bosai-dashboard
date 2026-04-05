@@ -10,11 +10,22 @@ type PageProps = {
   params: Promise<{
     id: string;
   }>;
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
+}
+
+function actionLinkClassName(variant: "default" | "primary" | "soft" = "default") {
+  if (variant === "primary") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+  }
+
+  if (variant === "soft") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
+  }
+
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
 }
 
 function formatDate(value?: string | null) {
@@ -44,58 +55,8 @@ function toNumber(value: unknown, fallback = 0) {
   return fallback;
 }
 
-function getQueryText(value: string | string[] | undefined) {
-  if (Array.isArray(value)) {
-    const first = value.find((item) => String(item).trim() !== "");
-    return first ? String(first).trim() : "";
-  }
-
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function buildIncidentsHref(options: {
-  flowId?: string;
-  rootEventId?: string;
-  sourceRecordId?: string;
-  from?: string;
-}) {
-  const params = new URLSearchParams();
-
-  if (options.flowId) {
-    params.set("flow_id", options.flowId);
-  }
-
-  if (options.rootEventId && options.rootEventId !== "—") {
-    params.set("root_event_id", options.rootEventId);
-  }
-
-  if (options.sourceRecordId && options.sourceRecordId !== "—") {
-    params.set("source_record_id", options.sourceRecordId);
-  }
-
-  if (options.from) {
-    params.set("from", options.from);
-  }
-
-  const query = params.toString();
-  return query ? `/incidents?${query}` : "/incidents";
-}
-
-function buildFlowHref(options: {
-  flowId?: string;
-  rootEventId?: string;
-  sourceRecordId?: string;
-}) {
-  const target =
-    options.flowId || options.sourceRecordId || options.rootEventId || "";
-
-  return target ? `/flows/${encodeURIComponent(target)}` : "";
-}
-
 function getIncidentTitle(incident: IncidentItem) {
-  return (
-    incident.title || incident.name || incident.error_id || "Untitled incident"
-  );
+  return incident.title || incident.name || incident.error_id || "Untitled incident";
 }
 
 function getIncidentStatusRaw(incident: IncidentItem) {
@@ -120,11 +81,9 @@ function getIncidentStatusNormalized(incident: IncidentItem) {
     return "open";
   }
 
-  if (["open", "opened", "new", "active", "en cours"].includes(raw))
-    return "open";
+  if (["open", "opened", "new", "active", "en cours"].includes(raw)) return "open";
   if (["escalated", "escalade", "escaladé"].includes(raw)) return "escalated";
-  if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw))
-    return "resolved";
+  if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw)) return "resolved";
 
   return raw;
 }
@@ -144,8 +103,7 @@ function getIncidentSeverityNormalized(incident: IncidentItem) {
   const raw = getIncidentSeverityRaw(incident).toLowerCase();
 
   if (!raw) {
-    if ((incident.sla_status || "").toLowerCase() === "breached")
-      return "critical";
+    if ((incident.sla_status || "").toLowerCase() === "breached") return "critical";
     return "unknown";
   }
 
@@ -331,9 +289,7 @@ function getWorkspace(incident: IncidentItem) {
 }
 
 function getRunRecord(incident: IncidentItem) {
-  return (
-    incident.run_record_id || incident.linked_run || incident.run_id || "—"
-  );
+  return incident.run_record_id || incident.linked_run || incident.run_id || "—";
 }
 
 function getCommandRecord(incident: IncidentItem) {
@@ -365,8 +321,7 @@ function getSuggestedAction(incident: IncidentItem) {
 
   if (status === "escalated") return "Review escalated incident";
   if (severity === "critical") return "Prioritize immediate review";
-  if ((incident.sla_status || "").toLowerCase() === "breached")
-    return "Review SLA breach";
+  if ((incident.sla_status || "").toLowerCase() === "breached") return "Review SLA breach";
   if (status === "resolved") return "Verify final resolution state";
 
   return "Monitor flow and resolution";
@@ -378,6 +333,22 @@ function getResolutionNote(incident: IncidentItem) {
 
 function getLastAction(incident: IncidentItem) {
   return toText(incident.last_action);
+}
+
+function getSourceFlowHref(incident: IncidentItem) {
+  const sourceTarget = getRootEventId(incident) || getFlowId(incident);
+  return sourceTarget ? `/flows/${encodeURIComponent(sourceTarget)}` : "";
+}
+
+function getLinkedFlowHref(incident: IncidentItem) {
+  const flowId = getFlowId(incident);
+  return flowId ? `/flows/${encodeURIComponent(flowId)}` : "";
+}
+
+function getLinkedCommandHref(incident: IncidentItem) {
+  const commandRecord = getCommandRecord(incident);
+  if (!commandRecord || commandRecord === "—") return "";
+  return `/commands/${encodeURIComponent(commandRecord)}`;
 }
 
 function isLegacyNoiseIncident(incident: IncidentItem) {
@@ -392,7 +363,8 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   const commandRecord = getCommandRecord(incident);
   const runRecord = getRunRecord(incident);
 
-  const isGenericTitle = title === "incident" || title === "untitled incident";
+  const isGenericTitle =
+    title === "incident" || title === "untitled incident";
 
   const isGenericCategory =
     category === "" || category === "—" || category === "unknown_incident";
@@ -416,20 +388,11 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
     reason === "forbidden_host" ||
     !hasNoLinking;
 
-  return (
-    isGenericTitle &&
-    isGenericCategory &&
-    isGenericReason &&
-    !hasStrongBusinessSignal
-  );
+  return isGenericTitle && isGenericCategory && isGenericReason && !hasStrongBusinessSignal;
 }
 
-export default async function IncidentDetailPage({
-  params,
-  searchParams,
-}: PageProps) {
+export default async function IncidentDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const resolvedSearchParams = searchParams ? await searchParams : {};
 
   let data: IncidentsResponse | null = null;
 
@@ -439,9 +402,7 @@ export default async function IncidentDetailPage({
     data = null;
   }
 
-  const incidents: IncidentItem[] = Array.isArray(data?.incidents)
-    ? data.incidents
-    : [];
+  const incidents: IncidentItem[] = Array.isArray(data?.incidents) ? data.incidents : [];
   const cleanIncidents = incidents.filter((item) => !isLegacyNoiseIncident(item));
   const incident = cleanIncidents.find((item) => item.id === id);
 
@@ -472,44 +433,19 @@ export default async function IncidentDetailPage({
   const nextAction = getNextAction(incident);
   const priorityScore = getPriorityScore(incident);
 
-  const contextFlowId = getQueryText(resolvedSearchParams.flow_id);
-  const contextRootEventId = getQueryText(resolvedSearchParams.root_event_id);
-  const contextSourceRecordId = getQueryText(
-    resolvedSearchParams.source_record_id
-  );
-  const contextFrom = getQueryText(resolvedSearchParams.from);
-
-  const hasFlowContext = Boolean(
-    contextFlowId || contextRootEventId || contextSourceRecordId
-  );
-
-  const filteredIncidentsHref = buildIncidentsHref({
-    flowId: contextFlowId,
-    rootEventId: contextRootEventId,
-    sourceRecordId: contextSourceRecordId,
-    from: contextFrom || "flows",
-  });
-
-  const linkedFlowHref = buildFlowHref({
-    flowId,
-    rootEventId,
-  });
-
-  const contextualFlowHref = buildFlowHref({
-    flowId: contextFlowId || flowId,
-    rootEventId: contextRootEventId || rootEventId,
-    sourceRecordId: contextSourceRecordId,
-  });
+  const sourceFlowHref = getSourceFlowHref(incident);
+  const linkedFlowHref = getLinkedFlowHref(incident);
+  const linkedCommandHref = getLinkedCommandHref(incident);
 
   return (
     <div className="space-y-6">
       <div className="border-b border-white/10 pb-4">
         <div className="text-sm text-zinc-400">
           <Link
-            href={hasFlowContext ? filteredIncidentsHref : "/incidents"}
+            href="/incidents"
             className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
           >
-            {hasFlowContext ? "Incidents filtrés" : "Incidents"}
+            Incidents
           </Link>{" "}
           / {title}
         </div>
@@ -555,83 +491,30 @@ export default async function IncidentDetailPage({
         </div>
       </div>
 
-      {hasFlowContext ? (
-        <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5">
-          <div className="mb-4 text-lg font-medium text-emerald-200">
-            Contexte depuis Flows
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {contextFlowId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-zinc-200">
-                flow_id: {contextFlowId}
-              </span>
-            ) : null}
-
-            {contextRootEventId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-zinc-200">
-                root_event_id: {contextRootEventId}
-              </span>
-            ) : null}
-
-            {contextSourceRecordId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-zinc-200">
-                source_record_id: {contextSourceRecordId}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-            <Link
-              href={filteredIncidentsHref}
-              className="inline-flex w-full justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10 sm:w-auto"
-            >
-              Retour aux incidents filtrés
-            </Link>
-
-            {contextualFlowHref ? (
-              <Link
-                href={contextualFlowHref}
-                className="inline-flex w-full justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20 sm:w-auto"
-              >
-                Retour au flow source
-              </Link>
-            ) : null}
-
-            <Link
-              href="/incidents"
-              className="inline-flex w-full justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20 sm:w-auto"
-            >
-              Voir tous les incidents
-            </Link>
-          </div>
-        </section>
-      ) : null}
-
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Opened</div>
+          <div className="text-sm text-zinc-400">Ouvert</div>
           <div className="mt-3 text-xl font-semibold text-white">
             {formatDate(openedAt)}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Updated</div>
+          <div className="text-sm text-zinc-400">Mis à jour</div>
           <div className="mt-3 text-xl font-semibold text-white">
             {formatDate(updatedAt)}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Resolved</div>
+          <div className="text-sm text-zinc-400">Résolu</div>
           <div className="mt-3 text-xl font-semibold text-white">
             {formatDate(resolvedAt)}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">SLA Remaining</div>
+          <div className="text-sm text-zinc-400">SLA restant</div>
           <div className="mt-3 text-xl font-semibold text-white">
             {typeof incident.sla_remaining_minutes === "number"
               ? `${incident.sla_remaining_minutes} min`
@@ -643,73 +526,65 @@ export default async function IncidentDetailPage({
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={`${cardClassName()} xl:col-span-2`}>
           <div className="mb-4 text-lg font-medium text-white">
-            Incident context
+            Contexte incident
           </div>
 
           <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
             <div>
-              Category: <span className="text-zinc-200">{category}</span>
+              Catégorie: <span className="text-zinc-200">{category}</span>
             </div>
             <div>
-              Reason: <span className="text-zinc-200">{reason}</span>
+              Raison: <span className="text-zinc-200">{reason}</span>
             </div>
             <div>
               Workspace: <span className="text-zinc-200">{workspace}</span>
             </div>
             <div>
-              Source:{" "}
-              <span className="text-zinc-200">{toText(incident.source)}</span>
+              Source: <span className="text-zinc-200">{toText(incident.source)}</span>
             </div>
             <div>
-              Worker:{" "}
-              <span className="text-zinc-200">{toText(incident.worker)}</span>
+              Worker: <span className="text-zinc-200">{toText(incident.worker)}</span>
             </div>
             <div>
               Error ID: <span className="text-zinc-200">{errorId}</span>
             </div>
             <div>
-              Last action: <span className="text-zinc-200">{lastAction}</span>
+              Dernière action: <span className="text-zinc-200">{lastAction}</span>
             </div>
             <div>
-              Resolution note:{" "}
-              <span className="text-zinc-200">{resolutionNote}</span>
+              Note de résolution: <span className="text-zinc-200">{resolutionNote}</span>
             </div>
             <div>
-              Decision status:{" "}
-              <span className="text-purple-300">{decisionStatus || "—"}</span>
+              Statut décision: <span className="text-purple-300">{decisionStatus || "—"}</span>
             </div>
             <div>
-              Decision reason:{" "}
-              <span className="text-zinc-200">{decisionReason || "—"}</span>
+              Raison décision: <span className="text-zinc-200">{decisionReason || "—"}</span>
             </div>
             <div>
-              Next action:{" "}
-              <span className="text-zinc-200">{nextAction || "—"}</span>
+              Next action: <span className="text-zinc-200">{nextAction || "—"}</span>
             </div>
             <div>
-              Priority score:{" "}
-              <span className="text-zinc-200">{priorityScore}</span>
+              Priorité: <span className="text-zinc-200">{priorityScore}</span>
             </div>
             <div className="md:col-span-2">
-              Suggested action:{" "}
-              <span className="text-zinc-200">{suggestedAction}</span>
+              Action suggérée: <span className="text-zinc-200">{suggestedAction}</span>
             </div>
           </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="mb-4 text-lg font-medium text-white">
-            Incident stats
+            Statistiques incident
           </div>
 
           <div className="space-y-3 text-sm">
             <div className="flex items-center justify-between gap-4">
-              <span className="text-zinc-400">Status</span>
+              <span className="text-zinc-400">Statut</span>
               <span className="text-zinc-200">{statusLabel}</span>
             </div>
 
             <div className="flex items-center justify-between gap-4">
-              <span className="text-zinc-400">Severity</span>
+              <span className="text-zinc-400">Sévérité</span>
               <span className="text-zinc-200">{severityLabel}</span>
             </div>
 
@@ -719,7 +594,7 @@ export default async function IncidentDetailPage({
             </div>
 
             <div className="flex items-center justify-between gap-4">
-              <span className="text-zinc-400">Priority</span>
+              <span className="text-zinc-400">Priorité</span>
               <span className="text-zinc-200">{priorityScore}</span>
             </div>
 
@@ -733,14 +608,16 @@ export default async function IncidentDetailPage({
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-4 text-lg font-medium text-white">Flow links</div>
+          <div className="mb-4 text-lg font-medium text-white">
+            Liens flow
+          </div>
 
           <div className="space-y-4 text-sm text-zinc-400">
             <div className="break-all">
               Flow:{" "}
-              {linkedFlowHref && flowId ? (
+              {flowId ? (
                 <Link
-                  href={linkedFlowHref}
+                  href={`/flows/${encodeURIComponent(flowId)}`}
                   className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
                 >
                   {flowId}
@@ -751,8 +628,7 @@ export default async function IncidentDetailPage({
             </div>
 
             <div className="break-all">
-              Root event:{" "}
-              <span className="text-zinc-200">{toText(rootEventId)}</span>
+              Root event: <span className="text-zinc-200">{toText(rootEventId)}</span>
             </div>
 
             <div className="break-all">
@@ -761,9 +637,9 @@ export default async function IncidentDetailPage({
 
             <div className="break-all">
               Command:{" "}
-              {commandRecord !== "—" && commandRecord ? (
+              {linkedCommandHref ? (
                 <Link
-                  href={`/commands/${encodeURIComponent(commandRecord)}`}
+                  href={linkedCommandHref}
                   className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
                 >
                   {commandRecord}
@@ -776,69 +652,35 @@ export default async function IncidentDetailPage({
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">Navigation</div>
+          <div className="mb-4 text-lg font-medium text-white">
+            Navigation
+          </div>
 
-          <div className="space-y-3 text-sm">
-            {hasFlowContext ? (
-              <div>
-                <Link
-                  href={filteredIncidentsHref}
-                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                >
-                  Retour aux incidents filtrés
-                </Link>
-              </div>
-            ) : (
-              <div>
-                <Link
-                  href="/incidents"
-                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                >
-                  Retour à la liste incidents
-                </Link>
-              </div>
-            )}
+          <div className="space-y-3">
+            <Link href="/incidents" className={actionLinkClassName("soft")}>
+              Retour à la liste incidents
+            </Link>
 
-            <div>
-              <Link
-                href="/incidents"
-                className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-              >
-                Voir tous les incidents
+            <Link href="/incidents" className={actionLinkClassName("primary")}>
+              Voir tous les incidents
+            </Link>
+
+            {sourceFlowHref ? (
+              <Link href={sourceFlowHref} className={actionLinkClassName("soft")}>
+                Retour au flow source
               </Link>
-            </div>
-
-            {contextualFlowHref ? (
-              <div>
-                <Link
-                  href={contextualFlowHref}
-                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                >
-                  Retour au flow source
-                </Link>
-              </div>
             ) : null}
 
             {linkedFlowHref ? (
-              <div>
-                <Link
-                  href={linkedFlowHref}
-                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                >
-                  Ouvrir le flow lié
-                </Link>
-              </div>
+              <Link href={linkedFlowHref} className={actionLinkClassName("soft")}>
+                Ouvrir le flow lié
+              </Link>
             ) : null}
 
-            {commandRecord !== "—" && commandRecord ? (
-              <div>
-                <Link
-                  href={`/commands/${encodeURIComponent(commandRecord)}`}
-                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                >
-                  Ouvrir la command liée
-                </Link>
-              </div>
+            {linkedCommandHref ? (
+              <Link href={linkedCommandHref} className={actionLinkClassName("soft")}>
+                Ouvrir la command liée
+              </Link>
             ) : null}
           </div>
         </div>
