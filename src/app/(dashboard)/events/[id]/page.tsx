@@ -34,7 +34,7 @@ function actionLinkClassName(
   return `${base} border border-white/10 bg-white/5 text-white hover:bg-white/10`;
 }
 
-function formatDate(value?: string | null) {
+function formatDate(value?: string | null): string {
   if (!value) return "—";
 
   const d = new Date(value);
@@ -53,7 +53,7 @@ function toRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
-function toText(value: unknown, fallback = "—") {
+function toText(value: unknown, fallback = "—"): string {
   if (value === null || value === undefined) return fallback;
 
   if (Array.isArray(value)) {
@@ -68,11 +68,11 @@ function toText(value: unknown, fallback = "—") {
   return text || fallback;
 }
 
-function toTextOrEmpty(value: unknown) {
+function toTextOrEmpty(value: unknown): string {
   return toText(value, "");
 }
 
-function stringifyPretty(value: unknown) {
+function stringifyPretty(value: unknown): string {
   try {
     return JSON.stringify(value ?? {}, null, 2);
   } catch {
@@ -80,7 +80,7 @@ function stringifyPretty(value: unknown) {
   }
 }
 
-function getEventType(event: EventItem) {
+function getEventType(event: EventItem): string {
   return (
     toTextOrEmpty((event as Record<string, unknown>).mapped_capability) ||
     toTextOrEmpty(event.event_type) ||
@@ -89,11 +89,11 @@ function getEventType(event: EventItem) {
   );
 }
 
-function getEventStatus(event: EventItem) {
+function getEventStatus(event: EventItem): string {
   return toTextOrEmpty(event.status) || "unknown";
 }
 
-function getWorkspace(event: EventItem) {
+function getWorkspace(event: EventItem): string {
   if (toTextOrEmpty(event.workspace_id)) return toTextOrEmpty(event.workspace_id);
 
   const payload = toRecord(event.payload);
@@ -105,7 +105,7 @@ function getWorkspace(event: EventItem) {
   );
 }
 
-function getFlowId(event: EventItem) {
+function getFlowId(event: EventItem): string {
   if (toTextOrEmpty(event.flow_id)) return toTextOrEmpty(event.flow_id);
 
   const payload = toRecord(event.payload);
@@ -117,7 +117,7 @@ function getFlowId(event: EventItem) {
   );
 }
 
-function getRootEventId(event: EventItem) {
+function getRootEventId(event: EventItem): string {
   if (toTextOrEmpty(event.root_event_id)) return toTextOrEmpty(event.root_event_id);
 
   const payload = toRecord(event.payload);
@@ -129,11 +129,11 @@ function getRootEventId(event: EventItem) {
   );
 }
 
-function getFlowTarget(event: EventItem) {
+function getFlowTarget(event: EventItem): string {
   return getFlowId(event) || getRootEventId(event) || "";
 }
 
-function getLinkedCommand(event: EventItem) {
+function getLinkedCommand(event: EventItem): string {
   if (toTextOrEmpty(event.command_id)) return toTextOrEmpty(event.command_id);
 
   const raw = (event as Record<string, unknown>).linked_command;
@@ -149,7 +149,7 @@ function getLinkedCommand(event: EventItem) {
   );
 }
 
-function getSource(event: EventItem) {
+function getSource(event: EventItem): string {
   const direct = toTextOrEmpty((event as Record<string, unknown>).source);
   if (direct) return direct;
 
@@ -157,7 +157,7 @@ function getSource(event: EventItem) {
   return toTextOrEmpty(payload.source) || "—";
 }
 
-function getRun(event: EventItem) {
+function getRun(event: EventItem): string {
   const direct = toTextOrEmpty((event as Record<string, unknown>).run_id);
   if (direct) return direct;
 
@@ -169,14 +169,14 @@ function getRun(event: EventItem) {
   );
 }
 
-function hasCommandCreated(event: EventItem) {
+function hasCommandCreated(event: EventItem): boolean {
   const direct = (event as Record<string, unknown>).command_created;
   if (typeof direct === "boolean") return direct;
 
   return Boolean(getLinkedCommand(event));
 }
 
-function tone(status?: string) {
+function tone(status?: string): string {
   const s = (status || "").toLowerCase();
 
   if (["processed", "done", "success"].includes(s)) {
