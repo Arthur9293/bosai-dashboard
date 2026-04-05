@@ -12,7 +12,7 @@ type PageProps = {
       };
 };
 
-type AnyRecord = Record<string, unknown>;
+type AnyRecord = Record<string, any>;
 
 type FlowSummaryLike = {
   key: string;
@@ -174,11 +174,7 @@ function statusTone(status: string) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  if (
-    ["running", "in_progress", "processing", "queued", "pending"].includes(
-      normalized
-    )
-  ) {
+  if (["running", "in_progress", "processing"].includes(normalized)) {
     return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
   }
 
@@ -283,10 +279,7 @@ function normalizeFlowSummary(flow: AnyRecord): FlowSummaryLike {
     firstIncidentId: toText(flow.firstIncidentId || "", ""),
     readingMode:
       flow.readingMode === "registry-only" ? "registry-only" : "enriched",
-    sourceRecordId: toText(
-      flow.sourceRecordId || flow.source_record_id || "",
-      ""
-    ),
+    sourceRecordId: toText(flow.sourceRecordId || flow.source_record_id || "", ""),
     isPartial: toBoolean(flow.isPartial, false),
   };
 }
@@ -502,25 +495,25 @@ function resolveFlowStatus(
   return "unknown";
 }
 
-function readingModeLabel(
-  readingMode: "enriched" | "registry-only" | undefined
-): string {
-  return readingMode === "registry-only" ? "Registre uniquement" : "Enrichie";
-}
-
 export default async function FlowDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
 
-  const api = (await import("@/lib/api")) as AnyRecord;
+  const api = await import("@/lib/api");
 
-  const fetchCommands = api.fetchCommands as undefined | (() => Promise<unknown>);
-  const fetchIncidents = api.fetchIncidents as undefined | (() => Promise<unknown>);
-  const fetchFlows = api.fetchFlows as undefined | (() => Promise<unknown>);
+  const fetchCommands = (api as AnyRecord).fetchCommands as
+    | undefined
+    | (() => Promise<any>);
+  const fetchIncidents = (api as AnyRecord).fetchIncidents as
+    | undefined
+    | (() => Promise<any>);
+  const fetchFlows = (api as AnyRecord).fetchFlows as
+    | undefined
+    | (() => Promise<any>);
 
-  let commandsData: unknown = null;
-  let incidentsData: unknown = null;
-  let flowsData: unknown = null;
+  let commandsData: any = null;
+  let incidentsData: any = null;
+  let flowsData: any = null;
 
   try {
     commandsData = fetchCommands ? await fetchCommands() : null;
@@ -540,37 +533,22 @@ export default async function FlowDetailPage({ params }: PageProps) {
     flowsData = null;
   }
 
-  const commandsContainer =
-    commandsData && typeof commandsData === "object"
-      ? (commandsData as AnyRecord)
-      : null;
-
-  const incidentsContainer =
-    incidentsData && typeof incidentsData === "object"
-      ? (incidentsData as AnyRecord)
-      : null;
-
-  const flowsContainer =
-    flowsData && typeof flowsData === "object"
-      ? (flowsData as AnyRecord)
-      : null;
-
-  const rawCommands: AnyRecord[] = Array.isArray(commandsContainer?.commands)
-    ? (commandsContainer?.commands as AnyRecord[])
+  const rawCommands: AnyRecord[] = Array.isArray(commandsData?.commands)
+    ? commandsData.commands
     : Array.isArray(commandsData)
-      ? (commandsData as AnyRecord[])
+      ? commandsData
       : [];
 
-  const rawIncidents: AnyRecord[] = Array.isArray(incidentsContainer?.incidents)
-    ? (incidentsContainer?.incidents as AnyRecord[])
+  const rawIncidents: AnyRecord[] = Array.isArray(incidentsData?.incidents)
+    ? incidentsData.incidents
     : Array.isArray(incidentsData)
-      ? (incidentsData as AnyRecord[])
+      ? incidentsData
       : [];
 
-  const rawFlows: AnyRecord[] = Array.isArray(flowsContainer?.flows)
-    ? (flowsContainer?.flows as AnyRecord[])
+  const rawFlows: AnyRecord[] = Array.isArray(flowsData?.flows)
+    ? flowsData.flows
     : Array.isArray(flowsData)
-      ? (flowsData as AnyRecord[])
+      ? flowsData
       : [];
 
   const normalizedFlows = rawFlows.map(normalizeFlowSummary);
@@ -601,9 +579,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const matchedTimeline = sortTimeline(
     timelineBase.filter((item) => {
       if (effectiveFlowId && item.flowId === effectiveFlowId) return true;
-      if (effectiveRootEventId && item.rootEventId === effectiveRootEventId) {
-        return true;
-      }
+      if (effectiveRootEventId && item.rootEventId === effectiveRootEventId) return true;
       if (item.flowId === id) return true;
       if (item.rootEventId === id) return true;
       return false;
@@ -616,63 +592,87 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   const matchedIncidents = normalizedIncidents.filter((incident) => {
     if (effectiveFlowId && incident.flow_id === effectiveFlowId) return true;
-    if (effectiveRootEventId && incident.root_event_id === effectiveRootEventId) {
-      return true;
-    }
-    if (
-      effectiveSourceRecordId &&
-      incident.source_record_id === effectiveSourceRecordId
-    ) {
-      return true;
-    }
+    if (effectiveRootEventId && incident.root_event_id === effectiveRootEventId) return true;
+    if (effectiveSourceRecordId && incident.source_record_id === effectiveSourceRecordId) return true;
     if (incident.flow_id === id) return true;
     if (incident.root_event_id === id) return true;
     if (incident.source_record_id === id) return true;
     return false;
   });
 
-  const flowId =
-    flowSummary?.flowId || matchedTimeline[0]?.flowId || effectiveFlowId || id;
+  const flowId = toText(
+    flowSummary?.flowId ||
+      matchedTimeline[0]?.flowId ||
+      effectiveFlowId ||
+      (id.startsWith("flow_") ? id : id),
+    "—"
+  );
 
-  const rootEventId =
+  const rootEventId = toText(
     flowSummary?.rootEventId ||
-    matchedTimeline[0]?.rootEventId ||
-    effectiveRootEventId ||
-    "";
+      matchedTimeline[0]?.rootEventId ||
+      effectiveRootEventId ||
+      "",
+    ""
+  );
 
-  const workspaceId =
+  const workspaceId = toText(
     flowSummary?.workspaceId ||
-    matchedTimeline[0]?.workspaceId ||
-    matchedIncidents[0]?.workspace_id ||
-    "production";
+      matchedTimeline[0]?.workspaceId ||
+      matchedIncidents[0]?.workspace_id ||
+      "production",
+    "production"
+  );
 
-  const sourceRecordId =
-    flowSummary?.sourceRecordId || effectiveSourceRecordId || "";
+  const sourceRecordId = toText(
+    flowSummary?.sourceRecordId || effectiveSourceRecordId || "",
+    ""
+  );
 
   const readingMode =
     flowSummary?.readingMode ||
     (matchedTimeline.length > 0 ? "enriched" : "registry-only");
 
-  const incidentCount = flowSummary?.incidentCount ?? matchedIncidents.length;
-  const hasIncident = flowSummary?.hasIncident ?? incidentCount > 0;
+  const incidentCount = toNumber(
+    flowSummary?.incidentCount ?? matchedIncidents.length,
+    0
+  );
 
-  const rootCapability =
+  const hasIncident =
+    typeof flowSummary?.hasIncident === "boolean"
+      ? flowSummary.hasIncident
+      : incidentCount > 0;
+
+  const rootCapability = toText(
     flowSummary?.rootCapability ||
-    matchedTimeline[0]?.capability ||
-    "Non disponible";
+      matchedTimeline[0]?.capability ||
+      "Non disponible",
+    "Non disponible"
+  );
 
-  const terminalCapability =
+  const terminalCapability = toText(
     flowSummary?.terminalCapability ||
-    matchedTimeline[matchedTimeline.length - 1]?.capability ||
-    "Non disponible";
+      matchedTimeline[matchedTimeline.length - 1]?.capability ||
+      "Non disponible",
+    "Non disponible"
+  );
 
-  const lastActivityTs =
-    flowSummary?.lastActivityTs || getLastKnownTimestamp(matchedTimeline);
+  const lastActivityTs = toNumber(
+    flowSummary?.lastActivityTs || getLastKnownTimestamp(matchedTimeline),
+    0
+  );
 
-  const durationMs = flowSummary?.durationMs || getDurationMs(matchedTimeline);
+  const durationMs = toNumber(
+    flowSummary?.durationMs || getDurationMs(matchedTimeline),
+    0
+  );
 
-  const resolvedStatus = resolveFlowStatus(matchedTimeline, flowSummary);
-  const title = flowSummary?.flowId || matchedTimeline[0]?.flowId || id;
+  const resolvedStatus = toText(
+    resolveFlowStatus(matchedTimeline, flowSummary),
+    "unknown"
+  );
+
+  const title = toText(flowSummary?.flowId || matchedTimeline[0]?.flowId || id, id);
 
   const displayedSteps =
     flowSummary?.steps && flowSummary.steps > 0
@@ -773,8 +773,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
           </div>
           <p className="mt-3 text-base leading-7 text-amber-100/85">
             Ce flow est bien présent dans le registre BOSAI, mais aucune commande
-            détaillée n’a encore été chargée pour construire la lecture causale
-            complète.
+            détaillée n’a encore été chargée pour construire la lecture causale complète.
           </p>
         </div>
       ) : null}
@@ -782,22 +781,30 @@ export default async function FlowDetailPage({ params }: PageProps) {
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Étapes</div>
-          <div className="mt-3 text-4xl font-semibold text-white">{displayedSteps}</div>
+          <div className="mt-3 text-4xl font-semibold text-white">
+            {displayedSteps}
+          </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Terminées</div>
-          <div className="mt-3 text-4xl font-semibold text-emerald-300">{doneCount}</div>
+          <div className="mt-3 text-4xl font-semibold text-emerald-300">
+            {doneCount}
+          </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">En cours / En file</div>
-          <div className="mt-3 text-4xl font-semibold text-sky-300">{runningCount}</div>
+          <div className="mt-3 text-4xl font-semibold text-sky-300">
+            {runningCount}
+          </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Échecs</div>
-          <div className="mt-3 text-4xl font-semibold text-rose-300">{failedCount}</div>
+          <div className="mt-3 text-4xl font-semibold text-rose-300">
+            {failedCount}
+          </div>
         </div>
       </section>
 
@@ -844,11 +851,14 @@ export default async function FlowDetailPage({ params }: PageProps) {
             <span className="text-zinc-500">Root event :</span> {rootEventId || "—"}
           </div>
           <div>
-            <span className="text-zinc-500">Workspace :</span> {workspaceId || "—"}
+            <span className="text-zinc-500">Workspace :</span> {toText(workspaceId, "—")}
           </div>
           <div>
             <span className="text-zinc-500">Dernière étape :</span>{" "}
-            {matchedTimeline[matchedTimeline.length - 1]?.capability || terminalCapability}
+            {toText(
+              matchedTimeline[matchedTimeline.length - 1]?.capability || terminalCapability,
+              "—"
+            )}
           </div>
           <div>
             <span className="text-zinc-500">Dernière activité :</span>{" "}
@@ -867,7 +877,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
           <div className="md:col-span-2 xl:col-span-3">
             <span className="text-zinc-500">Type de lecture :</span>{" "}
-            {readingModeLabel(readingMode)}
+            {readingMode === "registry-only" ? "Registre uniquement" : "Enrichie"}
           </div>
         </div>
       </section>
@@ -901,89 +911,85 @@ export default async function FlowDetailPage({ params }: PageProps) {
           </div>
         ) : (
           <div className="space-y-4">
-            {matchedTimeline.map((item, index) => {
-              const displayStep = item.stepIndex > 0 ? item.stepIndex : index + 1;
+            {matchedTimeline.map((item) => (
+              <article
+                key={item.id}
+                className="rounded-2xl border border-white/10 bg-white/5 p-4"
+              >
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="break-words text-xl font-semibold text-white">
+                        {item.capability}
+                      </h3>
 
-              return (
-                <article
-                  key={item.id}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="break-words text-xl font-semibold text-white">
-                          {item.capability}
-                        </h3>
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
+                          item.status
+                        )}`}
+                      >
+                        {item.status.toUpperCase()}
+                      </span>
 
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
-                            item.status
-                          )}`}
-                        >
-                          {item.status.toUpperCase()}
-                        </span>
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${stepBadgeTone()}`}
+                      >
+                        STEP {item.stepIndex}
+                      </span>
 
+                      {item.isRoot ? (
                         <span
                           className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${stepBadgeTone()}`}
                         >
-                          STEP {displayStep}
+                          ROOT
                         </span>
+                      ) : null}
 
-                        {item.isRoot ? (
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${stepBadgeTone()}`}
-                          >
-                            ROOT
-                          </span>
-                        ) : null}
+                      {item.isTerminal ? (
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${stepBadgeTone()}`}
+                        >
+                          TERMINAL
+                        </span>
+                      ) : null}
+                    </div>
 
-                        {item.isTerminal ? (
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${stepBadgeTone()}`}
-                          >
-                            TERMINAL
-                          </span>
-                        ) : null}
+                    <div className="mt-4 grid gap-2 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+                      <div>
+                        ID: <span className="break-all text-zinc-200">{item.id || "—"}</span>
                       </div>
-
-                      <div className="mt-4 grid gap-2 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-                        <div>
-                          ID: <span className="break-all text-zinc-200">{item.id || "—"}</span>
-                        </div>
-                        <div>
-                          Parent:{" "}
-                          <span className="break-all text-zinc-200">
-                            {item.parentCommandId || "—"}
-                          </span>
-                        </div>
-                        <div>
-                          Worker: <span className="text-zinc-200">{item.worker || "—"}</span>
-                        </div>
-                        <div>
-                          Démarré:{" "}
-                          <span className="text-zinc-200">
-                            {formatDate(item.startedAt || item.createdAt)}
-                          </span>
-                        </div>
-                        <div>
-                          Terminé:{" "}
-                          <span className="text-zinc-200">
-                            {formatDate(item.finishedAt)}
-                          </span>
-                        </div>
-                        <div>
-                          Flow:{" "}
-                          <span className="break-all text-zinc-200">
-                            {item.flowId || flowId || "—"}
-                          </span>
-                        </div>
+                      <div>
+                        Parent:{" "}
+                        <span className="break-all text-zinc-200">
+                          {item.parentCommandId || "—"}
+                        </span>
+                      </div>
+                      <div>
+                        Worker: <span className="text-zinc-200">{item.worker || "—"}</span>
+                      </div>
+                      <div>
+                        Démarré:{" "}
+                        <span className="text-zinc-200">
+                          {formatDate(item.startedAt || item.createdAt)}
+                        </span>
+                      </div>
+                      <div>
+                        Terminé:{" "}
+                        <span className="text-zinc-200">
+                          {formatDate(item.finishedAt)}
+                        </span>
+                      </div>
+                      <div>
+                        Flow:{" "}
+                        <span className="break-all text-zinc-200">
+                          {item.flowId || flowId || "—"}
+                        </span>
                       </div>
                     </div>
                   </div>
-                </article>
-              );
-            })}
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </section>
