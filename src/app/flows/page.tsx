@@ -236,30 +236,35 @@ function isRecordIdLike(value: string): boolean {
   return /^rec[a-zA-Z0-9]+$/.test(value);
 }
 
-function compactTechnicalId(value: string, max = 34): string {
+function compactTechnicalId(value: string, max = 32): string {
   const clean = toText(value);
   if (!clean) return "Flow";
   if (clean.length <= max) return clean;
 
-  const keepStart = Math.max(14, Math.floor((max - 3) / 2));
-  const keepEnd = Math.max(8, max - keepStart - 3);
+  const keepStart = Math.max(12, Math.floor((max - 3) / 2));
+  const keepEnd = Math.max(7, max - keepStart - 3);
 
   return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
 }
 
 function getDisplayTitle(flow: FlowCard): string {
-  return toText(flow.flowId) || toText(flow.sourceRecordId) || toText(flow.rootEventId) || "Flow";
+  return (
+    toText(flow.flowId) ||
+    toText(flow.sourceRecordId) ||
+    toText(flow.rootEventId) ||
+    "Flow"
+  );
 }
 
 function displayCardTitle(flow: FlowCard): string {
   const raw = getDisplayTitle(flow);
 
   if (isRecordIdLike(raw)) {
-    return compactTechnicalId(raw, 28);
+    return compactTechnicalId(raw, 22);
   }
 
-  if (raw.length > 38) {
-    return compactTechnicalId(raw, 38);
+  if (raw.length > 30) {
+    return compactTechnicalId(raw, 30);
   }
 
   return raw;
@@ -454,12 +459,7 @@ function normalizeCommand(cmd: AnyRecord): NormalizedCommand {
 }
 
 function getCommandIncidentKeys(cmd: NormalizedCommand): string[] {
-  return uniqueTexts([
-    cmd.id,
-    cmd.flowId,
-    cmd.rootEventId,
-    cmd.parentCommandId,
-  ]);
+  return uniqueTexts([cmd.id, cmd.flowId, cmd.rootEventId, cmd.parentCommandId]);
 }
 
 function getIncidentCandidates(incident: AnyRecord): string[] {
@@ -632,9 +632,7 @@ function getTerminalCommand(
 
   const source = leafCandidates.length > 0 ? leafCandidates : commands;
 
-  return (
-    [...source].sort((a, b) => b.activityTs - a.activityTs)[0] ?? null
-  );
+  return [...source].sort((a, b) => b.activityTs - a.activityTs)[0] ?? null;
 }
 
 function getFlowGroupKey(cmd: NormalizedCommand): string {
@@ -649,12 +647,10 @@ function computeRegistryStatus(flow: AnyRecord): FlowStatus {
       ? (flow.stats as Record<string, unknown>)
       : {};
 
-  const running =
-    toNumber(stats.running, 0) + toNumber(stats.queued, 0) > 0;
+  const running = toNumber(stats.running, 0) + toNumber(stats.queued, 0) > 0;
   const failed = toNumber(stats.error, 0) + toNumber(stats.dead, 0) > 0;
   const retry = toNumber(stats.retry, 0) > 0;
-  const success =
-    toNumber(stats.done, 0) > 0 && !running && !failed && !retry;
+  const success = toNumber(stats.done, 0) > 0 && !running && !failed && !retry;
 
   if (running) return "running";
   if (failed) return "failed";
@@ -693,16 +689,13 @@ function buildEnrichedFlowCards(
     const terminalCommand = getTerminalCommand(ordered);
 
     const flowId = ordered.map((cmd) => cmd.flowId).find(Boolean) || "";
-    const rootEventId =
-      ordered.map((cmd) => cmd.rootEventId).find(Boolean) || "";
+    const rootEventId = ordered.map((cmd) => cmd.rootEventId).find(Boolean) || "";
     const workspaceId =
       ordered.map((cmd) => cmd.workspaceId).find(Boolean) || "production";
 
     const lastActivityTs = Math.max(...ordered.map((cmd) => cmd.activityTs), 0);
 
-    const validStarts = ordered
-      .map((cmd) => cmd.startTs)
-      .filter((ts) => ts > 0);
+    const validStarts = ordered.map((cmd) => cmd.startTs).filter((ts) => ts > 0);
 
     const earliestStartTs =
       validStarts.length > 0 ? Math.min(...validStarts) : 0;
@@ -826,8 +819,7 @@ function buildIncidentOnlyFlowCards(
   for (const incident of incidents) {
     const flowId = toText(incident.flow_id);
     const rootEventId = toText(incident.root_event_id);
-    const sourceRecordId =
-      toText(incident.source_record_id) || toText(incident.id);
+    const sourceRecordId = toText(incident.source_record_id) || toText(incident.id);
 
     if (!flowId && !rootEventId && !sourceRecordId) continue;
 
@@ -859,8 +851,7 @@ function buildIncidentOnlyFlowCards(
       `incident-${toText(latest.id)}`;
 
     const rootEventId = toText(latest.root_event_id) || flowId;
-    const sourceRecordId =
-      toText(latest.source_record_id) || toText(latest.id);
+    const sourceRecordId = toText(latest.source_record_id) || toText(latest.id);
 
     cards.push({
       key,
@@ -984,7 +975,7 @@ function FlowListCard({
         <div className="space-y-4 xl:space-y-2.5">
           <h3
             title={rawTitle}
-            className="break-words text-[1.9rem] font-semibold leading-[1.03] tracking-tight text-white sm:text-[2.1rem] xl:text-[1.65rem] 2xl:text-[1.75rem] md:min-h-[4.5rem] xl:min-h-[3.25rem]"
+            className="break-words text-[1.9rem] font-semibold leading-[1.03] tracking-tight text-white sm:text-[2.1rem] xl:text-[1.6rem] 2xl:text-[1.7rem] md:min-h-[4.5rem] xl:min-h-[3.1rem] xl:overflow-hidden xl:[display:-webkit-box] xl:[-webkit-box-orient:vertical] xl:[-webkit-line-clamp:2]"
           >
             {displayTitle}
           </h3>
@@ -996,8 +987,7 @@ function FlowListCard({
 
             {flow.readingMode === "registry-only" ? (
               <div className="break-all xl:col-span-2">
-                Source / Root record:{" "}
-                <span className="text-zinc-100">{rootLabel}</span>
+                Source / Root record: <span className="text-zinc-100">{rootLabel}</span>
               </div>
             ) : (
               <div className="break-all xl:col-span-2">
@@ -1192,10 +1182,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
     ...incidentOnlyFlows,
   ]);
 
-  const allFlows = sortFlowCards([
-    ...enrichedFlows,
-    ...registrySectionFlows,
-  ]);
+  const allFlows = sortFlowCards([...enrichedFlows, ...registrySectionFlows]);
 
   const needsAttentionFlows = sortFlowCards(
     allFlows.filter((flow) => isNeedsAttention(flow))
