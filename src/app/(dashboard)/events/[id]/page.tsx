@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { fetchEvents } from "@/lib/api";
+import { fetchCommands, fetchEvents } from "@/lib/api";
 
 type EventItem = {
   id: string;
@@ -20,6 +20,21 @@ type EventItem = {
   root_event_id?: string | null;
   workspace_id?: string | null;
   payload?: Record<string, unknown> | unknown;
+};
+
+type CommandItem = {
+  id: string;
+  flow_id?: string | null;
+  root_event_id?: string | null;
+  input_json?: unknown;
+  command_input_json?: unknown;
+  payload_json?: unknown;
+  input?: unknown;
+  result_json?: unknown;
+  result?: unknown;
+  output_json?: unknown;
+  output?: unknown;
+  [key: string]: unknown;
 };
 
 type PageProps = {
@@ -78,113 +93,111 @@ function buttonClassName(variant: "default" | "primary" = "default") {
   return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-base font-medium text-white transition hover:bg-white/10";
 }
 
+function firstNonEmptyString(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const text = String(item ?? "").trim();
+        if (text) return text;
+      }
+      continue;
+    }
+
+    const text = String(value).trim();
+    if (text) return text;
+  }
+
+  return "";
+}
+
+function parseJsonMaybe(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  if (typeof value !== "string") return {};
+
+  const trimmed = value.trim();
+  if (!trimmed) return {};
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {}
+
+  return {};
+}
+
 function getEventType(event: EventItem) {
   return event.mapped_capability || event.event_type || event.type || "Event detail";
 }
 
 function getLinkedCommandValue(event: EventItem) {
-  if (event.command_id && String(event.command_id).trim()) {
-    return String(event.command_id).trim();
-  }
-
-  if (Array.isArray(event.linked_command) && event.linked_command.length > 0) {
-    const first = String(event.linked_command[0] || "").trim();
-    if (first) return first;
-  }
-
-  return "—";
+  return firstNonEmptyString(event.command_id, event.linked_command) || "—";
 }
 
-function getFlowId(event: EventItem) {
-  if (event.flow_id && String(event.flow_id).trim()) {
-    return String(event.flow_id).trim();
-  }
+function getCommandFlowTarget(command?: CommandItem | null) {
+  if (!command) return "";
 
-  const payload =
-    event.payload && typeof event.payload === "object"
-      ? (event.payload as Record<string, unknown>)
-      : null;
+  const inputPayload = parseJsonMaybe(
+    command.input_json ??
+      command.command_input_json ??
+      command.payload_json ??
+      command.input ??
+      null
+  );
 
-  if (payload) {
-    const candidate = payload["flow_id"] ?? payload["flowid"];
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim();
-    }
-  }
+  const resultPayload = parseJsonMaybe(
+    command.result_json ?? command.result ?? command.output_json ?? command.output ?? null
+  );
 
-  return "—";
+  return firstNonEmptyString(
+    command.flow_id,
+    command.root_event_id,
+    inputPayload.flow_id,
+    inputPayload.flowid,
+    inputPayload.root_event_id,
+    inputPayload.rootEventId,
+    inputPayload.rooteventid,
+    resultPayload.flow_id,
+    resultPayload.flowid,
+    resultPayload.root_event_id,
+    resultPayload.rootEventId,
+    resultPayload.rooteventid
+  );
+}
+
+function getFlowId(event: EventItem, command?: CommandItem | null) {
+  return (
+    firstNonEmptyString(
+      event.flow_id,
+      event.root_event_id,
+      getCommandFlowTarget(command)
+    ) || "—"
+  );
 }
 
 function getRootEventId(event: EventItem) {
-  if (event.root_event_id && String(event.root_event_id).trim()) {
-    return String(event.root_event_id).trim();
-  }
-
-  const payload =
-    event.payload && typeof event.payload === "object"
-      ? (event.payload as Record<string, unknown>)
-      : null;
-
-  if (payload) {
-    const candidate =
-      payload["root_event_id"] ??
-      payload["rootEventId"] ??
-      payload["rooteventid"] ??
-      payload["event_id"];
-
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim();
-    }
-  }
-
-  return "—";
+  return firstNonEmptyString(event.root_event_id) || "—";
 }
 
 function getWorkspaceId(event: EventItem) {
-  if (event.workspace_id && String(event.workspace_id).trim()) {
-    return String(event.workspace_id).trim();
-  }
-
-  const payload =
-    event.payload && typeof event.payload === "object"
-      ? (event.payload as Record<string, unknown>)
-      : null;
-
-  if (payload) {
-    const candidate =
-      payload["workspace_id"] ?? payload["workspaceId"] ?? payload["workspace"];
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim();
-    }
-  }
-
-  return "—";
+  return firstNonEmptyString(event.workspace_id) || "—";
 }
 
 function getSourceValue(event: EventItem) {
-  if (event.source && String(event.source).trim()) {
-    return String(event.source).trim();
-  }
-
-  const payload =
-    event.payload && typeof event.payload === "object"
-      ? (event.payload as Record<string, unknown>)
-      : null;
-
-  if (payload) {
-    const candidate = payload["source"];
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim();
-    }
-  }
-
-  return "—";
+  return firstNonEmptyString(event.source) || "—";
 }
 
 export default async function EventDetailPage({ params }: PageProps) {
   const { id } = await params;
 
   let data: any = null;
+  let commandsData: any = null;
 
   try {
     data = await fetchEvents();
@@ -192,7 +205,17 @@ export default async function EventDetailPage({ params }: PageProps) {
     data = null;
   }
 
+  try {
+    commandsData = await fetchCommands();
+  } catch {
+    commandsData = null;
+  }
+
   const events: EventItem[] = Array.isArray(data?.events) ? data.events : [];
+  const commands: CommandItem[] = Array.isArray(commandsData?.commands)
+    ? commandsData.commands
+    : [];
+
   const event = events.find((item) => item.id === id);
 
   if (!event) {
@@ -200,14 +223,18 @@ export default async function EventDetailPage({ params }: PageProps) {
   }
 
   const linkedCommand = getLinkedCommandValue(event);
-  const flowId = getFlowId(event);
+  const linkedCommandRecord =
+    linkedCommand !== "—"
+      ? commands.find((item) => item.id === linkedCommand)
+      : undefined;
+
+  const flowId = getFlowId(event, linkedCommandRecord);
   const rootEventId = getRootEventId(event);
   const workspaceId = getWorkspaceId(event);
   const sourceValue = getSourceValue(event);
 
   const hasCommand = linkedCommand !== "—";
-  const flowTarget = flowId !== "—" ? flowId : rootEventId;
-  const hasFlow = flowTarget !== "—";
+  const hasFlow = flowId !== "—";
 
   return (
     <div className="space-y-6">
@@ -349,7 +376,7 @@ export default async function EventDetailPage({ params }: PageProps) {
               Flow target
             </div>
             <div className="mt-3 break-all text-xl font-semibold text-white">
-              {hasFlow ? flowTarget : "—"}
+              {flowId}
             </div>
           </div>
 
@@ -358,7 +385,7 @@ export default async function EventDetailPage({ params }: PageProps) {
               Command target
             </div>
             <div className="mt-3 break-all text-xl font-semibold text-white">
-              {hasCommand ? linkedCommand : "—"}
+              {linkedCommand}
             </div>
           </div>
 
@@ -400,7 +427,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
           {hasFlow ? (
             <Link
-              href={`/flows/${encodeURIComponent(flowTarget)}`}
+              href={`/flows/${encodeURIComponent(flowId)}`}
               className={buttonClassName()}
             >
               Ouvrir le flow lié
