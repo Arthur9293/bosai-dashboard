@@ -172,6 +172,118 @@ function normalizeJsonLike(value: unknown): unknown {
   return value;
 }
 
+function isRecordIdLike(value: string): boolean {
+  return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
+}
+
+function buildCommandStats(
+  commands: CommandItem[]
+): Record<string, number | undefined> {
+  const stats: Record<string, number> = {
+    queued: 0,
+    running: 0,
+    retry: 0,
+    done: 0,
+    error: 0,
+    dead: 0,
+    other: 0,
+  };
+
+  for (const cmd of commands) {
+    const status = (cmd.status || "").trim().toLowerCase();
+
+    if (["queue", "queued", "pending"].includes(status)) {
+      stats.queued += 1;
+    } else if (["running", "processing"].includes(status)) {
+      stats.running += 1;
+    } else if (["retry", "retriable"].includes(status)) {
+      stats.retry += 1;
+    } else if (["done", "success", "completed", "processed"].includes(status)) {
+      stats.done += 1;
+    } else if (["error", "failed", "blocked"].includes(status)) {
+      stats.error += 1;
+    } else if (["dead"].includes(status)) {
+      stats.dead += 1;
+    } else {
+      stats.other += 1;
+    }
+  }
+
+  return stats;
+}
+
+function buildSyntheticFlowDetail(
+  id: string,
+  commands: CommandItem[],
+  incidents: IncidentItem[]
+): FlowDetail | null {
+  const target = String(id || "").trim();
+  if (!target) return null;
+
+  const matchedCommands = commands.filter((cmd) =>
+    [
+      cmd.id,
+      cmd.flow_id,
+      cmd.root_event_id,
+      cmd.source_event_id,
+    ]
+      .map((value) => String(value || ""))
+      .includes(target)
+  );
+
+  const matchedIncidents = incidents.filter((incident) =>
+    [
+      incident.id,
+      incident.flow_id,
+      incident.root_event_id,
+      incident.source_record_id,
+    ]
+      .map((value) => String(value || ""))
+      .includes(target)
+  );
+
+  if (matchedCommands.length === 0 && matchedIncidents.length === 0) {
+    return null;
+  }
+
+  const flowId =
+    matchedCommands.find((cmd) => cmd.flow_id)?.flow_id ||
+    matchedIncidents.find((incident) => incident.flow_id)?.flow_id ||
+    (!isRecordIdLike(target) ? target : "");
+
+  const rootEventId =
+    matchedCommands.find((cmd) => cmd.root_event_id)?.root_event_id ||
+    matchedCommands.find((cmd) => cmd.source_event_id)?.source_event_id ||
+    matchedIncidents.find((incident) => incident.root_event_id)?.root_event_id ||
+    matchedIncidents.find((incident) => incident.source_record_id)?.source_record_id ||
+    (isRecordIdLike(target) ? target : "");
+
+  const sourceRecordId =
+    matchedIncidents.find((incident) => incident.source_record_id)?.source_record_id ||
+    matchedCommands.find((cmd) => cmd.source_event_id)?.source_event_id ||
+    rootEventId ||
+    "";
+
+  const workspaceId =
+    matchedCommands.find((cmd) => cmd.workspace_id)?.workspace_id ||
+    matchedIncidents.find((incident) => incident.workspace_id)?.workspace_id ||
+    "production";
+
+  return {
+    id: sourceRecordId || flowId || rootEventId || target,
+    flow_id: flowId || undefined,
+    root_event_id: rootEventId || undefined,
+    source_record_id: sourceRecordId || undefined,
+    source_event_id: sourceRecordId || undefined,
+    workspace_id: workspaceId,
+    count: matchedCommands.length,
+    commands: matchedCommands,
+    stats: buildCommandStats(matchedCommands),
+    reading_mode: matchedCommands.length > 0 ? "enriched" : "registry-only",
+    is_partial: matchedCommands.length === 0,
+  };
+}
+
 export type HealthScoreResponse = {
   score?: number;
   status?: string;
@@ -200,6 +312,7 @@ export type CommandItem = {
   workspace_id?: string;
   flow_id?: string;
   root_event_id?: string;
+  source_event_id?: string;
   linked_run?: string;
   run_record_id?: string;
   created_at?: string;
@@ -240,6 +353,8 @@ export type EventItem = {
   workspace_id?: string;
   flow_id?: string;
   root_event_id?: string;
+  source_record_id?: string;
+  source_event_id?: string;
   command_id?: string;
   mapped_capability?: string;
   source?: string;
@@ -286,6 +401,7 @@ export type IncidentItem = {
   linked_command?: string;
   flow_id?: string;
   root_event_id?: string;
+  source_record_id?: string;
   category?: string;
   reason?: string;
   source?: string;
@@ -350,7 +466,11 @@ export type FlowDetail = {
   id?: string;
   flow_id?: string;
   root_event_id?: string;
+  source_record_id?: string;
+  source_event_id?: string;
   workspace_id?: string;
+  reading_mode?: "enriched" | "registry-only";
+  is_partial?: boolean;
   count?: number;
   commands?: CommandItem[];
   stats?: {
@@ -359,6 +479,7 @@ export type FlowDetail = {
     dead?: number;
     running?: number;
     retry?: number;
+    queued?: number;
     [key: string]: number | undefined;
   };
   [key: string]: unknown;
@@ -397,6 +518,28 @@ function normalizeCommandItem(raw: unknown): CommandItem {
   const resultRecord = parseJsonRecord(resultRaw);
   const contextRecords = [record, inputRecord, resultRecord];
 
+  const sourceEventId = asString(
+    firstDefinedMany(contextRecords, [
+      "source_event_id",
+      "Source_Event_ID",
+      "sourceEventId",
+      "event_id",
+      "Event_ID",
+      "eventId",
+    ])
+  );
+
+  const rootEventId =
+    asString(
+      firstDefinedMany(contextRecords, [
+        "root_event_id",
+        "Root_Event_ID",
+        "rootEventId",
+        "RootEventId",
+        "rooteventid",
+      ])
+    ) || sourceEventId;
+
   return {
     ...record,
     id:
@@ -418,6 +561,8 @@ function normalizeCommandItem(raw: unknown): CommandItem {
       firstDefinedMany(contextRecords, [
         "capability",
         "Capability",
+        "mapped_capability",
+        "Mapped_Capability",
         "name",
         "Name",
       ])
@@ -447,15 +592,8 @@ function normalizeCommandItem(raw: unknown): CommandItem {
         "flowid",
       ])
     ),
-    root_event_id: asString(
-      firstDefinedMany(contextRecords, [
-        "root_event_id",
-        "Root_Event_ID",
-        "rootEventId",
-        "RootEventId",
-        "rooteventid",
-      ])
-    ),
+    root_event_id: rootEventId,
+    source_event_id: sourceEventId,
     linked_run: asString(
       firstDefinedMany(contextRecords, [
         "linked_run",
@@ -531,12 +669,35 @@ function normalizeEventItem(raw: unknown): EventItem {
   const payloadRecord = parseJsonRecord(payloadRaw);
   const contextRecords = [record, payloadRecord];
 
+  const eventId =
+    asString(firstDefined(record, ["id", "ID", "record_id", "Record_ID"])) || "";
+
+  const sourceEventId =
+    asString(
+      firstDefinedMany(contextRecords, [
+        "source_event_id",
+        "Source_Event_ID",
+        "sourceEventId",
+        "event_id",
+        "Event_ID",
+        "eventId",
+      ])
+    ) || eventId;
+
+  const rootEventId =
+    asString(
+      firstDefinedMany(contextRecords, [
+        "root_event_id",
+        "Root_Event_ID",
+        "rootEventId",
+        "RootEventId",
+        "rooteventid",
+      ])
+    ) || sourceEventId;
+
   return {
     ...record,
-    id:
-      asString(
-        firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
-      ) || "",
+    id: eventId,
     event_type: asString(
       firstDefinedMany(contextRecords, [
         "event_type",
@@ -593,15 +754,9 @@ function normalizeEventItem(raw: unknown): EventItem {
         "flowid",
       ])
     ),
-    root_event_id: asString(
-      firstDefinedMany(contextRecords, [
-        "root_event_id",
-        "Root_Event_ID",
-        "rootEventId",
-        "RootEventId",
-        "rooteventid",
-      ])
-    ),
+    root_event_id: rootEventId,
+    source_record_id: sourceEventId,
+    source_event_id: sourceEventId,
     command_id: asString(
       firstDefinedMany(contextRecords, [
         "command_id",
@@ -685,7 +840,12 @@ function normalizeIncidentItem(raw: unknown): IncidentItem {
       ])
     ),
     opened_at: asString(
-      firstDefined(record, ["opened_at", "Opened_At", "created_at", "Created_At"])
+      firstDefined(record, [
+        "opened_at",
+        "Opened_At",
+        "created_at",
+        "Created_At",
+      ])
     ),
     created_at: asString(
       firstDefined(record, ["created_at", "Created_At", "createdAt"])
@@ -747,6 +907,13 @@ function normalizeIncidentItem(raw: unknown): IncidentItem {
         "Root_Event_ID",
         "rootEventId",
         "RootEventId",
+      ])
+    ),
+    source_record_id: asString(
+      firstDefined(record, [
+        "source_record_id",
+        "Source_Record_ID",
+        "sourceRecordId",
       ])
     ),
     category: asString(firstDefined(record, ["category", "Category"])),
@@ -815,31 +982,52 @@ function normalizePolicyItem(raw: unknown): PolicyItem {
 
 function normalizeFlowDetail(raw: unknown): FlowDetail {
   const record = unwrapRecord(raw);
-  const statsRaw =
-    firstDefined(record, ["stats", "Stats"]) || {
-      done: firstDefined(record, ["done", "Done"]),
-      error: firstDefined(record, ["error", "Error"]),
-      dead: firstDefined(record, ["dead", "Dead"]),
-      running: firstDefined(record, ["running", "Running"]),
-      retry: firstDefined(record, ["retry", "Retry"]),
-    };
-
   const commandsRaw = firstDefined(record, ["commands", "Commands"]);
+  const commands = asArray(commandsRaw).map((item) => normalizeCommandItem(item));
 
-  return {
-    ...record,
-    id: asString(firstDefined(record, ["id", "ID", "record_id", "Record_ID"])),
-    flow_id: asString(
+  const flowId =
+    asString(
       firstDefined(record, ["flow_id", "Flow_ID", "flowId", "FlowId"])
-    ),
-    root_event_id: asString(
+    ) ||
+    commands.find((cmd) => cmd.flow_id)?.flow_id;
+
+  const sourceRecordId =
+    asString(
+      firstDefined(record, [
+        "source_record_id",
+        "Source_Record_ID",
+        "sourceRecordId",
+      ])
+    ) ||
+    commands.find((cmd) => cmd.source_event_id)?.source_event_id;
+
+  const rootEventId =
+    asString(
       firstDefined(record, [
         "root_event_id",
         "Root_Event_ID",
         "rootEventId",
         "RootEventId",
       ])
-    ),
+    ) ||
+    commands.find((cmd) => cmd.root_event_id)?.root_event_id ||
+    sourceRecordId;
+
+  const statsRaw =
+    firstDefined(record, ["stats", "Stats"]) ||
+    buildCommandStats(commands);
+
+  return {
+    ...record,
+    id:
+      asString(firstDefined(record, ["id", "ID", "record_id", "Record_ID"])) ||
+      sourceRecordId ||
+      flowId ||
+      rootEventId,
+    flow_id: flowId || undefined,
+    root_event_id: rootEventId || undefined,
+    source_record_id: sourceRecordId || undefined,
+    source_event_id: sourceRecordId || undefined,
     workspace_id: asString(
       firstDefined(record, [
         "workspace_id",
@@ -848,10 +1036,18 @@ function normalizeFlowDetail(raw: unknown): FlowDetail {
         "Workspace",
       ])
     ),
+    reading_mode:
+      asString(
+        firstDefined(record, ["reading_mode", "Reading_Mode", "readingMode"])
+      ) === "registry-only"
+        ? "registry-only"
+        : "enriched",
+    is_partial: asBoolean(
+      firstDefined(record, ["is_partial", "Is_Partial", "isPartial"])
+    ),
     count:
-      asNumber(firstDefined(record, ["count", "Count"])) ??
-      asArray(commandsRaw).length,
-    commands: asArray(commandsRaw).map((item) => normalizeCommandItem(item)),
+      asNumber(firstDefined(record, ["count", "Count"])) ?? commands.length,
+    commands,
     stats: normalizeStatsObject(statsRaw),
   };
 }
@@ -886,11 +1082,16 @@ function enrichIncidentsFromCommands(
       command_id: incident.command_id || linkedCommand.id,
       linked_command: incident.linked_command || linkedCommand.id,
       flow_id: incident.flow_id || linkedCommand.flow_id,
-      root_event_id: incident.root_event_id || linkedCommand.root_event_id,
+      root_event_id:
+        incident.root_event_id ||
+        linkedCommand.root_event_id ||
+        linkedCommand.source_event_id,
       workspace_id: incident.workspace_id || linkedCommand.workspace_id,
       run_record_id: incident.run_record_id || linkedCommand.run_record_id,
       linked_run: incident.linked_run || linkedCommand.linked_run,
       worker: incident.worker || linkedCommand.worker,
+      source_record_id:
+        incident.source_record_id || linkedCommand.source_event_id,
     };
   });
 }
@@ -925,18 +1126,24 @@ function enrichEventsFromCommands(
       command_id: event.command_id || linkedCommand.id,
       linked_command: event.linked_command || linkedCommand.id,
       flow_id: event.flow_id || linkedCommand.flow_id,
-      root_event_id: event.root_event_id || linkedCommand.root_event_id,
+      root_event_id:
+        event.root_event_id ||
+        linkedCommand.root_event_id ||
+        linkedCommand.source_event_id,
       workspace_id: event.workspace_id || linkedCommand.workspace_id,
       run_id:
         event.run_id ||
         linkedCommand.run_record_id ||
         linkedCommand.linked_run,
+      source_record_id: event.source_record_id || event.id,
+      source_event_id: event.source_event_id || event.id,
     };
   });
 }
 
 export async function fetchHealthScore(): Promise<HealthScoreResponse> {
   const data = await safeFetch<JsonRecord>("/health/score");
+
   return {
     ...data,
     score: asNumber(firstDefined(data, ["score", "Score"])),
@@ -961,7 +1168,10 @@ export async function fetchRuns(): Promise<RunsResponse> {
 }
 
 export async function fetchCommands(limit = 30): Promise<CommandsResponse> {
-  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 30;
+  const safeLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.trunc(limit))
+    : 30;
+
   const data = await safeFetch<JsonRecord>(`/commands?limit=${safeLimit}`);
   const commands = asArray(firstDefined(data, ["commands", "Commands"])).map(
     (item) => normalizeCommandItem(item)
@@ -970,8 +1180,7 @@ export async function fetchCommands(limit = 30): Promise<CommandsResponse> {
 
   return {
     ...data,
-    count:
-      asNumber(firstDefined(data, ["count", "Count"])) ?? commands.length,
+    count: asNumber(firstDefined(data, ["count", "Count"])) ?? commands.length,
     commands,
     stats,
   };
@@ -979,16 +1188,20 @@ export async function fetchCommands(limit = 30): Promise<CommandsResponse> {
 
 export async function fetchCommandById(
   id: string,
-  limit = 300
+  limit = 500
 ): Promise<CommandItem | null> {
   const data = await fetchCommands(limit);
   const commands = Array.isArray(data?.commands) ? data.commands : [];
+
   const match = commands.find((item) => String(item.id) === String(id));
   return match ?? null;
 }
 
 export async function fetchEvents(limit = 30): Promise<EventsResponse> {
-  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 30;
+  const safeLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.trunc(limit))
+    : 30;
+
   const data = await safeFetch<JsonRecord>(`/events?limit=${safeLimit}`);
   let events = asArray(firstDefined(data, ["events", "Events"])).map((item) =>
     normalizeEventItem(item)
@@ -1002,7 +1215,7 @@ export async function fetchEvents(limit = 30): Promise<EventsResponse> {
       : [];
     events = enrichEventsFromCommands(events, commands);
   } catch {
-    // Keep events usable even if command enrichment fails.
+    // no-op
   }
 
   return {
@@ -1014,11 +1227,15 @@ export async function fetchEvents(limit = 30): Promise<EventsResponse> {
 }
 
 export async function fetchIncidents(limit = 30): Promise<IncidentsResponse> {
-  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 30;
+  const safeLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.trunc(limit))
+    : 30;
+
   const data = await safeFetch<JsonRecord>(`/incidents?limit=${safeLimit}`);
   let incidents = asArray(firstDefined(data, ["incidents", "Incidents"])).map(
     (item) => normalizeIncidentItem(item)
   );
+  const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
 
   try {
     const commandsData = await fetchCommands(Math.max(safeLimit, 300));
@@ -1027,10 +1244,8 @@ export async function fetchIncidents(limit = 30): Promise<IncidentsResponse> {
       : [];
     incidents = enrichIncidentsFromCommands(incidents, commands);
   } catch {
-    // Keep incident payload usable even if command enrichment fails.
+    // no-op
   }
-
-  const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
 
   return {
     ...data,
@@ -1082,36 +1297,62 @@ export async function fetchFlows(): Promise<FlowsResponse> {
 }
 
 export async function fetchFlowById(id: string): Promise<FlowDetail | null> {
-  const data = await fetchFlows();
-  const flows = Array.isArray(data?.flows) ? data.flows : [];
+  const target = String(id || "").trim();
+  if (!target) return null;
 
-  const target = String(id);
+  const flowData = await fetchFlows();
+  const flows = Array.isArray(flowData?.flows) ? flowData.flows : [];
 
-  const match = flows.find((item) => {
+  const directMatch = flows.find((item) => {
     const candidates = [
       String(item.id || ""),
       String(item.flow_id || ""),
       String(item.root_event_id || ""),
+      String(item.source_record_id || ""),
+      String(item.source_event_id || ""),
       String(encodeURIComponent(String(item.id || ""))),
       String(encodeURIComponent(String(item.flow_id || ""))),
       String(encodeURIComponent(String(item.root_event_id || ""))),
+      String(encodeURIComponent(String(item.source_record_id || ""))),
+      String(encodeURIComponent(String(item.source_event_id || ""))),
     ];
 
     return candidates.includes(target);
   });
 
-  return match ?? null;
+  if (directMatch) {
+    return directMatch;
+  }
+
+  try {
+    const [commandsData, incidentsData] = await Promise.all([
+      fetchCommands(500),
+      fetchIncidents(300),
+    ]);
+
+    const commands = Array.isArray(commandsData?.commands)
+      ? commandsData.commands
+      : [];
+    const incidents = Array.isArray(incidentsData?.incidents)
+      ? incidentsData.incidents
+      : [];
+
+    return buildSyntheticFlowDetail(target, commands, incidents);
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchIncidentsByFlowId(
   flowId: string
 ): Promise<IncidentItem[]> {
-  const data = await fetchIncidents();
+  const data = await fetchIncidents(300);
   const incidents = Array.isArray(data?.incidents) ? data.incidents : [];
 
   return incidents.filter(
     (item) =>
       String(item.flow_id || "") === String(flowId) ||
-      String(item.root_event_id || "") === String(flowId)
+      String(item.root_event_id || "") === String(flowId) ||
+      String(item.source_record_id || "") === String(flowId)
   );
 }
