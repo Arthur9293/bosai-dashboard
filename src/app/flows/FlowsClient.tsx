@@ -413,7 +413,7 @@ export default function FlowsClient({
                     onClick={() => focusFirst("running")}
                     className="inline-flex w-full justify-center rounded-full border border-sky-500/30 bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-200 transition hover:bg-sky-500/20 sm:w-auto"
                   >
-                    Ouvrir le premier running
+                    Ouvrir le premier en cours
                   </button>
                 </div>
               </div>
@@ -448,7 +448,7 @@ export default function FlowsClient({
                     onClick={() => focusFirst("failed")}
                     className="inline-flex w-full justify-center rounded-full border border-rose-500/30 bg-rose-500/15 px-4 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/20 sm:w-auto"
                   >
-                    Ouvrir le premier failed
+                    Ouvrir le premier en échec
                   </button>
                 </div>
               </div>
@@ -630,7 +630,7 @@ export default function FlowsClient({
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {statCard("Type de lecture", "Registry-only")}
+                {statCard("Type de lecture", "Registre uniquement")}
                 {statCard(
                   "Source / Root record",
                   selectedFlow.sourceRecordId || "Non disponible"
@@ -685,9 +685,9 @@ export default function FlowsClient({
           ) : (
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {statCard("Root capability", selectedFlow.rootCapability)}
+                {statCard("Capacité racine", selectedFlow.rootCapability)}
                 {statCard(
-                  "Terminal capability",
+                  "Capacité terminale",
                   selectedFlow.terminalCapability
                 )}
                 {statCard("Durée totale", formatDuration(selectedFlow.durationMs))}
@@ -837,7 +837,7 @@ export default function FlowsClient({
         {registryOnlyFlows.length > 0 ? (
           <div className="space-y-4">
             <div className="text-xs uppercase tracking-[0.2em] text-white/40">
-              Flows registry-only
+              Flows registre uniquement
             </div>
 
             <p className="text-white/65">
@@ -867,7 +867,9 @@ export default function FlowsClient({
                         <div className="mt-3 space-y-2 text-sm text-white/70">
                           <div>
                             Lecture:{" "}
-                            <span className="text-zinc-200">Registry-only</span>
+                            <span className="text-zinc-200">
+                              Registre uniquement
+                            </span>
                           </div>
 
                           <div className="[overflow-wrap:anywhere]">
