@@ -44,7 +44,7 @@ type NormalizedCommand = {
 
 function cardClassName(isActive: boolean) {
   const base =
-    "rounded-[28px] border bg-white/[0.04] p-5 md:p-6 xl:px-6 xl:py-5 min-h-[420px] xl:min-h-[360px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
+    "rounded-[28px] border bg-white/[0.04] p-5 md:p-6 xl:px-5 xl:py-4 min-h-[420px] xl:min-h-[330px] 2xl:min-h-[320px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
   const inactive =
     "border-white/10 hover:border-white/15 hover:bg-white/[0.05]";
   const active =
@@ -61,18 +61,18 @@ function actionLinkClassName(
   variant: "default" | "primary" | "danger" | "active" = "default"
 ) {
   if (variant === "primary") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
   if (variant === "danger") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 xl:py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
+    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
   }
 
   if (variant === "active") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-2 text-sm font-medium text-emerald-300";
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-emerald-300";
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 xl:py-2 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 xl:py-1.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
 function badgeTone(status: string) {
@@ -980,16 +980,16 @@ function FlowListCard({
 
   return (
     <article className={cardClassName(isActive)}>
-      <div className="flex h-full flex-col gap-5 xl:gap-4">
-        <div className="space-y-4 xl:space-y-3">
+      <div className="flex h-full flex-col gap-5 xl:gap-3.5">
+        <div className="space-y-4 xl:space-y-2.5">
           <h3
             title={rawTitle}
-            className="break-words text-[1.9rem] font-semibold leading-[1.03] tracking-tight text-white sm:text-[2.1rem] xl:text-[1.8rem] 2xl:text-[1.95rem] md:min-h-[4.5rem] xl:min-h-[3.75rem]"
+            className="break-words text-[1.9rem] font-semibold leading-[1.03] tracking-tight text-white sm:text-[2.1rem] xl:text-[1.65rem] 2xl:text-[1.75rem] md:min-h-[4.5rem] xl:min-h-[3.25rem]"
           >
             {displayTitle}
           </h3>
 
-          <div className="grid gap-2.5 text-[15px] leading-6 text-zinc-300 xl:grid-cols-2 xl:gap-x-6 xl:gap-y-2">
+          <div className="grid gap-2.5 text-[15px] leading-6 text-zinc-300 xl:grid-cols-2 xl:gap-x-5 xl:gap-y-1.5 xl:text-[14px] xl:leading-5">
             <div>
               Lecture: <span className="text-zinc-100">{readingLabel}</span>
             </div>
@@ -1014,7 +1014,7 @@ function FlowListCard({
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1 xl:pt-0.5">
             <span
               className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
                 flow.status
@@ -1045,7 +1045,7 @@ function FlowListCard({
           </div>
         </div>
 
-        <div className="mt-auto flex flex-col gap-3 xl:gap-2.5 pt-2 xl:pt-1">
+        <div className="mt-auto flex flex-col gap-3 xl:gap-2 pt-2 xl:pt-0.5">
           <Link
             href={selectHref}
             className={actionLinkClassName(isActive ? "active" : "default")}
@@ -1090,7 +1090,7 @@ function SectionBlock({
         </p>
       </div>
 
-      <div className="grid gap-5 xl:gap-6 xl:grid-cols-2">
+      <div className="grid gap-5 xl:gap-5 xl:grid-cols-2">
         {flows.map((flow) => (
           <FlowListCard key={flow.key} flow={flow} activeKey={activeKey} />
         ))}
