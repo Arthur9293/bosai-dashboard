@@ -37,6 +37,26 @@ function formatNumber(value?: number) {
   return typeof value === "number" ? value.toString() : "0";
 }
 
+function formatDuration(startedAt?: string, finishedAt?: string) {
+  if (!startedAt || !finishedAt) return "—";
+
+  const start = new Date(startedAt).getTime();
+  const end = new Date(finishedAt).getTime();
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    return "—";
+  }
+
+  const totalSeconds = Math.floor((end - start) / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
 function tone(status?: string) {
   const s = (status || "").toLowerCase();
 
@@ -60,7 +80,26 @@ function tone(status?: string) {
 }
 
 function cardClassName() {
-  return "rounded-2xl border border-zinc-800 bg-zinc-900 p-6";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function sectionLabelClassName() {
+  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
+}
+
+function metaLabelClassName() {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function signalTone(status?: string) {
+  const s = (status || "").toLowerCase();
+
+  if (s === "done") return "text-emerald-400";
+  if (s === "running") return "text-sky-400";
+  if (s === "error") return "text-red-400";
+  if (s === "unsupported") return "text-zinc-400";
+
+  return "text-zinc-400";
 }
 
 export default async function RunsPage() {
@@ -101,51 +140,54 @@ export default async function RunsPage() {
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Total runs</div>
-          <div className="mt-3 text-4xl font-semibold text-white">
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
             {formatNumber(totalRuns)}
           </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Running</div>
-          <div className="mt-3 text-4xl font-semibold text-sky-300">
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-sky-300">
             {formatNumber(runningCount)}
           </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Done</div>
-          <div className="mt-3 text-4xl font-semibold text-emerald-300">
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-emerald-300">
             {formatNumber(doneCount)}
           </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Error</div>
-          <div className="mt-3 text-4xl font-semibold text-red-300">
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-red-300">
             {formatNumber(errorCount)}
           </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Unsupported</div>
-          <div className="mt-3 text-4xl font-semibold text-zinc-300">
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-zinc-300">
             {formatNumber(unsupportedCount)}
           </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Other</div>
-          <div className="mt-3 text-4xl font-semibold text-white">
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
             {formatNumber(otherCount)}
           </div>
         </div>
       </section>
 
       <section className={cardClassName()}>
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-5 flex flex-col gap-4 border-b border-white/10 pb-5 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-white">System runs</h2>
+            <div className={sectionLabelClassName()}>Execution history</div>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">
+              System runs
+            </h2>
             <p className="mt-1 text-sm text-zinc-400">
               Historique récent des exécutions BOSAI.
             </p>
@@ -157,88 +199,108 @@ export default async function RunsPage() {
         </div>
 
         {visibleRuns.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
+          <div className="rounded-[24px] border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
             Aucun run visible pour le moment.
           </div>
         ) : (
           <div className="space-y-4">
-            {visibleRuns.map((run) => (
-              <div
-                key={run.id}
-                className="rounded-2xl border border-white/10 bg-black/20 p-4"
-              >
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="min-w-0 flex-1 space-y-3">
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      BOSAI RUN
+            {visibleRuns.map((run) => {
+              const duration = formatDuration(run.started_at, run.finished_at);
+
+              return (
+                <div
+                  key={run.id}
+                  className="rounded-[24px] border border-white/10 bg-black/20 p-4 md:p-5"
+                >
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0 flex-1 space-y-4">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="min-w-0">
+                          <div className={metaLabelClassName()}>BOSAI Run</div>
+
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <div className="break-words text-lg font-semibold tracking-tight text-white">
+                              {run.capability || "Unknown capability"}
+                            </div>
+
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
+                                run.status
+                              )}`}
+                            >
+                              {(run.status || "unknown").toUpperCase()}
+                            </span>
+
+                            <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                              {run.dry_run ? "DRY RUN" : "LIVE"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="xl:min-w-[140px] xl:text-right">
+                          <div className={metaLabelClassName()}>
+                            Execution signal
+                          </div>
+                          <div
+                            className={`mt-2 text-sm font-medium ${signalTone(
+                              run.status
+                            )}`}
+                          >
+                            {(run.status || "unknown").toUpperCase()}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="break-all text-sm text-zinc-400">
+                        ID: <span className="text-zinc-300">{run.id}</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+                        <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                          <div className={metaLabelClassName()}>Run ID</div>
+                          <div className="mt-1 break-all text-zinc-200">
+                            {run.run_id || "—"}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                          <div className={metaLabelClassName()}>Worker</div>
+                          <div className="mt-1 text-zinc-200">
+                            {run.worker || "—"}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                          <div className={metaLabelClassName()}>Priority</div>
+                          <div className="mt-1 text-zinc-200">
+                            {run.priority ?? "—"}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                          <div className={metaLabelClassName()}>Started</div>
+                          <div className="mt-1 text-zinc-200">
+                            {formatDate(run.started_at)}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                          <div className={metaLabelClassName()}>Finished</div>
+                          <div className="mt-1 text-zinc-200">
+                            {formatDate(run.finished_at)}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                          <div className={metaLabelClassName()}>Duration</div>
+                          <div className="mt-1 text-zinc-200">{duration}</div>
+                        </div>
+                      </div>
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="break-all text-base font-semibold text-white">
-                        {run.capability || "Unknown capability"}
-                      </div>
-
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
-                          run.status
-                        )}`}
-                      >
-                        {(run.status || "unknown").toUpperCase()}
-                      </span>
-
-                      <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                        {run.dry_run ? "DRY RUN" : "LIVE"}
-                      </span>
-                    </div>
-
-                    <div className="break-all text-sm text-zinc-400">
-                      ID: <span className="text-zinc-300">{run.id}</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-2 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-4">
-                      <div>
-                        Run ID:{" "}
-                        <span className="break-all text-zinc-300">
-                          {run.run_id || "—"}
-                        </span>
-                      </div>
-
-                      <div>
-                        Worker:{" "}
-                        <span className="text-zinc-300">
-                          {run.worker || "—"}
-                        </span>
-                      </div>
-
-                      <div>
-                        Priority:{" "}
-                        <span className="text-zinc-300">
-                          {run.priority ?? "—"}
-                        </span>
-                      </div>
-
-                      <div>
-                        Started:{" "}
-                        <span className="text-zinc-300">
-                          {formatDate(run.started_at)}
-                        </span>
-                      </div>
-
-                      <div>
-                        Finished:{" "}
-                        <span className="text-zinc-300">
-                          {formatDate(run.finished_at)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-zinc-500 xl:min-w-[120px] xl:text-right">
-                    EXECUTION SIGNAL
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
