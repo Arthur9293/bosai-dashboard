@@ -12,7 +12,7 @@ type PageProps = {
       };
 };
 
-type AnyRecord = Record<string, any>;
+type AnyRecord = Record<string, unknown>;
 
 type FlowSummaryLike = {
   key: string;
@@ -50,6 +50,14 @@ type TimelineItem = {
   resultJson: string;
   isRoot: boolean;
   isTerminal: boolean;
+};
+
+type GraphCommand = {
+  id: string;
+  capability?: string;
+  status?: string;
+  parent_command_id?: string;
+  flow_id?: string;
 };
 
 function cardClassName() {
@@ -106,9 +114,11 @@ function toBoolean(value: unknown, fallback = false): boolean {
 
 function parseMaybeJson(value: unknown): AnyRecord {
   if (!value) return {};
+
   if (typeof value === "object" && !Array.isArray(value)) {
     return value as AnyRecord;
   }
+
   if (typeof value !== "string") return {};
 
   try {
@@ -174,7 +184,11 @@ function statusTone(status: string) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  if (["running", "in_progress", "processing"].includes(normalized)) {
+  if (
+    ["running", "in_progress", "processing", "queued", "pending"].includes(
+      normalized
+    )
+  ) {
     return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
   }
 
@@ -361,7 +375,11 @@ function getCommandWorkspaceId(
 }
 
 function getCommandRecordId(record: AnyRecord): string {
-  return pickFirstText(record, ["id", "record_id", "command_id", "Command_ID"], "");
+  return pickFirstText(
+    record,
+    ["id", "record_id", "command_id", "Command_ID"],
+    ""
+  );
 }
 
 function normalizeTimelineItem(record: AnyRecord): TimelineItem {
@@ -495,6 +513,12 @@ function resolveFlowStatus(
   return "unknown";
 }
 
+function readingModeLabel(
+  readingMode: "enriched" | "registry-only" | undefined
+): string {
+  return readingMode === "registry-only" ? "Registre uniquement" : "Enrichie";
+}
+
 export default async function FlowDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
@@ -503,17 +527,17 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   const fetchCommands = (api as AnyRecord).fetchCommands as
     | undefined
-    | (() => Promise<any>);
+    | (() => Promise<unknown>);
   const fetchIncidents = (api as AnyRecord).fetchIncidents as
     | undefined
-    | (() => Promise<any>);
+    | (() => Promise<unknown>);
   const fetchFlows = (api as AnyRecord).fetchFlows as
     | undefined
-    | (() => Promise<any>);
+    | (() => Promise<unknown>);
 
-  let commandsData: any = null;
-  let incidentsData: any = null;
-  let flowsData: any = null;
+  let commandsData: unknown = null;
+  let incidentsData: unknown = null;
+  let flowsData: unknown = null;
 
   try {
     commandsData = fetchCommands ? await fetchCommands() : null;
@@ -533,22 +557,37 @@ export default async function FlowDetailPage({ params }: PageProps) {
     flowsData = null;
   }
 
-  const rawCommands: AnyRecord[] = Array.isArray(commandsData?.commands)
-    ? commandsData.commands
+  const commandsContainer =
+    commandsData && typeof commandsData === "object"
+      ? (commandsData as AnyRecord)
+      : null;
+
+  const incidentsContainer =
+    incidentsData && typeof incidentsData === "object"
+      ? (incidentsData as AnyRecord)
+      : null;
+
+  const flowsContainer =
+    flowsData && typeof flowsData === "object"
+      ? (flowsData as AnyRecord)
+      : null;
+
+  const rawCommands: AnyRecord[] = Array.isArray(commandsContainer?.commands)
+    ? (commandsContainer?.commands as AnyRecord[])
     : Array.isArray(commandsData)
-      ? commandsData
+      ? (commandsData as AnyRecord[])
       : [];
 
-  const rawIncidents: AnyRecord[] = Array.isArray(incidentsData?.incidents)
-    ? incidentsData.incidents
+  const rawIncidents: AnyRecord[] = Array.isArray(incidentsContainer?.incidents)
+    ? (incidentsContainer?.incidents as AnyRecord[])
     : Array.isArray(incidentsData)
-      ? incidentsData
+      ? (incidentsData as AnyRecord[])
       : [];
 
-  const rawFlows: AnyRecord[] = Array.isArray(flowsData?.flows)
-    ? flowsData.flows
+  const rawFlows: AnyRecord[] = Array.isArray(flowsContainer?.flows)
+    ? (flowsContainer?.flows as AnyRecord[])
     : Array.isArray(flowsData)
-      ? flowsData
+      ? (flowsData as AnyRecord[])
       : [];
 
   const normalizedFlows = rawFlows.map(normalizeFlowSummary);
@@ -579,7 +618,9 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const matchedTimeline = sortTimeline(
     timelineBase.filter((item) => {
       if (effectiveFlowId && item.flowId === effectiveFlowId) return true;
-      if (effectiveRootEventId && item.rootEventId === effectiveRootEventId) return true;
+      if (effectiveRootEventId && item.rootEventId === effectiveRootEventId) {
+        return true;
+      }
       if (item.flowId === id) return true;
       if (item.rootEventId === id) return true;
       return false;
@@ -591,12 +632,24 @@ export default async function FlowDetailPage({ params }: PageProps) {
   }));
 
   const matchedIncidents = normalizedIncidents.filter((incident) => {
-    if (effectiveFlowId && incident.flow_id === effectiveFlowId) return true;
-    if (effectiveRootEventId && incident.root_event_id === effectiveRootEventId) return true;
-    if (effectiveSourceRecordId && incident.source_record_id === effectiveSourceRecordId) return true;
-    if (incident.flow_id === id) return true;
-    if (incident.root_event_id === id) return true;
-    if (incident.source_record_id === id) return true;
+    if (effectiveFlowId && toText(incident.flow_id, "") === effectiveFlowId) {
+      return true;
+    }
+    if (
+      effectiveRootEventId &&
+      toText(incident.root_event_id, "") === effectiveRootEventId
+    ) {
+      return true;
+    }
+    if (
+      effectiveSourceRecordId &&
+      toText(incident.source_record_id, "") === effectiveSourceRecordId
+    ) {
+      return true;
+    }
+    if (toText(incident.flow_id, "") === id) return true;
+    if (toText(incident.root_event_id, "") === id) return true;
+    if (toText(incident.source_record_id, "") === id) return true;
     return false;
   });
 
@@ -691,12 +744,12 @@ export default async function FlowDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const graphCommands = matchedTimeline.map((item) => ({
+  const graphCommands: GraphCommand[] = matchedTimeline.map((item) => ({
     id: item.id,
     capability: item.capability,
     status: item.status,
-    parent_command_id: item.parentCommandId,
-    flow_id: item.flowId,
+    parent_command_id: item.parentCommandId || undefined,
+    flow_id: item.flowId || undefined,
   }));
 
   const incidentsHref = buildIncidentsHref(flowId, rootEventId, sourceRecordId);
@@ -845,10 +898,10 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
         <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-3">
           <div>
-            <span className="text-zinc-500">Flow key :</span> {title}
+            <span className="text-zinc-500">Flow key :</span> {toText(title, "—")}
           </div>
           <div>
-            <span className="text-zinc-500">Root event :</span> {rootEventId || "—"}
+            <span className="text-zinc-500">Root event :</span> {toText(rootEventId, "—")}
           </div>
           <div>
             <span className="text-zinc-500">Workspace :</span> {toText(workspaceId, "—")}
@@ -866,18 +919,18 @@ export default async function FlowDetailPage({ params }: PageProps) {
           </div>
           <div>
             <span className="text-zinc-500">Dernier statut :</span>{" "}
-            {resolvedStatus.toUpperCase()}
+            {toText(resolvedStatus, "unknown").toUpperCase()}
           </div>
 
           {sourceRecordId ? (
             <div className="md:col-span-2 xl:col-span-3 break-all">
-              <span className="text-zinc-500">Source record :</span> {sourceRecordId}
+              <span className="text-zinc-500">Source record :</span> {toText(sourceRecordId, "—")}
             </div>
           ) : null}
 
           <div className="md:col-span-2 xl:col-span-3">
             <span className="text-zinc-500">Type de lecture :</span>{" "}
-            {readingMode === "registry-only" ? "Registre uniquement" : "Enrichie"}
+            {readingModeLabel(readingMode)}
           </div>
         </div>
       </section>
@@ -920,15 +973,15 @@ export default async function FlowDetailPage({ params }: PageProps) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="break-words text-xl font-semibold text-white">
-                        {item.capability}
+                        {toText(item.capability, "—")}
                       </h3>
 
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
-                          item.status
+                          toText(item.status, "unknown")
                         )}`}
                       >
-                        {item.status.toUpperCase()}
+                        {toText(item.status, "unknown").toUpperCase()}
                       </span>
 
                       <span
@@ -956,16 +1009,16 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
                     <div className="mt-4 grid gap-2 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
                       <div>
-                        ID: <span className="break-all text-zinc-200">{item.id || "—"}</span>
+                        ID: <span className="break-all text-zinc-200">{toText(item.id, "—")}</span>
                       </div>
                       <div>
                         Parent:{" "}
                         <span className="break-all text-zinc-200">
-                          {item.parentCommandId || "—"}
+                          {toText(item.parentCommandId, "—")}
                         </span>
                       </div>
                       <div>
-                        Worker: <span className="text-zinc-200">{item.worker || "—"}</span>
+                        Worker: <span className="text-zinc-200">{toText(item.worker, "—")}</span>
                       </div>
                       <div>
                         Démarré:{" "}
@@ -982,7 +1035,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
                       <div>
                         Flow:{" "}
                         <span className="break-all text-zinc-200">
-                          {item.flowId || flowId || "—"}
+                          {toText(item.flowId || flowId, "—")}
                         </span>
                       </div>
                     </div>
