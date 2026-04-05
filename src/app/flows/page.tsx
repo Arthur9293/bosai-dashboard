@@ -1,29 +1,22 @@
-import FlowsClient from "./FlowsClient";
-import {
-  fetchCommands,
-  fetchFlows,
-  fetchIncidents,
-  type CommandItem,
-  type FlowDetail,
-  type IncidentItem,
-} from "@/lib/api";
+import Link from "next/link";
 
-type FlowStatus = "running" | "failed" | "retry" | "success" | "unknown";
+type SearchParamValue = string | string[] | undefined;
 
-type FlowGraphCommand = {
-  id: string;
-  capability?: string;
-  status?: string;
-  parent_command_id?: string;
-  flow_id?: string;
+type PageProps = {
+  searchParams?:
+    | Promise<Record<string, SearchParamValue>>
+    | Record<string, SearchParamValue>;
 };
 
-type FlowSummary = {
+type AnyRecord = Record<string, any>;
+
+type FlowCard = {
   key: string;
   flowId: string;
   rootEventId: string;
+  sourceRecordId: string;
   workspaceId: string;
-  status: FlowStatus;
+  status: string;
   steps: number;
   rootCapability: string;
   terminalCapability: string;
@@ -31,804 +24,1104 @@ type FlowSummary = {
   lastActivityTs: number;
   hasIncident: boolean;
   incidentCount: number;
-  firstIncidentId?: string;
-  commands: FlowGraphCommand[];
-  readingMode?: "enriched" | "registry-only";
-  sourceRecordId?: string;
-  isPartial?: boolean;
+  readingMode: "enriched" | "registry-only";
+  isPartial: boolean;
 };
 
-function text(value: unknown): string {
+type TimelineItem = {
+  id: string;
+  capability: string;
+  status: string;
+  worker: string;
+  createdAt?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  stepIndex: number;
+  parentCommandId: string;
+  flowId: string;
+  rootEventId: string;
+  workspaceId: string;
+};
+
+function toText(value: unknown, fallback = ""): string {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  return text || fallback;
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+}
+
+function toBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
   if (typeof value === "string") {
-    const v = value.trim();
-    return v || "";
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "oui"].includes(normalized)) return true;
+    if (["false", "0", "no", "non"].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+function parseMaybeJson(value: unknown): AnyRecord {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as AnyRecord;
+  }
+  if (typeof value !== "string") return {};
+
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as AnyRecord;
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function firstSearchParam(value: SearchParamValue): string {
+  if (Array.isArray(value)) return toText(value[0], "");
+  return toText(value, "");
+}
+
+function formatDate(value?: string | number | null): string {
+  if (value === null || value === undefined || value === "") return "—";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return typeof value === "string" ? value : "—";
   }
 
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value).trim();
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function formatDuration(ms?: number): string {
+  if (!ms || ms <= 0 || Number.isNaN(ms)) return "—";
+
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function cardClassName(isActive: boolean) {
+  const base =
+    "rounded-[28px] border bg-white/[0.04] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
+  const inactive = "border-white/10";
+  const active =
+    "border-emerald-500/35 bg-emerald-500/[0.08] shadow-[0_0_0_1px_rgba(16,185,129,0.06),0_0_40px_rgba(16,185,129,0.08)]";
+  return `${base} ${isActive ? active : inactive}`;
+}
+
+function panelClassName() {
+  return "rounded-2xl border border-white/10 bg-white/[0.04] p-5";
+}
+
+function emptyStateClassName() {
+  return "rounded-2xl border border-dashed border-white/10 bg-white/[0.04] px-5 py-8 text-sm text-zinc-500";
+}
+
+function actionLinkClassName(
+  variant: "default" | "primary" | "danger" | "active" = "default"
+) {
+  if (variant === "primary") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
-  return "";
-}
-
-function uniqueTexts(values: string[]): string[] {
-  return Array.from(new Set(values.map((v) => text(v)).filter(Boolean)));
-}
-
-function flattenTextValues(value: unknown): string[] {
-  if (value === null || value === undefined) return [];
-
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    const clean = text(value);
-    return clean ? [clean] : [];
+  if (variant === "danger") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
   }
 
-  if (Array.isArray(value)) {
-    return uniqueTexts(value.flatMap((item) => flattenTextValues(item)));
+  if (variant === "active") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300";
   }
 
-  if (typeof value === "object") {
-    const rec = value as Record<string, unknown>;
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+}
 
-    return uniqueTexts([
-      ...flattenTextValues(rec.id),
-      ...flattenTextValues(rec.recordId),
-      ...flattenTextValues(rec.record_id),
-      ...flattenTextValues(rec.value),
-      ...flattenTextValues(rec.name),
-      ...flattenTextValues(rec.text),
-      ...flattenTextValues(rec.label),
-    ]);
+function statusTone(status: string) {
+  const normalized = toText(status).toLowerCase();
+
+  if (["success", "done", "completed", "resolved"].includes(normalized)) {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  return [];
+  if (["running", "processing", "queued", "pending"].includes(normalized)) {
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+  }
+
+  if (["retry", "retriable"].includes(normalized)) {
+    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
+  }
+
+  if (["failed", "error", "blocked", "escalated"].includes(normalized)) {
+    return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
+  }
+
+  if (["partial"].includes(normalized)) {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function recordTexts(obj: unknown, keys: string[]): string[] {
-  const rec =
-    obj && typeof obj === "object" ? (obj as Record<string, unknown>) : {};
-
-  return uniqueTexts(keys.flatMap((key) => flattenTextValues(rec[key])));
+function infoBadgeClassName() {
+  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-zinc-300";
 }
 
-function recordText(obj: unknown, keys: string[]): string {
-  return recordTexts(obj, keys)[0] || "";
+function incidentTone(hasIncident: boolean) {
+  return hasIncident
+    ? "bg-rose-500/15 text-rose-300 border border-rose-500/20"
+    : "bg-zinc-800 text-zinc-300 border border-white/10";
 }
 
-function toTs(value?: string | number | null): number {
-  if (value === null || value === undefined || value === "") return 0;
-  const ts = new Date(value).getTime();
-  return Number.isNaN(ts) ? 0 : ts;
-}
+function normalizeStatus(status: string): string {
+  const normalized = toText(status).toLowerCase();
 
-function getCommandActivityTs(cmd: CommandItem): number {
-  return Math.max(
-    toTs(cmd.finished_at as string | number | null | undefined),
-    toTs(cmd.updated_at as string | number | null | undefined),
-    toTs(cmd.started_at as string | number | null | undefined),
-    toTs(cmd.created_at as string | number | null | undefined)
-  );
-}
-
-function getCommandStartTs(cmd: CommandItem): number {
-  return Math.max(
-    toTs(cmd.started_at as string | number | null | undefined),
-    toTs(cmd.created_at as string | number | null | undefined)
-  );
-}
-
-function getIncidentActivityTs(incident: IncidentItem): number {
-  return Math.max(
-    toTs(incident.resolved_at as string | number | null | undefined),
-    toTs(incident.updated_at as string | number | null | undefined),
-    toTs(incident.opened_at as string | number | null | undefined),
-    toTs(incident.created_at as string | number | null | undefined)
-  );
-}
-
-function getStatusKind(
-  status?: string
-): "done" | "running" | "failed" | "retry" | "other" {
-  const s = (status || "").toLowerCase();
-
-  if (["done", "success", "resolved", "ok"].includes(s)) return "done";
-  if (s === "retry") return "retry";
-  if (["running", "queued", "pending"].includes(s)) return "running";
-  if (["error", "failed", "dead"].includes(s)) return "failed";
-
-  return "other";
-}
-
-function computeFlowStatus(commands: CommandItem[]): FlowStatus {
-  const kinds = commands.map((cmd) => getStatusKind(cmd.status));
-
-  if (kinds.includes("running")) return "running";
-  if (kinds.includes("failed")) return "failed";
-  if (kinds.includes("retry")) return "retry";
-
-  if (
-    kinds.length > 0 &&
-    kinds.every((kind) => kind === "done" || kind === "other")
-  ) {
+  if (["done", "success", "completed", "resolved"].includes(normalized)) {
     return "success";
   }
 
-  return "unknown";
-}
-
-function getIncidentStatusKind(
-  incident: IncidentItem
-): "success" | "failed" | "retry" | "unknown" {
-  const status = text(incident.status).toLowerCase();
-  const slaStatus = text(incident.sla_status).toLowerCase();
-
-  if (
-    ["resolved", "closed", "done", "ok"].includes(status) ||
-    ["resolved"].includes(slaStatus)
-  ) {
-    return "success";
+  if (["running", "processing", "queued", "pending"].includes(normalized)) {
+    return "running";
   }
 
-  if (status === "retry") {
+  if (["retry", "retriable"].includes(normalized)) {
     return "retry";
   }
 
-  if (
-    [
-      "open",
-      "opened",
-      "new",
-      "active",
-      "escalated",
-      "escalade",
-      "escaladé",
-      "warning",
-    ].includes(status) ||
-    ["open", "warning", "breached", "escalated"].includes(slaStatus)
-  ) {
+  if (["failed", "error", "blocked", "escalated"].includes(normalized)) {
     return "failed";
   }
 
-  return "unknown";
+  if (["partial"].includes(normalized)) {
+    return "partial";
+  }
+
+  return normalized || "unknown";
 }
 
-function computeIncidentOnlyStatus(group: IncidentItem[]): FlowStatus {
-  const kinds = group.map(getIncidentStatusKind);
+function statusPriority(status: string): number {
+  const normalized = normalizeStatus(status);
 
-  if (kinds.includes("failed")) return "failed";
-  if (kinds.includes("retry")) return "retry";
-  if (kinds.length > 0 && kinds.every((kind) => kind === "success")) {
-    return "success";
-  }
-
-  return "unknown";
+  if (normalized === "failed") return 0;
+  if (normalized === "running") return 1;
+  if (normalized === "retry") return 2;
+  if (normalized === "partial") return 3;
+  if (normalized === "success") return 4;
+  return 5;
 }
 
-function getFlowStatusPriority(status: FlowStatus): number {
-  if (status === "running") return 0;
-  if (status === "failed") return 1;
-  if (status === "retry") return 2;
-  if (status === "success") return 3;
-  return 4;
+function pickFirstText(
+  record: AnyRecord,
+  candidates: string[],
+  fallback = ""
+): string {
+  for (const key of candidates) {
+    const value = record[key];
+    const text = toText(value, "");
+    if (text) return text;
+  }
+  return fallback;
 }
 
-function buildExecutionOrder(commands: CommandItem[]): CommandItem[] {
-  const byId = new Map<string, CommandItem>();
-  const childrenMap = new Map<string, CommandItem[]>();
-
-  for (const cmd of commands) {
-    const id = String(cmd.id);
-    byId.set(id, cmd);
-    childrenMap.set(id, []);
+function pickFirstNumber(
+  record: AnyRecord,
+  candidates: string[],
+  fallback = 0
+): number {
+  for (const key of candidates) {
+    const value = record[key];
+    const num = toNumber(value, Number.NaN);
+    if (Number.isFinite(num)) return num;
   }
-
-  const roots: CommandItem[] = [];
-
-  for (const cmd of commands) {
-    const parentId = text(cmd.parent_command_id);
-
-    if (parentId && byId.has(parentId)) {
-      childrenMap.get(parentId)?.push(cmd);
-    } else {
-      roots.push(cmd);
-    }
-  }
-
-  const sortByActivityAsc = (a: CommandItem, b: CommandItem) =>
-    getCommandActivityTs(a) - getCommandActivityTs(b);
-
-  roots.sort(sortByActivityAsc);
-  childrenMap.forEach((children) => children.sort(sortByActivityAsc));
-
-  const ordered: CommandItem[] = [];
-  const visited = new Set<string>();
-
-  function walk(cmd: CommandItem) {
-    const id = String(cmd.id);
-    if (visited.has(id)) return;
-
-    visited.add(id);
-    ordered.push(cmd);
-
-    const children = childrenMap.get(id) ?? [];
-    for (const child of children) {
-      walk(child);
-    }
-  }
-
-  for (const root of roots) {
-    walk(root);
-  }
-
-  const leftovers = commands
-    .filter((cmd) => !visited.has(String(cmd.id)))
-    .sort(sortByActivityAsc);
-
-  for (const cmd of leftovers) {
-    walk(cmd);
-  }
-
-  return ordered;
+  return fallback;
 }
 
-function getTerminalCommand(commands: CommandItem[]): CommandItem | null {
-  if (commands.length === 0) return null;
-
-  const referencedAsParent = new Set(
-    commands.map((cmd) => text(cmd.parent_command_id)).filter(Boolean)
+function getJsonSources(record: AnyRecord) {
+  const inputParsed = parseMaybeJson(
+    record.input_json ??
+      record.payload_json ??
+      record.command_input_json ??
+      record.input ??
+      record.payload
   );
 
-  const leafCandidates = commands.filter(
-    (cmd) => !referencedAsParent.has(String(cmd.id))
+  const resultParsed = parseMaybeJson(
+    record.result_json ?? record.output_json ?? record.result ?? record.output
   );
 
-  const source = leafCandidates.length > 0 ? leafCandidates : commands;
+  return { inputParsed, resultParsed };
+}
 
-  return (
-    [...source].sort((a, b) => getCommandActivityTs(b) - getCommandActivityTs(a))[0] ??
-    null
+function getCommandStatus(record: AnyRecord, resultParsed: AnyRecord): string {
+  const raw = pickFirstText(
+    { ...record, ...resultParsed },
+    ["status", "Status", "status_select", "Status_select"],
+    "unknown"
+  ).toLowerCase();
+
+  if (["done", "success", "completed"].includes(raw)) return "done";
+  if (["running", "processing"].includes(raw)) return "running";
+  if (["retry", "retriable"].includes(raw)) return "retry";
+  if (["failed", "error", "blocked"].includes(raw)) return "failed";
+  if (["queued", "queue", "pending"].includes(raw)) return "queued";
+
+  return raw || "unknown";
+}
+
+function getCommandCapability(
+  record: AnyRecord,
+  inputParsed: AnyRecord,
+  resultParsed: AnyRecord
+): string {
+  return pickFirstText(
+    { ...record, ...inputParsed, ...resultParsed },
+    ["capability", "Capability", "mapped_capability"],
+    "unknown_capability"
   );
 }
 
-function toGraphCommand(cmd: CommandItem): FlowGraphCommand {
+function getCommandFlowId(
+  record: AnyRecord,
+  inputParsed: AnyRecord,
+  resultParsed: AnyRecord
+): string {
+  return pickFirstText(
+    { ...record, ...inputParsed, ...resultParsed },
+    ["flow_id", "flowId", "flowid"],
+    ""
+  );
+}
+
+function getCommandRootEventId(
+  record: AnyRecord,
+  inputParsed: AnyRecord,
+  resultParsed: AnyRecord
+): string {
+  return pickFirstText(
+    { ...record, ...inputParsed, ...resultParsed },
+    ["root_event_id", "rootEventId", "rooteventid", "event_id", "eventId"],
+    ""
+  );
+}
+
+function getCommandWorkspaceId(
+  record: AnyRecord,
+  inputParsed: AnyRecord,
+  resultParsed: AnyRecord
+): string {
+  return pickFirstText(
+    { ...record, ...inputParsed, ...resultParsed },
+    ["workspace_id", "workspaceId", "Workspace_ID", "workspace"],
+    "production"
+  );
+}
+
+function normalizeTimelineItem(record: AnyRecord): TimelineItem {
+  const { inputParsed, resultParsed } = getJsonSources(record);
+
   return {
-    id: String(cmd.id),
-    capability: text(cmd.capability) || undefined,
-    status: text(cmd.status) || undefined,
-    parent_command_id: text(cmd.parent_command_id) || undefined,
-    flow_id: text(cmd.flow_id) || undefined,
+    id: pickFirstText(record, ["id", "record_id", "command_id", "Command_ID"], ""),
+    capability: getCommandCapability(record, inputParsed, resultParsed),
+    status: getCommandStatus(record, resultParsed),
+    worker: pickFirstText(record, ["worker", "Worker", "worker_id"], "—"),
+    createdAt: pickFirstText(record, ["created_at", "Created_At"], ""),
+    startedAt: pickFirstText(record, ["started_at", "Started_At"], ""),
+    finishedAt: pickFirstText(record, ["finished_at", "Finished_At"], ""),
+    stepIndex: pickFirstNumber(
+      { ...record, ...inputParsed, ...resultParsed },
+      ["step_index", "stepIndex"],
+      0
+    ),
+    parentCommandId: pickFirstText(
+      { ...record, ...inputParsed, ...resultParsed },
+      ["parent_command_id", "parentCommandId", "linked_command", "Linked_Command"],
+      ""
+    ),
+    flowId: getCommandFlowId(record, inputParsed, resultParsed),
+    rootEventId: getCommandRootEventId(record, inputParsed, resultParsed),
+    workspaceId: getCommandWorkspaceId(record, inputParsed, resultParsed),
   };
 }
 
-function getFlowGroupKey(cmd: CommandItem): string {
-  const flowId = text(cmd.flow_id);
-  if (flowId) return `flow:${flowId}`;
+function sortTimeline(items: TimelineItem[]): TimelineItem[] {
+  return [...items].sort((a, b) => {
+    if (a.stepIndex !== b.stepIndex) {
+      return a.stepIndex - b.stepIndex;
+    }
 
-  const rootEventId = text(cmd.root_event_id);
-  if (rootEventId) return `root:${rootEventId}`;
-
-  return "";
+    const aDate = new Date(a.startedAt || a.createdAt || 0).getTime();
+    const bDate = new Date(b.startedAt || b.createdAt || 0).getTime();
+    return aDate - bDate;
+  });
 }
 
-function getIncidentGroupKey(incident: IncidentItem): string {
-  const flowId = text(incident.flow_id);
-  if (flowId) return `incident-flow:${flowId}`;
+function getLastKnownTimestamp(items: TimelineItem[]): number {
+  const values = items
+    .map((item) =>
+      new Date(item.finishedAt || item.startedAt || item.createdAt || 0).getTime()
+    )
+    .filter((value) => Number.isFinite(value) && value > 0);
 
-  const rootEventId = text(incident.root_event_id);
-  if (rootEventId) return `incident-root:${rootEventId}`;
-
-  return "";
+  if (values.length === 0) return 0;
+  return Math.max(...values);
 }
 
-type IncidentMatchInput = {
-  flowId?: string;
-  rootEventId?: string;
-  sourceRecordId?: string;
-  commands?: CommandItem[];
-};
+function getDurationMs(items: TimelineItem[]): number {
+  if (items.length === 0) return 0;
 
-function getCommandIncidentKeys(cmd: CommandItem): string[] {
-  const inputObj =
-    cmd.input && typeof cmd.input === "object"
-      ? (cmd.input as Record<string, unknown>)
-      : {};
-  const resultObj =
-    cmd.result && typeof cmd.result === "object"
-      ? (cmd.result as Record<string, unknown>)
-      : {};
+  const sorted = sortTimeline(items);
+  const firstTs = new Date(sorted[0].startedAt || sorted[0].createdAt || 0).getTime();
+  const lastTs = new Date(
+    sorted[sorted.length - 1].finishedAt ||
+      sorted[sorted.length - 1].startedAt ||
+      sorted[sorted.length - 1].createdAt ||
+      0
+  ).getTime();
 
-  return uniqueTexts([
-    String(cmd.id ?? ""),
-    text(cmd.flow_id),
-    text(cmd.root_event_id),
+  if (
+    !Number.isFinite(firstTs) ||
+    !Number.isFinite(lastTs) ||
+    firstTs <= 0 ||
+    lastTs <= 0
+  ) {
+    return 0;
+  }
 
-    ...recordTexts(cmd, [
-      "linked_command",
-      "linkedCommand",
-      "linked_command_id",
-      "linkedCommandId",
-      "command_id",
-      "commandId",
-      "Command_ID",
-      "Linked_Command",
-      "Linked_Command_ID",
-    ]),
-
-    ...recordTexts(cmd, [
-      "linked_run",
-      "linkedRun",
-      "run_record_id",
-      "runRecordId",
-      "run_id",
-      "runId",
-      "Run_Record_ID",
-      "Run_ID",
-      "Linked_Run",
-    ]),
-
-    ...recordTexts(inputObj, [
-      "linked_command",
-      "linkedCommand",
-      "linked_command_id",
-      "linkedCommandId",
-      "command_id",
-      "commandId",
-      "Command_ID",
-      "Linked_Command",
-      "Linked_Command_ID",
-      "linked_run",
-      "linkedRun",
-      "run_record_id",
-      "runRecordId",
-      "run_id",
-      "runId",
-      "Run_Record_ID",
-      "Run_ID",
-      "Linked_Run",
-      "flow_id",
-      "flowId",
-      "Flow_ID",
-      "root_event_id",
-      "rootEventId",
-      "Root_Event_ID",
-    ]),
-
-    ...recordTexts(resultObj, [
-      "linked_command",
-      "linkedCommand",
-      "linked_command_id",
-      "linkedCommandId",
-      "command_id",
-      "commandId",
-      "Command_ID",
-      "Linked_Command",
-      "Linked_Command_ID",
-      "linked_run",
-      "linkedRun",
-      "run_record_id",
-      "runRecordId",
-      "run_id",
-      "runId",
-      "Run_Record_ID",
-      "Run_ID",
-      "Linked_Run",
-      "flow_id",
-      "flowId",
-      "Flow_ID",
-      "root_event_id",
-      "rootEventId",
-      "Root_Event_ID",
-    ]),
-  ]);
+  return Math.max(0, lastTs - firstTs);
 }
 
-function getIncidentCandidates(incident: IncidentItem): string[] {
-  const fields =
-    incident && typeof incident === "object"
-      ? (((incident as Record<string, unknown>).fields ?? {}) as Record<
-          string,
-          unknown
-        >)
-      : {};
+function normalizeIncidentRecord(record: AnyRecord): AnyRecord {
+  return {
+    ...record,
+    id: toText(record.id || ""),
+    flow_id: toText(record.flow_id || ""),
+    root_event_id: toText(record.root_event_id || ""),
+    source_record_id: toText(record.source_record_id || ""),
+    workspace_id: toText(record.workspace_id || record.workspace || "production"),
+    title: toText(record.title || record.name || record.error_id || "Incident"),
+    status: toText(record.status || record.statut_incident || ""),
+    severity: toText(record.severity || ""),
+    sla_status: toText(record.sla_status || ""),
+    created_at: toText(record.created_at || ""),
+    updated_at: toText(record.updated_at || ""),
+    resolved_at: toText(record.resolved_at || ""),
+  };
+}
 
-  const topLevel = (keys: string[]) => recordTexts(incident, keys);
-  const nestedFields = (keys: string[]) => recordTexts(fields, keys);
+function normalizeRegistryFlowRecord(record: AnyRecord): AnyRecord {
+  return {
+    ...record,
+    key: toText(
+      record.key ||
+        record.flowId ||
+        record.flow_id ||
+        record.sourceRecordId ||
+        record.source_record_id ||
+        ""
+    ),
+    flowId: toText(record.flowId || record.flow_id || ""),
+    rootEventId: toText(record.rootEventId || record.root_event_id || ""),
+    sourceRecordId: toText(record.sourceRecordId || record.source_record_id || ""),
+    workspaceId: toText(record.workspaceId || record.workspace_id || "production"),
+    status: toText(record.status || ""),
+    steps: toNumber(record.steps, 0),
+    rootCapability: toText(record.rootCapability || record.root_capability || ""),
+    terminalCapability: toText(record.terminalCapability || record.terminal_capability || ""),
+    durationMs: toNumber(record.durationMs || record.duration_ms, 0),
+    lastActivityTs: toNumber(record.lastActivityTs || record.last_activity_ts, 0),
+    readingMode:
+      record.readingMode === "registry-only" ? "registry-only" : "enriched",
+    source_record_id: toText(record.source_record_id || ""),
+    isPartial: toBoolean(record.isPartial, false),
+    stats:
+      record.stats && typeof record.stats === "object" && !Array.isArray(record.stats)
+        ? record.stats
+        : {},
+  };
+}
 
-  return uniqueTexts([
-    ...topLevel(["id"]),
-    ...topLevel(["title", "Title", "name", "Name"]),
+function getIncidentActivityTs(incident: AnyRecord): number {
+  const candidates = [
+    incident.resolved_at,
+    incident.updated_at,
+    incident.opened_at,
+    incident.created_at,
+  ]
+    .map((value: unknown) => new Date(value as string).getTime())
+    .filter((value) => Number.isFinite(value) && value > 0);
 
-    ...topLevel(["flow_id", "flowId", "Flow_ID"]),
-    ...nestedFields(["flow_id", "flowId", "Flow_ID"]),
+  if (candidates.length === 0) return 0;
+  return Math.max(...candidates);
+}
 
-    ...topLevel(["root_event_id", "rootEventId", "Root_Event_ID"]),
-    ...nestedFields(["root_event_id", "rootEventId", "Root_Event_ID"]),
+function getIncidentDerivedStatus(incidents: AnyRecord[]): string {
+  if (incidents.length === 0) return "unknown";
 
-    ...topLevel([
-      "linked_command",
-      "linkedCommand",
-      "linked_command_id",
-      "linkedCommandId",
-      "Linked_Command",
-      "Linked_Command_ID",
-      "command_id",
-      "commandId",
-      "Command_ID",
-    ]),
-    ...nestedFields([
-      "linked_command",
-      "linkedCommand",
-      "linked_command_id",
-      "linkedCommandId",
-      "Linked_Command",
-      "Linked_Command_ID",
-      "command_id",
-      "commandId",
-      "Command_ID",
-    ]),
+  const normalized = incidents.map((incident) => {
+    const status = toText(incident.status).toLowerCase();
+    const slaStatus = toText(incident.sla_status).toLowerCase();
+    const hasResolvedAt = Boolean(toText(incident.resolved_at || ""));
 
-    ...topLevel([
-      "linked_run",
-      "linkedRun",
-      "run_record_id",
-      "runRecordId",
-      "run_id",
-      "runId",
-      "Linked_Run",
-      "Run_Record_ID",
-      "Run_ID",
-    ]),
-    ...nestedFields([
-      "linked_run",
-      "linkedRun",
-      "run_record_id",
-      "runRecordId",
-      "run_id",
-      "runId",
-      "Linked_Run",
-      "Run_Record_ID",
-      "Run_ID",
-    ]),
+    if (hasResolvedAt) return "resolved";
+    if (["resolved", "closed", "done"].includes(status)) return "resolved";
+    if (["escalated", "escalade", "escaladé"].includes(status)) return "failed";
+    if (["open", "opened", "active", "new"].includes(status)) return "failed";
+    if (slaStatus === "breached") return "failed";
+    if (slaStatus === "open") return "failed";
+    return "unknown";
+  });
 
-    ...topLevel([
-      "incident_record_id",
-      "incidentRecordId",
-      "Incident_Record_ID",
-      "incident_record",
-      "incidentRecord",
-      "Incident_Record",
-    ]),
-    ...nestedFields([
-      "incident_record_id",
-      "incidentRecordId",
-      "Incident_Record_ID",
-      "incident_record",
-      "incidentRecord",
-      "Incident_Record",
-    ]),
-
-    ...topLevel(["error_id", "errorId", "Error_ID"]),
-    ...nestedFields(["error_id", "errorId", "Error_ID"]),
-  ]);
+  if (normalized.includes("failed")) return "failed";
+  if (normalized.every((value) => value === "resolved")) return "success";
+  return "unknown";
 }
 
 function matchIncidents(
-  incidents: IncidentItem[],
-  input: IncidentMatchInput
-): IncidentItem[] {
-  const lookup = new Set(
-    uniqueTexts([
-      input.flowId || "",
-      input.rootEventId || "",
-      input.sourceRecordId || "",
-      ...((input.commands ?? []).flatMap(getCommandIncidentKeys)),
-    ])
-  );
+  incidents: AnyRecord[],
+  target: {
+    flowId?: string;
+    rootEventId?: string;
+    sourceRecordId?: string;
+  }
+) {
+  const flowId = toText(target.flowId);
+  const rootEventId = toText(target.rootEventId);
+  const sourceRecordId = toText(target.sourceRecordId);
 
-  if (lookup.size === 0) return [];
-
-  return incidents.filter((incident) =>
-    getIncidentCandidates(incident).some((candidate) => lookup.has(candidate))
-  );
+  return incidents.filter((incident) => {
+    if (flowId && toText(incident.flow_id) === flowId) return true;
+    if (rootEventId && toText(incident.root_event_id) === rootEventId) return true;
+    if (sourceRecordId && toText(incident.source_record_id) === sourceRecordId) return true;
+    if (sourceRecordId && toText(incident.id) === sourceRecordId) return true;
+    return false;
+  });
 }
 
-function buildEnrichedFlowSummaries(
-  commands: CommandItem[],
-  incidents: IncidentItem[]
-): FlowSummary[] {
-  const groups = new Map<string, CommandItem[]>();
+function isRecordIdLike(value: string): boolean {
+  return /^rec[a-zA-Z0-9]+$/i.test(toText(value));
+}
 
-  for (const cmd of commands) {
-    const key = getFlowGroupKey(cmd);
+function getDisplayTitle(flow: FlowCard): string {
+  const candidates = [flow.flowId, flow.rootEventId, flow.sourceRecordId, flow.key]
+    .map((value) => toText(value))
+    .filter(Boolean);
+
+  const readable = candidates.find((value) => !isRecordIdLike(value));
+  return readable || candidates[0] || "Flow";
+}
+
+function getDetailId(flow: FlowCard): string {
+  return toText(flow.flowId || flow.rootEventId || flow.sourceRecordId || flow.key);
+}
+
+function getSelectId(flow: FlowCard): string {
+  return toText(flow.sourceRecordId || flow.flowId || flow.rootEventId || flow.key);
+}
+
+function incidentLabel(count: number, hasIncident: boolean): string {
+  if (!hasIncident || count <= 0) return "Aucun incident";
+  if (count === 1) return "1 incident";
+  return `${count} incidents`;
+}
+
+function buildIncidentHref(flow: FlowCard): string {
+  const params = new URLSearchParams();
+
+  if (toText(flow.flowId)) params.set("flow_id", flow.flowId);
+  if (toText(flow.rootEventId)) params.set("root_event_id", flow.rootEventId);
+  if (toText(flow.sourceRecordId)) params.set("source_record_id", flow.sourceRecordId);
+  params.set("from", "flows");
+
+  return `/incidents?${params.toString()}`;
+}
+
+function buildSelectHref(flow: FlowCard): string {
+  const selected = encodeURIComponent(getSelectId(flow));
+  return `/flows?selected=${selected}`;
+}
+
+function buildDetailHref(flow: FlowCard): string {
+  const detailId = encodeURIComponent(getDetailId(flow));
+  return `/flows/${detailId}`;
+}
+
+function buildEnrichedFlows(
+  commands: TimelineItem[],
+  incidents: AnyRecord[]
+): FlowCard[] {
+  const groups = new Map<string, TimelineItem[]>();
+
+  for (const command of commands) {
+    const key = toText(command.flowId || command.rootEventId);
     if (!key) continue;
 
-    const existing = groups.get(key) ?? [];
-    existing.push(cmd);
-    groups.set(key, existing);
+    const bucket = groups.get(key) ?? [];
+    bucket.push(command);
+    groups.set(key, bucket);
   }
 
-  const summaries: FlowSummary[] = [];
+  const flows: FlowCard[] = [];
 
-  for (const [key, group] of groups.entries()) {
-    const ordered = buildExecutionOrder(group);
-    const rootCommand = ordered[0] ?? null;
-    const terminalCommand = getTerminalCommand(ordered);
+  for (const [, group] of groups.entries()) {
+    const ordered = sortTimeline(group);
 
-    const flowId = ordered.map((cmd) => text(cmd.flow_id)).find(Boolean) || "";
+    const flowId =
+      ordered.map((item) => toText(item.flowId)).find(Boolean) || "";
     const rootEventId =
-      ordered.map((cmd) => text(cmd.root_event_id)).find(Boolean) || "";
+      ordered.map((item) => toText(item.rootEventId)).find(Boolean) || "";
     const workspaceId =
-      ordered.map((cmd) => text(cmd.workspace_id)).find(Boolean) || "production";
-
-    const lastActivityTs = Math.max(...ordered.map(getCommandActivityTs), 0);
-
-    const validStarts = ordered.map(getCommandStartTs).filter((ts) => ts > 0);
-    const earliestStartTs =
-      validStarts.length > 0 ? Math.min(...validStarts) : 0;
-
-    const durationMs =
-      earliestStartTs > 0 && lastActivityTs > 0
-        ? Math.max(0, lastActivityTs - earliestStartTs)
-        : 0;
+      ordered.map((item) => toText(item.workspaceId)).find(Boolean) || "production";
 
     const linkedIncidents = matchIncidents(incidents, {
       flowId,
       rootEventId,
-      commands: ordered,
     });
 
-    summaries.push({
-      key,
-      flowId: flowId || rootEventId || key,
-      rootEventId: rootEventId || "—",
+    const steps = ordered.length;
+    const lastActivityTs = getLastKnownTimestamp(ordered);
+    const durationMs = getDurationMs(ordered);
+    const lastCommand = ordered[ordered.length - 1];
+    const firstCommand = ordered[0];
+
+    const status = normalizeStatus(
+      ordered.some((item) => ["failed", "error", "blocked"].includes(item.status))
+        ? "failed"
+        : ordered.some((item) => ["running", "queued", "processing"].includes(item.status))
+          ? "running"
+          : ordered.some((item) => ["retry", "retriable"].includes(item.status))
+            ? "retry"
+            : ordered.length > 0 && ordered.every((item) => item.status === "done")
+              ? "success"
+              : "unknown"
+    );
+
+    flows.push({
+      key: toText(flowId || rootEventId),
+      flowId,
+      rootEventId,
+      sourceRecordId: "",
       workspaceId,
-      status: computeFlowStatus(ordered),
-      steps: ordered.length,
-      rootCapability: text(rootCommand?.capability) || "Non disponible",
-      terminalCapability: text(terminalCommand?.capability) || "Non disponible",
+      status,
+      steps,
+      rootCapability: toText(firstCommand?.capability || ""),
+      terminalCapability: toText(lastCommand?.capability || ""),
       durationMs,
       lastActivityTs,
       hasIncident: linkedIncidents.length > 0,
       incidentCount: linkedIncidents.length,
-      firstIncidentId:
-        linkedIncidents.length > 0 ? String(linkedIncidents[0].id) : undefined,
-      commands: ordered.map(toGraphCommand),
       readingMode: "enriched",
-      sourceRecordId: undefined,
       isPartial: false,
     });
   }
 
-  return summaries;
+  return flows;
 }
 
-function computeRegistryStatus(flow: FlowDetail): FlowStatus {
-  const stats = flow.stats || {};
-
-  const running = Number(stats.running || 0) + Number(stats.queued || 0) > 0;
-  const failed = Number(stats.error || 0) + Number(stats.dead || 0) > 0;
-  const retry = Number(stats.retry || 0) > 0;
-  const success =
-    Number(stats.done || 0) > 0 && !running && !failed && !retry;
-
-  if (running) return "running";
-  if (failed) return "failed";
-  if (retry) return "retry";
-  if (success) return "success";
-  return "unknown";
-}
-
-function buildRegistryOnlyFlowSummaries(
-  registryFlows: FlowDetail[],
-  enrichedFlows: FlowSummary[],
-  incidents: IncidentItem[]
-): FlowSummary[] {
-  const enrichedCandidates = new Set<string>();
+function buildRegistryOnlyFlows(
+  registryFlows: AnyRecord[],
+  incidents: AnyRecord[],
+  enrichedFlows: FlowCard[]
+): FlowCard[] {
+  const existingIds = new Set<string>();
 
   for (const flow of enrichedFlows) {
-    [flow.flowId, flow.rootEventId, flow.sourceRecordId, flow.key]
+    [flow.key, flow.flowId, flow.rootEventId, flow.sourceRecordId]
+      .map((value) => toText(value))
       .filter(Boolean)
-      .forEach((value) => enrichedCandidates.add(String(value)));
+      .forEach((value) => existingIds.add(value));
   }
 
-  const summaries: FlowSummary[] = [];
+  const flows: FlowCard[] = [];
 
-  for (const flow of registryFlows) {
-    const sourceRecordId = text(flow.id);
-    const flowId =
-      text(flow.flow_id) || sourceRecordId || text(flow.root_event_id);
-    const rootEventId =
-      text(flow.root_event_id) || sourceRecordId || flowId || "—";
-    const workspaceId = text(flow.workspace_id) || "production";
+  for (const raw of registryFlows) {
+    const flow = normalizeRegistryFlowRecord(raw);
 
-    const shouldSkip = [sourceRecordId, flowId, rootEventId]
-      .filter(Boolean)
-      .some((value) => enrichedCandidates.has(String(value)));
+    const candidates = [
+      flow.key,
+      flow.flowId,
+      flow.rootEventId,
+      flow.sourceRecordId,
+      flow.source_record_id,
+    ]
+      .map((value: unknown) => toText(value))
+      .filter(Boolean);
 
-    if (shouldSkip) {
+    if (candidates.some((value) => existingIds.has(value))) {
       continue;
     }
 
     const linkedIncidents = matchIncidents(incidents, {
-      flowId,
-      rootEventId,
-      sourceRecordId,
+      flowId: flow.flowId,
+      rootEventId: flow.rootEventId,
+      sourceRecordId: flow.sourceRecordId || flow.source_record_id,
     });
 
-    summaries.push({
-      key: `registry:${sourceRecordId || flowId || rootEventId}`,
-      flowId: flowId || rootEventId || "registry-flow",
-      rootEventId: rootEventId || "—",
-      workspaceId,
-      status: computeRegistryStatus(flow),
-      steps: 0,
-      rootCapability: "Non disponible",
-      terminalCapability: "Non disponible",
-      durationMs: 0,
-      lastActivityTs: 0,
+    const stats = flow.stats as AnyRecord;
+    const rawStatus = normalizeStatus(flow.status);
+    const statsRunning =
+      toNumber(stats.running, 0) + toNumber(stats.queued, 0) > 0;
+    const statsFailed =
+      toNumber(stats.error, 0) + toNumber(stats.dead, 0) > 0;
+    const statsRetry = toNumber(stats.retry, 0) > 0;
+    const statsDone = toNumber(stats.done, 0) > 0;
+
+    let computedStatus = rawStatus;
+
+    if (!computedStatus || computedStatus === "unknown") {
+      if (statsFailed) {
+        computedStatus = "failed";
+      } else if (statsRunning) {
+        computedStatus = "running";
+      } else if (statsRetry) {
+        computedStatus = "retry";
+      } else if (statsDone) {
+        computedStatus = "success";
+      } else {
+        computedStatus = getIncidentDerivedStatus(linkedIncidents);
+      }
+    }
+
+    const lastIncidentTs = Math.max(...linkedIncidents.map(getIncidentActivityTs), 0);
+    const lastActivityTs = Math.max(toNumber(flow.lastActivityTs, 0), lastIncidentTs);
+
+    flows.push({
+      key: toText(flow.key || flow.flowId || flow.rootEventId || flow.sourceRecordId),
+      flowId: toText(flow.flowId),
+      rootEventId: toText(flow.rootEventId),
+      sourceRecordId: toText(flow.sourceRecordId || flow.source_record_id),
+      workspaceId: toText(flow.workspaceId || "production"),
+      status: normalizeStatus(computedStatus),
+      steps: toNumber(flow.steps, 0),
+      rootCapability: "Registre uniquement",
+      terminalCapability: "Registre uniquement",
+      durationMs: toNumber(flow.durationMs, 0),
+      lastActivityTs,
       hasIncident: linkedIncidents.length > 0,
       incidentCount: linkedIncidents.length,
-      firstIncidentId:
-        linkedIncidents.length > 0 ? String(linkedIncidents[0].id) : undefined,
-      commands: [],
       readingMode: "registry-only",
-      sourceRecordId: sourceRecordId || rootEventId || flowId,
       isPartial: true,
     });
   }
 
-  return summaries;
+  return flows;
 }
 
-function buildIncidentOnlyFlowSummaries(
-  incidents: IncidentItem[],
-  existingFlows: FlowSummary[]
-): FlowSummary[] {
-  const existingCandidates = new Set<string>();
+function buildIncidentOnlyFlows(
+  incidents: AnyRecord[],
+  existingFlows: FlowCard[]
+): FlowCard[] {
+  const existingIds = new Set<string>();
 
   for (const flow of existingFlows) {
-    [flow.flowId, flow.rootEventId, flow.sourceRecordId, flow.key]
+    [flow.key, flow.flowId, flow.rootEventId, flow.sourceRecordId]
+      .map((value) => toText(value))
       .filter(Boolean)
-      .forEach((value) => existingCandidates.add(String(value)));
+      .forEach((value) => existingIds.add(value));
   }
 
-  const groups = new Map<string, IncidentItem[]>();
+  const groups = new Map<string, AnyRecord[]>();
 
   for (const incident of incidents) {
-    const flowId = text(incident.flow_id);
-    const rootEventId = text(incident.root_event_id);
+    const key = toText(
+      incident.flow_id || incident.root_event_id || incident.source_record_id || incident.id
+    );
 
-    if (!flowId && !rootEventId) {
-      continue;
-    }
-
-    const shouldSkip = [flowId, rootEventId, String(incident.id || "")]
-      .filter(Boolean)
-      .some((value) => existingCandidates.has(String(value)));
-
-    if (shouldSkip) {
-      continue;
-    }
-
-    const key = getIncidentGroupKey(incident);
     if (!key) continue;
+    if (existingIds.has(key)) continue;
 
     const bucket = groups.get(key) ?? [];
     bucket.push(incident);
     groups.set(key, bucket);
   }
 
-  const summaries: FlowSummary[] = [];
+  const flows: FlowCard[] = [];
 
-  for (const [key, group] of groups.entries()) {
+  for (const [, bucket] of groups.entries()) {
     const latest =
-      [...group].sort(
-        (a, b) => getIncidentActivityTs(b) - getIncidentActivityTs(a)
-      )[0] ?? null;
+      [...bucket].sort((a, b) => getIncidentActivityTs(b) - getIncidentActivityTs(a))[0] ??
+      null;
 
     if (!latest) continue;
 
-    const flowId =
-      text(latest.flow_id) ||
-      text(latest.root_event_id) ||
-      `incident-${String(latest.id || "")}`;
+    const flowId = toText(latest.flow_id || "");
+    const rootEventId = toText(latest.root_event_id || "");
+    const sourceRecordId = toText(latest.source_record_id || latest.id || "");
+    const workspaceId = toText(latest.workspace_id || "production");
 
-    const rootEventId = text(latest.root_event_id) || flowId;
-    const workspaceId = text(latest.workspace_id) || "production";
-    const lastActivityTs = Math.max(...group.map(getIncidentActivityTs), 0);
-
-    summaries.push({
-      key,
+    flows.push({
+      key: toText(flowId || rootEventId || sourceRecordId),
       flowId,
       rootEventId,
+      sourceRecordId,
       workspaceId,
-      status: computeIncidentOnlyStatus(group),
+      status: normalizeStatus(getIncidentDerivedStatus(bucket)),
       steps: 0,
-      rootCapability: "Incident",
-      terminalCapability: "Incident",
+      rootCapability: "Registre uniquement",
+      terminalCapability: "Registre uniquement",
       durationMs: 0,
-      lastActivityTs,
-      hasIncident: true,
-      incidentCount: group.length,
-      firstIncidentId: String(latest.id || ""),
-      commands: [],
+      lastActivityTs: Math.max(...bucket.map(getIncidentActivityTs), 0),
+      hasIncident: bucket.length > 0,
+      incidentCount: bucket.length,
       readingMode: "registry-only",
-      sourceRecordId: String(latest.id || rootEventId || flowId),
       isPartial: true,
     });
   }
 
-  return summaries;
+  return flows;
 }
 
-function buildAllFlowSummaries(
-  commands: CommandItem[],
-  registryFlows: FlowDetail[],
-  incidents: IncidentItem[]
-): FlowSummary[] {
-  const enriched = buildEnrichedFlowSummaries(commands, incidents);
-  const registryOnly = buildRegistryOnlyFlowSummaries(
-    registryFlows,
-    enriched,
-    incidents
-  );
-  const incidentOnly = buildIncidentOnlyFlowSummaries(incidents, [
-    ...enriched,
-    ...registryOnly,
-  ]);
+function sortFlows(flows: FlowCard[]): FlowCard[] {
+  return [...flows].sort((a, b) => {
+    const statusDiff = statusPriority(a.status) - statusPriority(b.status);
+    if (statusDiff !== 0) return statusDiff;
 
-  return [...enriched, ...registryOnly, ...incidentOnly].sort((a, b) => {
-    const priorityDiff =
-      getFlowStatusPriority(a.status) - getFlowStatusPriority(b.status);
-    if (priorityDiff !== 0) return priorityDiff;
-    return b.lastActivityTs - a.lastActivityTs;
+    const activityDiff = b.lastActivityTs - a.lastActivityTs;
+    if (activityDiff !== 0) return activityDiff;
+
+    return getDisplayTitle(a).localeCompare(getDisplayTitle(b), "fr");
   });
 }
 
-export default async function FlowsPage() {
-  let allCommands: CommandItem[] = [];
-  let allIncidents: IncidentItem[] = [];
-  let registryFlows: FlowDetail[] = [];
+function isFlowSelected(flow: FlowCard, selectedId: string): boolean {
+  if (!selectedId) return false;
 
-  try {
-    const data = await fetchCommands();
-    allCommands = Array.isArray(data?.commands) ? data.commands : [];
-  } catch {
-    allCommands = [];
+  const candidates = [flow.key, flow.flowId, flow.rootEventId, flow.sourceRecordId]
+    .map((value) => toText(value))
+    .filter(Boolean);
+
+  return candidates.includes(selectedId);
+}
+
+function metaRowLabel(flow: FlowCard): string {
+  return flow.readingMode === "registry-only" ? "Source / Root record" : "Root";
+}
+
+function metaRowValue(flow: FlowCard): string {
+  if (flow.readingMode === "registry-only") {
+    return toText(flow.sourceRecordId || flow.rootEventId || flow.flowId || "—", "—");
   }
 
-  try {
-    const data = await fetchIncidents();
-    allIncidents = Array.isArray(data?.incidents) ? data.incidents : [];
-  } catch {
-    allIncidents = [];
+  return toText(flow.rootEventId || flow.flowId || "—", "—");
+}
+
+function activityLabel(flow: FlowCard): string {
+  if (flow.lastActivityTs > 0) {
+    return formatDate(flow.lastActivityTs);
   }
 
-  try {
-    const data = await fetchFlows();
-    registryFlows = Array.isArray(data?.flows) ? data.flows : [];
-  } catch {
-    registryFlows = [];
-  }
+  return "—";
+}
 
-  const flows = buildAllFlowSummaries(allCommands, registryFlows, allIncidents);
+function sectionTitle(
+  title: string,
+  subtitle?: string
+) {
+  return (
+    <div className="space-y-3">
+      <div className="text-xs uppercase tracking-[0.24em] text-white/35">
+        {title}
+      </div>
+      {subtitle ? (
+        <p className="max-w-3xl text-base leading-8 text-zinc-400">{subtitle}</p>
+      ) : null}
+    </div>
+  );
+}
 
-  const priorityFlow =
-    flows.find((flow) => flow.status === "running") ||
-    flows.find((flow) => flow.status === "failed") ||
-    flows.find((flow) => flow.status === "retry") ||
-    flows[0] ||
-    null;
+function FlowListCard({
+  flow,
+  isActive,
+}: {
+  flow: FlowCard;
+  isActive: boolean;
+}) {
+  const displayTitle = getDisplayTitle(flow);
+  const incidentText = incidentLabel(flow.incidentCount, flow.hasIncident);
+  const incidentHref = buildIncidentHref(flow);
+  const detailHref = buildDetailHref(flow);
+  const selectHref = buildSelectHref(flow);
 
   return (
-    <FlowsClient
-      flows={flows}
-      initialSelectedKey={priorityFlow?.key || ""}
-      initialFilter="all"
-    />
+    <article className={cardClassName(isActive)} id={`flow-${encodeURIComponent(getSelectId(flow))}`}>
+      <div className="space-y-5">
+        <div className="space-y-4">
+          <h3 className="break-words text-[2rem] font-semibold leading-tight tracking-tight text-white sm:text-[2.25rem]">
+            {displayTitle}
+          </h3>
+
+          <div className="grid gap-3 text-[15px] leading-7 text-zinc-300">
+            <div>
+              <span className="text-zinc-400">Lecture:</span>{" "}
+              <span className="text-white">
+                {flow.readingMode === "registry-only"
+                  ? "Registre uniquement"
+                  : "Enrichie"}
+              </span>
+            </div>
+
+            <div className="break-all">
+              <span className="text-zinc-400">{metaRowLabel(flow)}:</span>{" "}
+              <span className="font-mono text-white">{metaRowValue(flow)}</span>
+            </div>
+
+            <div>
+              <span className="text-zinc-400">Activité:</span>{" "}
+              <span className="text-white">{activityLabel(flow)}</span>
+            </div>
+
+            <div>
+              <span className="text-zinc-400">Incident:</span>{" "}
+              <span className="text-white">{incidentText}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <span
+            className={`inline-flex rounded-full px-4 py-1.5 text-sm font-medium ${statusTone(
+              flow.status
+            )}`}
+          >
+            {toText(flow.status, "unknown").toUpperCase()}
+          </span>
+
+          {flow.isPartial ? (
+            <span
+              className={`inline-flex rounded-full px-4 py-1.5 text-sm font-medium ${statusTone(
+                "partial"
+              )}`}
+            >
+              PARTIAL
+            </span>
+          ) : null}
+
+          <span
+            className={`inline-flex rounded-full px-4 py-1.5 text-sm font-medium ${incidentTone(
+              flow.hasIncident
+            )}`}
+          >
+            {incidentText}
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          {isActive ? (
+            <span className={actionLinkClassName("active")}>Flow actif</span>
+          ) : (
+            <Link href={selectHref} className={actionLinkClassName()}>
+              Sélectionner
+            </Link>
+          )}
+
+          {flow.hasIncident ? (
+            <Link href={incidentHref} className={actionLinkClassName("danger")}>
+              {flow.incidentCount > 1 ? "Voir les incidents" : "Voir l’incident"}
+            </Link>
+          ) : null}
+
+          <Link href={detailHref} className={actionLinkClassName()}>
+            Voir le détail
+          </Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export default async function FlowsPage({ searchParams }: PageProps) {
+  const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
+  const selectedId = decodeURIComponent(firstSearchParam(resolvedSearchParams.selected));
+
+  const api = await import("@/lib/api");
+
+  const fetchCommands = (api as AnyRecord).fetchCommands as
+    | undefined
+    | (() => Promise<any>);
+  const fetchIncidents = (api as AnyRecord).fetchIncidents as
+    | undefined
+    | (() => Promise<any>);
+  const fetchFlows = (api as AnyRecord).fetchFlows as
+    | undefined
+    | (() => Promise<any>);
+
+  let commandsData: any = null;
+  let incidentsData: any = null;
+  let flowsData: any = null;
+
+  try {
+    commandsData = fetchCommands ? await fetchCommands() : null;
+  } catch {
+    commandsData = null;
+  }
+
+  try {
+    incidentsData = fetchIncidents ? await fetchIncidents() : null;
+  } catch {
+    incidentsData = null;
+  }
+
+  try {
+    flowsData = fetchFlows ? await fetchFlows() : null;
+  } catch {
+    flowsData = null;
+  }
+
+  const rawCommands: AnyRecord[] = Array.isArray(commandsData?.commands)
+    ? commandsData.commands
+    : Array.isArray(commandsData)
+      ? commandsData
+      : [];
+
+  const rawIncidents: AnyRecord[] = Array.isArray(incidentsData?.incidents)
+    ? incidentsData.incidents
+    : Array.isArray(incidentsData)
+      ? incidentsData
+      : [];
+
+  const rawFlows: AnyRecord[] = Array.isArray(flowsData?.flows)
+    ? flowsData.flows
+    : Array.isArray(flowsData)
+      ? flowsData
+      : [];
+
+  const commands = rawCommands.map(normalizeTimelineItem);
+  const incidents = rawIncidents.map(normalizeIncidentRecord);
+  const registryFlowRecords = rawFlows.map(normalizeRegistryFlowRecord);
+
+  const enrichedFlows = sortFlows(buildEnrichedFlows(commands, incidents));
+  const registryOnlyFlows = sortFlows(
+    buildRegistryOnlyFlows(registryFlowRecords, incidents, enrichedFlows)
+  );
+  const incidentOnlyFlows = sortFlows(
+    buildIncidentOnlyFlows(incidents, [...enrichedFlows, ...registryOnlyFlows])
+  );
+
+  const registrySectionFlows = sortFlows([...registryOnlyFlows, ...incidentOnlyFlows]);
+
+  const attentionFlows = sortFlows(
+    [...enrichedFlows, ...registrySectionFlows].filter(
+      (flow) => flow.hasIncident || ["failed", "running", "retry"].includes(normalizeStatus(flow.status))
+    )
+  ).slice(0, 6);
+
+  return (
+    <div className="space-y-10">
+      <div className="border-b border-white/10 pb-6">
+        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+          Flows
+        </h1>
+        <p className="mt-4 max-w-4xl text-lg leading-8 text-zinc-400">
+          Vue de pilotage BOSAI pour suivre les flows enrichis et les flows
+          présents uniquement dans le registre.
+        </p>
+      </div>
+
+      {attentionFlows.length > 0 ? (
+        <section className="space-y-5">
+          {sectionTitle(
+            "Needs attention",
+            "Flows prioritaires à surveiller maintenant: incidents actifs, échecs, retries ou activité en cours."
+          )}
+
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+            {attentionFlows.map((flow) => (
+              <FlowListCard
+                key={`attention-${flow.key}-${flow.sourceRecordId}-${flow.rootEventId}`}
+                flow={flow}
+                isActive={isFlowSelected(flow, selectedId)}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {enrichedFlows.length > 0 ? (
+        <section className="space-y-5">
+          {sectionTitle("Flows enrichis")}
+
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+            {enrichedFlows.map((flow) => (
+              <FlowListCard
+                key={`enriched-${flow.key}-${flow.flowId}-${flow.rootEventId}`}
+                flow={flow}
+                isActive={isFlowSelected(flow, selectedId)}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {registrySectionFlows.length > 0 ? (
+        <section className="space-y-5">
+          {sectionTitle(
+            "Flows registre uniquement",
+            "Flows présents dans le registre BOSAI mais sans lecture causale détaillée disponible pour le moment."
+          )}
+
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+            {registrySectionFlows.map((flow) => (
+              <FlowListCard
+                key={`registry-${flow.key}-${flow.sourceRecordId}-${flow.rootEventId}`}
+                flow={flow}
+                isActive={isFlowSelected(flow, selectedId)}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {enrichedFlows.length === 0 && registrySectionFlows.length === 0 ? (
+        <div className={emptyStateClassName()}>
+          Aucun flow disponible pour le moment.
+        </div>
+      ) : null}
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className={panelClassName()}>
+          <div className="text-sm text-zinc-400">Flows enrichis</div>
+          <div className="mt-3 text-4xl font-semibold text-white">
+            {enrichedFlows.length}
+          </div>
+        </div>
+
+        <div className={panelClassName()}>
+          <div className="text-sm text-zinc-400">Registry-only</div>
+          <div className="mt-3 text-4xl font-semibold text-white">
+            {registrySectionFlows.length}
+          </div>
+        </div>
+
+        <div className={panelClassName()}>
+          <div className="text-sm text-zinc-400">Avec incident</div>
+          <div className="mt-3 text-4xl font-semibold text-rose-300">
+            {[...enrichedFlows, ...registrySectionFlows].filter((flow) => flow.hasIncident).length}
+          </div>
+        </div>
+
+        <div className={panelClassName()}>
+          <div className="text-sm text-zinc-400">À surveiller</div>
+          <div className="mt-3 text-4xl font-semibold text-amber-300">
+            {attentionFlows.length}
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
