@@ -35,6 +35,7 @@ function toRecord(value: unknown): JsonRecord {
 function unwrapRecord(value: unknown): JsonRecord {
   const record = toRecord(value);
   const fields = toRecord(record.fields);
+
   return {
     ...fields,
     ...record,
@@ -45,6 +46,16 @@ function firstDefined(record: JsonRecord, keys: string[]): unknown {
   for (const key of keys) {
     if (record[key] !== undefined && record[key] !== null) {
       return record[key];
+    }
+  }
+  return undefined;
+}
+
+function firstDefinedMany(records: JsonRecord[], keys: string[]): unknown {
+  for (const record of records) {
+    const value = firstDefined(record, keys);
+    if (value !== undefined && value !== null) {
+      return value;
     }
   }
   return undefined;
@@ -112,7 +123,9 @@ function asArray<T = unknown>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
-function normalizeStatsObject(value: unknown): Record<string, number | undefined> {
+function normalizeStatsObject(
+  value: unknown
+): Record<string, number | undefined> {
   const record = toRecord(value);
   const normalized: Record<string, number | undefined> = {};
 
@@ -121,6 +134,42 @@ function normalizeStatsObject(value: unknown): Record<string, number | undefined
   }
 
   return normalized;
+}
+
+function parseJsonRecord(value: unknown): JsonRecord {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as JsonRecord;
+  }
+
+  if (typeof value !== "string") {
+    return {};
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    return toRecord(parsed);
+  } catch {
+    return {};
+  }
+}
+
+function normalizeJsonLike(value: unknown): unknown {
+  const parsed = parseJsonRecord(value);
+
+  if (Object.keys(parsed).length > 0) {
+    return parsed;
+  }
+
+  if (typeof value === "string" && value.trim() === "{}") {
+    return {};
+  }
+
+  return value;
 }
 
 export type HealthScoreResponse = {
@@ -186,11 +235,15 @@ export type EventItem = {
   event_type?: string;
   type?: string;
   status?: string;
+  command_created?: boolean;
+  linked_command?: string;
   workspace_id?: string;
   flow_id?: string;
   root_event_id?: string;
   command_id?: string;
   mapped_capability?: string;
+  source?: string;
+  run_id?: string;
   created_at?: string;
   updated_at?: string;
   processed_at?: string;
@@ -319,6 +372,31 @@ export type FlowsResponse = {
 function normalizeCommandItem(raw: unknown): CommandItem {
   const record = unwrapRecord(raw);
 
+  const inputRaw = firstDefined(record, [
+    "input",
+    "Input",
+    "input_json",
+    "Input_JSON",
+    "command_input_json",
+    "Command_Input_JSON",
+    "payload",
+    "Payload",
+    "payload_json",
+    "Payload_JSON",
+  ]);
+
+  const resultRaw = firstDefined(record, [
+    "result",
+    "Result",
+    "result_json",
+    "Result_JSON",
+    "Result JSON",
+  ]);
+
+  const inputRecord = parseJsonRecord(inputRaw);
+  const resultRecord = parseJsonRecord(resultRaw);
+  const contextRecords = [record, inputRecord, resultRecord];
+
   return {
     ...record,
     id:
@@ -337,31 +415,66 @@ function normalizeCommandItem(raw: unknown): CommandItem {
       ])
     ),
     capability: asString(
-      firstDefined(record, ["capability", "Capability", "name", "Name"])
+      firstDefinedMany(contextRecords, [
+        "capability",
+        "Capability",
+        "name",
+        "Name",
+      ])
     ),
-    tool_key: asString(firstDefined(record, ["tool_key", "Tool_Key", "toolKey"])),
+    tool_key: asString(
+      firstDefined(record, ["tool_key", "Tool_Key", "toolKey"])
+    ),
     tool_mode: asString(
       firstDefined(record, ["tool_mode", "Tool_Mode", "toolMode"])
     ),
     workspace_id: asString(
-      firstDefined(record, ["workspace_id", "Workspace_ID", "workspace", "Workspace"])
+      firstDefinedMany(contextRecords, [
+        "workspace_id",
+        "Workspace_ID",
+        "workspace",
+        "Workspace",
+        "workspaceId",
+        "WorkspaceId",
+      ])
     ),
     flow_id: asString(
-      firstDefined(record, ["flow_id", "Flow_ID", "flowId", "FlowId"])
+      firstDefinedMany(contextRecords, [
+        "flow_id",
+        "Flow_ID",
+        "flowId",
+        "FlowId",
+        "flowid",
+      ])
     ),
     root_event_id: asString(
-      firstDefined(record, [
+      firstDefinedMany(contextRecords, [
         "root_event_id",
         "Root_Event_ID",
         "rootEventId",
         "RootEventId",
+        "rooteventid",
       ])
     ),
     linked_run: asString(
-      firstDefined(record, ["linked_run", "Linked_Run", "run_id", "Run_ID"])
+      firstDefinedMany(contextRecords, [
+        "linked_run",
+        "Linked_Run",
+        "run_id",
+        "Run_ID",
+        "runId",
+        "RunId",
+      ])
     ),
     run_record_id: asString(
-      firstDefined(record, ["run_record_id", "Run_Record_ID", "linked_run"])
+      firstDefinedMany(contextRecords, [
+        "run_record_id",
+        "Run_Record_ID",
+        "linked_run",
+        "Linked_Run",
+        "run_record",
+        "Run_Record",
+      ])
     ),
     created_at: asString(
       firstDefined(record, ["created_at", "Created_At", "createdAt"])
@@ -376,7 +489,7 @@ function normalizeCommandItem(raw: unknown): CommandItem {
       firstDefined(record, ["started_at", "Started_At", "startedAt"])
     ),
     parent_command_id: asString(
-      firstDefined(record, [
+      firstDefinedMany(contextRecords, [
         "parent_command_id",
         "Parent_Command_ID",
         "parent_id",
@@ -384,36 +497,39 @@ function normalizeCommandItem(raw: unknown): CommandItem {
       ])
     ),
     step_index: asNumber(
-      firstDefined(record, ["step_index", "Step_Index", "step", "Step"])
+      firstDefinedMany(contextRecords, [
+        "step_index",
+        "Step_Index",
+        "step",
+        "Step",
+      ])
     ),
-    worker: asString(firstDefined(record, ["worker", "Worker"])),
+    worker: asString(firstDefinedMany(contextRecords, ["worker", "Worker"])),
     error: asString(
-      firstDefined(record, ["error", "Error", "last_error", "Last_Error"])
+      firstDefinedMany(contextRecords, [
+        "error",
+        "Error",
+        "last_error",
+        "Last_Error",
+      ])
     ),
-    result: firstDefined(record, [
-      "result",
-      "Result",
-      "result_json",
-      "Result_JSON",
-      "Result JSON",
-    ]),
-    input: firstDefined(record, [
-      "input",
-      "Input",
-      "input_json",
-      "Input_JSON",
-      "command_input_json",
-      "Command_Input_JSON",
-      "payload",
-      "Payload",
-      "payload_json",
-      "Payload_JSON",
-    ]),
+    result: normalizeJsonLike(resultRaw),
+    input: normalizeJsonLike(inputRaw),
   };
 }
 
 function normalizeEventItem(raw: unknown): EventItem {
   const record = unwrapRecord(raw);
+
+  const payloadRaw = firstDefined(record, [
+    "payload",
+    "Payload",
+    "payload_json",
+    "Payload_JSON",
+  ]);
+
+  const payloadRecord = parseJsonRecord(payloadRaw);
+  const contextRecords = [record, payloadRecord];
 
   return {
     ...record,
@@ -422,31 +538,91 @@ function normalizeEventItem(raw: unknown): EventItem {
         firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
       ) || "",
     event_type: asString(
-      firstDefined(record, ["event_type", "Event_Type", "type", "Type"])
+      firstDefinedMany(contextRecords, [
+        "event_type",
+        "Event_Type",
+        "type",
+        "Type",
+      ])
     ),
-    type: asString(firstDefined(record, ["type", "Type", "event_type", "Event_Type"])),
+    type: asString(
+      firstDefinedMany(contextRecords, [
+        "type",
+        "Type",
+        "event_type",
+        "Event_Type",
+      ])
+    ),
     status: asString(
-      firstDefined(record, ["status", "Status", "status_select", "Status_select"])
+      firstDefined(record, [
+        "status",
+        "Status",
+        "status_select",
+        "Status_select",
+      ])
+    ),
+    command_created: asBoolean(
+      firstDefined(record, ["command_created", "Command_Created"])
+    ),
+    linked_command: asString(
+      firstDefinedMany(contextRecords, [
+        "linked_command",
+        "Linked_Command",
+        "command_id",
+        "Command_ID",
+        "commandId",
+        "CommandId",
+      ])
     ),
     workspace_id: asString(
-      firstDefined(record, ["workspace_id", "Workspace_ID", "workspace", "Workspace"])
+      firstDefinedMany(contextRecords, [
+        "workspace_id",
+        "Workspace_ID",
+        "workspace",
+        "Workspace",
+        "workspaceId",
+        "WorkspaceId",
+      ])
     ),
     flow_id: asString(
-      firstDefined(record, ["flow_id", "Flow_ID", "flowId", "FlowId"])
+      firstDefinedMany(contextRecords, [
+        "flow_id",
+        "Flow_ID",
+        "flowId",
+        "FlowId",
+        "flowid",
+      ])
     ),
     root_event_id: asString(
-      firstDefined(record, [
+      firstDefinedMany(contextRecords, [
         "root_event_id",
         "Root_Event_ID",
         "rootEventId",
         "RootEventId",
+        "rooteventid",
       ])
     ),
     command_id: asString(
-      firstDefined(record, ["command_id", "Command_ID", "linked_command", "Linked_Command"])
+      firstDefinedMany(contextRecords, [
+        "command_id",
+        "Command_ID",
+        "linked_command",
+        "Linked_Command",
+        "commandId",
+        "CommandId",
+      ])
     ),
     mapped_capability: asString(
-      firstDefined(record, ["mapped_capability", "Mapped_Capability"])
+      firstDefinedMany(contextRecords, [
+        "mapped_capability",
+        "Mapped_Capability",
+        "capability",
+        "Capability",
+      ])
+    ),
+    source: asString(firstDefinedMany(contextRecords, ["source", "Source"])),
+    run_id: asString(
+      firstDefinedMany(contextRecords, ["run_id", "Run_ID", "runId", "RunId"])
     ),
     created_at: asString(
       firstDefined(record, ["created_at", "Created_At", "createdAt"])
@@ -457,7 +633,7 @@ function normalizeEventItem(raw: unknown): EventItem {
     processed_at: asString(
       firstDefined(record, ["processed_at", "Processed_At", "processedAt"])
     ),
-    payload: firstDefined(record, ["payload", "Payload", "payload_json", "Payload_JSON"]),
+    payload: normalizeJsonLike(payloadRaw),
   };
 }
 
@@ -530,17 +706,37 @@ function normalizeIncidentItem(raw: unknown): IncidentItem {
     ),
     workspace: asString(firstDefined(record, ["workspace", "Workspace"])),
     run_record_id: asString(
-      firstDefined(record, ["run_record_id", "Run_Record_ID", "linked_run", "Linked_Run"])
+      firstDefined(record, [
+        "run_record_id",
+        "Run_Record_ID",
+        "linked_run",
+        "Linked_Run",
+      ])
     ),
     linked_run: asString(
-      firstDefined(record, ["linked_run", "Linked_Run", "run_record_id", "Run_Record_ID"])
+      firstDefined(record, [
+        "linked_run",
+        "Linked_Run",
+        "run_record_id",
+        "Run_Record_ID",
+      ])
     ),
     run_id: asString(firstDefined(record, ["run_id", "Run_ID"])),
     command_id: asString(
-      firstDefined(record, ["command_id", "Command_ID", "linked_command", "Linked_Command"])
+      firstDefined(record, [
+        "command_id",
+        "Command_ID",
+        "linked_command",
+        "Linked_Command",
+      ])
     ),
     linked_command: asString(
-      firstDefined(record, ["linked_command", "Linked_Command", "command_id", "Command_ID"])
+      firstDefined(record, [
+        "linked_command",
+        "Linked_Command",
+        "command_id",
+        "Command_ID",
+      ])
     ),
     flow_id: asString(
       firstDefined(record, ["flow_id", "Flow_ID", "flowId", "FlowId"])
@@ -585,12 +781,12 @@ function normalizeToolItem(raw: unknown): ToolItem {
         firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
       ) || "",
     name: asString(firstDefined(record, ["name", "Name", "title", "Title"])),
-    description: asString(
-      firstDefined(record, ["description", "Description"])
-    ),
+    description: asString(firstDefined(record, ["description", "Description"])),
     status: asString(firstDefined(record, ["status", "Status"])),
     category: asString(firstDefined(record, ["category", "Category"])),
-    tool_key: asString(firstDefined(record, ["tool_key", "Tool_Key", "toolKey"])),
+    tool_key: asString(
+      firstDefined(record, ["tool_key", "Tool_Key", "toolKey"])
+    ),
     tool_mode: asString(
       firstDefined(record, ["tool_mode", "Tool_Mode", "toolMode"])
     ),
@@ -608,9 +804,7 @@ function normalizePolicyItem(raw: unknown): PolicyItem {
         firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
       ) || "",
     name: asString(firstDefined(record, ["name", "Name", "title", "Title"])),
-    description: asString(
-      firstDefined(record, ["description", "Description"])
-    ),
+    description: asString(firstDefined(record, ["description", "Description"])),
     status: asString(firstDefined(record, ["status", "Status"])),
     type: asString(firstDefined(record, ["type", "Type"])),
     category: asString(firstDefined(record, ["category", "Category"])),
@@ -622,8 +816,7 @@ function normalizePolicyItem(raw: unknown): PolicyItem {
 function normalizeFlowDetail(raw: unknown): FlowDetail {
   const record = unwrapRecord(raw);
   const statsRaw =
-    firstDefined(record, ["stats", "Stats"]) ||
-    {
+    firstDefined(record, ["stats", "Stats"]) || {
       done: firstDefined(record, ["done", "Done"]),
       error: firstDefined(record, ["error", "Error"]),
       dead: firstDefined(record, ["dead", "Dead"]),
@@ -648,7 +841,12 @@ function normalizeFlowDetail(raw: unknown): FlowDetail {
       ])
     ),
     workspace_id: asString(
-      firstDefined(record, ["workspace_id", "Workspace_ID", "workspace", "Workspace"])
+      firstDefined(record, [
+        "workspace_id",
+        "Workspace_ID",
+        "workspace",
+        "Workspace",
+      ])
     ),
     count:
       asNumber(firstDefined(record, ["count", "Count"])) ??
@@ -673,9 +871,7 @@ function enrichIncidentsFromCommands(
 
   return incidents.map((incident) => {
     const linkedCommandId =
-      incident.command_id ||
-      incident.linked_command ||
-      undefined;
+      incident.command_id || incident.linked_command || undefined;
 
     const linkedCommand = linkedCommandId
       ? byCommandId.get(String(linkedCommandId))
@@ -699,6 +895,46 @@ function enrichIncidentsFromCommands(
   });
 }
 
+function enrichEventsFromCommands(
+  events: EventItem[],
+  commands: CommandItem[]
+): EventItem[] {
+  const byCommandId = new Map<string, CommandItem>();
+
+  for (const cmd of commands) {
+    const id = asString(cmd.id);
+    if (id) {
+      byCommandId.set(id, cmd);
+    }
+  }
+
+  return events.map((event) => {
+    const linkedCommandId =
+      event.command_id || event.linked_command || undefined;
+
+    const linkedCommand = linkedCommandId
+      ? byCommandId.get(String(linkedCommandId))
+      : undefined;
+
+    if (!linkedCommand) {
+      return event;
+    }
+
+    return {
+      ...event,
+      command_id: event.command_id || linkedCommand.id,
+      linked_command: event.linked_command || linkedCommand.id,
+      flow_id: event.flow_id || linkedCommand.flow_id,
+      root_event_id: event.root_event_id || linkedCommand.root_event_id,
+      workspace_id: event.workspace_id || linkedCommand.workspace_id,
+      run_id:
+        event.run_id ||
+        linkedCommand.run_record_id ||
+        linkedCommand.linked_run,
+    };
+  });
+}
+
 export async function fetchHealthScore(): Promise<HealthScoreResponse> {
   const data = await safeFetch<JsonRecord>("/health/score");
   return {
@@ -711,22 +947,24 @@ export async function fetchHealthScore(): Promise<HealthScoreResponse> {
 
 export async function fetchRuns(): Promise<RunsResponse> {
   const data = await safeFetch<JsonRecord>("/runs");
-  const runs = asArray<Record<string, unknown>>(firstDefined(data, ["runs", "Runs"]));
+  const runs = asArray<Record<string, unknown>>(
+    firstDefined(data, ["runs", "Runs"])
+  );
   const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
 
   return {
     ...data,
-    count:
-      asNumber(firstDefined(data, ["count", "Count"])) ?? runs.length,
+    count: asNumber(firstDefined(data, ["count", "Count"])) ?? runs.length,
     runs,
     stats,
   };
 }
 
-export async function fetchCommands(): Promise<CommandsResponse> {
-  const data = await safeFetch<JsonRecord>("/commands");
-  const commands = asArray(firstDefined(data, ["commands", "Commands"])).map((item) =>
-    normalizeCommandItem(item)
+export async function fetchCommands(limit = 30): Promise<CommandsResponse> {
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 30;
+  const data = await safeFetch<JsonRecord>(`/commands?limit=${safeLimit}`);
+  const commands = asArray(firstDefined(data, ["commands", "Commands"])).map(
+    (item) => normalizeCommandItem(item)
   );
   const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
 
@@ -739,37 +977,51 @@ export async function fetchCommands(): Promise<CommandsResponse> {
   };
 }
 
-export async function fetchCommandById(id: string): Promise<CommandItem | null> {
-  const data = await fetchCommands();
+export async function fetchCommandById(
+  id: string,
+  limit = 300
+): Promise<CommandItem | null> {
+  const data = await fetchCommands(limit);
   const commands = Array.isArray(data?.commands) ? data.commands : [];
   const match = commands.find((item) => String(item.id) === String(id));
   return match ?? null;
 }
 
-export async function fetchEvents(): Promise<EventsResponse> {
-  const data = await safeFetch<JsonRecord>("/events");
-  const events = asArray(firstDefined(data, ["events", "Events"])).map((item) =>
+export async function fetchEvents(limit = 30): Promise<EventsResponse> {
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 30;
+  const data = await safeFetch<JsonRecord>(`/events?limit=${safeLimit}`);
+  let events = asArray(firstDefined(data, ["events", "Events"])).map((item) =>
     normalizeEventItem(item)
   );
   const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
 
+  try {
+    const commandsData = await fetchCommands(Math.max(safeLimit, 300));
+    const commands = Array.isArray(commandsData?.commands)
+      ? commandsData.commands
+      : [];
+    events = enrichEventsFromCommands(events, commands);
+  } catch {
+    // Keep events usable even if command enrichment fails.
+  }
+
   return {
     ...data,
-    count:
-      asNumber(firstDefined(data, ["count", "Count"])) ?? events.length,
+    count: asNumber(firstDefined(data, ["count", "Count"])) ?? events.length,
     events,
     stats,
   };
 }
 
-export async function fetchIncidents(): Promise<IncidentsResponse> {
-  const data = await safeFetch<JsonRecord>("/incidents");
-  let incidents = asArray(firstDefined(data, ["incidents", "Incidents"])).map((item) =>
-    normalizeIncidentItem(item)
+export async function fetchIncidents(limit = 30): Promise<IncidentsResponse> {
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 30;
+  const data = await safeFetch<JsonRecord>(`/incidents?limit=${safeLimit}`);
+  let incidents = asArray(firstDefined(data, ["incidents", "Incidents"])).map(
+    (item) => normalizeIncidentItem(item)
   );
 
   try {
-    const commandsData = await fetchCommands();
+    const commandsData = await fetchCommands(Math.max(safeLimit, 300));
     const commands = Array.isArray(commandsData?.commands)
       ? commandsData.commands
       : [];
@@ -797,16 +1049,15 @@ export async function fetchTools(): Promise<ToolsResponse> {
 
   return {
     ...data,
-    count:
-      asNumber(firstDefined(data, ["count", "Count"])) ?? tools.length,
+    count: asNumber(firstDefined(data, ["count", "Count"])) ?? tools.length,
     tools,
   };
 }
 
 export async function fetchPolicies(): Promise<PoliciesResponse> {
   const data = await safeFetch<JsonRecord>("/policies");
-  const policies = asArray(firstDefined(data, ["policies", "Policies"])).map((item) =>
-    normalizePolicyItem(item)
+  const policies = asArray(firstDefined(data, ["policies", "Policies"])).map(
+    (item) => normalizePolicyItem(item)
   );
 
   return {
@@ -825,8 +1076,7 @@ export async function fetchFlows(): Promise<FlowsResponse> {
 
   return {
     ...data,
-    count:
-      asNumber(firstDefined(data, ["count", "Count"])) ?? flows.length,
+    count: asNumber(firstDefined(data, ["count", "Count"])) ?? flows.length,
     flows,
   };
 }
@@ -853,7 +1103,9 @@ export async function fetchFlowById(id: string): Promise<FlowDetail | null> {
   return match ?? null;
 }
 
-export async function fetchIncidentsByFlowId(flowId: string): Promise<IncidentItem[]> {
+export async function fetchIncidentsByFlowId(
+  flowId: string
+): Promise<IncidentItem[]> {
   const data = await fetchIncidents();
   const incidents = Array.isArray(data?.incidents) ? data.incidents : [];
 
