@@ -184,29 +184,16 @@ function getLinkedCommandValue(event: EventItem): string {
   );
 }
 
-function getFlowTarget(event: EventItem): string {
-  if (event.flow_id && String(event.flow_id).trim()) {
-    return String(event.flow_id).trim();
-  }
-
-  if (event.root_event_id && String(event.root_event_id).trim()) {
-    return String(event.root_event_id).trim();
-  }
-
+function getEventRealFlowId(event: EventItem): string {
   const payload = getEventPayload(event);
 
-  const candidate =
-    payload["flow_id"] ??
-    payload["flowid"] ??
-    payload["flowId"] ??
-    payload["root_event_id"] ??
-    payload["rootEventId"];
-
-  if (typeof candidate === "string" && candidate.trim()) {
-    return candidate.trim();
-  }
-
-  return "";
+  return (
+    toTextOrEmpty(event.flow_id) ||
+    toTextOrEmpty(payload.flow_id) ||
+    toTextOrEmpty(payload.flowId) ||
+    toTextOrEmpty(payload.flowid) ||
+    ""
+  );
 }
 
 function getRootEventId(event: EventItem): string {
@@ -216,6 +203,50 @@ function getRootEventId(event: EventItem): string {
     toTextOrEmpty(getEventPayload(event).rootEventId) ||
     ""
   );
+}
+
+function getSourceRecordId(event: EventItem): string {
+  const record = event as Record<string, unknown>;
+  const payload = getEventPayload(event);
+
+  return (
+    toTextOrEmpty(event.source_record_id) ||
+    toTextOrEmpty(event.source_event_id) ||
+    toTextOrEmpty(record.source_record_id) ||
+    toTextOrEmpty(record.Source_Record_ID) ||
+    toTextOrEmpty(record.source_event_id) ||
+    toTextOrEmpty(record.Source_Event_ID) ||
+    toTextOrEmpty(payload.source_record_id) ||
+    toTextOrEmpty(payload.sourceRecordId) ||
+    toTextOrEmpty(payload.source_event_id) ||
+    toTextOrEmpty(payload.sourceEventId) ||
+    ""
+  );
+}
+
+function getFlowDisplayTarget(event: EventItem): string {
+  return (
+    getEventRealFlowId(event) ||
+    getRootEventId(event) ||
+    getSourceRecordId(event) ||
+    ""
+  );
+}
+
+function getFlowNavigationTarget(event: EventItem): string {
+  const realFlowId = getEventRealFlowId(event);
+  if (realFlowId) return realFlowId;
+
+  const linkedCommand = getLinkedCommandValue(event);
+  if (linkedCommand) return linkedCommand;
+
+  const rootEventId = getRootEventId(event);
+  if (rootEventId) return rootEventId;
+
+  const sourceRecordId = getSourceRecordId(event);
+  if (sourceRecordId) return sourceRecordId;
+
+  return "";
 }
 
 function getCreatedAt(event: EventItem): string {
@@ -401,13 +432,14 @@ export default async function EventDetailPage({ params }: PageProps) {
   }
 
   const linkedCommand = getLinkedCommandValue(event);
-  const flowTarget = getFlowTarget(event);
+  const flowDisplayTarget = getFlowDisplayTarget(event);
+  const flowNavigationTarget = getFlowNavigationTarget(event);
   const rootEventId = getRootEventId(event);
   const status = getEventStatus(event);
   const synthetic = isSyntheticEvent(event);
 
   const hasCommand = linkedCommand !== "";
-  const hasFlow = Boolean(flowTarget);
+  const hasFlow = flowNavigationTarget !== "";
 
   return (
     <div className="space-y-6">
@@ -517,7 +549,10 @@ export default async function EventDetailPage({ params }: PageProps) {
             </span>
           </div>
           <div>
-            Flow: <span className="break-all text-zinc-200">{flowTarget || "—"}</span>
+            Flow:{" "}
+            <span className="break-all text-zinc-200">
+              {flowDisplayTarget || "—"}
+            </span>
           </div>
           <div>
             Root event:{" "}
@@ -554,7 +589,7 @@ export default async function EventDetailPage({ params }: PageProps) {
               Flow target
             </div>
             <div className="mt-3 break-all text-2xl font-semibold text-white">
-              {flowTarget || "—"}
+              {flowDisplayTarget || "—"}
             </div>
           </div>
 
@@ -605,7 +640,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
           {hasFlow ? (
             <Link
-              href={`/flows/${encodeURIComponent(flowTarget)}`}
+              href={`/flows/${encodeURIComponent(flowNavigationTarget)}`}
               className={actionLinkClassName("soft")}
             >
               Ouvrir le flow lié
