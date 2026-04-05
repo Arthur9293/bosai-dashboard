@@ -6,25 +6,19 @@ import {
   type IncidentsResponse,
 } from "@/lib/api";
 
-type SearchParams = {
-  flow_id?: string | string[];
-  root_event_id?: string | string[];
-  source_record_id?: string | string[];
-  from?: string | string[];
-};
-
 type PageProps = {
   params: Promise<{
     id: string;
   }>;
-  searchParams?: Promise<SearchParams> | SearchParams;
 };
 
 function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
-function actionLinkClassName(variant: "default" | "primary" | "soft" = "default") {
+function actionLinkClassName(
+  variant: "default" | "primary" | "soft" = "default"
+) {
   if (variant === "primary") {
     return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
@@ -34,18 +28,6 @@ function actionLinkClassName(variant: "default" | "primary" | "soft" = "default"
   }
 
   return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
-}
-
-function getQueryText(value: string | string[] | undefined) {
-  if (Array.isArray(value)) {
-    return value[0]?.trim() || "";
-  }
-
-  if (typeof value === "string") {
-    return value.trim();
-  }
-
-  return "";
 }
 
 function formatDate(value?: string | null) {
@@ -68,17 +50,17 @@ function toText(value: unknown, fallback = "—") {
 
 function toNumber(value: unknown, fallback = 0) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
-
   if (typeof value === "string" && value.trim() !== "") {
     const n = Number(value);
     if (Number.isFinite(n)) return n;
   }
-
   return fallback;
 }
 
 function getIncidentTitle(incident: IncidentItem) {
-  return incident.title || incident.name || incident.error_id || "Untitled incident";
+  return (
+    incident.title || incident.name || incident.error_id || "Untitled incident"
+  );
 }
 
 function getIncidentStatusRaw(incident: IncidentItem) {
@@ -103,9 +85,12 @@ function getIncidentStatusNormalized(incident: IncidentItem) {
     return "open";
   }
 
-  if (["open", "opened", "new", "active", "en cours"].includes(raw)) return "open";
-  if (["escalated", "escalade", "escaladé"].includes(raw)) return "escalated";
-  if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw)) return "resolved";
+  if (["open", "opened", "new", "active", "en cours"].includes(raw))
+    return "open";
+  if (["escalated", "escalade", "escaladé"].includes(raw))
+    return "escalated";
+  if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw))
+    return "resolved";
 
   return raw;
 }
@@ -125,7 +110,8 @@ function getIncidentSeverityNormalized(incident: IncidentItem) {
   const raw = getIncidentSeverityRaw(incident).toLowerCase();
 
   if (!raw) {
-    if ((incident.sla_status || "").toLowerCase() === "breached") return "critical";
+    if ((incident.sla_status || "").toLowerCase() === "breached")
+      return "critical";
     return "unknown";
   }
 
@@ -311,7 +297,9 @@ function getWorkspace(incident: IncidentItem) {
 }
 
 function getRunRecord(incident: IncidentItem) {
-  return incident.run_record_id || incident.linked_run || incident.run_id || "—";
+  return (
+    incident.run_record_id || incident.linked_run || incident.run_id || "—"
+  );
 }
 
 function getCommandRecord(incident: IncidentItem) {
@@ -319,15 +307,18 @@ function getCommandRecord(incident: IncidentItem) {
 }
 
 function getFlowId(incident: IncidentItem) {
-  return (incident.flow_id || "").trim();
+  return toText(incident.flow_id, "");
 }
 
 function getRootEventId(incident: IncidentItem) {
-  return (incident.root_event_id || "").trim();
+  return toText(incident.root_event_id, "");
 }
 
 function getSourceRecordId(incident: IncidentItem) {
-  return (incident.source_record_id || "").trim();
+  return toText(
+    (incident as Record<string, unknown>).source_record_id,
+    ""
+  );
 }
 
 function getCategory(incident: IncidentItem) {
@@ -347,7 +338,8 @@ function getSuggestedAction(incident: IncidentItem) {
 
   if (status === "escalated") return "Review escalated incident";
   if (severity === "critical") return "Prioritize immediate review";
-  if ((incident.sla_status || "").toLowerCase() === "breached") return "Review SLA breach";
+  if ((incident.sla_status || "").toLowerCase() === "breached")
+    return "Review SLA breach";
   if (status === "resolved") return "Verify final resolution state";
 
   return "Monitor flow and resolution";
@@ -377,23 +369,6 @@ function getLinkedCommandHref(incident: IncidentItem) {
   return `/commands/${encodeURIComponent(commandRecord)}`;
 }
 
-function buildBackToIncidentsHref(
-  flowId: string,
-  rootEventId: string,
-  sourceRecordId: string,
-  from: string
-) {
-  const params = new URLSearchParams();
-
-  if (flowId) params.set("flow_id", flowId);
-  if (rootEventId) params.set("root_event_id", rootEventId);
-  if (sourceRecordId) params.set("source_record_id", sourceRecordId);
-  if (from) params.set("from", from);
-
-  const query = params.toString();
-  return query ? `/incidents?${query}` : "/incidents";
-}
-
 function isLegacyNoiseIncident(incident: IncidentItem) {
   const title = getIncidentTitle(incident).trim().toLowerCase();
   const category = getCategory(incident).trim().toLowerCase();
@@ -403,11 +378,11 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   const lastAction = (incident.last_action || "").trim();
   const flowId = getFlowId(incident);
   const rootEventId = getRootEventId(incident);
+  const sourceRecordId = getSourceRecordId(incident);
   const commandRecord = getCommandRecord(incident);
   const runRecord = getRunRecord(incident);
 
-  const isGenericTitle =
-    title === "incident" || title === "untitled incident";
+  const isGenericTitle = title === "incident" || title === "untitled incident";
 
   const isGenericCategory =
     category === "" || category === "—" || category === "unknown_incident";
@@ -418,6 +393,7 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   const hasNoLinking =
     flowId === "" &&
     rootEventId === "" &&
+    sourceRecordId === "" &&
     (commandRecord === "" || commandRecord === "—") &&
     (runRecord === "" || runRecord === "—");
 
@@ -431,12 +407,16 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
     reason === "forbidden_host" ||
     !hasNoLinking;
 
-  return isGenericTitle && isGenericCategory && isGenericReason && !hasStrongBusinessSignal;
+  return (
+    isGenericTitle &&
+    isGenericCategory &&
+    isGenericReason &&
+    !hasStrongBusinessSignal
+  );
 }
 
-export default async function IncidentDetailPage({ params, searchParams }: PageProps) {
+export default async function IncidentDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
 
   let data: IncidentsResponse | null = null;
 
@@ -446,8 +426,12 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
     data = null;
   }
 
-  const incidents: IncidentItem[] = Array.isArray(data?.incidents) ? data.incidents : [];
-  const cleanIncidents = incidents.filter((item) => !isLegacyNoiseIncident(item));
+  const incidents: IncidentItem[] = Array.isArray(data?.incidents)
+    ? data.incidents
+    : [];
+  const cleanIncidents = incidents.filter(
+    (item) => !isLegacyNoiseIncident(item)
+  );
   const incident = cleanIncidents.find((item) => item.id === id);
 
   if (!incident) {
@@ -464,7 +448,6 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
   const commandRecord = getCommandRecord(incident);
   const runRecord = getRunRecord(incident);
   const rootEventId = getRootEventId(incident);
-  const sourceRecordId = getSourceRecordId(incident) || incident.id;
   const workspace = getWorkspace(incident);
   const category = getCategory(incident);
   const reason = getReason(incident);
@@ -478,28 +461,16 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
   const nextAction = getNextAction(incident);
   const priorityScore = getPriorityScore(incident);
 
-  const filterFlowId = getQueryText(resolvedSearchParams.flow_id) || flowId;
-  const filterRootEventId = getQueryText(resolvedSearchParams.root_event_id) || rootEventId;
-  const filterSourceRecordId =
-    getQueryText(resolvedSearchParams.source_record_id) || sourceRecordId;
-  const from = getQueryText(resolvedSearchParams.from) || "flows";
-
   const sourceFlowHref = getSourceFlowHref(incident);
   const linkedFlowHref = getLinkedFlowHref(incident);
   const linkedCommandHref = getLinkedCommandHref(incident);
-  const backToIncidentsHref = buildBackToIncidentsHref(
-    filterFlowId,
-    filterRootEventId,
-    filterSourceRecordId,
-    from
-  );
 
   return (
     <div className="space-y-6">
       <div className="border-b border-white/10 pb-4">
         <div className="text-sm text-zinc-400">
           <Link
-            href={backToIncidentsHref}
+            href="/incidents"
             className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
           >
             Incidents
@@ -597,34 +568,44 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
               Workspace: <span className="text-zinc-200">{workspace}</span>
             </div>
             <div>
-              Source: <span className="text-zinc-200">{toText(incident.source)}</span>
+              Source:{" "}
+              <span className="text-zinc-200">{toText(incident.source)}</span>
             </div>
             <div>
-              Worker: <span className="text-zinc-200">{toText(incident.worker)}</span>
+              Worker:{" "}
+              <span className="text-zinc-200">{toText(incident.worker)}</span>
             </div>
             <div>
               Error ID: <span className="text-zinc-200">{errorId}</span>
             </div>
             <div>
-              Dernière action: <span className="text-zinc-200">{lastAction}</span>
+              Dernière action:{" "}
+              <span className="text-zinc-200">{lastAction}</span>
             </div>
             <div>
-              Note de résolution: <span className="text-zinc-200">{resolutionNote}</span>
+              Note de résolution:{" "}
+              <span className="text-zinc-200">{resolutionNote}</span>
             </div>
             <div>
-              Statut décision: <span className="text-purple-300">{decisionStatus || "—"}</span>
+              Statut décision:{" "}
+              <span className="text-purple-300">
+                {decisionStatus || "—"}
+              </span>
             </div>
             <div>
-              Raison décision: <span className="text-zinc-200">{decisionReason || "—"}</span>
+              Raison décision:{" "}
+              <span className="text-zinc-200">{decisionReason || "—"}</span>
             </div>
             <div>
-              Next action: <span className="text-zinc-200">{nextAction || "—"}</span>
+              Next action:{" "}
+              <span className="text-zinc-200">{nextAction || "—"}</span>
             </div>
             <div>
               Priorité: <span className="text-zinc-200">{priorityScore}</span>
             </div>
             <div className="md:col-span-2">
-              Action suggérée: <span className="text-zinc-200">{suggestedAction}</span>
+              Action suggérée:{" "}
+              <span className="text-zinc-200">{suggestedAction}</span>
             </div>
           </div>
         </div>
@@ -685,15 +666,17 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
             </div>
 
             <div className="break-all">
-              Root event: <span className="text-zinc-200">{toText(rootEventId)}</span>
+              Root event:{" "}
+              <span className="text-zinc-200">{toText(rootEventId)}</span>
             </div>
 
             <div className="break-all">
-              Run record: <span className="text-zinc-200">{toText(runRecord)}</span>
+              Run record:{" "}
+              <span className="text-zinc-200">{toText(runRecord)}</span>
             </div>
 
             <div className="break-all">
-              Commande:{" "}
+              Command:{" "}
               {linkedCommandHref ? (
                 <Link
                   href={linkedCommandHref}
@@ -709,12 +692,10 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">
-            Navigation
-          </div>
+          <div className="mb-4 text-lg font-medium text-white">Navigation</div>
 
           <div className="space-y-3">
-            <Link href={backToIncidentsHref} className={actionLinkClassName("soft")}>
+            <Link href="/incidents" className={actionLinkClassName("soft")}>
               Retour à la liste incidents
             </Link>
 
@@ -735,8 +716,11 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
             ) : null}
 
             {linkedCommandHref ? (
-              <Link href={linkedCommandHref} className={actionLinkClassName("soft")}>
-                Ouvrir la commande liée
+              <Link
+                href={linkedCommandHref}
+                className={actionLinkClassName("soft")}
+              >
+                Ouvrir la command liée
               </Link>
             ) : null}
           </div>
