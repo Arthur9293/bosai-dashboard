@@ -51,13 +51,6 @@ function formatDate(value?: string | null): string {
   }).format(d);
 }
 
-function toRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return {};
-}
-
 function parseMaybeJson(value: unknown): Record<string, unknown> {
   if (!value) return {};
   if (typeof value === "object" && !Array.isArray(value)) {
@@ -95,14 +88,6 @@ function toText(value: unknown, fallback = "—"): string {
 
 function toTextOrEmpty(value: unknown): string {
   return toText(value, "");
-}
-
-function firstNonEmpty(...values: unknown[]): string {
-  for (const value of values) {
-    const text = toTextOrEmpty(value);
-    if (text) return text;
-  }
-  return "";
 }
 
 function tone(status?: string): string {
@@ -199,13 +184,29 @@ function getLinkedCommandValue(event: EventItem): string {
   );
 }
 
-function getFlowId(event: EventItem): string {
-  return (
-    toTextOrEmpty(event.flow_id) ||
-    toTextOrEmpty(getEventPayload(event).flow_id) ||
-    toTextOrEmpty(getEventPayload(event).flowId) ||
-    ""
-  );
+function getFlowTarget(event: EventItem): string {
+  if (event.flow_id && String(event.flow_id).trim()) {
+    return String(event.flow_id).trim();
+  }
+
+  if (event.root_event_id && String(event.root_event_id).trim()) {
+    return String(event.root_event_id).trim();
+  }
+
+  const payload = getEventPayload(event);
+
+  const candidate =
+    payload["flow_id"] ??
+    payload["flowid"] ??
+    payload["flowId"] ??
+    payload["root_event_id"] ??
+    payload["rootEventId"];
+
+  if (typeof candidate === "string" && candidate.trim()) {
+    return candidate.trim();
+  }
+
+  return "";
 }
 
 function getRootEventId(event: EventItem): string {
@@ -400,13 +401,13 @@ export default async function EventDetailPage({ params }: PageProps) {
   }
 
   const linkedCommand = getLinkedCommandValue(event);
-  const flowId = getFlowId(event);
+  const flowTarget = getFlowTarget(event);
   const rootEventId = getRootEventId(event);
   const status = getEventStatus(event);
   const synthetic = isSyntheticEvent(event);
 
   const hasCommand = linkedCommand !== "";
-  const hasFlow = flowId !== "";
+  const hasFlow = Boolean(flowTarget);
 
   return (
     <div className="space-y-6">
@@ -516,7 +517,7 @@ export default async function EventDetailPage({ params }: PageProps) {
             </span>
           </div>
           <div>
-            Flow: <span className="break-all text-zinc-200">{flowId || "—"}</span>
+            Flow: <span className="break-all text-zinc-200">{flowTarget || "—"}</span>
           </div>
           <div>
             Root event:{" "}
@@ -553,7 +554,7 @@ export default async function EventDetailPage({ params }: PageProps) {
               Flow target
             </div>
             <div className="mt-3 break-all text-2xl font-semibold text-white">
-              {flowId || "—"}
+              {flowTarget || "—"}
             </div>
           </div>
 
@@ -604,7 +605,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
           {hasFlow ? (
             <Link
-              href={`/flows/${encodeURIComponent(flowId)}`}
+              href={`/flows/${encodeURIComponent(flowTarget)}`}
               className={actionLinkClassName("soft")}
             >
               Ouvrir le flow lié
