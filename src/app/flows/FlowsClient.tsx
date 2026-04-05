@@ -1,8 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
-import FlowGraphClient from "./FlowGraphClient";
+
+const FlowGraphClient = dynamic(() => import("./FlowGraphClient"), {
+  ssr: false,
+  loading: () => (
+    <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-lg text-zinc-400">
+      Chargement du graphe...
+    </div>
+  ),
+});
 
 type FlowStatus = "running" | "failed" | "retry" | "success" | "unknown";
 type FlowFilter = "all" | FlowStatus;
@@ -133,7 +142,9 @@ function flowMatchesSearch(flow: FlowSummary, rawSearch: string) {
       flow.terminalCapability,
       flow.readingMode || "",
       flow.sourceRecordId || "",
-      ...flow.commands.map((cmd) => cmd.capability || ""),
+      ...(Array.isArray(flow.commands)
+        ? flow.commands.map((cmd) => cmd.capability || "")
+        : []),
     ].join(" ")
   );
 
@@ -173,6 +184,33 @@ export default function FlowsClient({
   initialSelectedKey = "",
   initialFilter = "all",
 }: Props) {
+  const safeFlows = useMemo<FlowSummary[]>(() => {
+    if (!Array.isArray(flows)) return [];
+
+    return flows.map((flow) => ({
+      ...flow,
+      key: flow?.key || "",
+      flowId: flow?.flowId || "",
+      rootEventId: flow?.rootEventId || "",
+      workspaceId: flow?.workspaceId || "production",
+      status: flow?.status || "unknown",
+      steps: typeof flow?.steps === "number" ? flow.steps : 0,
+      rootCapability: flow?.rootCapability || "Non disponible",
+      terminalCapability: flow?.terminalCapability || "Non disponible",
+      durationMs: typeof flow?.durationMs === "number" ? flow.durationMs : 0,
+      lastActivityTs:
+        typeof flow?.lastActivityTs === "number" ? flow.lastActivityTs : 0,
+      hasIncident: Boolean(flow?.hasIncident),
+      incidentCount:
+        typeof flow?.incidentCount === "number" ? flow.incidentCount : 0,
+      commands: Array.isArray(flow?.commands) ? flow.commands : [],
+      readingMode: flow?.readingMode,
+      sourceRecordId: flow?.sourceRecordId,
+      isPartial: Boolean(flow?.isPartial),
+      firstIncidentId: flow?.firstIncidentId,
+    }));
+  }, [flows]);
+
   const [selectedKey, setSelectedKey] = useState(initialSelectedKey);
   const [filter, setFilter] = useState<FlowFilter>(initialFilter);
   const [search, setSearch] = useState("");
@@ -181,11 +219,11 @@ export default function FlowsClient({
   const hasSearch = search.trim().length > 0;
 
   const searchedFlows = useMemo(() => {
-    if (!hasSearch) return flows;
-    return flows.filter((flow) => flowMatchesSearch(flow, search));
-  }, [flows, search, hasSearch]);
+    if (!hasSearch) return safeFlows;
+    return safeFlows.filter((flow) => flowMatchesSearch(flow, search));
+  }, [safeFlows, search, hasSearch]);
 
-  const countsBase = hasSearch ? searchedFlows : flows;
+  const countsBase = hasSearch ? searchedFlows : safeFlows;
 
   const counts = useMemo(() => {
     return {
@@ -200,27 +238,27 @@ export default function FlowsClient({
 
   const priorityFlow = useMemo(() => {
     return (
-      flows.find((flow) => flow.status === "running") ||
-      flows.find((flow) => flow.status === "failed") ||
-      flows.find((flow) => flow.status === "retry") ||
-      flows[0] ||
+      safeFlows.find((flow) => flow.status === "running") ||
+      safeFlows.find((flow) => flow.status === "failed") ||
+      safeFlows.find((flow) => flow.status === "retry") ||
+      safeFlows[0] ||
       null
     );
-  }, [flows]);
+  }, [safeFlows]);
 
   const firstRunning = useMemo(
-    () => flows.find((flow) => flow.status === "running") || null,
-    [flows]
+    () => safeFlows.find((flow) => flow.status === "running") || null,
+    [safeFlows]
   );
 
   const firstFailed = useMemo(
-    () => flows.find((flow) => flow.status === "failed") || null,
-    [flows]
+    () => safeFlows.find((flow) => flow.status === "failed") || null,
+    [safeFlows]
   );
 
   const firstRetry = useMemo(
-    () => flows.find((flow) => flow.status === "retry") || null,
-    [flows]
+    () => safeFlows.find((flow) => flow.status === "retry") || null,
+    [safeFlows]
   );
 
   const filteredFlows = useMemo(() => {
@@ -281,7 +319,7 @@ export default function FlowsClient({
         ? firstFailed
         : status === "retry"
         ? firstRetry
-        : flows.find((flow) => flow.status === status) || null;
+        : safeFlows.find((flow) => flow.status === status) || null;
 
     setFilter(status);
     setSearch("");
@@ -357,7 +395,7 @@ export default function FlowsClient({
                     RUNNING
                   </span>
                   <span className="text-sm text-sky-200">
-                    {flows.filter((f) => f.status === "running").length}
+                    {safeFlows.filter((f) => f.status === "running").length}
                   </span>
                 </div>
 
@@ -392,7 +430,7 @@ export default function FlowsClient({
                     FAILED
                   </span>
                   <span className="text-sm text-rose-200">
-                    {flows.filter((f) => f.status === "failed").length}
+                    {safeFlows.filter((f) => f.status === "failed").length}
                   </span>
                 </div>
 
@@ -427,7 +465,7 @@ export default function FlowsClient({
                     RETRY
                   </span>
                   <span className="text-sm text-violet-200">
-                    {flows.filter((f) => f.status === "retry").length}
+                    {safeFlows.filter((f) => f.status === "retry").length}
                   </span>
                 </div>
 
