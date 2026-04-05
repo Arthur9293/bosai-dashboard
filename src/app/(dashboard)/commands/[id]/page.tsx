@@ -16,7 +16,7 @@ type PageProps = {
 };
 
 function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function buttonClassName(variant: "default" | "primary" = "default") {
@@ -24,7 +24,11 @@ function buttonClassName(variant: "default" | "primary" = "default") {
     return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-5 py-3 text-base font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-base font-medium text-white transition hover:bg-white/10";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-base font-medium text-white transition hover:bg-white/[0.08]";
+}
+
+function labelClassName() {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
 function formatDate(value?: string | null) {
@@ -241,12 +245,7 @@ function incidentSlaTone(label: string) {
 }
 
 function getIncidentTitle(incident: IncidentItem) {
-  return (
-    incident.title ||
-    incident.name ||
-    incident.error_id ||
-    "Untitled incident"
-  );
+  return incident.title || incident.name || incident.error_id || "Untitled incident";
 }
 
 function getIncidentStatusRaw(incident: IncidentItem) {
@@ -368,10 +367,15 @@ function getIncidentRunRecordId(incident: IncidentItem) {
 function getIncidentCommandIds(incident: IncidentItem) {
   const ids = new Set<string>();
 
-  const direct = firstNonEmptyString(incident.command_id, incident.linked_command);
+  const direct = firstNonEmptyString(
+    incident.command_id,
+    incident.linked_command
+  );
   if (direct) ids.add(direct);
 
-  for (const item of toStringArray((incident as Record<string, unknown>).linked_command)) {
+  for (const item of toStringArray(
+    (incident as Record<string, unknown>).linked_command
+  )) {
     ids.add(item);
   }
 
@@ -401,10 +405,7 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
     reason === "" || reason === "—" || reason === "incident_create";
 
   const hasNoLinking =
-    !flowId &&
-    !rootEventId &&
-    !runRecord &&
-    commandIds.length === 0;
+    !flowId && !rootEventId && !runRecord && commandIds.length === 0;
 
   const hasStrongBusinessSignal =
     errorId !== "" ||
@@ -416,7 +417,12 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
     reason === "forbidden_host" ||
     !hasNoLinking;
 
-  return isGenericTitle && isGenericCategory && isGenericReason && !hasStrongBusinessSignal;
+  return (
+    isGenericTitle &&
+    isGenericCategory &&
+    isGenericReason &&
+    !hasStrongBusinessSignal
+  );
 }
 
 type NormalizedCommand = {
@@ -644,7 +650,11 @@ function normalizeCommand(command: CommandItem): NormalizedCommand {
       inputPayload.nextaction
     ),
     inputPreview: prettyJson(
-      raw.input_json ?? raw.command_input_json ?? raw.payload_json ?? raw.input ?? {}
+      raw.input_json ??
+        raw.command_input_json ??
+        raw.payload_json ??
+        raw.input ??
+        {}
     ),
     resultPreview: prettyJson(
       raw.result_json ?? raw.result ?? raw.output_json ?? raw.output ?? {}
@@ -758,16 +768,14 @@ function LinkedIncidentCard({ incident }: { incident: IncidentItem }) {
   const openedAt = getIncidentOpenedAt(incident);
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/5 p-5">
+    <article className={cardClassName()}>
       <div className="space-y-4">
-        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-          Incident lié
-        </div>
+        <div className={labelClassName()}>Incident lié</div>
 
         <div className="space-y-3">
           <Link
             href={`/incidents/${encodeURIComponent(incident.id)}`}
-            className="block text-lg font-semibold text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
+            className="block text-lg font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
           >
             {title}
           </Link>
@@ -801,23 +809,27 @@ function LinkedIncidentCard({ incident }: { incident: IncidentItem }) {
 
         <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2">
           <div>
-            Opened: <span className="text-zinc-200">{formatDate(openedAt)}</span>
+            <span className={labelClassName()}>Opened</span>
+            <div className="mt-1 text-zinc-200">{formatDate(openedAt)}</div>
           </div>
+
           <div>
-            Workspace:{" "}
-            <span className="text-zinc-200">{getIncidentWorkspace(incident)}</span>
+            <span className={labelClassName()}>Workspace</span>
+            <div className="mt-1 text-zinc-200">{getIncidentWorkspace(incident)}</div>
           </div>
+
           <div className="break-all">
-            Flow:{" "}
-            <span className="text-zinc-200">
+            <span className={labelClassName()}>Flow</span>
+            <div className="mt-1 text-zinc-200">
               {getIncidentFlowId(incident) || "—"}
-            </span>
+            </div>
           </div>
+
           <div className="break-all">
-            Root event:{" "}
-            <span className="text-zinc-200">
+            <span className={labelClassName()}>Root event</span>
+            <div className="mt-1 text-zinc-200">
               {getIncidentRootEventId(incident) || "—"}
-            </span>
+            </div>
           </div>
         </div>
 
@@ -831,6 +843,23 @@ function LinkedIncidentCard({ incident }: { incident: IncidentItem }) {
         </div>
       </div>
     </article>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+  breakAll = false,
+}: {
+  label: string;
+  value: string;
+  breakAll?: boolean;
+}) {
+  return (
+    <div className={breakAll ? "break-all" : undefined}>
+      <span className={labelClassName()}>{label}</span>
+      <div className="mt-1 text-zinc-200">{value}</div>
+    </div>
   );
 }
 
@@ -875,8 +904,8 @@ export default async function CommandDetailPage({ params }: PageProps) {
   const flowTarget = normalized.flowId || normalized.rootEventId;
 
   return (
-    <div className="space-y-6">
-      <div className="border-b border-white/10 pb-4">
+    <div className="space-y-8">
+      <section className="space-y-4 border-b border-white/10 pb-6">
         <div className="text-sm text-zinc-400">
           <Link
             href="/commands"
@@ -887,11 +916,11 @@ export default async function CommandDetailPage({ params }: PageProps) {
           / {normalized.capability}
         </div>
 
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
           {normalized.capability}
         </h1>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span
             className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${statusTone(
               normalized.status
@@ -900,42 +929,42 @@ export default async function CommandDetailPage({ params }: PageProps) {
             {normalized.status.toUpperCase()}
           </span>
 
-          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-200">
+          <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-200">
             Worker {normalized.worker}
           </span>
 
-          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-200">
+          <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-200">
             {normalized.workspace}
           </span>
         </div>
-      </div>
+      </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Created</div>
-          <div className="mt-3 text-xl font-semibold text-white">
+          <div className={labelClassName()}>Created</div>
+          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
             {formatDate(normalized.createdAt)}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Started</div>
-          <div className="mt-3 text-xl font-semibold text-white">
+          <div className={labelClassName()}>Started</div>
+          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
             {formatDate(normalized.startedAt)}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Finished</div>
-          <div className="mt-3 text-xl font-semibold text-white">
+          <div className={labelClassName()}>Finished</div>
+          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
             {formatDate(normalized.finishedAt)}
           </div>
         </div>
 
         <div className="xl:col-span-3">
           <div className={cardClassName()}>
-            <div className="text-sm text-zinc-400">Durée totale</div>
-            <div className="mt-3 text-xl font-semibold text-white">
+            <div className={labelClassName()}>Durée totale</div>
+            <div className="mt-3 text-xl font-semibold tracking-tight text-white">
               {formatDurationMs(normalized.durationMs)}
             </div>
           </div>
@@ -944,126 +973,113 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">
+          <div className="mb-5 text-lg font-medium text-white">
             Contexte command
           </div>
 
-          <div className="space-y-3 text-sm text-zinc-400">
-            <div>
-              Capability: <span className="text-zinc-200">{normalized.capability}</span>
-            </div>
-            <div>
-              Status: <span className="text-zinc-200">{normalized.status.toUpperCase()}</span>
-            </div>
-            <div>
-              Worker: <span className="text-zinc-200">{normalized.worker}</span>
-            </div>
-            <div>
-              Workspace: <span className="text-zinc-200">{normalized.workspace}</span>
-            </div>
-            <div className="break-all">
-              Record ID: <span className="text-zinc-200">{normalized.recordId || "—"}</span>
-            </div>
-            <div className="break-all">
-              Command ID: <span className="text-zinc-200">{normalized.commandId || "—"}</span>
-            </div>
-            <div>
-              Retry count: <span className="text-zinc-200">0</span>
-            </div>
-            <div className="break-all">
-              Parent command:{" "}
-              <span className="text-zinc-200">{normalized.parentCommandId || "—"}</span>
-            </div>
-            <div className="break-all">
-              Run record: <span className="text-zinc-200">{normalized.runRecordId || "—"}</span>
-            </div>
-            <div>
-              Last error: <span className="text-zinc-200">{normalized.lastError || "—"}</span>
+          <div className="grid gap-4 text-sm text-zinc-400 sm:grid-cols-2">
+            <InfoRow label="Capability" value={normalized.capability} />
+            <InfoRow label="Status" value={normalized.status.toUpperCase()} />
+            <InfoRow label="Worker" value={normalized.worker} />
+            <InfoRow label="Workspace" value={normalized.workspace} />
+            <InfoRow
+              label="Record ID"
+              value={normalized.recordId || "—"}
+              breakAll
+            />
+            <InfoRow
+              label="Command ID"
+              value={normalized.commandId || "—"}
+              breakAll
+            />
+            <InfoRow label="Retry count" value="0" />
+            <InfoRow
+              label="Parent command"
+              value={normalized.parentCommandId || "—"}
+              breakAll
+            />
+            <InfoRow
+              label="Run record"
+              value={normalized.runRecordId || "—"}
+              breakAll
+            />
+            <div className="sm:col-span-2">
+              <InfoRow label="Last error" value={normalized.lastError || "—"} />
             </div>
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">
-            Liens flow
-          </div>
+          <div className="mb-5 text-lg font-medium text-white">Liens flow</div>
 
-          <div className="space-y-3 text-sm text-zinc-400">
-            <div className="break-all">
-              Flow: <span className="text-zinc-200">{normalized.flowId || "—"}</span>
-            </div>
-            <div className="break-all">
-              Root event:{" "}
-              <span className="text-zinc-200">{normalized.rootEventId || "—"}</span>
-            </div>
-            <div className="break-all">
-              Run record:{" "}
-              <span className="text-zinc-200">{normalized.runRecordId || "—"}</span>
-            </div>
-            <div className="break-all">
-              Parent command:{" "}
-              <span className="text-zinc-200">{normalized.parentCommandId || "—"}</span>
-            </div>
+          <div className="grid gap-4 text-sm text-zinc-400 sm:grid-cols-2">
+            <InfoRow label="Flow" value={normalized.flowId || "—"} breakAll />
+            <InfoRow
+              label="Root event"
+              value={normalized.rootEventId || "—"}
+              breakAll
+            />
+            <InfoRow
+              label="Run record"
+              value={normalized.runRecordId || "—"}
+              breakAll
+            />
+            <InfoRow
+              label="Parent command"
+              value={normalized.parentCommandId || "—"}
+              breakAll
+            />
           </div>
         </div>
       </section>
 
       <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">
+        <div className="mb-5 text-lg font-medium text-white">
           Diagnostic routing
         </div>
 
         <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
-          <div>
-            Decision: <span className="text-zinc-200">{normalized.decision || "—"}</span>
-          </div>
-          <div>
-            Reason: <span className="text-zinc-200">{normalized.reason || "—"}</span>
-          </div>
-          <div>
-            Severity: <span className="text-zinc-200">{normalized.severity || "—"}</span>
-          </div>
-          <div>
-            Category: <span className="text-zinc-200">{normalized.category || "—"}</span>
-          </div>
-          <div>
-            HTTP status: <span className="text-zinc-200">{normalized.httpStatus || "—"}</span>
-          </div>
-          <div>
-            incident_create_ok:{" "}
-            <span className="text-zinc-200">
-              {normalized.incidentCreateOk === null
+          <InfoRow label="Decision" value={normalized.decision || "—"} />
+          <InfoRow label="Reason" value={normalized.reason || "—"} />
+          <InfoRow label="Severity" value={normalized.severity || "—"} />
+          <InfoRow label="Category" value={normalized.category || "—"} />
+          <InfoRow label="HTTP status" value={normalized.httpStatus || "—"} />
+          <InfoRow
+            label="incident_create_ok"
+            value={
+              normalized.incidentCreateOk === null
                 ? "—"
-                : String(normalized.incidentCreateOk)}
-            </span>
-          </div>
-          <div className="break-all">
-            incident_record_id:{" "}
-            <span className="text-zinc-200">
-              {normalized.incidentRecordId || "—"}
-            </span>
-          </div>
-          <div>
-            spawned_count:{" "}
-            <span className="text-zinc-200">{normalized.spawnedCount || "—"}</span>
-          </div>
+                : String(normalized.incidentCreateOk)
+            }
+          />
+          <InfoRow
+            label="incident_record_id"
+            value={normalized.incidentRecordId || "—"}
+            breakAll
+          />
+          <InfoRow
+            label="spawned_count"
+            value={normalized.spawnedCount || "—"}
+          />
           <div className="md:col-span-2">
-            next capability:{" "}
-            <span className="text-zinc-200">{normalized.nextCapability || "—"}</span>
+            <InfoRow
+              label="next capability"
+              value={normalized.nextCapability || "—"}
+            />
           </div>
         </div>
       </section>
 
       <section className={cardClassName()}>
         <div className="mb-4 text-lg font-medium text-white">Input preview</div>
-        <pre className="overflow-x-auto rounded-2xl border border-white/10 bg-black/30 p-5 text-sm text-zinc-200">
+        <pre className="max-h-[560px] overflow-auto rounded-[24px] border border-white/10 bg-black/30 p-5 text-sm leading-6 text-zinc-200">
 {normalized.inputPreview}
         </pre>
       </section>
 
       <section className={cardClassName()}>
         <div className="mb-4 text-lg font-medium text-white">Result preview</div>
-        <pre className="overflow-x-auto rounded-2xl border border-white/10 bg-black/30 p-5 text-sm text-zinc-200">
+        <pre className="max-h-[560px] overflow-auto rounded-[24px] border border-white/10 bg-black/30 p-5 text-sm leading-6 text-zinc-200">
 {normalized.resultPreview}
         </pre>
       </section>
@@ -1072,7 +1088,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
         <div className="mb-4 text-lg font-medium text-white">Incidents liés</div>
 
         {linkedIncidents.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-base text-zinc-400">
+          <div className="rounded-[24px] border border-dashed border-white/10 px-5 py-8 text-base text-zinc-400">
             <div>Aucun incident lié détecté pour cette command.</div>
 
             <div className="mt-4 space-y-2 text-zinc-500">
@@ -1087,7 +1103,8 @@ export default async function CommandDetailPage({ params }: PageProps) {
                 incident_record_id est{" "}
                 <span className="text-zinc-300">
                   {normalized.incidentRecordId || "absent"}
-                </span>.
+                </span>
+                .
               </div>
 
               <div>
@@ -1130,7 +1147,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
               Retour au flow source
             </Link>
           ) : (
-            <div className="inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-base font-medium text-zinc-500">
+            <div className="inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-base font-medium text-zinc-500">
               Retour au flow source
             </div>
           )}
@@ -1143,7 +1160,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
               Ouvrir le flow lié
             </Link>
           ) : (
-            <div className="inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-base font-medium text-zinc-500">
+            <div className="inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-base font-medium text-zinc-500">
               Ouvrir le flow lié
             </div>
           )}
