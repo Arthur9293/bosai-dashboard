@@ -1,22 +1,22 @@
 import Link from "next/link";
 
-type SearchParamValue = string | string[] | undefined;
+type AnyRecord = Record<string, unknown>;
+type SearchParams = Record<string, string | string[] | undefined>;
 
 type PageProps = {
-  searchParams?:
-    | Promise<Record<string, SearchParamValue>>
-    | Record<string, SearchParamValue>;
+  searchParams?: Promise<SearchParams> | SearchParams;
 };
 
-type AnyRecord = Record<string, any>;
+type FlowStatus = "running" | "failed" | "retry" | "success" | "unknown";
+type ReadingMode = "enriched" | "registry-only";
 
 type FlowCard = {
   key: string;
+  detailId: string;
   flowId: string;
   rootEventId: string;
-  sourceRecordId: string;
   workspaceId: string;
-  status: string;
+  status: FlowStatus;
   steps: number;
   rootCapability: string;
   terminalCapability: string;
@@ -24,86 +24,199 @@ type FlowCard = {
   lastActivityTs: number;
   hasIncident: boolean;
   incidentCount: number;
-  readingMode: "enriched" | "registry-only";
+  firstIncidentId?: string;
+  readingMode: ReadingMode;
+  sourceRecordId?: string;
   isPartial: boolean;
 };
 
-type TimelineItem = {
+type NormalizedCommand = {
   id: string;
-  capability: string;
-  status: string;
-  worker: string;
-  createdAt?: string;
-  startedAt?: string;
-  finishedAt?: string;
-  stepIndex: number;
-  parentCommandId: string;
   flowId: string;
   rootEventId: string;
   workspaceId: string;
+  status: string;
+  capability: string;
+  parentCommandId: string;
+  activityTs: number;
+  startTs: number;
 };
 
+function cardClassName(isActive: boolean) {
+  const base =
+    "rounded-[28px] border bg-white/[0.04] p-5 md:p-6 min-h-[420px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
+  const inactive =
+    "border-white/10 hover:border-white/15 hover:bg-white/[0.05]";
+  const active =
+    "border-emerald-500/35 bg-emerald-500/[0.08] shadow-[0_0_0_1px_rgba(16,185,129,0.06),0_0_40px_rgba(16,185,129,0.08)]";
+
+  return `${base} ${isActive ? active : inactive}`;
+}
+
+function sectionTitleClassName() {
+  return "text-xs uppercase tracking-[0.28em] text-white/40";
+}
+
+function actionLinkClassName(
+  variant: "default" | "primary" | "danger" | "active" = "default"
+) {
+  if (variant === "primary") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+  }
+
+  if (variant === "danger") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
+  }
+
+  if (variant === "active") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-300";
+  }
+
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+}
+
+function badgeTone(status: string) {
+  const s = toText(status).toLowerCase();
+
+  if (s === "success" || s === "done" || s === "completed") {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  if (s === "running") {
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+  }
+
+  if (s === "failed") {
+    return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
+  }
+
+  if (s === "retry") {
+    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
+  }
+
+  if (s === "partial") {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
+function text(value: unknown): string {
+  if (typeof value === "string") {
+    const v = value.trim();
+    return v || "";
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value).trim();
+  }
+
+  return "";
+}
+
 function toText(value: unknown, fallback = ""): string {
-  if (value === null || value === undefined) return fallback;
-  const text = String(value).trim();
-  return text || fallback;
+  const v = text(value);
+  return v || fallback;
 }
 
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
+
   if (typeof value === "string" && value.trim() !== "") {
     const n = Number(value);
     if (Number.isFinite(n)) return n;
   }
+
   return fallback;
 }
 
-function toBoolean(value: unknown, fallback = false): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (["true", "1", "yes", "oui"].includes(normalized)) return true;
-    if (["false", "0", "no", "non"].includes(normalized)) return false;
+function decodeSearchParam(value: string | string[] | undefined): string {
+  const first = Array.isArray(value) ? value[0] : value;
+  if (!first) return "";
+
+  try {
+    return decodeURIComponent(first);
+  } catch {
+    return first;
   }
-  return fallback;
 }
 
-function parseMaybeJson(value: unknown): AnyRecord {
+function uniqueTexts(values: string[]): string[] {
+  return Array.from(new Set(values.map((v) => text(v)).filter(Boolean)));
+}
+
+function flattenTextValues(value: unknown): string[] {
+  if (value === null || value === undefined) return [];
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    const clean = text(value);
+    return clean ? [clean] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return uniqueTexts(value.flatMap((item) => flattenTextValues(item)));
+  }
+
+  if (typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+
+    return uniqueTexts([
+      ...flattenTextValues(rec.id),
+      ...flattenTextValues(rec.recordId),
+      ...flattenTextValues(rec.record_id),
+      ...flattenTextValues(rec.value),
+      ...flattenTextValues(rec.name),
+      ...flattenTextValues(rec.text),
+      ...flattenTextValues(rec.label),
+    ]);
+  }
+
+  return [];
+}
+
+function recordTexts(obj: unknown, keys: string[]): string[] {
+  const rec =
+    obj && typeof obj === "object" ? (obj as Record<string, unknown>) : {};
+
+  return uniqueTexts(keys.flatMap((key) => flattenTextValues(rec[key])));
+}
+
+function parseMaybeJson(value: unknown): Record<string, unknown> {
   if (!value) return {};
+
   if (typeof value === "object" && !Array.isArray(value)) {
-    return value as AnyRecord;
+    return value as Record<string, unknown>;
   }
+
   if (typeof value !== "string") return {};
 
   try {
     const parsed = JSON.parse(value);
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as AnyRecord;
+      return parsed as Record<string, unknown>;
     }
-    return {};
-  } catch {
-    return {};
-  }
+  } catch {}
+
+  return {};
 }
 
-function firstSearchParam(value: SearchParamValue): string {
-  if (Array.isArray(value)) return toText(value[0], "");
-  return toText(value, "");
+function toTs(value?: string | number | null): number {
+  if (value === null || value === undefined || value === "") return 0;
+  const ts = new Date(value).getTime();
+  return Number.isNaN(ts) ? 0 : ts;
 }
 
-function formatDate(value?: string | number | null): string {
-  if (value === null || value === undefined || value === "") return "—";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return typeof value === "string" ? value : "—";
-  }
+function formatDate(ts?: number): string {
+  if (!ts || Number.isNaN(ts)) return "—";
 
   return new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "short",
     timeStyle: "short",
-  }).format(date);
+  }).format(new Date(ts));
 }
 
 function formatDuration(ms?: number): string {
@@ -119,816 +232,826 @@ function formatDuration(ms?: number): string {
   return `${seconds}s`;
 }
 
-function cardClassName(isActive: boolean) {
-  const base =
-    "rounded-[28px] border bg-white/[0.04] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
-  const inactive = "border-white/10";
-  const active =
-    "border-emerald-500/35 bg-emerald-500/[0.08] shadow-[0_0_0_1px_rgba(16,185,129,0.06),0_0_40px_rgba(16,185,129,0.08)]";
-  return `${base} ${isActive ? active : inactive}`;
+function isRecordIdLike(value: string): boolean {
+  return /^rec[a-zA-Z0-9]+$/.test(value);
 }
 
-function panelClassName() {
-  return "rounded-2xl border border-white/10 bg-white/[0.04] p-5";
+function compactTechnicalId(value: string, max = 34): string {
+  const clean = toText(value);
+  if (!clean) return "Flow";
+  if (clean.length <= max) return clean;
+
+  const keepStart = Math.max(14, Math.floor((max - 3) / 2));
+  const keepEnd = Math.max(8, max - keepStart - 3);
+
+  return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
 }
 
-function emptyStateClassName() {
-  return "rounded-2xl border border-dashed border-white/10 bg-white/[0.04] px-5 py-8 text-sm text-zinc-500";
+function getDisplayTitle(flow: FlowCard): string {
+  return toText(flow.flowId) || toText(flow.sourceRecordId) || toText(flow.rootEventId) || "Flow";
 }
 
-function actionLinkClassName(
-  variant: "default" | "primary" | "danger" | "active" = "default"
-) {
-  if (variant === "primary") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+function displayCardTitle(flow: FlowCard): string {
+  const raw = getDisplayTitle(flow);
+
+  if (isRecordIdLike(raw)) {
+    return compactTechnicalId(raw, 28);
   }
 
-  if (variant === "danger") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
+  if (raw.length > 38) {
+    return compactTechnicalId(raw, 38);
   }
 
-  if (variant === "active") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300";
-  }
-
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+  return raw;
 }
 
-function statusTone(status: string) {
-  const normalized = toText(status).toLowerCase();
-
-  if (["success", "done", "completed", "resolved"].includes(normalized)) {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (["running", "processing", "queued", "pending"].includes(normalized)) {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  if (["retry", "retriable"].includes(normalized)) {
-    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
-  }
-
-  if (["failed", "error", "blocked", "escalated"].includes(normalized)) {
-    return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
-  }
-
-  if (["partial"].includes(normalized)) {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+function flowActivityLabel(flow: FlowCard): string {
+  return flow.lastActivityTs > 0 ? formatDate(flow.lastActivityTs) : "—";
 }
 
-function infoBadgeClassName() {
-  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-zinc-300";
+function incidentLabel(flow: FlowCard): string {
+  if (!flow.hasIncident || flow.incidentCount <= 0) return "Aucun incident";
+  if (flow.incidentCount === 1) return "1 incident";
+  return `${flow.incidentCount} incidents`;
 }
 
-function incidentTone(hasIncident: boolean) {
-  return hasIncident
-    ? "bg-rose-500/15 text-rose-300 border border-rose-500/20"
-    : "bg-zinc-800 text-zinc-300 border border-white/10";
-}
+function getStatusKind(
+  status?: string
+): "done" | "running" | "failed" | "retry" | "other" {
+  const s = toText(status).toLowerCase();
 
-function normalizeStatus(status: string): string {
-  const normalized = toText(status).toLowerCase();
-
-  if (["done", "success", "completed", "resolved"].includes(normalized)) {
-    return "success";
+  if (["done", "success", "resolved", "ok", "completed"].includes(s)) {
+    return "done";
   }
 
-  if (["running", "processing", "queued", "pending"].includes(normalized)) {
+  if (s === "retry") return "retry";
+  if (["running", "queued", "pending", "processing"].includes(s)) {
     return "running";
   }
-
-  if (["retry", "retriable"].includes(normalized)) {
-    return "retry";
-  }
-
-  if (["failed", "error", "blocked", "escalated"].includes(normalized)) {
+  if (["error", "failed", "dead", "blocked"].includes(s)) {
     return "failed";
   }
 
-  if (["partial"].includes(normalized)) {
-    return "partial";
-  }
-
-  return normalized || "unknown";
+  return "other";
 }
 
-function statusPriority(status: string): number {
-  const normalized = normalizeStatus(status);
+function computeFlowStatus(commands: NormalizedCommand[]): FlowStatus {
+  const kinds = commands.map((cmd) => getStatusKind(cmd.status));
 
-  if (normalized === "failed") return 0;
-  if (normalized === "running") return 1;
-  if (normalized === "retry") return 2;
-  if (normalized === "partial") return 3;
-  if (normalized === "success") return 4;
-  return 5;
-}
-
-function pickFirstText(
-  record: AnyRecord,
-  candidates: string[],
-  fallback = ""
-): string {
-  for (const key of candidates) {
-    const value = record[key];
-    const text = toText(value, "");
-    if (text) return text;
-  }
-  return fallback;
-}
-
-function pickFirstNumber(
-  record: AnyRecord,
-  candidates: string[],
-  fallback = 0
-): number {
-  for (const key of candidates) {
-    const value = record[key];
-    const num = toNumber(value, Number.NaN);
-    if (Number.isFinite(num)) return num;
-  }
-  return fallback;
-}
-
-function getJsonSources(record: AnyRecord) {
-  const inputParsed = parseMaybeJson(
-    record.input_json ??
-      record.payload_json ??
-      record.command_input_json ??
-      record.input ??
-      record.payload
-  );
-
-  const resultParsed = parseMaybeJson(
-    record.result_json ?? record.output_json ?? record.result ?? record.output
-  );
-
-  return { inputParsed, resultParsed };
-}
-
-function getCommandStatus(record: AnyRecord, resultParsed: AnyRecord): string {
-  const raw = pickFirstText(
-    { ...record, ...resultParsed },
-    ["status", "Status", "status_select", "Status_select"],
-    "unknown"
-  ).toLowerCase();
-
-  if (["done", "success", "completed"].includes(raw)) return "done";
-  if (["running", "processing"].includes(raw)) return "running";
-  if (["retry", "retriable"].includes(raw)) return "retry";
-  if (["failed", "error", "blocked"].includes(raw)) return "failed";
-  if (["queued", "queue", "pending"].includes(raw)) return "queued";
-
-  return raw || "unknown";
-}
-
-function getCommandCapability(
-  record: AnyRecord,
-  inputParsed: AnyRecord,
-  resultParsed: AnyRecord
-): string {
-  return pickFirstText(
-    { ...record, ...inputParsed, ...resultParsed },
-    ["capability", "Capability", "mapped_capability"],
-    "unknown_capability"
-  );
-}
-
-function getCommandFlowId(
-  record: AnyRecord,
-  inputParsed: AnyRecord,
-  resultParsed: AnyRecord
-): string {
-  return pickFirstText(
-    { ...record, ...inputParsed, ...resultParsed },
-    ["flow_id", "flowId", "flowid"],
-    ""
-  );
-}
-
-function getCommandRootEventId(
-  record: AnyRecord,
-  inputParsed: AnyRecord,
-  resultParsed: AnyRecord
-): string {
-  return pickFirstText(
-    { ...record, ...inputParsed, ...resultParsed },
-    ["root_event_id", "rootEventId", "rooteventid", "event_id", "eventId"],
-    ""
-  );
-}
-
-function getCommandWorkspaceId(
-  record: AnyRecord,
-  inputParsed: AnyRecord,
-  resultParsed: AnyRecord
-): string {
-  return pickFirstText(
-    { ...record, ...inputParsed, ...resultParsed },
-    ["workspace_id", "workspaceId", "Workspace_ID", "workspace"],
-    "production"
-  );
-}
-
-function normalizeTimelineItem(record: AnyRecord): TimelineItem {
-  const { inputParsed, resultParsed } = getJsonSources(record);
-
-  return {
-    id: pickFirstText(record, ["id", "record_id", "command_id", "Command_ID"], ""),
-    capability: getCommandCapability(record, inputParsed, resultParsed),
-    status: getCommandStatus(record, resultParsed),
-    worker: pickFirstText(record, ["worker", "Worker", "worker_id"], "—"),
-    createdAt: pickFirstText(record, ["created_at", "Created_At"], ""),
-    startedAt: pickFirstText(record, ["started_at", "Started_At"], ""),
-    finishedAt: pickFirstText(record, ["finished_at", "Finished_At"], ""),
-    stepIndex: pickFirstNumber(
-      { ...record, ...inputParsed, ...resultParsed },
-      ["step_index", "stepIndex"],
-      0
-    ),
-    parentCommandId: pickFirstText(
-      { ...record, ...inputParsed, ...resultParsed },
-      ["parent_command_id", "parentCommandId", "linked_command", "Linked_Command"],
-      ""
-    ),
-    flowId: getCommandFlowId(record, inputParsed, resultParsed),
-    rootEventId: getCommandRootEventId(record, inputParsed, resultParsed),
-    workspaceId: getCommandWorkspaceId(record, inputParsed, resultParsed),
-  };
-}
-
-function sortTimeline(items: TimelineItem[]): TimelineItem[] {
-  return [...items].sort((a, b) => {
-    if (a.stepIndex !== b.stepIndex) {
-      return a.stepIndex - b.stepIndex;
-    }
-
-    const aDate = new Date(a.startedAt || a.createdAt || 0).getTime();
-    const bDate = new Date(b.startedAt || b.createdAt || 0).getTime();
-    return aDate - bDate;
-  });
-}
-
-function getLastKnownTimestamp(items: TimelineItem[]): number {
-  const values = items
-    .map((item) =>
-      new Date(item.finishedAt || item.startedAt || item.createdAt || 0).getTime()
-    )
-    .filter((value) => Number.isFinite(value) && value > 0);
-
-  if (values.length === 0) return 0;
-  return Math.max(...values);
-}
-
-function getDurationMs(items: TimelineItem[]): number {
-  if (items.length === 0) return 0;
-
-  const sorted = sortTimeline(items);
-  const firstTs = new Date(sorted[0].startedAt || sorted[0].createdAt || 0).getTime();
-  const lastTs = new Date(
-    sorted[sorted.length - 1].finishedAt ||
-      sorted[sorted.length - 1].startedAt ||
-      sorted[sorted.length - 1].createdAt ||
-      0
-  ).getTime();
+  if (kinds.includes("running")) return "running";
+  if (kinds.includes("failed")) return "failed";
+  if (kinds.includes("retry")) return "retry";
 
   if (
-    !Number.isFinite(firstTs) ||
-    !Number.isFinite(lastTs) ||
-    firstTs <= 0 ||
-    lastTs <= 0
+    kinds.length > 0 &&
+    kinds.every((kind) => kind === "done" || kind === "other")
   ) {
-    return 0;
+    return "success";
   }
 
-  return Math.max(0, lastTs - firstTs);
+  return "unknown";
 }
 
-function normalizeIncidentRecord(record: AnyRecord): AnyRecord {
-  return {
-    ...record,
-    id: toText(record.id || ""),
-    flow_id: toText(record.flow_id || ""),
-    root_event_id: toText(record.root_event_id || ""),
-    source_record_id: toText(record.source_record_id || ""),
-    workspace_id: toText(record.workspace_id || record.workspace || "production"),
-    title: toText(record.title || record.name || record.error_id || "Incident"),
-    status: toText(record.status || record.statut_incident || ""),
-    severity: toText(record.severity || ""),
-    sla_status: toText(record.sla_status || ""),
-    created_at: toText(record.created_at || ""),
-    updated_at: toText(record.updated_at || ""),
-    resolved_at: toText(record.resolved_at || ""),
-  };
+function getIncidentStatusKind(
+  incident: AnyRecord
+): "success" | "failed" | "retry" | "unknown" {
+  const status = toText(incident.status).toLowerCase();
+  const slaStatus = toText(incident.sla_status).toLowerCase();
+  const resolvedAt = toText(incident.resolved_at);
+
+  if (
+    resolvedAt ||
+    ["resolved", "closed", "done", "ok"].includes(status) ||
+    ["resolved"].includes(slaStatus)
+  ) {
+    return "success";
+  }
+
+  if (status === "retry") {
+    return "retry";
+  }
+
+  if (
+    [
+      "open",
+      "opened",
+      "new",
+      "active",
+      "escalated",
+      "escalade",
+      "escaladé",
+      "warning",
+      "failed",
+    ].includes(status) ||
+    ["open", "warning", "breached", "escalated"].includes(slaStatus)
+  ) {
+    return "failed";
+  }
+
+  return "unknown";
 }
 
-function normalizeRegistryFlowRecord(record: AnyRecord): AnyRecord {
-  return {
-    ...record,
-    key: toText(
-      record.key ||
-        record.flowId ||
-        record.flow_id ||
-        record.sourceRecordId ||
-        record.source_record_id ||
-        ""
-    ),
-    flowId: toText(record.flowId || record.flow_id || ""),
-    rootEventId: toText(record.rootEventId || record.root_event_id || ""),
-    sourceRecordId: toText(record.sourceRecordId || record.source_record_id || ""),
-    workspaceId: toText(record.workspaceId || record.workspace_id || "production"),
-    status: toText(record.status || ""),
-    steps: toNumber(record.steps, 0),
-    rootCapability: toText(record.rootCapability || record.root_capability || ""),
-    terminalCapability: toText(record.terminalCapability || record.terminal_capability || ""),
-    durationMs: toNumber(record.durationMs || record.duration_ms, 0),
-    lastActivityTs: toNumber(record.lastActivityTs || record.last_activity_ts, 0),
-    readingMode:
-      record.readingMode === "registry-only" ? "registry-only" : "enriched",
-    source_record_id: toText(record.source_record_id || ""),
-    isPartial: toBoolean(record.isPartial, false),
-    stats:
-      record.stats && typeof record.stats === "object" && !Array.isArray(record.stats)
-        ? record.stats
-        : {},
-  };
+function computeIncidentOnlyStatus(group: AnyRecord[]): FlowStatus {
+  const kinds = group.map(getIncidentStatusKind);
+
+  if (kinds.includes("failed")) return "failed";
+  if (kinds.includes("retry")) return "retry";
+  if (kinds.length > 0 && kinds.every((kind) => kind === "success")) {
+    return "success";
+  }
+
+  return "unknown";
+}
+
+function getFlowStatusPriority(status: FlowStatus): number {
+  if (status === "running") return 0;
+  if (status === "failed") return 1;
+  if (status === "retry") return 2;
+  if (status === "success") return 3;
+  return 4;
+}
+
+function getCommandActivityTs(cmd: AnyRecord): number {
+  return Math.max(
+    toTs(cmd.finished_at as string | number | null | undefined),
+    toTs(cmd.updated_at as string | number | null | undefined),
+    toTs(cmd.started_at as string | number | null | undefined),
+    toTs(cmd.created_at as string | number | null | undefined)
+  );
+}
+
+function getCommandStartTs(cmd: AnyRecord): number {
+  return Math.max(
+    toTs(cmd.started_at as string | number | null | undefined),
+    toTs(cmd.created_at as string | number | null | undefined)
+  );
 }
 
 function getIncidentActivityTs(incident: AnyRecord): number {
-  const candidates = [
-    incident.resolved_at,
-    incident.updated_at,
-    incident.opened_at,
-    incident.created_at,
-  ]
-    .map((value: unknown) => new Date(value as string).getTime())
-    .filter((value) => Number.isFinite(value) && value > 0);
-
-  if (candidates.length === 0) return 0;
-  return Math.max(...candidates);
+  return Math.max(
+    toTs(incident.resolved_at as string | number | null | undefined),
+    toTs(incident.updated_at as string | number | null | undefined),
+    toTs(incident.opened_at as string | number | null | undefined),
+    toTs(incident.created_at as string | number | null | undefined)
+  );
 }
 
-function getIncidentDerivedStatus(incidents: AnyRecord[]): string {
-  if (incidents.length === 0) return "unknown";
+function normalizeCommand(cmd: AnyRecord): NormalizedCommand {
+  const inputParsed = parseMaybeJson(
+    cmd.input_json ??
+      cmd.payload_json ??
+      cmd.command_input_json ??
+      cmd.input ??
+      cmd.payload
+  );
 
-  const normalized = incidents.map((incident) => {
-    const status = toText(incident.status).toLowerCase();
-    const slaStatus = toText(incident.sla_status).toLowerCase();
-    const hasResolvedAt = Boolean(toText(incident.resolved_at || ""));
+  const resultParsed = parseMaybeJson(
+    cmd.result_json ?? cmd.output_json ?? cmd.result ?? cmd.output
+  );
 
-    if (hasResolvedAt) return "resolved";
-    if (["resolved", "closed", "done"].includes(status)) return "resolved";
-    if (["escalated", "escalade", "escaladé"].includes(status)) return "failed";
-    if (["open", "opened", "active", "new"].includes(status)) return "failed";
-    if (slaStatus === "breached") return "failed";
-    if (slaStatus === "open") return "failed";
-    return "unknown";
-  });
+  const merged = { ...cmd, ...inputParsed, ...resultParsed };
 
-  if (normalized.includes("failed")) return "failed";
-  if (normalized.every((value) => value === "resolved")) return "success";
-  return "unknown";
+  return {
+    id:
+      toText(cmd.id) ||
+      toText(cmd.record_id) ||
+      toText(cmd.command_id) ||
+      toText(cmd.Command_ID),
+    flowId:
+      toText(merged.flow_id) ||
+      toText(merged.flowId) ||
+      toText(merged.flowid),
+    rootEventId:
+      toText(merged.root_event_id) ||
+      toText(merged.rootEventId) ||
+      toText(merged.rooteventid) ||
+      toText(merged.event_id),
+    workspaceId:
+      toText(merged.workspace_id) ||
+      toText(merged.workspaceId) ||
+      toText(merged.Workspace_ID) ||
+      toText(merged.workspace) ||
+      "production",
+    status:
+      toText(merged.status) ||
+      toText(merged.Status) ||
+      toText(merged.status_select) ||
+      toText(merged.Status_select) ||
+      "unknown",
+    capability:
+      toText(merged.capability) ||
+      toText(merged.Capability) ||
+      toText(merged.mapped_capability) ||
+      "unknown_capability",
+    parentCommandId:
+      toText(merged.parent_command_id) ||
+      toText(merged.parentCommandId) ||
+      toText(merged.linked_command) ||
+      toText(merged.Linked_Command),
+    activityTs: getCommandActivityTs(cmd),
+    startTs: getCommandStartTs(cmd),
+  };
+}
+
+function getCommandIncidentKeys(cmd: NormalizedCommand): string[] {
+  return uniqueTexts([
+    cmd.id,
+    cmd.flowId,
+    cmd.rootEventId,
+    cmd.parentCommandId,
+  ]);
+}
+
+function getIncidentCandidates(incident: AnyRecord): string[] {
+  const fields =
+    incident && typeof incident === "object"
+      ? (((incident as Record<string, unknown>).fields ?? {}) as Record<
+          string,
+          unknown
+        >)
+      : {};
+
+  const topLevel = (keys: string[]) => recordTexts(incident, keys);
+  const nestedFields = (keys: string[]) => recordTexts(fields, keys);
+
+  return uniqueTexts([
+    ...topLevel(["id"]),
+    ...topLevel(["title", "Title", "name", "Name"]),
+    ...topLevel(["flow_id", "flowId", "Flow_ID"]),
+    ...nestedFields(["flow_id", "flowId", "Flow_ID"]),
+    ...topLevel(["root_event_id", "rootEventId", "Root_Event_ID"]),
+    ...nestedFields(["root_event_id", "rootEventId", "Root_Event_ID"]),
+    ...topLevel(["source_record_id", "sourceRecordId", "Source_Record_ID"]),
+    ...nestedFields(["source_record_id", "sourceRecordId", "Source_Record_ID"]),
+    ...topLevel([
+      "linked_command",
+      "linkedCommand",
+      "linked_command_id",
+      "linkedCommandId",
+      "Linked_Command",
+      "Linked_Command_ID",
+      "command_id",
+      "commandId",
+      "Command_ID",
+    ]),
+    ...nestedFields([
+      "linked_command",
+      "linkedCommand",
+      "linked_command_id",
+      "linkedCommandId",
+      "Linked_Command",
+      "Linked_Command_ID",
+      "command_id",
+      "commandId",
+      "Command_ID",
+    ]),
+    ...topLevel([
+      "linked_run",
+      "linkedRun",
+      "run_record_id",
+      "runRecordId",
+      "run_id",
+      "runId",
+      "Linked_Run",
+      "Run_Record_ID",
+      "Run_ID",
+    ]),
+    ...nestedFields([
+      "linked_run",
+      "linkedRun",
+      "run_record_id",
+      "runRecordId",
+      "run_id",
+      "runId",
+      "Linked_Run",
+      "Run_Record_ID",
+      "Run_ID",
+    ]),
+    ...topLevel(["error_id", "errorId", "Error_ID"]),
+    ...nestedFields(["error_id", "errorId", "Error_ID"]),
+  ]);
 }
 
 function matchIncidents(
   incidents: AnyRecord[],
-  target: {
+  input: {
     flowId?: string;
     rootEventId?: string;
     sourceRecordId?: string;
+    commands?: NormalizedCommand[];
   }
-) {
-  const flowId = toText(target.flowId);
-  const rootEventId = toText(target.rootEventId);
-  const sourceRecordId = toText(target.sourceRecordId);
+): AnyRecord[] {
+  const lookup = new Set(
+    uniqueTexts([
+      input.flowId || "",
+      input.rootEventId || "",
+      input.sourceRecordId || "",
+      ...((input.commands ?? []).flatMap(getCommandIncidentKeys)),
+    ])
+  );
 
-  return incidents.filter((incident) => {
-    if (flowId && toText(incident.flow_id) === flowId) return true;
-    if (rootEventId && toText(incident.root_event_id) === rootEventId) return true;
-    if (sourceRecordId && toText(incident.source_record_id) === sourceRecordId) return true;
-    if (sourceRecordId && toText(incident.id) === sourceRecordId) return true;
-    return false;
-  });
+  if (lookup.size === 0) return [];
+
+  return incidents.filter((incident) =>
+    getIncidentCandidates(incident).some((candidate) => lookup.has(candidate))
+  );
 }
 
-function isRecordIdLike(value: string): boolean {
-  return /^rec[a-zA-Z0-9]+$/i.test(toText(value));
+function buildExecutionOrder(commands: NormalizedCommand[]): NormalizedCommand[] {
+  const byId = new Map<string, NormalizedCommand>();
+  const childrenMap = new Map<string, NormalizedCommand[]>();
+
+  for (const cmd of commands) {
+    const id = cmd.id;
+    if (!id) continue;
+    byId.set(id, cmd);
+    childrenMap.set(id, []);
+  }
+
+  const roots: NormalizedCommand[] = [];
+
+  for (const cmd of commands) {
+    const parentId = cmd.parentCommandId;
+
+    if (parentId && byId.has(parentId)) {
+      childrenMap.get(parentId)?.push(cmd);
+    } else {
+      roots.push(cmd);
+    }
+  }
+
+  const sortByActivityAsc = (a: NormalizedCommand, b: NormalizedCommand) =>
+    a.activityTs - b.activityTs;
+
+  roots.sort(sortByActivityAsc);
+  childrenMap.forEach((children) => children.sort(sortByActivityAsc));
+
+  const ordered: NormalizedCommand[] = [];
+  const visited = new Set<string>();
+
+  function walk(cmd: NormalizedCommand) {
+    const id = cmd.id;
+    if (!id || visited.has(id)) return;
+
+    visited.add(id);
+    ordered.push(cmd);
+
+    const children = childrenMap.get(id) ?? [];
+    for (const child of children) {
+      walk(child);
+    }
+  }
+
+  for (const root of roots) {
+    walk(root);
+  }
+
+  const leftovers = commands
+    .filter((cmd) => cmd.id && !visited.has(cmd.id))
+    .sort(sortByActivityAsc);
+
+  for (const cmd of leftovers) {
+    walk(cmd);
+  }
+
+  return ordered;
 }
 
-function getDisplayTitle(flow: FlowCard): string {
-  const candidates = [flow.flowId, flow.rootEventId, flow.sourceRecordId, flow.key]
-    .map((value) => toText(value))
-    .filter(Boolean);
+function getTerminalCommand(
+  commands: NormalizedCommand[]
+): NormalizedCommand | null {
+  if (commands.length === 0) return null;
 
-  const readable = candidates.find((value) => !isRecordIdLike(value));
-  return readable || candidates[0] || "Flow";
+  const referencedAsParent = new Set(
+    commands.map((cmd) => cmd.parentCommandId).filter(Boolean)
+  );
+
+  const leafCandidates = commands.filter(
+    (cmd) => !referencedAsParent.has(cmd.id)
+  );
+
+  const source = leafCandidates.length > 0 ? leafCandidates : commands;
+
+  return (
+    [...source].sort((a, b) => b.activityTs - a.activityTs)[0] ?? null
+  );
 }
 
-function getDetailId(flow: FlowCard): string {
-  return toText(flow.flowId || flow.rootEventId || flow.sourceRecordId || flow.key);
+function getFlowGroupKey(cmd: NormalizedCommand): string {
+  if (cmd.flowId) return `flow:${cmd.flowId}`;
+  if (cmd.rootEventId) return `root:${cmd.rootEventId}`;
+  return "";
 }
 
-function getSelectId(flow: FlowCard): string {
-  return toText(flow.sourceRecordId || flow.flowId || flow.rootEventId || flow.key);
+function computeRegistryStatus(flow: AnyRecord): FlowStatus {
+  const stats =
+    flow.stats && typeof flow.stats === "object" && !Array.isArray(flow.stats)
+      ? (flow.stats as Record<string, unknown>)
+      : {};
+
+  const running =
+    toNumber(stats.running, 0) + toNumber(stats.queued, 0) > 0;
+  const failed = toNumber(stats.error, 0) + toNumber(stats.dead, 0) > 0;
+  const retry = toNumber(stats.retry, 0) > 0;
+  const success =
+    toNumber(stats.done, 0) > 0 && !running && !failed && !retry;
+
+  if (running) return "running";
+  if (failed) return "failed";
+  if (retry) return "retry";
+  if (success) return "success";
+
+  const rawStatus = toText(flow.status).toLowerCase();
+  if (rawStatus === "running") return "running";
+  if (rawStatus === "failed") return "failed";
+  if (rawStatus === "retry") return "retry";
+  if (["success", "done", "completed"].includes(rawStatus)) return "success";
+
+  return "unknown";
 }
 
-function incidentLabel(count: number, hasIncident: boolean): string {
-  if (!hasIncident || count <= 0) return "Aucun incident";
-  if (count === 1) return "1 incident";
-  return `${count} incidents`;
-}
-
-function buildIncidentHref(flow: FlowCard): string {
-  const params = new URLSearchParams();
-
-  if (toText(flow.flowId)) params.set("flow_id", flow.flowId);
-  if (toText(flow.rootEventId)) params.set("root_event_id", flow.rootEventId);
-  if (toText(flow.sourceRecordId)) params.set("source_record_id", flow.sourceRecordId);
-  params.set("from", "flows");
-
-  return `/incidents?${params.toString()}`;
-}
-
-function buildSelectHref(flow: FlowCard): string {
-  const selected = encodeURIComponent(getSelectId(flow));
-  return `/flows?selected=${selected}`;
-}
-
-function buildDetailHref(flow: FlowCard): string {
-  const detailId = encodeURIComponent(getDetailId(flow));
-  return `/flows/${detailId}`;
-}
-
-function buildEnrichedFlows(
-  commands: TimelineItem[],
+function buildEnrichedFlowCards(
+  commands: NormalizedCommand[],
   incidents: AnyRecord[]
 ): FlowCard[] {
-  const groups = new Map<string, TimelineItem[]>();
+  const groups = new Map<string, NormalizedCommand[]>();
 
-  for (const command of commands) {
-    const key = toText(command.flowId || command.rootEventId);
+  for (const cmd of commands) {
+    const key = getFlowGroupKey(cmd);
     if (!key) continue;
 
-    const bucket = groups.get(key) ?? [];
-    bucket.push(command);
-    groups.set(key, bucket);
+    const existing = groups.get(key) ?? [];
+    existing.push(cmd);
+    groups.set(key, existing);
   }
 
-  const flows: FlowCard[] = [];
+  const cards: FlowCard[] = [];
 
-  for (const [, group] of groups.entries()) {
-    const ordered = sortTimeline(group);
+  for (const [key, group] of groups.entries()) {
+    const ordered = buildExecutionOrder(group);
+    const rootCommand = ordered[0] ?? null;
+    const terminalCommand = getTerminalCommand(ordered);
 
-    const flowId =
-      ordered.map((item) => toText(item.flowId)).find(Boolean) || "";
+    const flowId = ordered.map((cmd) => cmd.flowId).find(Boolean) || "";
     const rootEventId =
-      ordered.map((item) => toText(item.rootEventId)).find(Boolean) || "";
+      ordered.map((cmd) => cmd.rootEventId).find(Boolean) || "";
     const workspaceId =
-      ordered.map((item) => toText(item.workspaceId)).find(Boolean) || "production";
+      ordered.map((cmd) => cmd.workspaceId).find(Boolean) || "production";
+
+    const lastActivityTs = Math.max(...ordered.map((cmd) => cmd.activityTs), 0);
+
+    const validStarts = ordered
+      .map((cmd) => cmd.startTs)
+      .filter((ts) => ts > 0);
+
+    const earliestStartTs =
+      validStarts.length > 0 ? Math.min(...validStarts) : 0;
+
+    const durationMs =
+      earliestStartTs > 0 && lastActivityTs > 0
+        ? Math.max(0, lastActivityTs - earliestStartTs)
+        : 0;
 
     const linkedIncidents = matchIncidents(incidents, {
       flowId,
       rootEventId,
+      commands: ordered,
     });
 
-    const steps = ordered.length;
-    const lastActivityTs = getLastKnownTimestamp(ordered);
-    const durationMs = getDurationMs(ordered);
-    const lastCommand = ordered[ordered.length - 1];
-    const firstCommand = ordered[0];
+    const detailId = flowId || rootEventId || key;
 
-    const status = normalizeStatus(
-      ordered.some((item) => ["failed", "error", "blocked"].includes(item.status))
-        ? "failed"
-        : ordered.some((item) => ["running", "queued", "processing"].includes(item.status))
-          ? "running"
-          : ordered.some((item) => ["retry", "retriable"].includes(item.status))
-            ? "retry"
-            : ordered.length > 0 && ordered.every((item) => item.status === "done")
-              ? "success"
-              : "unknown"
-    );
-
-    flows.push({
-      key: toText(flowId || rootEventId),
-      flowId,
-      rootEventId,
-      sourceRecordId: "",
+    cards.push({
+      key,
+      detailId,
+      flowId: flowId || detailId,
+      rootEventId: rootEventId || "—",
       workspaceId,
-      status,
-      steps,
-      rootCapability: toText(firstCommand?.capability || ""),
-      terminalCapability: toText(lastCommand?.capability || ""),
+      status: computeFlowStatus(ordered),
+      steps: ordered.length,
+      rootCapability: rootCommand?.capability || "Non disponible",
+      terminalCapability: terminalCommand?.capability || "Non disponible",
       durationMs,
       lastActivityTs,
       hasIncident: linkedIncidents.length > 0,
       incidentCount: linkedIncidents.length,
+      firstIncidentId:
+        linkedIncidents.length > 0 ? toText(linkedIncidents[0].id) : undefined,
       readingMode: "enriched",
+      sourceRecordId: undefined,
       isPartial: false,
     });
   }
 
-  return flows;
+  return cards;
 }
 
-function buildRegistryOnlyFlows(
+function buildRegistryOnlyFlowCards(
   registryFlows: AnyRecord[],
-  incidents: AnyRecord[],
-  enrichedFlows: FlowCard[]
+  incidents: AnyRecord[]
 ): FlowCard[] {
-  const existingIds = new Set<string>();
+  return registryFlows.map((flow) => {
+    const sourceRecordId =
+      toText(flow.id) ||
+      toText(flow.source_record_id) ||
+      toText(flow.sourceRecordId);
 
-  for (const flow of enrichedFlows) {
-    [flow.key, flow.flowId, flow.rootEventId, flow.sourceRecordId]
-      .map((value) => toText(value))
-      .filter(Boolean)
-      .forEach((value) => existingIds.add(value));
-  }
+    const flowId =
+      toText(flow.flow_id) ||
+      toText(flow.flowId) ||
+      sourceRecordId ||
+      toText(flow.root_event_id);
 
-  const flows: FlowCard[] = [];
+    const rootEventId =
+      toText(flow.root_event_id) ||
+      toText(flow.rootEventId) ||
+      sourceRecordId ||
+      flowId ||
+      "—";
 
-  for (const raw of registryFlows) {
-    const flow = normalizeRegistryFlowRecord(raw);
-
-    const candidates = [
-      flow.key,
-      flow.flowId,
-      flow.rootEventId,
-      flow.sourceRecordId,
-      flow.source_record_id,
-    ]
-      .map((value: unknown) => toText(value))
-      .filter(Boolean);
-
-    if (candidates.some((value) => existingIds.has(value))) {
-      continue;
-    }
+    const workspaceId =
+      toText(flow.workspace_id) ||
+      toText(flow.workspaceId) ||
+      "production";
 
     const linkedIncidents = matchIncidents(incidents, {
-      flowId: flow.flowId,
-      rootEventId: flow.rootEventId,
-      sourceRecordId: flow.sourceRecordId || flow.source_record_id,
+      flowId,
+      rootEventId,
+      sourceRecordId,
     });
 
-    const stats = flow.stats as AnyRecord;
-    const rawStatus = normalizeStatus(flow.status);
-    const statsRunning =
-      toNumber(stats.running, 0) + toNumber(stats.queued, 0) > 0;
-    const statsFailed =
-      toNumber(stats.error, 0) + toNumber(stats.dead, 0) > 0;
-    const statsRetry = toNumber(stats.retry, 0) > 0;
-    const statsDone = toNumber(stats.done, 0) > 0;
+    const key = `registry:${sourceRecordId || flowId || rootEventId}`;
+    const detailId = sourceRecordId || flowId || rootEventId || key;
 
-    let computedStatus = rawStatus;
-
-    if (!computedStatus || computedStatus === "unknown") {
-      if (statsFailed) {
-        computedStatus = "failed";
-      } else if (statsRunning) {
-        computedStatus = "running";
-      } else if (statsRetry) {
-        computedStatus = "retry";
-      } else if (statsDone) {
-        computedStatus = "success";
-      } else {
-        computedStatus = getIncidentDerivedStatus(linkedIncidents);
-      }
-    }
-
-    const lastIncidentTs = Math.max(...linkedIncidents.map(getIncidentActivityTs), 0);
-    const lastActivityTs = Math.max(toNumber(flow.lastActivityTs, 0), lastIncidentTs);
-
-    flows.push({
-      key: toText(flow.key || flow.flowId || flow.rootEventId || flow.sourceRecordId),
-      flowId: toText(flow.flowId),
-      rootEventId: toText(flow.rootEventId),
-      sourceRecordId: toText(flow.sourceRecordId || flow.source_record_id),
-      workspaceId: toText(flow.workspaceId || "production"),
-      status: normalizeStatus(computedStatus),
-      steps: toNumber(flow.steps, 0),
+    return {
+      key,
+      detailId,
+      flowId: flowId || detailId,
+      rootEventId: rootEventId || "—",
+      workspaceId,
+      status: computeRegistryStatus(flow),
+      steps: 0,
       rootCapability: "Registre uniquement",
       terminalCapability: "Registre uniquement",
-      durationMs: toNumber(flow.durationMs, 0),
-      lastActivityTs,
+      durationMs: 0,
+      lastActivityTs: Math.max(
+        toTs(flow.last_activity_at as string | number | null | undefined),
+        toTs(flow.updated_at as string | number | null | undefined),
+        toTs(flow.created_at as string | number | null | undefined)
+      ),
       hasIncident: linkedIncidents.length > 0,
       incidentCount: linkedIncidents.length,
+      firstIncidentId:
+        linkedIncidents.length > 0 ? toText(linkedIncidents[0].id) : undefined,
       readingMode: "registry-only",
+      sourceRecordId,
       isPartial: true,
-    });
-  }
-
-  return flows;
+    };
+  });
 }
 
-function buildIncidentOnlyFlows(
+function buildIncidentOnlyFlowCards(
   incidents: AnyRecord[],
-  existingFlows: FlowCard[]
+  existingCards: FlowCard[]
 ): FlowCard[] {
-  const existingIds = new Set<string>();
+  const existingCandidates = new Set<string>();
 
-  for (const flow of existingFlows) {
-    [flow.key, flow.flowId, flow.rootEventId, flow.sourceRecordId]
-      .map((value) => toText(value))
+  for (const flow of existingCards) {
+    [flow.flowId, flow.rootEventId, flow.sourceRecordId, flow.key]
       .filter(Boolean)
-      .forEach((value) => existingIds.add(value));
+      .forEach((value) => existingCandidates.add(String(value)));
   }
 
   const groups = new Map<string, AnyRecord[]>();
 
   for (const incident of incidents) {
-    const key = toText(
-      incident.flow_id || incident.root_event_id || incident.source_record_id || incident.id
-    );
+    const flowId = toText(incident.flow_id);
+    const rootEventId = toText(incident.root_event_id);
+    const sourceRecordId =
+      toText(incident.source_record_id) || toText(incident.id);
 
-    if (!key) continue;
-    if (existingIds.has(key)) continue;
+    if (!flowId && !rootEventId && !sourceRecordId) continue;
 
+    const shouldSkip = [flowId, rootEventId, sourceRecordId]
+      .filter(Boolean)
+      .some((value) => existingCandidates.has(String(value)));
+
+    if (shouldSkip) continue;
+
+    const key = `incident-only:${flowId || rootEventId || sourceRecordId}`;
     const bucket = groups.get(key) ?? [];
     bucket.push(incident);
     groups.set(key, bucket);
   }
 
-  const flows: FlowCard[] = [];
+  const cards: FlowCard[] = [];
 
-  for (const [, bucket] of groups.entries()) {
+  for (const [key, group] of groups.entries()) {
     const latest =
-      [...bucket].sort((a, b) => getIncidentActivityTs(b) - getIncidentActivityTs(a))[0] ??
-      null;
+      [...group].sort(
+        (a, b) => getIncidentActivityTs(b) - getIncidentActivityTs(a)
+      )[0] ?? null;
 
     if (!latest) continue;
 
-    const flowId = toText(latest.flow_id || "");
-    const rootEventId = toText(latest.root_event_id || "");
-    const sourceRecordId = toText(latest.source_record_id || latest.id || "");
-    const workspaceId = toText(latest.workspace_id || "production");
+    const flowId =
+      toText(latest.flow_id) ||
+      toText(latest.root_event_id) ||
+      `incident-${toText(latest.id)}`;
 
-    flows.push({
-      key: toText(flowId || rootEventId || sourceRecordId),
+    const rootEventId = toText(latest.root_event_id) || flowId;
+    const sourceRecordId =
+      toText(latest.source_record_id) || toText(latest.id);
+
+    cards.push({
+      key,
+      detailId: sourceRecordId || flowId || rootEventId || key,
       flowId,
       rootEventId,
-      sourceRecordId,
-      workspaceId,
-      status: normalizeStatus(getIncidentDerivedStatus(bucket)),
+      workspaceId: toText(latest.workspace_id) || "production",
+      status: computeIncidentOnlyStatus(group),
       steps: 0,
       rootCapability: "Registre uniquement",
       terminalCapability: "Registre uniquement",
       durationMs: 0,
-      lastActivityTs: Math.max(...bucket.map(getIncidentActivityTs), 0),
-      hasIncident: bucket.length > 0,
-      incidentCount: bucket.length,
+      lastActivityTs: Math.max(...group.map(getIncidentActivityTs), 0),
+      hasIncident: true,
+      incidentCount: group.length,
+      firstIncidentId: toText(latest.id),
       readingMode: "registry-only",
+      sourceRecordId,
       isPartial: true,
     });
   }
 
-  return flows;
+  return cards;
 }
 
-function sortFlows(flows: FlowCard[]): FlowCard[] {
-  return [...flows].sort((a, b) => {
-    const statusDiff = statusPriority(a.status) - statusPriority(b.status);
-    if (statusDiff !== 0) return statusDiff;
-
-    const activityDiff = b.lastActivityTs - a.lastActivityTs;
-    if (activityDiff !== 0) return activityDiff;
-
-    return getDisplayTitle(a).localeCompare(getDisplayTitle(b), "fr");
+function sortFlowCards(cards: FlowCard[]): FlowCard[] {
+  return [...cards].sort((a, b) => {
+    const priorityDiff =
+      getFlowStatusPriority(a.status) - getFlowStatusPriority(b.status);
+    if (priorityDiff !== 0) return priorityDiff;
+    return b.lastActivityTs - a.lastActivityTs;
   });
 }
 
-function isFlowSelected(flow: FlowCard, selectedId: string): boolean {
-  if (!selectedId) return false;
+function buildIncidentsHref(flow: FlowCard): string {
+  const params = new URLSearchParams();
 
-  const candidates = [flow.key, flow.flowId, flow.rootEventId, flow.sourceRecordId]
+  if (flow.flowId) {
+    params.set("flow_id", flow.flowId);
+  }
+
+  if (flow.rootEventId && flow.rootEventId !== "—") {
+    params.set("root_event_id", flow.rootEventId);
+  }
+
+  if (flow.sourceRecordId) {
+    params.set("source_record_id", flow.sourceRecordId);
+  }
+
+  params.set("from", "flows");
+
+  const query = params.toString();
+  return query ? `/incidents?${query}` : "/incidents";
+}
+
+function buildSelectHref(flow: FlowCard): string {
+  const params = new URLSearchParams();
+  params.set("selected", flow.detailId);
+  return `/flows?${params.toString()}`;
+}
+
+function buildDetailHref(flow: FlowCard): string {
+  return `/flows/${encodeURIComponent(flow.detailId)}`;
+}
+
+function isNeedsAttention(flow: FlowCard): boolean {
+  return (
+    flow.hasIncident ||
+    flow.status === "running" ||
+    flow.status === "failed" ||
+    flow.status === "retry"
+  );
+}
+
+function isFlowActive(flow: FlowCard, activeKey: string): boolean {
+  return flow.key === activeKey;
+}
+
+function matchesActiveSelection(flow: FlowCard, selected: string): boolean {
+  if (!selected) return false;
+
+  const candidates = [
+    flow.detailId,
+    flow.flowId,
+    flow.rootEventId,
+    flow.sourceRecordId || "",
+    flow.key,
+  ]
     .map((value) => toText(value))
     .filter(Boolean);
 
-  return candidates.includes(selectedId);
-}
-
-function metaRowLabel(flow: FlowCard): string {
-  return flow.readingMode === "registry-only" ? "Source / Root record" : "Root";
-}
-
-function metaRowValue(flow: FlowCard): string {
-  if (flow.readingMode === "registry-only") {
-    return toText(flow.sourceRecordId || flow.rootEventId || flow.flowId || "—", "—");
-  }
-
-  return toText(flow.rootEventId || flow.flowId || "—", "—");
-}
-
-function activityLabel(flow: FlowCard): string {
-  if (flow.lastActivityTs > 0) {
-    return formatDate(flow.lastActivityTs);
-  }
-
-  return "—";
-}
-
-function sectionTitle(
-  title: string,
-  subtitle?: string
-) {
-  return (
-    <div className="space-y-3">
-      <div className="text-xs uppercase tracking-[0.24em] text-white/35">
-        {title}
-      </div>
-      {subtitle ? (
-        <p className="max-w-3xl text-base leading-8 text-zinc-400">{subtitle}</p>
-      ) : null}
-    </div>
-  );
+  return candidates.includes(selected);
 }
 
 function FlowListCard({
   flow,
-  isActive,
+  activeKey,
 }: {
   flow: FlowCard;
-  isActive: boolean;
+  activeKey: string;
 }) {
-  const displayTitle = getDisplayTitle(flow);
-  const incidentText = incidentLabel(flow.incidentCount, flow.hasIncident);
-  const incidentHref = buildIncidentHref(flow);
-  const detailHref = buildDetailHref(flow);
+  const isActive = isFlowActive(flow, activeKey);
+  const displayTitle = displayCardTitle(flow);
+  const rawTitle = getDisplayTitle(flow);
+
+  const readingLabel =
+    flow.readingMode === "registry-only" ? "Registre uniquement" : "Enrichie";
+
+  const rootLabel =
+    flow.readingMode === "registry-only"
+      ? toText(flow.sourceRecordId) || toText(flow.rootEventId) || "—"
+      : toText(flow.rootEventId) || "—";
+
+  const incidentHref = buildIncidentsHref(flow);
   const selectHref = buildSelectHref(flow);
+  const detailHref = buildDetailHref(flow);
 
   return (
-    <article className={cardClassName(isActive)} id={`flow-${encodeURIComponent(getSelectId(flow))}`}>
-      <div className="space-y-5">
+    <article className={cardClassName(isActive)}>
+      <div className="flex h-full flex-col gap-5">
         <div className="space-y-4">
-          <h3 className="break-words text-[2rem] font-semibold leading-tight tracking-tight text-white sm:text-[2.25rem]">
+          <h3
+            title={rawTitle}
+            className="break-words text-[1.9rem] font-semibold leading-[1.05] tracking-tight text-white sm:text-[2.1rem] md:min-h-[4.5rem]"
+          >
             {displayTitle}
           </h3>
 
-          <div className="grid gap-3 text-[15px] leading-7 text-zinc-300">
+          <div className="grid gap-2.5 text-[15px] leading-6 text-zinc-300">
             <div>
-              <span className="text-zinc-400">Lecture:</span>{" "}
-              <span className="text-white">
-                {flow.readingMode === "registry-only"
-                  ? "Registre uniquement"
-                  : "Enrichie"}
+              Lecture: <span className="text-zinc-100">{readingLabel}</span>
+            </div>
+
+            {flow.readingMode === "registry-only" ? (
+              <div className="break-all">
+                Source / Root record:{" "}
+                <span className="text-zinc-100">{rootLabel}</span>
+              </div>
+            ) : (
+              <div className="break-all">
+                Root: <span className="text-zinc-100">{rootLabel}</span>
+              </div>
+            )}
+
+            <div>
+              Activité: <span className="text-zinc-100">{flowActivityLabel(flow)}</span>
+            </div>
+
+            <div>
+              Incident: <span className="text-zinc-100">{incidentLabel(flow)}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
+                flow.status
+              )}`}
+            >
+              {flow.status.toUpperCase()}
+            </span>
+
+            {flow.isPartial ? (
+              <span
+                className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
+                  "partial"
+                )}`}
+              >
+                PARTIAL
               </span>
-            </div>
+            ) : null}
 
-            <div className="break-all">
-              <span className="text-zinc-400">{metaRowLabel(flow)}:</span>{" "}
-              <span className="font-mono text-white">{metaRowValue(flow)}</span>
-            </div>
-
-            <div>
-              <span className="text-zinc-400">Activité:</span>{" "}
-              <span className="text-white">{activityLabel(flow)}</span>
-            </div>
-
-            <div>
-              <span className="text-zinc-400">Incident:</span>{" "}
-              <span className="text-white">{incidentText}</span>
-            </div>
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+                flow.hasIncident
+                  ? badgeTone("failed")
+                  : "bg-zinc-800 text-zinc-300 border border-zinc-700"
+              }`}
+            >
+              {incidentLabel(flow)}
+            </span>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <span
-            className={`inline-flex rounded-full px-4 py-1.5 text-sm font-medium ${statusTone(
-              flow.status
-            )}`}
+        <div className="mt-auto flex flex-col gap-3 pt-2">
+          <Link
+            href={selectHref}
+            className={actionLinkClassName(isActive ? "active" : "default")}
           >
-            {toText(flow.status, "unknown").toUpperCase()}
-          </span>
-
-          {flow.isPartial ? (
-            <span
-              className={`inline-flex rounded-full px-4 py-1.5 text-sm font-medium ${statusTone(
-                "partial"
-              )}`}
-            >
-              PARTIAL
-            </span>
-          ) : null}
-
-          <span
-            className={`inline-flex rounded-full px-4 py-1.5 text-sm font-medium ${incidentTone(
-              flow.hasIncident
-            )}`}
-          >
-            {incidentText}
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          {isActive ? (
-            <span className={actionLinkClassName("active")}>Flow actif</span>
-          ) : (
-            <Link href={selectHref} className={actionLinkClassName()}>
-              Sélectionner
-            </Link>
-          )}
+            {isActive ? "Flow actif" : "Sélectionner"}
+          </Link>
 
           {flow.hasIncident ? (
             <Link href={incidentHref} className={actionLinkClassName("danger")}>
@@ -936,7 +1059,7 @@ function FlowListCard({
             </Link>
           ) : null}
 
-          <Link href={detailHref} className={actionLinkClassName()}>
+          <Link href={detailHref} className={actionLinkClassName("default")}>
             Voir le détail
           </Link>
         </div>
@@ -945,25 +1068,59 @@ function FlowListCard({
   );
 }
 
+function SectionBlock({
+  title,
+  description,
+  flows,
+  activeKey,
+}: {
+  title: string;
+  description: string;
+  flows: FlowCard[];
+  activeKey: string;
+}) {
+  if (flows.length === 0) return null;
+
+  return (
+    <section className="space-y-5">
+      <div className="space-y-3">
+        <div className={sectionTitleClassName()}>{title}</div>
+        <p className="max-w-4xl text-[18px] leading-9 text-zinc-300 sm:text-[20px]">
+          {description}
+        </p>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-3">
+        {flows.map((flow) => (
+          <FlowListCard key={flow.key} flow={flow} activeKey={activeKey} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default async function FlowsPage({ searchParams }: PageProps) {
-  const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
-  const selectedId = decodeURIComponent(firstSearchParam(resolvedSearchParams.selected));
+  const resolvedSearchParams = (await Promise.resolve(
+    searchParams ?? {}
+  )) as SearchParams;
+
+  const selected = decodeSearchParam(resolvedSearchParams.selected);
 
   const api = await import("@/lib/api");
 
   const fetchCommands = (api as AnyRecord).fetchCommands as
     | undefined
-    | (() => Promise<any>);
+    | (() => Promise<unknown>);
   const fetchIncidents = (api as AnyRecord).fetchIncidents as
     | undefined
-    | (() => Promise<any>);
+    | (() => Promise<unknown>);
   const fetchFlows = (api as AnyRecord).fetchFlows as
     | undefined
-    | (() => Promise<any>);
+    | (() => Promise<unknown>);
 
-  let commandsData: any = null;
-  let incidentsData: any = null;
-  let flowsData: any = null;
+  let commandsData: unknown = null;
+  let incidentsData: unknown = null;
+  let flowsData: unknown = null;
 
   try {
     commandsData = fetchCommands ? await fetchCommands() : null;
@@ -983,145 +1140,119 @@ export default async function FlowsPage({ searchParams }: PageProps) {
     flowsData = null;
   }
 
-  const rawCommands: AnyRecord[] = Array.isArray(commandsData?.commands)
-    ? commandsData.commands
-    : Array.isArray(commandsData)
-      ? commandsData
+  const rawCommands: AnyRecord[] =
+    commandsData &&
+    typeof commandsData === "object" &&
+    !Array.isArray(commandsData) &&
+    Array.isArray((commandsData as Record<string, unknown>).commands)
+      ? ((commandsData as Record<string, unknown>).commands as AnyRecord[])
+      : Array.isArray(commandsData)
+      ? (commandsData as AnyRecord[])
       : [];
 
-  const rawIncidents: AnyRecord[] = Array.isArray(incidentsData?.incidents)
-    ? incidentsData.incidents
-    : Array.isArray(incidentsData)
-      ? incidentsData
+  const rawIncidents: AnyRecord[] =
+    incidentsData &&
+    typeof incidentsData === "object" &&
+    !Array.isArray(incidentsData) &&
+    Array.isArray((incidentsData as Record<string, unknown>).incidents)
+      ? ((incidentsData as Record<string, unknown>).incidents as AnyRecord[])
+      : Array.isArray(incidentsData)
+      ? (incidentsData as AnyRecord[])
       : [];
 
-  const rawFlows: AnyRecord[] = Array.isArray(flowsData?.flows)
-    ? flowsData.flows
-    : Array.isArray(flowsData)
-      ? flowsData
+  const rawFlows: AnyRecord[] =
+    flowsData &&
+    typeof flowsData === "object" &&
+    !Array.isArray(flowsData) &&
+    Array.isArray((flowsData as Record<string, unknown>).flows)
+      ? ((flowsData as Record<string, unknown>).flows as AnyRecord[])
+      : Array.isArray(flowsData)
+      ? (flowsData as AnyRecord[])
       : [];
 
-  const commands = rawCommands.map(normalizeTimelineItem);
-  const incidents = rawIncidents.map(normalizeIncidentRecord);
-  const registryFlowRecords = rawFlows.map(normalizeRegistryFlowRecord);
+  const normalizedCommands = rawCommands.map(normalizeCommand);
 
-  const enrichedFlows = sortFlows(buildEnrichedFlows(commands, incidents));
-  const registryOnlyFlows = sortFlows(
-    buildRegistryOnlyFlows(registryFlowRecords, incidents, enrichedFlows)
+  const enrichedFlows = sortFlowCards(
+    buildEnrichedFlowCards(normalizedCommands, rawIncidents)
   );
-  const incidentOnlyFlows = sortFlows(
-    buildIncidentOnlyFlows(incidents, [...enrichedFlows, ...registryOnlyFlows])
+
+  const registryOnlyFlows = sortFlowCards(
+    buildRegistryOnlyFlowCards(rawFlows, rawIncidents)
   );
 
-  const registrySectionFlows = sortFlows([...registryOnlyFlows, ...incidentOnlyFlows]);
+  const incidentOnlyFlows = sortFlowCards(
+    buildIncidentOnlyFlowCards(rawIncidents, [
+      ...enrichedFlows,
+      ...registryOnlyFlows,
+    ])
+  );
 
-  const attentionFlows = sortFlows(
-    [...enrichedFlows, ...registrySectionFlows].filter(
-      (flow) => flow.hasIncident || ["failed", "running", "retry"].includes(normalizeStatus(flow.status))
-    )
-  ).slice(0, 6);
+  const registrySectionFlows = sortFlowCards([
+    ...registryOnlyFlows,
+    ...incidentOnlyFlows,
+  ]);
+
+  const allFlows = sortFlowCards([
+    ...enrichedFlows,
+    ...registrySectionFlows,
+  ]);
+
+  const needsAttentionFlows = sortFlowCards(
+    allFlows.filter((flow) => isNeedsAttention(flow))
+  );
+
+  const stableEnrichedFlows = sortFlowCards(
+    enrichedFlows.filter((flow) => !isNeedsAttention(flow))
+  );
+
+  const activeFlow =
+    allFlows.find((flow) => matchesActiveSelection(flow, selected)) ??
+    needsAttentionFlows[0] ??
+    allFlows[0] ??
+    null;
+
+  const activeKey = activeFlow?.key || "";
 
   return (
-    <div className="space-y-10">
-      <div className="border-b border-white/10 pb-6">
-        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+    <div className="mx-auto w-full max-w-[1600px] space-y-10 px-4 py-6 sm:px-6 lg:px-8">
+      <section className="space-y-4 border-b border-white/10 pb-8">
+        <div className="text-sm text-zinc-400">BOSAI Control Plane</div>
+
+        <h1 className="text-5xl font-semibold tracking-tight text-white sm:text-6xl">
           Flows
         </h1>
-        <p className="mt-4 max-w-4xl text-lg leading-8 text-zinc-400">
-          Vue de pilotage BOSAI pour suivre les flows enrichis et les flows
-          présents uniquement dans le registre.
+
+        <p className="max-w-5xl text-[19px] leading-9 text-zinc-300 sm:text-[22px]">
+          Vue de pilotage BOSAI pour suivre les flows enrichis et les flows présents uniquement dans le registre.
         </p>
-      </div>
-
-      {attentionFlows.length > 0 ? (
-        <section className="space-y-5">
-          {sectionTitle(
-            "Needs attention",
-            "Flows prioritaires à surveiller maintenant: incidents actifs, échecs, retries ou activité en cours."
-          )}
-
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            {attentionFlows.map((flow) => (
-              <FlowListCard
-                key={`attention-${flow.key}-${flow.sourceRecordId}-${flow.rootEventId}`}
-                flow={flow}
-                isActive={isFlowSelected(flow, selectedId)}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {enrichedFlows.length > 0 ? (
-        <section className="space-y-5">
-          {sectionTitle("Flows enrichis")}
-
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            {enrichedFlows.map((flow) => (
-              <FlowListCard
-                key={`enriched-${flow.key}-${flow.flowId}-${flow.rootEventId}`}
-                flow={flow}
-                isActive={isFlowSelected(flow, selectedId)}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {registrySectionFlows.length > 0 ? (
-        <section className="space-y-5">
-          {sectionTitle(
-            "Flows registre uniquement",
-            "Flows présents dans le registre BOSAI mais sans lecture causale détaillée disponible pour le moment."
-          )}
-
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            {registrySectionFlows.map((flow) => (
-              <FlowListCard
-                key={`registry-${flow.key}-${flow.sourceRecordId}-${flow.rootEventId}`}
-                flow={flow}
-                isActive={isFlowSelected(flow, selectedId)}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {enrichedFlows.length === 0 && registrySectionFlows.length === 0 ? (
-        <div className={emptyStateClassName()}>
-          Aucun flow disponible pour le moment.
-        </div>
-      ) : null}
-
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className={panelClassName()}>
-          <div className="text-sm text-zinc-400">Flows enrichis</div>
-          <div className="mt-3 text-4xl font-semibold text-white">
-            {enrichedFlows.length}
-          </div>
-        </div>
-
-        <div className={panelClassName()}>
-          <div className="text-sm text-zinc-400">Registry-only</div>
-          <div className="mt-3 text-4xl font-semibold text-white">
-            {registrySectionFlows.length}
-          </div>
-        </div>
-
-        <div className={panelClassName()}>
-          <div className="text-sm text-zinc-400">Avec incident</div>
-          <div className="mt-3 text-4xl font-semibold text-rose-300">
-            {[...enrichedFlows, ...registrySectionFlows].filter((flow) => flow.hasIncident).length}
-          </div>
-        </div>
-
-        <div className={panelClassName()}>
-          <div className="text-sm text-zinc-400">À surveiller</div>
-          <div className="mt-3 text-4xl font-semibold text-amber-300">
-            {attentionFlows.length}
-          </div>
-        </div>
       </section>
+
+      <SectionBlock
+        title="Needs attention"
+        description="Flows prioritaires à surveiller maintenant : incidents actifs, échecs, retries ou activité en cours."
+        flows={needsAttentionFlows}
+        activeKey={activeKey}
+      />
+
+      <SectionBlock
+        title="Flows enrichis"
+        description="Flows avec lecture causale détaillée disponible : structure, étapes, graphe et navigation complète."
+        flows={stableEnrichedFlows}
+        activeKey={activeKey}
+      />
+
+      <SectionBlock
+        title="Flows registre uniquement"
+        description="Flows présents dans le registre BOSAI mais sans lecture causale détaillée disponible pour le moment."
+        flows={registrySectionFlows}
+        activeKey={activeKey}
+      />
+
+      {allFlows.length === 0 ? (
+        <section className="rounded-[28px] border border-dashed border-white/10 bg-white/[0.03] px-6 py-10 text-zinc-400">
+          Aucun flow disponible pour le moment.
+        </section>
+      ) : null}
     </div>
   );
 }
