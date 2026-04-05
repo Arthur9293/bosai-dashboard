@@ -17,7 +17,7 @@ type PageProps = {
 };
 
 function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function actionLinkClassName(
@@ -28,10 +28,18 @@ function actionLinkClassName(
   }
 
   if (variant === "soft") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
+    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+}
+
+function sectionLabelClassName() {
+  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
+}
+
+function metaLabelClassName() {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
 function toText(value: unknown, fallback = ""): string {
@@ -322,10 +330,7 @@ function getRunRecord(incident: IncidentItem) {
 }
 
 function getCommandRecord(incident: IncidentItem) {
-  return firstText(
-    [incident.command_id, incident.linked_command],
-    "—"
-  );
+  return firstText([incident.command_id, incident.linked_command], "—");
 }
 
 function getFlowId(incident: IncidentItem) {
@@ -431,6 +436,23 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   );
 }
 
+function MetaItem({
+  label,
+  value,
+  breakAll = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  breakAll?: boolean;
+}) {
+  return (
+    <div className={breakAll ? "break-all" : undefined}>
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className="mt-1 text-zinc-200">{value}</div>
+    </div>
+  );
+}
+
 export default async function IncidentDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
@@ -485,8 +507,8 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const remainingMinutes = toNumber(incident.sla_remaining_minutes, Number.NaN);
 
   return (
-    <div className="space-y-6">
-      <div className="border-b border-white/10 pb-4">
+    <div className="space-y-8">
+      <section className="space-y-4 border-b border-white/10 pb-6">
         <div className="text-sm text-zinc-400">
           <Link
             href="/incidents"
@@ -497,11 +519,13 @@ export default async function IncidentDetailPage({ params }: PageProps) {
           / {title}
         </div>
 
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
+
+        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
           {title}
         </h1>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span
             className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${statusTone(
               incident
@@ -536,33 +560,33 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             </span>
           ) : null}
         </div>
-      </div>
+      </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Ouvert</div>
-          <div className="mt-3 text-xl font-semibold text-white">
+          <div className={metaLabelClassName()}>Ouvert</div>
+          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
             {formatDate(openedAt)}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Mis à jour</div>
-          <div className="mt-3 text-xl font-semibold text-white">
+          <div className={metaLabelClassName()}>Mis à jour</div>
+          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
             {formatDate(updatedAt)}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Résolu</div>
-          <div className="mt-3 text-xl font-semibold text-white">
+          <div className={metaLabelClassName()}>Résolu</div>
+          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
             {formatDate(resolvedAt)}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">SLA restant</div>
-          <div className="mt-3 text-xl font-semibold text-white">
+          <div className={metaLabelClassName()}>SLA restant</div>
+          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
             {Number.isFinite(remainingMinutes) ? `${remainingMinutes} min` : "—"}
           </div>
         </div>
@@ -570,62 +594,43 @@ export default async function IncidentDetailPage({ params }: PageProps) {
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-4 text-lg font-medium text-white">
+          <div className="mb-5 text-lg font-medium text-white">
             Contexte incident
           </div>
 
           <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
-            <div>
-              Catégorie: <span className="text-zinc-200">{category}</span>
-            </div>
-            <div>
-              Raison: <span className="text-zinc-200">{reason}</span>
-            </div>
-            <div>
-              Workspace: <span className="text-zinc-200">{workspace}</span>
-            </div>
-            <div>
-              Source: <span className="text-zinc-200">{toText(incident.source, "Incidents")}</span>
-            </div>
-            <div>
-              Worker: <span className="text-zinc-200">{toText(incident.worker, "—")}</span>
-            </div>
-            <div>
-              Error ID: <span className="text-zinc-200">{errorId}</span>
-            </div>
-            <div>
-              Dernière action: <span className="text-zinc-200">{lastAction}</span>
-            </div>
-            <div>
-              Note de résolution: <span className="text-zinc-200">{resolutionNote}</span>
-            </div>
-            <div>
-              Statut décision:{" "}
-              <span className="text-purple-300">{decisionStatus || "—"}</span>
-            </div>
-            <div>
-              Raison décision:{" "}
-              <span className="text-zinc-200">{decisionReason || "—"}</span>
-            </div>
-            <div>
-              Next action: <span className="text-zinc-200">{nextAction || "—"}</span>
-            </div>
-            <div>
-              Priorité: <span className="text-zinc-200">{priorityScore}</span>
-            </div>
-            <div className="md:col-span-2">
-              Action suggérée:{" "}
-              <span className="text-zinc-200">{suggestedAction}</span>
+            <MetaItem label="Catégorie" value={category} />
+            <MetaItem label="Raison" value={reason} />
+            <MetaItem label="Workspace" value={workspace} />
+            <MetaItem
+              label="Source"
+              value={toText(incident.source, "Incidents")}
+            />
+            <MetaItem label="Worker" value={toText(incident.worker, "—")} />
+            <MetaItem label="Error ID" value={errorId} />
+            <MetaItem label="Dernière action" value={lastAction} />
+            <MetaItem label="Note de résolution" value={resolutionNote} />
+            <MetaItem
+              label="Statut décision"
+              value={<span className="text-purple-300">{decisionStatus || "—"}</span>}
+            />
+            <MetaItem label="Raison décision" value={decisionReason || "—"} />
+            <MetaItem label="Next action" value={nextAction || "—"} />
+            <MetaItem label="Priorité" value={priorityScore} />
+
+            <div className="md:col-span-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className={metaLabelClassName()}>Action suggérée</div>
+              <div className="mt-1 text-zinc-200">{suggestedAction}</div>
             </div>
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">
+          <div className="mb-5 text-lg font-medium text-white">
             Statistiques incident
           </div>
 
-          <div className="space-y-3 text-sm">
+          <div className="space-y-4 text-sm">
             <div className="flex items-center justify-between gap-4">
               <span className="text-zinc-400">Statut</span>
               <span className="text-zinc-200">{statusLabel}</span>
@@ -646,9 +651,11 @@ export default async function IncidentDetailPage({ params }: PageProps) {
               <span className="text-zinc-200">{priorityScore}</span>
             </div>
 
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-start justify-between gap-4">
               <span className="text-zinc-400">Record ID</span>
-              <span className="break-all text-zinc-200">{String(incident.id)}</span>
+              <span className="break-all text-right text-zinc-200">
+                {String(incident.id)}
+              </span>
             </div>
           </div>
         </div>
@@ -656,58 +663,57 @@ export default async function IncidentDetailPage({ params }: PageProps) {
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-4 text-lg font-medium text-white">
-            Liens flow
-          </div>
+          <div className="mb-5 text-lg font-medium text-white">Liens flow</div>
 
-          <div className="space-y-4 text-sm text-zinc-400">
-            <div className="break-all">
-              Flow:{" "}
-              {flowId ? (
-                <Link
-                  href={`/flows/${encodeURIComponent(flowId)}`}
-                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                >
-                  {flowId}
-                </Link>
-              ) : (
-                <span className="text-zinc-200">—</span>
-              )}
-            </div>
+          <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
+            <MetaItem
+              label="Flow"
+              value={
+                flowId ? (
+                  <Link
+                    href={`/flows/${encodeURIComponent(flowId)}`}
+                    className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                  >
+                    {flowId}
+                  </Link>
+                ) : (
+                  "—"
+                )
+              }
+              breakAll
+            />
 
-            <div className="break-all">
-              Root event: <span className="text-zinc-200">{rootEventId || "—"}</span>
-            </div>
+            <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
 
-            <div className="break-all">
-              Source record:{" "}
-              <span className="text-zinc-200">{sourceRecordId || "—"}</span>
-            </div>
+            <MetaItem
+              label="Source record"
+              value={sourceRecordId || "—"}
+              breakAll
+            />
 
-            <div className="break-all">
-              Run record: <span className="text-zinc-200">{runRecord}</span>
-            </div>
+            <MetaItem label="Run record" value={runRecord} breakAll />
 
-            <div className="break-all">
-              Command:{" "}
-              {linkedCommandHref ? (
-                <Link
-                  href={linkedCommandHref}
-                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                >
-                  {commandRecord}
-                </Link>
-              ) : (
-                <span className="text-zinc-200">—</span>
-              )}
-            </div>
+            <MetaItem
+              label="Command"
+              value={
+                linkedCommandHref ? (
+                  <Link
+                    href={linkedCommandHref}
+                    className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                  >
+                    {commandRecord}
+                  </Link>
+                ) : (
+                  "—"
+                )
+              }
+              breakAll
+            />
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">
-            Navigation
-          </div>
+          <div className="mb-4 text-lg font-medium text-white">Navigation</div>
 
           <div className="space-y-3">
             <Link href="/incidents" className={actionLinkClassName("soft")}>
