@@ -113,6 +113,10 @@ function isOpenIncident(incident: IncidentItem) {
   return getIncidentStatus(incident).toLowerCase() === "open";
 }
 
+function isEscalatedIncident(incident: IncidentItem) {
+  return getIncidentStatus(incident).toLowerCase() === "escalated";
+}
+
 function isCriticalIncident(incident: IncidentItem) {
   const severity = String(incident.severity || "").toLowerCase();
   return severity === "critical" || severity === "critique";
@@ -132,6 +136,7 @@ function statusTone(status: string) {
   const normalized = status.trim().toLowerCase();
 
   if (normalized === "open") return badgeClassName("danger");
+  if (normalized === "escalated") return badgeClassName("warning");
   if (normalized === "resolved" || normalized === "closed") {
     return badgeClassName("success");
   }
@@ -249,6 +254,10 @@ export default async function OverviewPage() {
     incidents?.stats?.warning ??
     incidentItems.filter((incident) => isWarningIncident(incident)).length;
 
+  const activeIncidentItems = incidentItems.filter(
+    (incident) => isOpenIncident(incident) || isEscalatedIncident(incident)
+  );
+
   return (
     <div className="space-y-8">
       <section className="space-y-3 border-b border-white/10 pb-6">
@@ -271,7 +280,15 @@ export default async function OverviewPage() {
             {formatNumber(healthScore)}
           </div>
           <div className="mt-3 flex items-center gap-2">
-            <span className={badgeClassName(healthScore >= 80 ? "success" : healthScore >= 50 ? "warning" : "danger")}>
+            <span
+              className={badgeClassName(
+                healthScore >= 80
+                  ? "success"
+                  : healthScore >= 50
+                    ? "warning"
+                    : "danger"
+              )}
+            >
               {healthLabel(healthScore)}
             </span>
           </div>
@@ -381,7 +398,7 @@ export default async function OverviewPage() {
           </div>
 
           <div className="space-y-3">
-            {incidentItems.slice(0, 5).map((incident) => {
+            {activeIncidentItems.slice(0, 5).map((incident) => {
               const incidentTitle = getIncidentTitle(incident);
               const incidentSubline =
                 getIncidentStatus(incident) ||
@@ -438,9 +455,9 @@ export default async function OverviewPage() {
               );
             })}
 
-            {incidentItems.length === 0 && (
+            {activeIncidentItems.length === 0 && (
               <div className="rounded-[24px] border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
-                Aucun incident affiché.
+                Aucun incident actif affiché.
               </div>
             )}
           </div>
