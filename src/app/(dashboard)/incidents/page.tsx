@@ -15,7 +15,7 @@ type PageProps = {
 };
 
 function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function actionLinkClassName(
@@ -26,10 +26,18 @@ function actionLinkClassName(
   }
 
   if (variant === "soft") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
+    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+}
+
+function sectionLabelClassName() {
+  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
+}
+
+function metaLabelClassName() {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
 function formatDate(value?: string) {
@@ -313,9 +321,7 @@ function getWorkspace(incident: IncidentItem) {
 }
 
 function getRunRecord(incident: IncidentItem) {
-  return (
-    incident.run_record_id || incident.linked_run || incident.run_id || "—"
-  );
+  return incident.run_record_id || incident.linked_run || incident.run_id || "—";
 }
 
 function getCommandRecord(incident: IncidentItem) {
@@ -331,9 +337,7 @@ function getRootEventId(incident: IncidentItem) {
 }
 
 function getSourceRecordId(incident: IncidentItem) {
-  return toTextOrEmpty(
-    (incident as Record<string, unknown>).source_record_id
-  );
+  return toTextOrEmpty((incident as Record<string, unknown>).source_record_id);
 }
 
 function getCategory(incident: IncidentItem) {
@@ -456,6 +460,23 @@ function getBackToFlowsHref(filters: {
   return "/flows";
 }
 
+function MetaItem({
+  label,
+  value,
+  breakAll = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  breakAll?: boolean;
+}) {
+  return (
+    <div className={breakAll ? "break-all" : undefined}>
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className="mt-1 text-zinc-200">{value}</div>
+    </div>
+  );
+}
+
 function IncidentCard({ incident }: { incident: IncidentItem }) {
   const title = getIncidentTitle(incident);
   const statusLabel = getIncidentStatusLabel(incident);
@@ -469,137 +490,148 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
   const suggestedAction = getSuggestedAction(incident);
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/5 p-5">
-      <div className="mb-4 flex flex-col gap-3 border-b border-white/10 pb-4">
-        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-          BOSAI INCIDENT
-        </div>
+    <article className={cardClassName()}>
+      <div className="flex h-full flex-col gap-5">
+        <div className="space-y-4 border-b border-white/10 pb-4">
+          <div className={sectionLabelClassName()}>BOSAI Incident</div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={`/incidents/${encodeURIComponent(incident.id)}`}
-            className="break-all text-lg font-semibold text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
-          >
-            {title}
-          </Link>
-
-          <span
-            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
-              incident
-            )}`}
-          >
-            {statusLabel}
-          </span>
-
-          <span
-            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${severityTone(
-              incident
-            )}`}
-          >
-            {severityLabel}
-          </span>
-
-          <span
-            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getSlaTone(
-              incident
-            )}`}
-          >
-            SLA {slaLabel}
-          </span>
-
-          {decisionStatus ? (
-            <span
-              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getDecisionTone(
-                incident
-              )}`}
+          <div className="space-y-3">
+            <Link
+              href={`/incidents/${encodeURIComponent(incident.id)}`}
+              className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
             >
-              DECISION {decisionStatus.toUpperCase()}
+              {title}
+            </Link>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
+                  incident
+                )}`}
+              >
+                {statusLabel}
+              </span>
+
+              <span
+                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${severityTone(
+                  incident
+                )}`}
+              >
+                {severityLabel}
+              </span>
+
+              <span
+                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getSlaTone(
+                  incident
+                )}`}
+              >
+                SLA {slaLabel}
+              </span>
+
+              {decisionStatus ? (
+                <span
+                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getDecisionTone(
+                    incident
+                  )}`}
+                >
+                  DECISION {decisionStatus.toUpperCase()}
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
+            <span>
+              Category: <span className="text-zinc-300">{getCategory(incident)}</span>
             </span>
-          ) : null}
-        </div>
-
-        <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
-          <span>
-            Category: <span className="text-zinc-300">{getCategory(incident)}</span>
-          </span>
-          <span>
-            Reason: <span className="text-zinc-300">{getReason(incident)}</span>
-          </span>
-          <span>
-            Workspace: <span className="text-zinc-300">{getWorkspace(incident)}</span>
-          </span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-        <div>
-          Opened: <span className="text-zinc-300">{formatDate(getOpenedAt(incident))}</span>
-        </div>
-
-        <div>
-          Updated: <span className="text-zinc-300">{formatDate(getUpdatedAt(incident))}</span>
-        </div>
-
-        <div>
-          Resolved: <span className="text-zinc-300">{formatDate(getResolvedAt(incident))}</span>
-        </div>
-
-        <div className="break-all">
-          Flow:{" "}
-          {flowId ? (
-            <Link
-              href={`/flows/${encodeURIComponent(flowId)}`}
-              className="text-zinc-300 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-            >
-              {flowId}
-            </Link>
-          ) : (
-            <span className="text-zinc-300">—</span>
-          )}
-        </div>
-
-        <div className="break-all">
-          Root event: <span className="text-zinc-300">{toText(rootEventId)}</span>
-        </div>
-
-        <div className="break-all">
-          Run record: <span className="text-zinc-300">{toText(runRecord)}</span>
-        </div>
-
-        <div className="break-all">
-          Command:{" "}
-          {commandRecord !== "—" && commandRecord ? (
-            <Link
-              href={`/commands/${encodeURIComponent(commandRecord)}`}
-              className="text-zinc-300 underline decoration-white/20 underline-offset-4 transition hover:text-white"
-            >
-              {commandRecord}
-            </Link>
-          ) : (
-            <span className="text-zinc-300">—</span>
-          )}
-        </div>
-
-        <div className="md:col-span-2 xl:col-span-3">
-          Action suggested: <span className="text-zinc-300">{suggestedAction}</span>
-        </div>
-
-        <div className="md:col-span-2 xl:col-span-3 space-y-1 border-t border-white/10 pt-3">
-          <div>
-            Decision:{" "}
-            <span className="text-purple-300">{decisionStatus || "—"}</span>
+            <span>
+              Reason: <span className="text-zinc-300">{getReason(incident)}</span>
+            </span>
+            <span>
+              Workspace: <span className="text-zinc-300">{getWorkspace(incident)}</span>
+            </span>
           </div>
-          <div>
-            Decision reason:{" "}
-            <span className="text-zinc-300">{getDecisionReason(incident) || "—"}</span>
+        </div>
+
+        <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+          <MetaItem
+            label="Opened"
+            value={formatDate(getOpenedAt(incident))}
+          />
+
+          <MetaItem
+            label="Updated"
+            value={formatDate(getUpdatedAt(incident))}
+          />
+
+          <MetaItem
+            label="Resolved"
+            value={formatDate(getResolvedAt(incident))}
+          />
+
+          <MetaItem
+            label="Flow"
+            value={
+              flowId ? (
+                <Link
+                  href={`/flows/${encodeURIComponent(flowId)}`}
+                  className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  {flowId}
+                </Link>
+              ) : (
+                "—"
+              )
+            }
+            breakAll
+          />
+
+          <MetaItem label="Root event" value={toText(rootEventId)} breakAll />
+
+          <MetaItem label="Run record" value={toText(runRecord)} breakAll />
+
+          <MetaItem
+            label="Command"
+            value={
+              commandRecord !== "—" && commandRecord ? (
+                <Link
+                  href={`/commands/${encodeURIComponent(commandRecord)}`}
+                  className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  {commandRecord}
+                </Link>
+              ) : (
+                "—"
+              )
+            }
+            breakAll
+          />
+
+          <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Action suggested</div>
+            <div className="mt-1 text-zinc-200">{suggestedAction}</div>
           </div>
-          <div>
-            Next action:{" "}
-            <span className="text-zinc-300">{getNextAction(incident) || "—"}</span>
-          </div>
-          <div>
-            Priority score:{" "}
-            <span className="text-zinc-300">{getPriorityScore(incident)}</span>
+
+          <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4 space-y-2">
+            <div>
+              <span className={metaLabelClassName()}>Decision</span>
+              <div className="mt-1 text-purple-300">{decisionStatus || "—"}</div>
+            </div>
+
+            <div>
+              <span className={metaLabelClassName()}>Decision reason</span>
+              <div className="mt-1 text-zinc-300">{getDecisionReason(incident) || "—"}</div>
+            </div>
+
+            <div>
+              <span className={metaLabelClassName()}>Next action</span>
+              <div className="mt-1 text-zinc-300">{getNextAction(incident) || "—"}</div>
+            </div>
+
+            <div>
+              <span className={metaLabelClassName()}>Priority score</span>
+              <div className="mt-1 text-zinc-300">{getPriorityScore(incident)}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -684,38 +716,42 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
       : "/flows";
 
   return (
-    <div className="space-y-6">
-      <div className="border-b border-white/10 pb-4">
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Incidents
-        </h1>
-        <p className="mt-2 max-w-3xl text-sm text-zinc-400 sm:text-base">
-          Vue orientée impact métier. Cette page permet de voir les incidents
-          ouverts, escaladés et résolus, ainsi que leur lien avec les flows BOSAI.
-        </p>
-      </div>
+    <div className="space-y-8">
+      <section className="space-y-3 border-b border-white/10 pb-6">
+        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
+
+        <div>
+          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+            Incidents
+          </h1>
+          <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
+            Vue orientée impact métier. Cette page permet de voir les incidents
+            ouverts, escaladés et résolus, ainsi que leur lien avec les flows BOSAI.
+          </p>
+        </div>
+      </section>
 
       {hasFilters ? (
-        <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5">
+        <section className="rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-5 md:p-6">
           <div className="mb-4 text-lg font-medium text-emerald-200">
             Filtré depuis Flows
           </div>
 
           <div className="flex flex-wrap gap-3">
             {flowId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
                 flow_id: {flowId}
               </span>
             ) : null}
 
             {rootEventId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
                 root_event_id: {rootEventId}
               </span>
             ) : null}
 
             {sourceRecordId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
                 source_record_id: {sourceRecordId}
               </span>
             ) : null}
@@ -736,47 +772,49 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Open incidents</div>
-          <div className="mt-3 text-4xl font-semibold text-sky-300">
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-sky-300">
             {openIncidents.length}
           </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Escalated</div>
-          <div className="mt-3 text-4xl font-semibold text-amber-300">
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-amber-300">
             {escalatedIncidents.length}
           </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Resolved</div>
-          <div className="mt-3 text-4xl font-semibold text-emerald-300">
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-emerald-300">
             {resolvedIncidents.length}
           </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Critical</div>
-          <div className="mt-3 text-4xl font-semibold text-red-300">
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-red-300">
             {criticalIncidents.length}
           </div>
         </div>
       </section>
 
       {visibleIncidents.length === 0 ? (
-        <section className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500">
+        <section className="rounded-[28px] border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500">
           Aucun incident visible pour le moment.
         </section>
       ) : (
         <div className="space-y-8">
           <section className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Active incidents</h2>
+              <h2 className="text-xl font-semibold tracking-tight text-white">
+                Active incidents
+              </h2>
               <span className="text-sm text-zinc-400">{activeIncidents.length}</span>
             </div>
 
             {activeIncidents.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500">
+              <div className="rounded-[28px] border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500">
                 Aucun incident actif.
               </div>
             ) : (
@@ -790,14 +828,16 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
           <section className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Resolved incidents</h2>
+              <h2 className="text-xl font-semibold tracking-tight text-white">
+                Resolved incidents
+              </h2>
               <span className="text-sm text-zinc-400">
                 {sortedResolvedIncidents.length}
               </span>
             </div>
 
             {sortedResolvedIncidents.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500">
+              <div className="rounded-[28px] border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500">
                 Aucun incident résolu.
               </div>
             ) : (
