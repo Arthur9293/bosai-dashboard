@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { fetchEvents, type EventItem } from "@/lib/api";
+import {
+  fetchCommands,
+  fetchEvents,
+  type CommandItem,
+  type EventItem,
+} from "@/lib/api";
 
 type PageProps = {
   params:
@@ -53,6 +58,26 @@ function toRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+function parseMaybeJson(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
 function toText(value: unknown, fallback = "—"): string {
   if (value === null || value === undefined) return fallback;
 
@@ -72,108 +97,12 @@ function toTextOrEmpty(value: unknown): string {
   return toText(value, "");
 }
 
-function stringifyPretty(value: unknown): string {
-  try {
-    return JSON.stringify(value ?? {}, null, 2);
-  } catch {
-    return JSON.stringify({ value: String(value) }, null, 2);
+function firstNonEmpty(...values: unknown[]): string {
+  for (const value of values) {
+    const text = toTextOrEmpty(value);
+    if (text) return text;
   }
-}
-
-function getEventType(event: EventItem): string {
-  return (
-    toTextOrEmpty((event as Record<string, unknown>).mapped_capability) ||
-    toTextOrEmpty(event.event_type) ||
-    toTextOrEmpty(event.type) ||
-    "Event detail"
-  );
-}
-
-function getEventStatus(event: EventItem): string {
-  return toTextOrEmpty(event.status) || "unknown";
-}
-
-function getWorkspace(event: EventItem): string {
-  if (toTextOrEmpty(event.workspace_id)) return toTextOrEmpty(event.workspace_id);
-
-  const payload = toRecord(event.payload);
-  return (
-    toTextOrEmpty(payload.workspace_id) ||
-    toTextOrEmpty(payload.workspaceId) ||
-    toTextOrEmpty(payload.Workspace_ID) ||
-    "—"
-  );
-}
-
-function getFlowId(event: EventItem): string {
-  if (toTextOrEmpty(event.flow_id)) return toTextOrEmpty(event.flow_id);
-
-  const payload = toRecord(event.payload);
-  return (
-    toTextOrEmpty(payload.flow_id) ||
-    toTextOrEmpty(payload.flowId) ||
-    toTextOrEmpty(payload.flowid) ||
-    ""
-  );
-}
-
-function getRootEventId(event: EventItem): string {
-  if (toTextOrEmpty(event.root_event_id)) return toTextOrEmpty(event.root_event_id);
-
-  const payload = toRecord(event.payload);
-  return (
-    toTextOrEmpty(payload.root_event_id) ||
-    toTextOrEmpty(payload.rootEventId) ||
-    toTextOrEmpty(payload.rooteventid) ||
-    ""
-  );
-}
-
-function getFlowTarget(event: EventItem): string {
-  return getFlowId(event) || getRootEventId(event) || "";
-}
-
-function getLinkedCommand(event: EventItem): string {
-  if (toTextOrEmpty(event.command_id)) return toTextOrEmpty(event.command_id);
-
-  const raw = (event as Record<string, unknown>).linked_command;
-  if (Array.isArray(raw) && raw.length > 0) {
-    return toTextOrEmpty(raw[0]);
-  }
-
-  const payload = toRecord(event.payload);
-  return (
-    toTextOrEmpty(payload.command_id) ||
-    toTextOrEmpty(payload.commandId) ||
-    ""
-  );
-}
-
-function getSource(event: EventItem): string {
-  const direct = toTextOrEmpty((event as Record<string, unknown>).source);
-  if (direct) return direct;
-
-  const payload = toRecord(event.payload);
-  return toTextOrEmpty(payload.source) || "—";
-}
-
-function getRun(event: EventItem): string {
-  const direct = toTextOrEmpty((event as Record<string, unknown>).run_id);
-  if (direct) return direct;
-
-  const payload = toRecord(event.payload);
-  return (
-    toTextOrEmpty(payload.run_id) ||
-    toTextOrEmpty(payload.runId) ||
-    "—"
-  );
-}
-
-function hasCommandCreated(event: EventItem): boolean {
-  const direct = (event as Record<string, unknown>).command_created;
-  if (typeof direct === "boolean") return direct;
-
-  return Boolean(getLinkedCommand(event));
+  return "";
 }
 
 function tone(status?: string): string {
@@ -198,40 +127,286 @@ function tone(status?: string): string {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function getEventPayload(event: EventItem): Record<string, unknown> {
+  return parseMaybeJson(event.payload);
+}
+
+function getEventType(event: EventItem): string {
+  return (
+    toTextOrEmpty(event.event_type) ||
+    toTextOrEmpty(event.type) ||
+    toTextOrEmpty(getEventPayload(event).event_type) ||
+    toTextOrEmpty(getEventPayload(event).type) ||
+    "Event detail"
+  );
+}
+
+function getEventStatus(event: EventItem): string {
+  return toTextOrEmpty(event.status) || "unknown";
+}
+
+function getEventCapability(event: EventItem): string {
+  return (
+    toTextOrEmpty(event.mapped_capability) ||
+    toTextOrEmpty(getEventPayload(event).mapped_capability) ||
+    toTextOrEmpty(getEventPayload(event).capability) ||
+    "—"
+  );
+}
+
+function getEventWorkspace(event: EventItem): string {
+  return (
+    toTextOrEmpty(event.workspace_id) ||
+    toTextOrEmpty(getEventPayload(event).workspace_id) ||
+    toTextOrEmpty(getEventPayload(event).workspaceId) ||
+    "—"
+  );
+}
+
+function getEventSource(event: EventItem): string {
+  const record = event as Record<string, unknown>;
+
+  return (
+    toTextOrEmpty(record.source) ||
+    toTextOrEmpty(getEventPayload(event).source) ||
+    "—"
+  );
+}
+
+function getEventRunId(event: EventItem): string {
+  const record = event as Record<string, unknown>;
+
+  return (
+    toTextOrEmpty(record.run_id) ||
+    toTextOrEmpty(getEventPayload(event).run_id) ||
+    toTextOrEmpty(getEventPayload(event).runRecordId) ||
+    "—"
+  );
+}
+
+function getLinkedCommandValue(event: EventItem): string {
+  const record = event as Record<string, unknown>;
+
+  return (
+    toTextOrEmpty(event.command_id) ||
+    toTextOrEmpty(record.command_id) ||
+    toTextOrEmpty(record.Command_ID) ||
+    toTextOrEmpty(record.linked_command) ||
+    toTextOrEmpty(record.Linked_Command) ||
+    toTextOrEmpty(getEventPayload(event).command_id) ||
+    toTextOrEmpty(getEventPayload(event).commandId) ||
+    ""
+  );
+}
+
+function getFlowId(event: EventItem): string {
+  return (
+    toTextOrEmpty(event.flow_id) ||
+    toTextOrEmpty(getEventPayload(event).flow_id) ||
+    toTextOrEmpty(getEventPayload(event).flowId) ||
+    ""
+  );
+}
+
+function getRootEventId(event: EventItem): string {
+  return (
+    toTextOrEmpty(event.root_event_id) ||
+    toTextOrEmpty(getEventPayload(event).root_event_id) ||
+    toTextOrEmpty(getEventPayload(event).rootEventId) ||
+    ""
+  );
+}
+
+function getCreatedAt(event: EventItem): string {
+  const record = event as Record<string, unknown>;
+
+  return (
+    toTextOrEmpty(event.created_at) ||
+    toTextOrEmpty(record.Created_At) ||
+    ""
+  );
+}
+
+function getUpdatedAt(event: EventItem): string {
+  const record = event as Record<string, unknown>;
+
+  return (
+    toTextOrEmpty(event.updated_at) ||
+    toTextOrEmpty(record.Updated_At) ||
+    toTextOrEmpty(event.processed_at) ||
+    ""
+  );
+}
+
+function getProcessedAt(event: EventItem): string {
+  return toTextOrEmpty(event.processed_at) || "";
+}
+
+function stringifyPretty(value: unknown): string {
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return JSON.stringify({ value: String(value) }, null, 2);
+  }
+}
+
+function getCommandInput(command: CommandItem): Record<string, unknown> {
+  return parseMaybeJson(command.input);
+}
+
+function getCommandResult(command: CommandItem): Record<string, unknown> {
+  return parseMaybeJson(command.result);
+}
+
+function getCommandRootEventId(command: CommandItem): string {
+  return (
+    toTextOrEmpty(command.root_event_id) ||
+    toTextOrEmpty(getCommandInput(command).root_event_id) ||
+    toTextOrEmpty(getCommandInput(command).rootEventId) ||
+    toTextOrEmpty(getCommandResult(command).root_event_id) ||
+    toTextOrEmpty(getCommandResult(command).rootEventId) ||
+    ""
+  );
+}
+
+function getCommandSourceEventId(command: CommandItem): string {
+  const record = command as Record<string, unknown>;
+
+  return (
+    toTextOrEmpty(record.source_event_id) ||
+    toTextOrEmpty(record.Source_Event_ID) ||
+    toTextOrEmpty(getCommandInput(command).source_event_id) ||
+    toTextOrEmpty(getCommandInput(command).sourceEventId) ||
+    toTextOrEmpty(getCommandInput(command).event_id) ||
+    toTextOrEmpty(getCommandInput(command).eventId) ||
+    toTextOrEmpty(getCommandResult(command).source_event_id) ||
+    toTextOrEmpty(getCommandResult(command).sourceEventId) ||
+    toTextOrEmpty(getCommandResult(command).event_id) ||
+    toTextOrEmpty(getCommandResult(command).eventId) ||
+    ""
+  );
+}
+
+function getCommandFlowId(command: CommandItem): string {
+  return (
+    toTextOrEmpty(command.flow_id) ||
+    toTextOrEmpty(getCommandInput(command).flow_id) ||
+    toTextOrEmpty(getCommandInput(command).flowId) ||
+    toTextOrEmpty(getCommandResult(command).flow_id) ||
+    toTextOrEmpty(getCommandResult(command).flowId) ||
+    ""
+  );
+}
+
+function getCommandWorkspace(command: CommandItem): string {
+  return (
+    toTextOrEmpty(command.workspace_id) ||
+    toTextOrEmpty(getCommandInput(command).workspace_id) ||
+    toTextOrEmpty(getCommandInput(command).workspaceId) ||
+    toTextOrEmpty(getCommandResult(command).workspace_id) ||
+    toTextOrEmpty(getCommandResult(command).workspaceId) ||
+    ""
+  );
+}
+
+function getCommandStartedAt(command: CommandItem): string {
+  return toTextOrEmpty(command.started_at);
+}
+
+function getCommandFinishedAt(command: CommandItem): string {
+  return toTextOrEmpty(command.finished_at);
+}
+
+function getCommandCapability(command: CommandItem): string {
+  return (
+    toTextOrEmpty(command.capability) ||
+    toTextOrEmpty(getCommandInput(command).capability) ||
+    toTextOrEmpty(getCommandResult(command).capability) ||
+    ""
+  );
+}
+
+function buildSyntheticEventFromCommand(
+  id: string,
+  command: CommandItem
+): EventItem {
+  return {
+    id,
+    event_type:
+      toTextOrEmpty(getCommandInput(command).event_type) ||
+      toTextOrEmpty(getCommandInput(command).type) ||
+      getCommandCapability(command) ||
+      "synthetic_event",
+    status:
+      toTextOrEmpty(command.status) ||
+      toTextOrEmpty(getCommandResult(command).status) ||
+      "processed",
+    workspace_id: getCommandWorkspace(command),
+    flow_id: getCommandFlowId(command),
+    root_event_id: getCommandRootEventId(command),
+    command_id: command.id,
+    mapped_capability: getCommandCapability(command),
+    created_at: getCommandStartedAt(command) || getCommandFinishedAt(command),
+    updated_at: getCommandStartedAt(command) || getCommandFinishedAt(command),
+    processed_at: getCommandFinishedAt(command) || getCommandStartedAt(command),
+    payload: {
+      source: "synthetic_from_command",
+      command_id: command.id,
+      reconstructed_from_command: true,
+    },
+  };
+}
+
+function isSyntheticEvent(event: EventItem): boolean {
+  return toTextOrEmpty(getEventPayload(event).source) === "synthetic_from_command";
+}
+
 export default async function EventDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
 
-  let data: Awaited<ReturnType<typeof fetchEvents>> | null = null;
+  let event: EventItem | null = null;
 
   try {
-    data = await fetchEvents();
+    const data = await fetchEvents();
+    const events = Array.isArray(data?.events) ? data.events : [];
+    event = events.find((item) => String(item.id) === id) || null;
   } catch {
-    data = null;
+    event = null;
   }
 
-  const events = Array.isArray(data?.events) ? data.events : [];
-  const event = events.find((item) => String(item.id) === id);
+  if (!event) {
+    try {
+      const commandsData = await fetchCommands();
+      const commands = Array.isArray(commandsData?.commands)
+        ? commandsData.commands
+        : [];
+
+      const matchedCommand =
+        commands.find((command) => getCommandRootEventId(command) === id) ||
+        commands.find((command) => getCommandSourceEventId(command) === id) ||
+        null;
+
+      if (matchedCommand) {
+        event = buildSyntheticEventFromCommand(id, matchedCommand);
+      }
+    } catch {
+      event = null;
+    }
+  }
 
   if (!event) {
     notFound();
   }
 
-  const title = getEventType(event);
-  const status = getEventStatus(event);
-  const linkedCommand = getLinkedCommand(event);
+  const linkedCommand = getLinkedCommandValue(event);
   const flowId = getFlowId(event);
   const rootEventId = getRootEventId(event);
-  const flowTarget = getFlowTarget(event);
-  const hasFlow = Boolean(flowTarget);
-  const hasCommand = Boolean(linkedCommand);
+  const status = getEventStatus(event);
+  const synthetic = isSyntheticEvent(event);
 
-  const createdAt = toTextOrEmpty(event.created_at);
-  const updatedAt = toTextOrEmpty(event.updated_at);
-  const processedAt = toTextOrEmpty(event.processed_at);
-  const source = getSource(event);
-  const workspace = getWorkspace(event);
-  const run = getRun(event);
+  const hasCommand = linkedCommand !== "";
+  const hasFlow = flowId !== "";
 
   return (
     <div className="space-y-6">
@@ -243,11 +418,11 @@ export default async function EventDetailPage({ params }: PageProps) {
           >
             Events
           </Link>{" "}
-          / {title}
+          / {getEventCapability(event) !== "—" ? getEventCapability(event) : getEventType(event)}
         </div>
 
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          {title}
+          {getEventCapability(event) !== "—" ? getEventCapability(event) : getEventType(event)}
         </h1>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -259,37 +434,45 @@ export default async function EventDetailPage({ params }: PageProps) {
             {status.toUpperCase()}
           </span>
 
-          {hasCommandCreated(event) ? (
-            <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
-              COMMAND CREATED
+          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
+            COMMAND CREATED
+          </span>
+
+          {synthetic ? (
+            <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-sm font-medium text-amber-300">
+              FALLBACK FROM COMMAND
             </span>
           ) : null}
-
-          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
-            {workspace}
-          </span>
         </div>
+
+        {synthetic ? (
+          <p className="mt-4 max-w-3xl text-sm text-amber-300/90 sm:text-base">
+            Cet event n’est pas revenu dans la fenêtre actuelle de /events. La
+            page a été reconstruite automatiquement depuis la command liée pour
+            éviter le 404.
+          </p>
+        ) : null}
       </div>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Created</div>
           <div className="mt-3 text-xl font-semibold text-white">
-            {formatDate(createdAt)}
+            {formatDate(getCreatedAt(event))}
           </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Updated</div>
           <div className="mt-3 text-xl font-semibold text-white">
-            {formatDate(updatedAt)}
+            {formatDate(getUpdatedAt(event))}
           </div>
         </div>
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Processed</div>
           <div className="mt-3 text-xl font-semibold text-white">
-            {formatDate(processedAt)}
+            {formatDate(getProcessedAt(event))}
           </div>
         </div>
       </section>
@@ -302,22 +485,19 @@ export default async function EventDetailPage({ params }: PageProps) {
             ID: <span className="break-all text-zinc-200">{event.id}</span>
           </div>
           <div>
-            Event type: <span className="text-zinc-200">{event.event_type || "—"}</span>
+            Event type: <span className="text-zinc-200">{getEventType(event)}</span>
           </div>
           <div>
-            Capability:{" "}
-            <span className="text-zinc-200">
-              {toTextOrEmpty(event.mapped_capability) || "—"}
-            </span>
+            Capability: <span className="text-zinc-200">{getEventCapability(event)}</span>
           </div>
           <div>
-            Workspace: <span className="text-zinc-200">{workspace}</span>
+            Workspace: <span className="text-zinc-200">{getEventWorkspace(event)}</span>
           </div>
           <div>
-            Source: <span className="text-zinc-200">{source}</span>
+            Source: <span className="text-zinc-200">{getEventSource(event)}</span>
           </div>
           <div>
-            Run: <span className="break-all text-zinc-200">{run}</span>
+            Run: <span className="text-zinc-200">{getEventRunId(event)}</span>
           </div>
         </div>
       </section>
@@ -325,23 +505,24 @@ export default async function EventDetailPage({ params }: PageProps) {
       <section className={cardClassName()}>
         <div className="mb-4 text-lg font-medium text-white">Pipeline linking</div>
 
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
           <div>
-            Command created:{" "}
-            <span className="text-zinc-200">
-              {hasCommandCreated(event) ? "Yes" : "No"}
-            </span>
+            Command created: <span className="text-zinc-200">Yes</span>
           </div>
           <div>
             Linked command:{" "}
-            <span className="break-all text-zinc-200">{linkedCommand || "—"}</span>
+            <span className="break-all text-zinc-200">
+              {linkedCommand || "—"}
+            </span>
           </div>
           <div>
             Flow: <span className="break-all text-zinc-200">{flowId || "—"}</span>
           </div>
           <div>
             Root event:{" "}
-            <span className="break-all text-zinc-200">{rootEventId || "—"}</span>
+            <span className="break-all text-zinc-200">
+              {rootEventId || "—"}
+            </span>
           </div>
         </div>
       </section>
@@ -350,7 +531,7 @@ export default async function EventDetailPage({ params }: PageProps) {
         <div className="mb-4 text-lg font-medium text-white">Payload snapshot</div>
 
         <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
-{stringifyPretty(event.payload)}
+{stringifyPretty(event.payload ?? {})}
         </pre>
       </section>
 
@@ -362,7 +543,7 @@ export default async function EventDetailPage({ params }: PageProps) {
             <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
               Event ID
             </div>
-            <div className="mt-3 break-all text-xl font-semibold text-white">
+            <div className="mt-3 break-all text-2xl font-semibold text-white">
               {event.id}
             </div>
           </div>
@@ -371,8 +552,8 @@ export default async function EventDetailPage({ params }: PageProps) {
             <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
               Flow target
             </div>
-            <div className="mt-3 break-all text-xl font-semibold text-white">
-              {flowTarget || "—"}
+            <div className="mt-3 break-all text-2xl font-semibold text-white">
+              {flowId || "—"}
             </div>
           </div>
 
@@ -380,7 +561,7 @@ export default async function EventDetailPage({ params }: PageProps) {
             <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
               Command target
             </div>
-            <div className="mt-3 break-all text-xl font-semibold text-white">
+            <div className="mt-3 break-all text-2xl font-semibold text-white">
               {linkedCommand || "—"}
             </div>
           </div>
@@ -389,7 +570,7 @@ export default async function EventDetailPage({ params }: PageProps) {
             <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
               Status
             </div>
-            <div className="mt-3 text-xl font-semibold text-white">
+            <div className="mt-3 text-2xl font-semibold text-white">
               {status.toUpperCase()}
             </div>
           </div>
@@ -423,7 +604,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
           {hasFlow ? (
             <Link
-              href={`/flows/${encodeURIComponent(flowTarget)}`}
+              href={`/flows/${encodeURIComponent(flowId)}`}
               className={actionLinkClassName("soft")}
             >
               Ouvrir le flow lié
