@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import FlowGraphClient from "../FlowGraphClient";
+import FlowGraphClient from "./FlowGraphClient";
 import {
   fetchCommands,
   fetchFlows,
