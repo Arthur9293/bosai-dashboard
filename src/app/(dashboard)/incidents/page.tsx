@@ -5,14 +5,71 @@ import {
   type IncidentsResponse,
 } from "@/lib/api";
 
-type SearchParamsInput = Record<string, string | string[] | undefined>;
+type SearchParams = {
+  flow_id?: string | string[];
+  root_event_id?: string | string[];
+  source_record_id?: string | string[];
+  from?: string | string[];
+};
 
 type PageProps = {
-  searchParams?: Promise<SearchParamsInput> | SearchParamsInput;
+  searchParams?: Promise<SearchParams> | SearchParams;
+};
+
+type NormalizedIncident = {
+  raw: IncidentItem;
+  id: string;
+  title: string;
+  status: string;
+  statusLabel: string;
+  severity: string;
+  severityLabel: string;
+  slaLabel: string;
+  decisionStatus: string;
+  decisionReason: string;
+  nextAction: string;
+  priorityScore: number;
+  openedAt?: string;
+  updatedAt?: string;
+  resolvedAt?: string;
+  workspace: string;
+  runRecord: string;
+  commandRecord: string;
+  flowId: string;
+  rootEventId: string;
+  sourceRecordId: string;
+  category: string;
+  reason: string;
+  suggestedAction: string;
+  sortDate: number;
 };
 
 function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
+}
+
+function actionLinkClassName(variant: "default" | "primary" | "soft" = "default") {
+  if (variant === "primary") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+  }
+
+  if (variant === "soft") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
+  }
+
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
+}
+
+function getQueryText(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0]?.trim() || "";
+  }
+
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  return "";
 }
 
 function formatDate(value?: string) {
@@ -35,34 +92,13 @@ function toText(value: unknown, fallback = "—") {
 
 function toNumber(value: unknown, fallback = 0) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
+
   if (typeof value === "string" && value.trim() !== "") {
     const n = Number(value);
     if (Number.isFinite(n)) return n;
   }
+
   return fallback;
-}
-
-function getSearchParam(
-  searchParams: SearchParamsInput,
-  key: string
-): string {
-  const value = searchParams[key];
-
-  if (Array.isArray(value)) {
-    return (value[0] || "").trim();
-  }
-
-  return (value || "").trim();
-}
-
-function normalizeMatchValue(value: unknown) {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
-}
-
-function uniqueStrings(values: string[]) {
-  return Array.from(new Set(values.filter(Boolean)));
 }
 
 function getIncidentTitle(incident: IncidentItem) {
@@ -322,6 +358,10 @@ function getRootEventId(incident: IncidentItem) {
   return (incident.root_event_id || "").trim();
 }
 
+function getSourceRecordId(incident: IncidentItem) {
+  return (incident.source_record_id || "").trim();
+}
+
 function getCategory(incident: IncidentItem) {
   return incident.category || "—";
 }
@@ -381,33 +421,6 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   return !hasStrongBusinessSignal && isGenericCategory && isGenericReason;
 }
 
-type NormalizedIncident = {
-  raw: IncidentItem;
-  id: string;
-  title: string;
-  status: string;
-  statusLabel: string;
-  severity: string;
-  severityLabel: string;
-  slaLabel: string;
-  decisionStatus: string;
-  decisionReason: string;
-  nextAction: string;
-  priorityScore: number;
-  openedAt?: string;
-  updatedAt?: string;
-  resolvedAt?: string;
-  workspace: string;
-  runRecord: string;
-  commandRecord: string;
-  flowId: string;
-  rootEventId: string;
-  category: string;
-  reason: string;
-  suggestedAction: string;
-  sortDate: number;
-};
-
 function normalizeIncident(incident: IncidentItem): NormalizedIncident {
   const openedAt = getOpenedAt(incident);
   const updatedAt = getUpdatedAt(incident);
@@ -434,6 +447,7 @@ function normalizeIncident(incident: IncidentItem): NormalizedIncident {
     commandRecord: getCommandRecord(incident),
     flowId: getFlowId(incident),
     rootEventId: getRootEventId(incident),
+    sourceRecordId: getSourceRecordId(incident),
     category: getCategory(incident),
     reason: getReason(incident),
     suggestedAction: getSuggestedAction(incident),
@@ -441,45 +455,81 @@ function normalizeIncident(incident: IncidentItem): NormalizedIncident {
   };
 }
 
-function getIncidentMatchCandidates(incident: NormalizedIncident) {
-  return uniqueStrings([
-    normalizeMatchValue(incident.id),
-    normalizeMatchValue(incident.flowId),
-    normalizeMatchValue(incident.rootEventId),
-    normalizeMatchValue(incident.runRecord),
-    normalizeMatchValue(incident.commandRecord),
-    normalizeMatchValue(incident.raw.linked_run),
-    normalizeMatchValue(incident.raw.linked_command),
-    normalizeMatchValue(incident.raw.run_id),
-    normalizeMatchValue(incident.raw.command_id),
-  ]);
-}
-
-function matchesAnyIncidentFilter(
+function matchesFlowFilter(
   incident: NormalizedIncident,
-  filterValues: string[]
+  flowId: string,
+  rootEventId: string,
+  sourceRecordId: string
 ) {
-  if (filterValues.length === 0) return true;
+  if (!flowId && !rootEventId && !sourceRecordId) {
+    return true;
+  }
 
-  const candidates = getIncidentMatchCandidates(incident);
-  return filterValues.some((value) => candidates.includes(value));
+  const candidates = new Set<string>([
+    incident.id,
+    incident.flowId,
+    incident.rootEventId,
+    incident.sourceRecordId,
+    incident.runRecord,
+    incident.commandRecord,
+  ]);
+
+  if (flowId && candidates.has(flowId)) {
+    return true;
+  }
+
+  if (rootEventId && candidates.has(rootEventId)) {
+    return true;
+  }
+
+  if (sourceRecordId && candidates.has(sourceRecordId)) {
+    return true;
+  }
+
+  return false;
 }
 
-function FilterBadge({
-  label,
-  value,
+function buildDetailHref(
+  incident: NormalizedIncident,
+  flowId: string,
+  rootEventId: string,
+  sourceRecordId: string,
+  from: string
+) {
+  const params = new URLSearchParams();
+
+  if (flowId) params.set("flow_id", flowId);
+  if (rootEventId) params.set("root_event_id", rootEventId);
+  if (sourceRecordId) params.set("source_record_id", sourceRecordId);
+  if (from) params.set("from", from);
+
+  const query = params.toString();
+  return query
+    ? `/incidents/${encodeURIComponent(incident.id)}?${query}`
+    : `/incidents/${encodeURIComponent(incident.id)}`;
+}
+
+function IncidentCard({
+  incident,
+  flowId,
+  rootEventId,
+  sourceRecordId,
+  from,
 }: {
-  label: string;
-  value: string;
+  incident: NormalizedIncident;
+  flowId: string;
+  rootEventId: string;
+  sourceRecordId: string;
+  from: string;
 }) {
-  return (
-    <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
-      {label}: {value}
-    </span>
+  const detailHref = buildDetailHref(
+    incident,
+    flowId,
+    rootEventId,
+    sourceRecordId,
+    from
   );
-}
 
-function IncidentCard({ incident }: { incident: NormalizedIncident }) {
   return (
     <article className="rounded-2xl border border-white/10 bg-white/5 p-5">
       <div className="mb-4 flex flex-col gap-3 border-b border-white/10 pb-4">
@@ -489,7 +539,7 @@ function IncidentCard({ incident }: { incident: NormalizedIncident }) {
 
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            href={`/incidents/${encodeURIComponent(incident.id)}`}
+            href={detailHref}
             className="break-all text-lg font-semibold text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
           >
             {incident.title}
@@ -532,10 +582,10 @@ function IncidentCard({ incident }: { incident: NormalizedIncident }) {
 
         <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
           <span>
-            Category: <span className="text-zinc-300">{incident.category}</span>
+            Catégorie: <span className="text-zinc-300">{incident.category}</span>
           </span>
           <span>
-            Reason: <span className="text-zinc-300">{incident.reason}</span>
+            Raison: <span className="text-zinc-300">{incident.reason}</span>
           </span>
           <span>
             Workspace: <span className="text-zinc-300">{incident.workspace}</span>
@@ -545,15 +595,15 @@ function IncidentCard({ incident }: { incident: NormalizedIncident }) {
 
       <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
         <div>
-          Opened: <span className="text-zinc-300">{formatDate(incident.openedAt)}</span>
+          Ouvert: <span className="text-zinc-300">{formatDate(incident.openedAt)}</span>
         </div>
 
         <div>
-          Updated: <span className="text-zinc-300">{formatDate(incident.updatedAt)}</span>
+          Mis à jour: <span className="text-zinc-300">{formatDate(incident.updatedAt)}</span>
         </div>
 
         <div>
-          Resolved: <span className="text-zinc-300">{formatDate(incident.resolvedAt)}</span>
+          Résolu: <span className="text-zinc-300">{formatDate(incident.resolvedAt)}</span>
         </div>
 
         <div className="break-all">
@@ -579,7 +629,7 @@ function IncidentCard({ incident }: { incident: NormalizedIncident }) {
         </div>
 
         <div className="break-all">
-          Command:{" "}
+          Commande:{" "}
           {incident.commandRecord !== "—" && incident.commandRecord ? (
             <Link
               href={`/commands/${encodeURIComponent(incident.commandRecord)}`}
@@ -593,21 +643,21 @@ function IncidentCard({ incident }: { incident: NormalizedIncident }) {
         </div>
 
         <div className="md:col-span-2 xl:col-span-3">
-          Action suggested: <span className="text-zinc-300">{incident.suggestedAction}</span>
+          Action suggérée: <span className="text-zinc-300">{incident.suggestedAction}</span>
         </div>
 
         <div className="space-y-1 border-t border-white/10 pt-3 md:col-span-2 xl:col-span-3">
           <div>
-            Decision: <span className="text-purple-300">{incident.decisionStatus || "—"}</span>
+            Décision: <span className="text-purple-300">{incident.decisionStatus || "—"}</span>
           </div>
           <div>
-            Decision reason: <span className="text-zinc-300">{incident.decisionReason || "—"}</span>
+            Raison décision: <span className="text-zinc-300">{incident.decisionReason || "—"}</span>
           </div>
           <div>
             Next action: <span className="text-zinc-300">{incident.nextAction || "—"}</span>
           </div>
           <div>
-            Priority score: <span className="text-zinc-300">{incident.priorityScore}</span>
+            Priorité: <span className="text-zinc-300">{incident.priorityScore}</span>
           </div>
         </div>
       </div>
@@ -618,17 +668,10 @@ function IncidentCard({ incident }: { incident: NormalizedIncident }) {
 export default async function IncidentsPage({ searchParams }: PageProps) {
   const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
 
-  const flowIdFilter = getSearchParam(resolvedSearchParams, "flow_id");
-  const rootEventIdFilter = getSearchParam(resolvedSearchParams, "root_event_id");
-  const sourceRecordIdFilter = getSearchParam(resolvedSearchParams, "source_record_id");
-  const fromFilter = getSearchParam(resolvedSearchParams, "from");
-
-  const activeFilterValues = uniqueStrings(
-    [flowIdFilter, rootEventIdFilter, sourceRecordIdFilter].map(normalizeMatchValue)
-  );
-
-  const hasFlowFilters = activeFilterValues.length > 0;
-  const filteredFromFlows = fromFilter === "flows";
+  const flowId = getQueryText(resolvedSearchParams.flow_id);
+  const rootEventId = getQueryText(resolvedSearchParams.root_event_id);
+  const sourceRecordId = getQueryText(resolvedSearchParams.source_record_id);
+  const from = getQueryText(resolvedSearchParams.from);
 
   let data: IncidentsResponse | null = null;
 
@@ -648,14 +691,14 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     (item) => !isLegacyNoiseIncident(item.raw)
   );
 
-  const visibleIncidents = cleanNormalized.filter((item) =>
-    matchesAnyIncidentFilter(item, activeFilterValues)
+  const filteredNormalized = cleanNormalized.filter((item) =>
+    matchesFlowFilter(item, flowId, rootEventId, sourceRecordId)
   );
 
-  const openIncidents = visibleIncidents.filter((item) => item.status === "open");
-  const escalatedIncidents = visibleIncidents.filter((item) => item.status === "escalated");
-  const resolvedIncidents = visibleIncidents.filter((item) => item.status === "resolved");
-  const criticalIncidents = visibleIncidents.filter((item) => item.severity === "critical");
+  const openIncidents = filteredNormalized.filter((item) => item.status === "open");
+  const escalatedIncidents = filteredNormalized.filter((item) => item.status === "escalated");
+  const resolvedIncidents = filteredNormalized.filter((item) => item.status === "resolved");
+  const criticalIncidents = filteredNormalized.filter((item) => item.severity === "critical");
 
   const activeIncidents = [...openIncidents, ...escalatedIncidents].sort(
     (a, b) => b.sortDate - a.sortDate
@@ -664,6 +707,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const sortedResolvedIncidents = [...resolvedIncidents].sort(
     (a, b) => b.sortDate - a.sortDate
   );
+
+  const isFiltered = Boolean(flowId || rootEventId || sourceRecordId);
 
   return (
     <div className="space-y-6">
@@ -677,94 +722,83 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
         </p>
       </div>
 
-      {hasFlowFilters ? (
+      {isFiltered ? (
         <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-3">
-              <div className="text-sm font-medium text-emerald-200">
-                {filteredFromFlows ? "Filtré depuis Flows" : "Filtres actifs"}
-              </div>
+          <div className="text-2xl font-semibold text-emerald-200">
+            Filtré depuis Flows
+          </div>
 
-              <div className="flex flex-wrap gap-2">
-                {flowIdFilter ? (
-                  <FilterBadge label="flow_id" value={flowIdFilter} />
-                ) : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {flowId ? (
+              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+                flow_id: {flowId}
+              </span>
+            ) : null}
 
-                {rootEventIdFilter ? (
-                  <FilterBadge label="root_event_id" value={rootEventIdFilter} />
-                ) : null}
+            {rootEventId ? (
+              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+                root_event_id: {rootEventId}
+              </span>
+            ) : null}
 
-                {sourceRecordIdFilter ? (
-                  <FilterBadge
-                    label="source_record_id"
-                    value={sourceRecordIdFilter}
-                  />
-                ) : null}
-              </div>
-            </div>
+            {sourceRecordId ? (
+              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+                source_record_id: {sourceRecordId}
+              </span>
+            ) : null}
+          </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row">
-              {filteredFromFlows ? (
-                <Link
-                  href="/flows"
-                  className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
-                >
-                  Retour aux flows
-                </Link>
-              ) : null}
+          <div className="mt-5 flex flex-col gap-3">
+            <Link href="/flows" className={actionLinkClassName("soft")}>
+              Retour aux flows
+            </Link>
 
-              <Link
-                href="/incidents"
-                className="inline-flex items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20"
-              >
-                Voir tous les incidents
-              </Link>
-            </div>
+            <Link href="/incidents" className={actionLinkClassName("primary")}>
+              Voir tous les incidents
+            </Link>
           </div>
         </section>
       ) : null}
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Open incidents</div>
+          <div className="text-sm text-zinc-400">Incidents ouverts</div>
           <div className="mt-3 text-4xl font-semibold text-sky-300">
             {openIncidents.length}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Escalated</div>
+          <div className="text-sm text-zinc-400">Escaladés</div>
           <div className="mt-3 text-4xl font-semibold text-amber-300">
             {escalatedIncidents.length}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Resolved</div>
+          <div className="text-sm text-zinc-400">Résolus</div>
           <div className="mt-3 text-4xl font-semibold text-emerald-300">
             {resolvedIncidents.length}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Critical</div>
+          <div className="text-sm text-zinc-400">Critiques</div>
           <div className="mt-3 text-4xl font-semibold text-red-300">
             {criticalIncidents.length}
           </div>
         </div>
       </section>
 
-      {visibleIncidents.length === 0 ? (
+      {filteredNormalized.length === 0 ? (
         <section className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500">
-          {hasFlowFilters
-            ? "Aucun incident ne correspond à ce flow pour le moment."
-            : "Aucun incident visible pour le moment."}
+          Aucun incident visible pour le moment.
         </section>
       ) : (
         <div className="space-y-8">
           <section className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Active incidents</h2>
+              <h2 className="text-lg font-semibold text-white">Incidents actifs</h2>
               <span className="text-sm text-zinc-400">{activeIncidents.length}</span>
             </div>
 
@@ -775,7 +809,14 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
             ) : (
               <div className="space-y-4">
                 {activeIncidents.map((incident) => (
-                  <IncidentCard key={incident.id} incident={incident} />
+                  <IncidentCard
+                    key={incident.id}
+                    incident={incident}
+                    flowId={flowId}
+                    rootEventId={rootEventId}
+                    sourceRecordId={sourceRecordId}
+                    from={from || "flows"}
+                  />
                 ))}
               </div>
             )}
@@ -783,7 +824,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
           <section className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Resolved incidents</h2>
+              <h2 className="text-lg font-semibold text-white">Incidents résolus</h2>
               <span className="text-sm text-zinc-400">{sortedResolvedIncidents.length}</span>
             </div>
 
@@ -794,7 +835,14 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
             ) : (
               <div className="space-y-4">
                 {sortedResolvedIncidents.map((incident) => (
-                  <IncidentCard key={incident.id} incident={incident} />
+                  <IncidentCard
+                    key={incident.id}
+                    incident={incident}
+                    flowId={flowId}
+                    rootEventId={rootEventId}
+                    sourceRecordId={sourceRecordId}
+                    from={from || "flows"}
+                  />
                 ))}
               </div>
             )}
