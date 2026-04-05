@@ -141,12 +141,7 @@ function getFlowId(event: EventItem) {
   const payload = getPayload(event);
 
   return firstText(
-    [
-      event.flow_id,
-      payload.flow_id,
-      payload.flowId,
-      payload.flowid,
-    ],
+    [event.flow_id, payload.flow_id, payload.flowId, payload.flowid],
     "—"
   );
 }
@@ -276,7 +271,9 @@ function miniCardClassName() {
   return "rounded-2xl border border-white/10 bg-black/20 p-4";
 }
 
-function actionLinkClassName(variant: "default" | "primary" | "soft" = "default") {
+function actionLinkClassName(
+  variant: "default" | "primary" | "soft" = "default"
+) {
   if (variant === "primary") {
     return "inline-flex items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
@@ -324,8 +321,15 @@ export default async function EventsPage() {
   const processedCount =
     stats.processed ?? countByStatus(events, ["processed", "done", "success"]);
   const ignoredCount = stats.ignored ?? countByStatus(events, ["ignored"]);
-  const errorCount = stats.error ?? countByStatus(events, ["error", "failed", "dead"]);
-  const otherCount = stats.other ?? Math.max(0, events.length - (newCount + queuedCount + processedCount + ignoredCount + errorCount));
+  const errorCount =
+    stats.error ?? countByStatus(events, ["error", "failed", "dead"]);
+  const otherCount =
+    stats.other ??
+    Math.max(
+      0,
+      events.length -
+        (newCount + queuedCount + processedCount + ignoredCount + errorCount)
+    );
 
   const list = [...events]
     .sort(
@@ -335,6 +339,27 @@ export default async function EventsPage() {
     )
     .slice(0, 50);
 
+  const hasAnyVisibleEvents = list.length > 0;
+  const hasAnyStats =
+    newCount > 0 ||
+    queuedCount > 0 ||
+    processedCount > 0 ||
+    ignoredCount > 0 ||
+    errorCount > 0 ||
+    otherCount > 0;
+
+  const showQuietEmptyState = !hasAnyVisibleEvents && !hasAnyStats;
+
+  const latestProcessed = list.find((event) =>
+    ["processed", "done", "success"].includes(getEventStatus(event).toLowerCase())
+  );
+  const latestQueued = list.find((event) =>
+    ["queued", "pending", "new"].includes(getEventStatus(event).toLowerCase())
+  );
+  const latestError = list.find((event) =>
+    ["error", "failed", "dead"].includes(getEventStatus(event).toLowerCase())
+  );
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -343,300 +368,352 @@ export default async function EventsPage() {
         description="Flux des événements BOSAI. Cette vue affiche les events, leur statut, leur rattachement pipeline et les liens vers les commands et flows."
       />
 
-      <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-        {[
-          ["New", newCount],
-          ["Queued", queuedCount],
-          ["Processed", processedCount],
-          ["Ignored", ignoredCount],
-          ["Errors", errorCount],
-          ["Other", otherCount],
-        ].map(([label, value]) => (
-          <div key={label} className={statCardClassName()}>
-            <div className="text-sm text-zinc-400">{label}</div>
-            <div className="mt-3 text-4xl font-semibold text-white">
-              {formatNumber(value as number)}
+      {showQuietEmptyState ? (
+        <>
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <div className={statCardClassName()}>
+              <div className="text-sm text-zinc-400">Source status</div>
+              <div className="mt-3 text-4xl font-semibold text-white">
+                {sourceConnected ? "Connected" : "Unavailable"}
+              </div>
+              <div className="mt-3">
+                <span
+                  className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+                    sourceConnected
+                      ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
+                      : "bg-rose-500/15 text-rose-300 border border-rose-500/20"
+                  }`}
+                >
+                  {sourceConnected ? "LIVE SOURCE" : "NO SOURCE"}
+                </span>
+              </div>
             </div>
-          </div>
-        ))}
-      </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
-        <div className={`${statCardClassName()} xl:col-span-1`}>
-          <div className="text-sm text-zinc-400">Source status</div>
-          <div className="mt-3 text-3xl font-semibold text-white">
-            {sourceConnected ? "Connected" : "Unavailable"}
-          </div>
-          <div className="mt-3">
-            <span
-              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
-                sourceConnected
-                  ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
-                  : "bg-rose-500/15 text-rose-300 border border-rose-500/20"
-              }`}
-            >
-              {sourceConnected ? "LIVE SOURCE" : "NO SOURCE"}
-            </span>
-          </div>
-        </div>
-
-        <div className={`${statCardClassName()} xl:col-span-3`}>
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <div>
+            <div className={`${statCardClassName()} xl:col-span-2`}>
               <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
                 Event stream
               </div>
-              <h2 className="mt-2 text-lg font-semibold text-white">
+              <h2 className="mt-2 text-3xl font-semibold text-white">
                 Historique récent
               </h2>
+
+              <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className={miniCardClassName()}>
+                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Latest processed
+                  </div>
+                  <div className="mt-2 text-2xl text-zinc-200">—</div>
+                </div>
+
+                <div className={miniCardClassName()}>
+                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Latest queued
+                  </div>
+                  <div className="mt-2 text-2xl text-zinc-200">—</div>
+                </div>
+
+                <div className={miniCardClassName()}>
+                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Latest error
+                  </div>
+                  <div className="mt-2 text-2xl text-zinc-200">—</div>
+                </div>
+
+                <div className={miniCardClassName()}>
+                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Commands created
+                  </div>
+                  <div className="mt-2 text-2xl text-zinc-200">0</div>
+                </div>
+              </div>
             </div>
+          </section>
 
-            <div className="text-sm text-zinc-500">{list.length} visible(s)</div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 sm:grid-cols-2 xl:grid-cols-4">
-            <div className={miniCardClassName()}>
+          <section className="rounded-[28px] border border-dashed border-white/10 bg-white/5 p-8 md:p-10">
+            <div className="max-w-2xl">
               <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                Latest processed
+                Event stream
               </div>
-              <div className="mt-2 text-base text-zinc-200">
-                {formatDate(
-                  list.find((event) =>
-                    ["processed", "done", "success"].includes(
-                      getEventStatus(event).toLowerCase()
-                    )
-                  )
-                    ? getEventDate(
-                        list.find((event) =>
-                          ["processed", "done", "success"].includes(
-                            getEventStatus(event).toLowerCase()
-                          )
-                        ) as EventItem
-                      )
-                    : null
-                )}
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                Aucun événement affiché
+              </h2>
+              <p className="mt-3 text-base text-zinc-400">
+                La source events est bien connectée, mais aucun event récent n’est
+                remonté pour l’instant. La vue détaillée réapparaîtra automatiquement
+                dès qu’un flux sera disponible.
+              </p>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+                  Source: {sourceConnected ? "Connected" : "Unavailable"}
+                </span>
+                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+                  Events visibles: 0
+                </span>
+              </div>
+            </div>
+          </section>
+        </>
+      ) : (
+        <>
+          <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+            {[
+              ["New", newCount],
+              ["Queued", queuedCount],
+              ["Processed", processedCount],
+              ["Ignored", ignoredCount],
+              ["Errors", errorCount],
+              ["Other", otherCount],
+            ].map(([label, value]) => (
+              <div key={label} className={statCardClassName()}>
+                <div className="text-sm text-zinc-400">{label}</div>
+                <div className="mt-3 text-4xl font-semibold text-white">
+                  {formatNumber(value as number)}
+                </div>
+              </div>
+            ))}
+          </section>
+
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+            <div className={`${statCardClassName()} xl:col-span-1`}>
+              <div className="text-sm text-zinc-400">Source status</div>
+              <div className="mt-3 text-3xl font-semibold text-white">
+                {sourceConnected ? "Connected" : "Unavailable"}
+              </div>
+              <div className="mt-3">
+                <span
+                  className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+                    sourceConnected
+                      ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
+                      : "bg-rose-500/15 text-rose-300 border border-rose-500/20"
+                  }`}
+                >
+                  {sourceConnected ? "LIVE SOURCE" : "NO SOURCE"}
+                </span>
               </div>
             </div>
 
-            <div className={miniCardClassName()}>
-              <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                Latest queued
+            <div className={`${statCardClassName()} xl:col-span-3`}>
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Event stream
+                  </div>
+                  <h2 className="mt-2 text-lg font-semibold text-white">
+                    Historique récent
+                  </h2>
+                </div>
+
+                <div className="text-sm text-zinc-500">
+                  {list.length} visible(s)
+                </div>
               </div>
-              <div className="mt-2 text-base text-zinc-200">
-                {formatDate(
-                  list.find((event) =>
-                    ["queued", "pending", "new"].includes(
-                      getEventStatus(event).toLowerCase()
-                    )
-                  )
-                    ? getEventDate(
-                        list.find((event) =>
-                          ["queued", "pending", "new"].includes(
-                            getEventStatus(event).toLowerCase()
-                          )
-                        ) as EventItem
-                      )
-                    : null
-                )}
+
+              <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 sm:grid-cols-2 xl:grid-cols-4">
+                <div className={miniCardClassName()}>
+                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Latest processed
+                  </div>
+                  <div className="mt-2 text-base text-zinc-200">
+                    {formatDate(latestProcessed ? getEventDate(latestProcessed) : null)}
+                  </div>
+                </div>
+
+                <div className={miniCardClassName()}>
+                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Latest queued
+                  </div>
+                  <div className="mt-2 text-base text-zinc-200">
+                    {formatDate(latestQueued ? getEventDate(latestQueued) : null)}
+                  </div>
+                </div>
+
+                <div className={miniCardClassName()}>
+                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Latest error
+                  </div>
+                  <div className="mt-2 text-base text-zinc-200">
+                    {formatDate(latestError ? getEventDate(latestError) : null)}
+                  </div>
+                </div>
+
+                <div className={miniCardClassName()}>
+                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Commands created
+                  </div>
+                  <div className="mt-2 text-base text-zinc-200">
+                    {events.filter((event) => wasCommandCreated(event)).length}
+                  </div>
+                </div>
               </div>
             </div>
+          </section>
 
-            <div className={miniCardClassName()}>
-              <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                Latest error
+          <section className="space-y-4">
+            {list.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
+                Aucun événement affiché.
               </div>
-              <div className="mt-2 text-base text-zinc-200">
-                {formatDate(
-                  list.find((event) =>
-                    ["error", "failed", "dead"].includes(
-                      getEventStatus(event).toLowerCase()
-                    )
-                  )
-                    ? getEventDate(
-                        list.find((event) =>
-                          ["error", "failed", "dead"].includes(
-                            getEventStatus(event).toLowerCase()
-                          )
-                        ) as EventItem
-                      )
-                    : null
-                )}
-              </div>
-            </div>
+            ) : (
+              list.map((event) => {
+                const eventType = getEventType(event);
+                const eventStatus = getEventStatus(event);
+                const linkedCommand = getLinkedCommand(event);
+                const flowId = getFlowId(event);
+                const rootEventId = getRootEventId(event);
+                const capability = getMappedCapability(event);
+                const workspace = getEventWorkspace(event);
+                const source = getEventSource(event);
+                const runId = getRunId(event);
 
-            <div className={miniCardClassName()}>
-              <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                Commands created
-              </div>
-              <div className="mt-2 text-base text-zinc-200">
-                {events.filter((event) => wasCommandCreated(event)).length}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+                const hasCommand = linkedCommand !== "—";
+                const hasFlow = flowId !== "—";
 
-      <section className="space-y-4">
-        {list.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
-            Aucun événement affiché.
-          </div>
-        ) : (
-          list.map((event) => {
-            const eventType = getEventType(event);
-            const eventStatus = getEventStatus(event);
-            const linkedCommand = getLinkedCommand(event);
-            const flowId = getFlowId(event);
-            const rootEventId = getRootEventId(event);
-            const capability = getMappedCapability(event);
-            const workspace = getEventWorkspace(event);
-            const source = getEventSource(event);
-            const runId = getRunId(event);
+                return (
+                  <article key={event.id} className={eventCardClassName()}>
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="min-w-0 flex-1 space-y-3">
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          BOSAI EVENT
+                        </div>
 
-            const hasCommand = linkedCommand !== "—";
-            const hasFlow = flowId !== "—";
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="break-all text-2xl font-semibold tracking-tight text-white">
+                            {eventType}
+                          </h2>
 
-            return (
-              <article key={event.id} className={eventCardClassName()}>
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="min-w-0 flex-1 space-y-3">
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      BOSAI EVENT
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${badgeTone(
+                              eventStatus
+                            )}`}
+                          >
+                            {eventStatus.toUpperCase()}
+                          </span>
+
+                          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                            {wasCommandCreated(event)
+                              ? "COMMAND CREATED"
+                              : "NO COMMAND"}
+                          </span>
+                        </div>
+
+                        <div className="break-all text-sm text-zinc-400">
+                          ID: <span className="text-zinc-300">{event.id}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-xs uppercase tracking-[0.18em] text-zinc-500 xl:min-w-[140px] xl:text-right">
+                        EVENT SIGNAL
+                      </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="break-all text-2xl font-semibold tracking-tight text-white">
-                        {eventType}
-                      </h2>
+                    <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <div className={miniCardClassName()}>
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Workspace
+                        </div>
+                        <div className="mt-2 break-all text-sm text-zinc-200">
+                          {workspace}
+                        </div>
+                      </div>
 
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${badgeTone(
-                          eventStatus
-                        )}`}
+                      <div className={miniCardClassName()}>
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Capability
+                        </div>
+                        <div className="mt-2 break-all text-sm text-zinc-200">
+                          {capability}
+                        </div>
+                      </div>
+
+                      <div className={miniCardClassName()}>
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Flow
+                        </div>
+                        <div className="mt-2 break-all text-sm text-zinc-200">
+                          {flowId}
+                        </div>
+                      </div>
+
+                      <div className={miniCardClassName()}>
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Root event
+                        </div>
+                        <div className="mt-2 break-all text-sm text-zinc-200">
+                          {rootEventId}
+                        </div>
+                      </div>
+
+                      <div className={miniCardClassName()}>
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Linked command
+                        </div>
+                        <div className="mt-2 break-all text-sm text-zinc-200">
+                          {linkedCommand}
+                        </div>
+                      </div>
+
+                      <div className={miniCardClassName()}>
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Source
+                        </div>
+                        <div className="mt-2 break-all text-sm text-zinc-200">
+                          {source}
+                        </div>
+                      </div>
+
+                      <div className={miniCardClassName()}>
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Run
+                        </div>
+                        <div className="mt-2 break-all text-sm text-zinc-200">
+                          {runId}
+                        </div>
+                      </div>
+
+                      <div className={miniCardClassName()}>
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Updated
+                        </div>
+                        <div className="mt-2 text-sm text-zinc-200">
+                          {formatDate(getEventDate(event))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <Link
+                        href={`/events/${encodeURIComponent(event.id)}`}
+                        className={actionLinkClassName("primary")}
                       >
-                        {eventStatus.toUpperCase()}
-                      </span>
+                        Ouvrir l’event
+                      </Link>
 
-                      <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                        {wasCommandCreated(event) ? "COMMAND CREATED" : "NO COMMAND"}
-                      </span>
-                    </div>
+                      {hasCommand ? (
+                        <Link
+                          href={`/commands/${encodeURIComponent(linkedCommand)}`}
+                          className={actionLinkClassName("soft")}
+                        >
+                          Voir command
+                        </Link>
+                      ) : null}
 
-                    <div className="break-all text-sm text-zinc-400">
-                      ID: <span className="text-zinc-300">{event.id}</span>
+                      {hasFlow ? (
+                        <Link
+                          href={`/flows/${encodeURIComponent(flowId)}`}
+                          className={actionLinkClassName("soft")}
+                        >
+                          Voir flow
+                        </Link>
+                      ) : null}
                     </div>
-                  </div>
-
-                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500 xl:min-w-[140px] xl:text-right">
-                    EVENT SIGNAL
-                  </div>
-                </div>
-
-                <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <div className={miniCardClassName()}>
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Workspace
-                    </div>
-                    <div className="mt-2 break-all text-sm text-zinc-200">
-                      {workspace}
-                    </div>
-                  </div>
-
-                  <div className={miniCardClassName()}>
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Capability
-                    </div>
-                    <div className="mt-2 break-all text-sm text-zinc-200">
-                      {capability}
-                    </div>
-                  </div>
-
-                  <div className={miniCardClassName()}>
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Flow
-                    </div>
-                    <div className="mt-2 break-all text-sm text-zinc-200">
-                      {flowId}
-                    </div>
-                  </div>
-
-                  <div className={miniCardClassName()}>
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Root event
-                    </div>
-                    <div className="mt-2 break-all text-sm text-zinc-200">
-                      {rootEventId}
-                    </div>
-                  </div>
-
-                  <div className={miniCardClassName()}>
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Linked command
-                    </div>
-                    <div className="mt-2 break-all text-sm text-zinc-200">
-                      {linkedCommand}
-                    </div>
-                  </div>
-
-                  <div className={miniCardClassName()}>
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Source
-                    </div>
-                    <div className="mt-2 break-all text-sm text-zinc-200">
-                      {source}
-                    </div>
-                  </div>
-
-                  <div className={miniCardClassName()}>
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Run
-                    </div>
-                    <div className="mt-2 break-all text-sm text-zinc-200">
-                      {runId}
-                    </div>
-                  </div>
-
-                  <div className={miniCardClassName()}>
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Updated
-                    </div>
-                    <div className="mt-2 text-sm text-zinc-200">
-                      {formatDate(getEventDate(event))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-5 flex flex-wrap gap-3">
-                  <Link
-                    href={`/events/${encodeURIComponent(event.id)}`}
-                    className={actionLinkClassName("primary")}
-                  >
-                    Ouvrir l’event
-                  </Link>
-
-                  {hasCommand ? (
-                    <Link
-                      href={`/commands/${encodeURIComponent(linkedCommand)}`}
-                      className={actionLinkClassName("soft")}
-                    >
-                      Voir command
-                    </Link>
-                  ) : null}
-
-                  {hasFlow ? (
-                    <Link
-                      href={`/flows/${encodeURIComponent(flowId)}`}
-                      className={actionLinkClassName("soft")}
-                    >
-                      Voir flow
-                    </Link>
-                  ) : null}
-                </div>
-              </article>
-            );
-          })
-        )}
-      </section>
+                  </article>
+                );
+              })
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }
