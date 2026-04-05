@@ -7,9 +7,13 @@ import {
 } from "@/lib/api";
 
 type PageProps = {
-  params: Promise<{
-    id: string;
-  }>;
+  params:
+    | Promise<{
+        id: string;
+      }>
+    | {
+        id: string;
+      };
 };
 
 function cardClassName() {
@@ -30,25 +34,13 @@ function actionLinkClassName(
   return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return "—";
-
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(d);
-}
-
-function toText(value: unknown, fallback = "—") {
+function toText(value: unknown, fallback = ""): string {
   if (value === null || value === undefined) return fallback;
   const text = String(value).trim();
   return text || fallback;
 }
 
-function toNumber(value: unknown, fallback = 0) {
+function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim() !== "") {
     const n = Number(value);
@@ -57,24 +49,47 @@ function toNumber(value: unknown, fallback = 0) {
   return fallback;
 }
 
+function firstText(values: unknown[], fallback = ""): string {
+  for (const value of values) {
+    const text = toText(value, "");
+    if (text) return text;
+  }
+  return fallback;
+}
+
+function formatDate(value?: string | number | null): string {
+  if (value === null || value === undefined || value === "") return "—";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return typeof value === "string" ? value : "—";
+  }
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(d);
+}
+
 function getIncidentTitle(incident: IncidentItem) {
-  return (
-    incident.title || incident.name || incident.error_id || "Untitled incident"
+  return firstText(
+    [incident.title, incident.name, incident.error_id],
+    "Untitled incident"
   );
 }
 
 function getIncidentStatusRaw(incident: IncidentItem) {
-  return (incident.status || incident.statut_incident || "").trim();
+  return firstText([incident.status, incident.statut_incident], "");
 }
 
 function getIncidentSeverityRaw(incident: IncidentItem) {
-  return (incident.severity || "").trim();
+  return firstText([incident.severity], "");
 }
 
 function getIncidentStatusNormalized(incident: IncidentItem) {
   const raw = getIncidentStatusRaw(incident).toLowerCase();
-  const sla = (incident.sla_status || "").trim().toLowerCase();
-  const hasResolvedAt = Boolean(incident.resolved_at);
+  const sla = toText(incident.sla_status, "").toLowerCase();
+  const hasResolvedAt = Boolean(toText(incident.resolved_at, ""));
 
   if (hasResolvedAt) {
     return "resolved";
@@ -85,12 +100,17 @@ function getIncidentStatusNormalized(incident: IncidentItem) {
     return "open";
   }
 
-  if (["open", "opened", "new", "active", "en cours"].includes(raw))
+  if (["open", "opened", "new", "active", "en cours"].includes(raw)) {
     return "open";
-  if (["escalated", "escalade", "escaladé"].includes(raw))
+  }
+
+  if (["escalated", "escalade", "escaladé"].includes(raw)) {
     return "escalated";
-  if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw))
+  }
+
+  if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw)) {
     return "resolved";
+  }
 
   return raw;
 }
@@ -110,8 +130,9 @@ function getIncidentSeverityNormalized(incident: IncidentItem) {
   const raw = getIncidentSeverityRaw(incident).toLowerCase();
 
   if (!raw) {
-    if ((incident.sla_status || "").toLowerCase() === "breached")
+    if (toText(incident.sla_status, "").toLowerCase() === "breached") {
       return "critical";
+    }
     return "unknown";
   }
 
@@ -215,20 +236,18 @@ function getDecisionTone(incident: IncidentItem) {
 
 function getSlaLabel(incident: IncidentItem) {
   const resolvedLike =
-    Boolean(incident.resolved_at) ||
+    Boolean(toText(incident.resolved_at, "")) ||
     getIncidentStatusNormalized(incident) === "resolved";
 
   if (resolvedLike) {
     return "RESOLVED";
   }
 
-  const sla = (incident.sla_status || "").trim();
+  const sla = toText(incident.sla_status, "");
   if (sla) return sla.toUpperCase();
 
-  if (
-    typeof incident.sla_remaining_minutes === "number" &&
-    incident.sla_remaining_minutes < 0
-  ) {
+  const remaining = toNumber(incident.sla_remaining_minutes, Number.NaN);
+  if (Number.isFinite(remaining) && remaining < 0) {
     return "BREACHED";
   }
 
@@ -237,14 +256,14 @@ function getSlaLabel(incident: IncidentItem) {
 
 function getSlaTone(incident: IncidentItem) {
   const resolvedLike =
-    Boolean(incident.resolved_at) ||
+    Boolean(toText(incident.resolved_at, "")) ||
     getIncidentStatusNormalized(incident) === "resolved";
 
   if (resolvedLike) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  const sla = (incident.sla_status || "").toLowerCase();
+  const sla = toText(incident.sla_status, "").toLowerCase();
 
   if (sla === "breached") {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
@@ -262,10 +281,8 @@ function getSlaTone(incident: IncidentItem) {
     return "bg-zinc-800 text-zinc-300 border border-zinc-700";
   }
 
-  if (
-    typeof incident.sla_remaining_minutes === "number" &&
-    incident.sla_remaining_minutes < 0
-  ) {
+  const remaining = toNumber(incident.sla_remaining_minutes, Number.NaN);
+  if (Number.isFinite(remaining) && remaining < 0) {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
   }
 
@@ -273,37 +290,42 @@ function getSlaTone(incident: IncidentItem) {
 }
 
 function getOpenedAt(incident: IncidentItem) {
-  return incident.opened_at || incident.created_at;
+  return firstText([incident.opened_at, incident.created_at], "");
 }
 
 function getUpdatedAt(incident: IncidentItem) {
-  return incident.updated_at || incident.created_at;
+  return firstText([incident.updated_at, incident.created_at], "");
 }
 
 function getResolvedAt(incident: IncidentItem) {
-  if (incident.resolved_at) {
-    return incident.resolved_at;
+  const resolvedAt = toText(incident.resolved_at, "");
+  if (resolvedAt) {
+    return resolvedAt;
   }
 
   if (getIncidentStatusNormalized(incident) === "resolved") {
-    return incident.updated_at || incident.created_at;
+    return firstText([incident.updated_at, incident.created_at], "");
   }
 
-  return undefined;
+  return "";
 }
 
 function getWorkspace(incident: IncidentItem) {
-  return incident.workspace_id || incident.workspace || "—";
+  return firstText([incident.workspace_id, incident.workspace], "—");
 }
 
 function getRunRecord(incident: IncidentItem) {
-  return (
-    incident.run_record_id || incident.linked_run || incident.run_id || "—"
+  return firstText(
+    [incident.run_record_id, incident.linked_run, incident.run_id],
+    "—"
   );
 }
 
 function getCommandRecord(incident: IncidentItem) {
-  return incident.command_id || incident.linked_command || "—";
+  return firstText(
+    [incident.command_id, incident.linked_command],
+    "—"
+  );
 }
 
 function getFlowId(incident: IncidentItem) {
@@ -315,18 +337,15 @@ function getRootEventId(incident: IncidentItem) {
 }
 
 function getSourceRecordId(incident: IncidentItem) {
-  return toText(
-    (incident as Record<string, unknown>).source_record_id,
-    ""
-  );
+  return toText((incident as Record<string, unknown>).source_record_id, "");
 }
 
 function getCategory(incident: IncidentItem) {
-  return incident.category || "—";
+  return firstText([incident.category], "—");
 }
 
 function getReason(incident: IncidentItem) {
-  return incident.reason || "—";
+  return firstText([incident.reason], "—");
 }
 
 function getSuggestedAction(incident: IncidentItem) {
@@ -338,19 +357,20 @@ function getSuggestedAction(incident: IncidentItem) {
 
   if (status === "escalated") return "Review escalated incident";
   if (severity === "critical") return "Prioritize immediate review";
-  if ((incident.sla_status || "").toLowerCase() === "breached")
+  if (toText(incident.sla_status, "").toLowerCase() === "breached") {
     return "Review SLA breach";
+  }
   if (status === "resolved") return "Verify final resolution state";
 
   return "Monitor flow and resolution";
 }
 
 function getResolutionNote(incident: IncidentItem) {
-  return toText(incident.resolution_note);
+  return toText(incident.resolution_note, "—");
 }
 
 function getLastAction(incident: IncidentItem) {
-  return toText(incident.last_action);
+  return toText(incident.last_action, "—");
 }
 
 function getSourceFlowHref(incident: IncidentItem) {
@@ -373,27 +393,23 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   const title = getIncidentTitle(incident).trim().toLowerCase();
   const category = getCategory(incident).trim().toLowerCase();
   const reason = getReason(incident).trim().toLowerCase();
-  const errorId = (incident.error_id || "").trim();
-  const resolutionNote = (incident.resolution_note || "").trim();
-  const lastAction = (incident.last_action || "").trim();
+  const errorId = toText(incident.error_id, "");
+  const resolutionNote = toText(incident.resolution_note, "");
+  const lastAction = toText(incident.last_action, "");
   const flowId = getFlowId(incident);
   const rootEventId = getRootEventId(incident);
-  const sourceRecordId = getSourceRecordId(incident);
   const commandRecord = getCommandRecord(incident);
   const runRecord = getRunRecord(incident);
 
   const isGenericTitle = title === "incident" || title === "untitled incident";
-
   const isGenericCategory =
     category === "" || category === "—" || category === "unknown_incident";
-
   const isGenericReason =
     reason === "" || reason === "—" || reason === "incident_create";
 
   const hasNoLinking =
     flowId === "" &&
     rootEventId === "" &&
-    sourceRecordId === "" &&
     (commandRecord === "" || commandRecord === "—") &&
     (runRecord === "" || runRecord === "—");
 
@@ -416,7 +432,8 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
 }
 
 export default async function IncidentDetailPage({ params }: PageProps) {
-  const { id } = await params;
+  const resolvedParams = await Promise.resolve(params);
+  const id = decodeURIComponent(resolvedParams.id);
 
   let data: IncidentsResponse | null = null;
 
@@ -429,10 +446,9 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const incidents: IncidentItem[] = Array.isArray(data?.incidents)
     ? data.incidents
     : [];
-  const cleanIncidents = incidents.filter(
-    (item) => !isLegacyNoiseIncident(item)
-  );
-  const incident = cleanIncidents.find((item) => item.id === id);
+
+  const cleanIncidents = incidents.filter((item) => !isLegacyNoiseIncident(item));
+  const incident = cleanIncidents.find((item) => String(item.id) === id);
 
   if (!incident) {
     notFound();
@@ -448,6 +464,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const commandRecord = getCommandRecord(incident);
   const runRecord = getRunRecord(incident);
   const rootEventId = getRootEventId(incident);
+  const sourceRecordId = getSourceRecordId(incident);
   const workspace = getWorkspace(incident);
   const category = getCategory(incident);
   const reason = getReason(incident);
@@ -455,7 +472,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const slaLabel = getSlaLabel(incident);
   const resolutionNote = getResolutionNote(incident);
   const lastAction = getLastAction(incident);
-  const errorId = toText(incident.error_id);
+  const errorId = toText(incident.error_id, "—");
   const decisionStatus = getDecisionStatus(incident);
   const decisionReason = getDecisionReason(incident);
   const nextAction = getNextAction(incident);
@@ -464,6 +481,8 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const sourceFlowHref = getSourceFlowHref(incident);
   const linkedFlowHref = getLinkedFlowHref(incident);
   const linkedCommandHref = getLinkedCommandHref(incident);
+
+  const remainingMinutes = toNumber(incident.sla_remaining_minutes, Number.NaN);
 
   return (
     <div className="space-y-6">
@@ -544,9 +563,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">SLA restant</div>
           <div className="mt-3 text-xl font-semibold text-white">
-            {typeof incident.sla_remaining_minutes === "number"
-              ? `${incident.sla_remaining_minutes} min`
-              : "—"}
+            {Number.isFinite(remainingMinutes) ? `${remainingMinutes} min` : "—"}
           </div>
         </div>
       </section>
@@ -568,37 +585,30 @@ export default async function IncidentDetailPage({ params }: PageProps) {
               Workspace: <span className="text-zinc-200">{workspace}</span>
             </div>
             <div>
-              Source:{" "}
-              <span className="text-zinc-200">{toText(incident.source)}</span>
+              Source: <span className="text-zinc-200">{toText(incident.source, "Incidents")}</span>
             </div>
             <div>
-              Worker:{" "}
-              <span className="text-zinc-200">{toText(incident.worker)}</span>
+              Worker: <span className="text-zinc-200">{toText(incident.worker, "—")}</span>
             </div>
             <div>
               Error ID: <span className="text-zinc-200">{errorId}</span>
             </div>
             <div>
-              Dernière action:{" "}
-              <span className="text-zinc-200">{lastAction}</span>
+              Dernière action: <span className="text-zinc-200">{lastAction}</span>
             </div>
             <div>
-              Note de résolution:{" "}
-              <span className="text-zinc-200">{resolutionNote}</span>
+              Note de résolution: <span className="text-zinc-200">{resolutionNote}</span>
             </div>
             <div>
               Statut décision:{" "}
-              <span className="text-purple-300">
-                {decisionStatus || "—"}
-              </span>
+              <span className="text-purple-300">{decisionStatus || "—"}</span>
             </div>
             <div>
               Raison décision:{" "}
               <span className="text-zinc-200">{decisionReason || "—"}</span>
             </div>
             <div>
-              Next action:{" "}
-              <span className="text-zinc-200">{nextAction || "—"}</span>
+              Next action: <span className="text-zinc-200">{nextAction || "—"}</span>
             </div>
             <div>
               Priorité: <span className="text-zinc-200">{priorityScore}</span>
@@ -638,7 +648,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
 
             <div className="flex items-center justify-between gap-4">
               <span className="text-zinc-400">Record ID</span>
-              <span className="break-all text-zinc-200">{incident.id}</span>
+              <span className="break-all text-zinc-200">{String(incident.id)}</span>
             </div>
           </div>
         </div>
@@ -666,13 +676,16 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             </div>
 
             <div className="break-all">
-              Root event:{" "}
-              <span className="text-zinc-200">{toText(rootEventId)}</span>
+              Root event: <span className="text-zinc-200">{rootEventId || "—"}</span>
             </div>
 
             <div className="break-all">
-              Run record:{" "}
-              <span className="text-zinc-200">{toText(runRecord)}</span>
+              Source record:{" "}
+              <span className="text-zinc-200">{sourceRecordId || "—"}</span>
+            </div>
+
+            <div className="break-all">
+              Run record: <span className="text-zinc-200">{runRecord}</span>
             </div>
 
             <div className="break-all">
@@ -692,7 +705,9 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">Navigation</div>
+          <div className="mb-4 text-lg font-medium text-white">
+            Navigation
+          </div>
 
           <div className="space-y-3">
             <Link href="/incidents" className={actionLinkClassName("soft")}>
@@ -716,10 +731,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             ) : null}
 
             {linkedCommandHref ? (
-              <Link
-                href={linkedCommandHref}
-                className={actionLinkClassName("soft")}
-              >
+              <Link href={linkedCommandHref} className={actionLinkClassName("soft")}>
                 Ouvrir la command liée
               </Link>
             ) : null}
