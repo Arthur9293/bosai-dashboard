@@ -92,6 +92,22 @@ function toText(value: unknown, fallback = ""): string {
   return text || fallback;
 }
 
+function decodeSafe(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function normalizeRouteValue(value: unknown): string {
+  return toText(decodeSafe(toText(value, "")), "");
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim() !== "") {
@@ -519,21 +535,42 @@ function readingModeLabel(
   return readingMode === "registry-only" ? "Registre uniquement" : "Enrichie";
 }
 
+function flowRouteCandidates(flow: FlowSummaryLike): string[] {
+  return uniqueStrings([
+    normalizeRouteValue(flow.key),
+    normalizeRouteValue(flow.flowId),
+    normalizeRouteValue(flow.rootEventId),
+    normalizeRouteValue(flow.sourceRecordId),
+  ]);
+}
+
+function timelineRouteCandidates(item: TimelineItem): string[] {
+  return uniqueStrings([
+    normalizeRouteValue(item.id),
+    normalizeRouteValue(item.flowId),
+    normalizeRouteValue(item.rootEventId),
+    normalizeRouteValue(item.parentCommandId),
+  ]);
+}
+
+function incidentRouteCandidates(incident: AnyRecord): string[] {
+  return uniqueStrings([
+    normalizeRouteValue(incident.id),
+    normalizeRouteValue(incident.flow_id),
+    normalizeRouteValue(incident.root_event_id),
+    normalizeRouteValue(incident.source_record_id),
+  ]);
+}
+
 export default async function FlowDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
-  const id = decodeURIComponent(resolvedParams.id);
+  const routeId = normalizeRouteValue(resolvedParams.id);
 
-  const api = await import("@/lib/api");
+  const api = (await import("@/lib/api")) as Record<string, unknown>;
 
-  const fetchCommands = (api as AnyRecord).fetchCommands as
-    | undefined
-    | (() => Promise<unknown>);
-  const fetchIncidents = (api as AnyRecord).fetchIncidents as
-    | undefined
-    | (() => Promise<unknown>);
-  const fetchFlows = (api as AnyRecord).fetchFlows as
-    | undefined
-    | (() => Promise<unknown>);
+  const fetchCommands = api.fetchCommands as undefined | (() => Promise<unknown>);
+  const fetchIncidents = api.fetchIncidents as undefined | (() => Promise<unknown>);
+  const fetchFlows = api.fetchFlows as undefined | (() => Promise<unknown>);
 
   let commandsData: unknown = null;
   let incidentsData: unknown = null;
@@ -573,19 +610,19 @@ export default async function FlowDetailPage({ params }: PageProps) {
       : null;
 
   const rawCommands: AnyRecord[] = Array.isArray(commandsContainer?.commands)
-    ? (commandsContainer?.commands as AnyRecord[])
+    ? (commandsContainer.commands as AnyRecord[])
     : Array.isArray(commandsData)
       ? (commandsData as AnyRecord[])
       : [];
 
   const rawIncidents: AnyRecord[] = Array.isArray(incidentsContainer?.incidents)
-    ? (incidentsContainer?.incidents as AnyRecord[])
+    ? (incidentsContainer.incidents as AnyRecord[])
     : Array.isArray(incidentsData)
       ? (incidentsData as AnyRecord[])
       : [];
 
   const rawFlows: AnyRecord[] = Array.isArray(flowsContainer?.flows)
-    ? (flowsContainer?.flows as AnyRecord[])
+    ? (flowsContainer.flows as AnyRecord[])
     : Array.isArray(flowsData)
       ? (flowsData as AnyRecord[])
       : [];
@@ -595,34 +632,45 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const timelineBase = rawCommands.map(normalizeTimelineItem);
 
   const flowSummary =
-    normalizedFlows.find(
-      (flow) =>
-        flow.key === id ||
-        flow.flowId === id ||
-        flow.rootEventId === id ||
-        flow.sourceRecordId === id
-    ) || null;
+    normalizedFlows.find((flow) => flowRouteCandidates(flow).includes(routeId)) ||
+    null;
+
+  const routeMatchedTimeline = timelineBase.filter((item) =>
+    timelineRouteCandidates(item).includes(routeId)
+  );
+
+  const routeMatchedIncidents = normalizedIncidents.filter((incident) =>
+    incidentRouteCandidates(incident).includes(routeId)
+  );
 
   const effectiveFlowId =
-    flowSummary?.flowId ||
-    timelineBase.find((item) => item.flowId === id)?.flowId ||
-    "";
+    toText(flowSummary?.flowId, "") ||
+    toText(routeMatchedTimeline[0]?.flowId, "") ||
+    toText(routeMatchedIncidents[0]?.flow_id, "");
 
   const effectiveRootEventId =
-    flowSummary?.rootEventId ||
-    timelineBase.find((item) => item.rootEventId === id)?.rootEventId ||
-    "";
+    toText(flowSummary?.rootEventId, "") ||
+    toText(routeMatchedTimeline[0]?.rootEventId, "") ||
+    toText(routeMatchedIncidents[0]?.root_event_id, "");
 
-  const effectiveSourceRecordId = flowSummary?.sourceRecordId || "";
+  const effectiveSourceRecordId =
+    toText(flowSummary?.sourceRecordId, "") ||
+    toText(routeMatchedIncidents[0]?.source_record_id, "");
 
   const matchedTimeline = sortTimeline(
     timelineBase.filter((item) => {
-      if (effectiveFlowId && item.flowId === effectiveFlowId) return true;
-      if (effectiveRootEventId && item.rootEventId === effectiveRootEventId) {
+      const itemCandidates = timelineRouteCandidates(item);
+
+      if (itemCandidates.includes(routeId)) return true;
+      if (effectiveFlowId && normalizeRouteValue(item.flowId) === normalizeRouteValue(effectiveFlowId)) {
         return true;
       }
-      if (item.flowId === id) return true;
-      if (item.rootEventId === id) return true;
+      if (
+        effectiveRootEventId &&
+        normalizeRouteValue(item.rootEventId) === normalizeRouteValue(effectiveRootEventId)
+      ) {
+        return true;
+      }
       return false;
     })
   ).map((item, index, arr) => ({
@@ -632,24 +680,31 @@ export default async function FlowDetailPage({ params }: PageProps) {
   }));
 
   const matchedIncidents = normalizedIncidents.filter((incident) => {
-    if (effectiveFlowId && toText(incident.flow_id, "") === effectiveFlowId) {
+    const candidates = incidentRouteCandidates(incident);
+
+    if (candidates.includes(routeId)) return true;
+
+    if (
+      effectiveFlowId &&
+      normalizeRouteValue(incident.flow_id) === normalizeRouteValue(effectiveFlowId)
+    ) {
       return true;
     }
+
     if (
       effectiveRootEventId &&
-      toText(incident.root_event_id, "") === effectiveRootEventId
+      normalizeRouteValue(incident.root_event_id) === normalizeRouteValue(effectiveRootEventId)
     ) {
       return true;
     }
+
     if (
       effectiveSourceRecordId &&
-      toText(incident.source_record_id, "") === effectiveSourceRecordId
+      normalizeRouteValue(incident.source_record_id) === normalizeRouteValue(effectiveSourceRecordId)
     ) {
       return true;
     }
-    if (toText(incident.flow_id, "") === id) return true;
-    if (toText(incident.root_event_id, "") === id) return true;
-    if (toText(incident.source_record_id, "") === id) return true;
+
     return false;
   });
 
@@ -657,15 +712,14 @@ export default async function FlowDetailPage({ params }: PageProps) {
     flowSummary?.flowId ||
       matchedTimeline[0]?.flowId ||
       effectiveFlowId ||
-      (id.startsWith("flow_") ? id : id),
+      routeId,
     "—"
   );
 
   const rootEventId = toText(
     flowSummary?.rootEventId ||
       matchedTimeline[0]?.rootEventId ||
-      effectiveRootEventId ||
-      "",
+      effectiveRootEventId,
     ""
   );
 
@@ -678,7 +732,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
   );
 
   const sourceRecordId = toText(
-    flowSummary?.sourceRecordId || effectiveSourceRecordId || "",
+    flowSummary?.sourceRecordId || effectiveSourceRecordId,
     ""
   );
 
@@ -697,9 +751,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
       : incidentCount > 0;
 
   const rootCapability = toText(
-    flowSummary?.rootCapability ||
-      matchedTimeline[0]?.capability ||
-      "Non disponible",
+    flowSummary?.rootCapability || matchedTimeline[0]?.capability || "Non disponible",
     "Non disponible"
   );
 
@@ -725,7 +777,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
     "unknown"
   );
 
-  const title = toText(flowSummary?.flowId || matchedTimeline[0]?.flowId || id, id);
+  const title = toText(flowSummary?.flowId || matchedTimeline[0]?.flowId || routeId, routeId);
 
   const displayedSteps =
     flowSummary?.steps && flowSummary.steps > 0
@@ -746,8 +798,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   const graphCommands: GraphCommand[] = matchedTimeline.map((item) => ({
     id: item.id,
-    capability: item.capability,
-    status: item.status,
+    capability: item.capability || undefined,
+    status: item.status || undefined,
     parent_command_id: item.parentCommandId || undefined,
     flow_id: item.flowId || undefined,
   }));
