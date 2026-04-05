@@ -43,7 +43,60 @@ function text(value: unknown): string {
     const v = value.trim();
     return v || "";
   }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value).trim();
+  }
+
   return "";
+}
+
+function uniqueTexts(values: string[]): string[] {
+  return Array.from(new Set(values.map((v) => text(v)).filter(Boolean)));
+}
+
+function flattenTextValues(value: unknown): string[] {
+  if (value === null || value === undefined) return [];
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    const clean = text(value);
+    return clean ? [clean] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return uniqueTexts(value.flatMap((item) => flattenTextValues(item)));
+  }
+
+  if (typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+
+    return uniqueTexts([
+      ...flattenTextValues(rec.id),
+      ...flattenTextValues(rec.recordId),
+      ...flattenTextValues(rec.record_id),
+      ...flattenTextValues(rec.value),
+      ...flattenTextValues(rec.name),
+      ...flattenTextValues(rec.text),
+      ...flattenTextValues(rec.label),
+    ]);
+  }
+
+  return [];
+}
+
+function recordTexts(obj: unknown, keys: string[]): string[] {
+  const rec =
+    obj && typeof obj === "object" ? (obj as Record<string, unknown>) : {};
+
+  return uniqueTexts(keys.flatMap((key) => flattenTextValues(rec[key])));
+}
+
+function recordText(obj: unknown, keys: string[]): string {
+  return recordTexts(obj, keys)[0] || "";
 }
 
 function toTs(value?: string | number | null): number {
@@ -65,6 +118,15 @@ function getCommandStartTs(cmd: CommandItem): number {
   return Math.max(
     toTs(cmd.started_at as string | number | null | undefined),
     toTs(cmd.created_at as string | number | null | undefined)
+  );
+}
+
+function getIncidentActivityTs(incident: IncidentItem): number {
+  return Math.max(
+    toTs(incident.resolved_at as string | number | null | undefined),
+    toTs(incident.updated_at as string | number | null | undefined),
+    toTs(incident.opened_at as string | number | null | undefined),
+    toTs(incident.created_at as string | number | null | undefined)
   );
 }
 
@@ -92,6 +154,54 @@ function computeFlowStatus(commands: CommandItem[]): FlowStatus {
     kinds.length > 0 &&
     kinds.every((kind) => kind === "done" || kind === "other")
   ) {
+    return "success";
+  }
+
+  return "unknown";
+}
+
+function getIncidentStatusKind(
+  incident: IncidentItem
+): "success" | "failed" | "retry" | "unknown" {
+  const status = text(incident.status).toLowerCase();
+  const slaStatus = text(incident.sla_status).toLowerCase();
+
+  if (
+    ["resolved", "closed", "done", "ok"].includes(status) ||
+    ["resolved"].includes(slaStatus)
+  ) {
+    return "success";
+  }
+
+  if (status === "retry") {
+    return "retry";
+  }
+
+  if (
+    [
+      "open",
+      "opened",
+      "new",
+      "active",
+      "escalated",
+      "escalade",
+      "escaladé",
+      "warning",
+    ].includes(status) ||
+    ["open", "warning", "breached", "escalated"].includes(slaStatus)
+  ) {
+    return "failed";
+  }
+
+  return "unknown";
+}
+
+function computeIncidentOnlyStatus(group: IncidentItem[]): FlowStatus {
+  const kinds = group.map(getIncidentStatusKind);
+
+  if (kinds.includes("failed")) return "failed";
+  if (kinds.includes("retry")) return "retry";
+  if (kinds.length > 0 && kinds.every((kind) => kind === "success")) {
     return "success";
   }
 
@@ -204,6 +314,16 @@ function getFlowGroupKey(cmd: CommandItem): string {
   return "";
 }
 
+function getIncidentGroupKey(incident: IncidentItem): string {
+  const flowId = text(incident.flow_id);
+  if (flowId) return `incident-flow:${flowId}`;
+
+  const rootEventId = text(incident.root_event_id);
+  if (rootEventId) return `incident-root:${rootEventId}`;
+
+  return "";
+}
+
 type IncidentMatchInput = {
   flowId?: string;
   rootEventId?: string;
@@ -211,36 +331,34 @@ type IncidentMatchInput = {
   commands?: CommandItem[];
 };
 
-function recordText(obj: unknown, keys: string[]): string {
-  const rec =
-    obj && typeof obj === "object" ? (obj as Record<string, unknown>) : {};
-
-  for (const key of keys) {
-    const clean = text(rec[key]);
-    if (clean) return clean;
-  }
-
-  return "";
-}
-
-function uniqueTexts(values: string[]): string[] {
-  return Array.from(new Set(values.map((v) => text(v)).filter(Boolean)));
-}
-
 function getCommandIncidentKeys(cmd: CommandItem): string[] {
+  const inputObj =
+    cmd.input && typeof cmd.input === "object"
+      ? (cmd.input as Record<string, unknown>)
+      : {};
+  const resultObj =
+    cmd.result && typeof cmd.result === "object"
+      ? (cmd.result as Record<string, unknown>)
+      : {};
+
   return uniqueTexts([
     String(cmd.id ?? ""),
     text(cmd.flow_id),
     text(cmd.root_event_id),
-    recordText(cmd, [
+
+    ...recordTexts(cmd, [
       "linked_command",
       "linkedCommand",
+      "linked_command_id",
+      "linkedCommandId",
       "command_id",
       "commandId",
       "Command_ID",
       "Linked_Command",
+      "Linked_Command_ID",
     ]),
-    recordText(cmd, [
+
+    ...recordTexts(cmd, [
       "linked_run",
       "linkedRun",
       "run_record_id",
@@ -248,29 +366,153 @@ function getCommandIncidentKeys(cmd: CommandItem): string[] {
       "run_id",
       "runId",
       "Run_Record_ID",
+      "Run_ID",
       "Linked_Run",
+    ]),
+
+    ...recordTexts(inputObj, [
+      "linked_command",
+      "linkedCommand",
+      "linked_command_id",
+      "linkedCommandId",
+      "command_id",
+      "commandId",
+      "Command_ID",
+      "Linked_Command",
+      "Linked_Command_ID",
+      "linked_run",
+      "linkedRun",
+      "run_record_id",
+      "runRecordId",
+      "run_id",
+      "runId",
+      "Run_Record_ID",
+      "Run_ID",
+      "Linked_Run",
+      "flow_id",
+      "flowId",
+      "Flow_ID",
+      "root_event_id",
+      "rootEventId",
+      "Root_Event_ID",
+    ]),
+
+    ...recordTexts(resultObj, [
+      "linked_command",
+      "linkedCommand",
+      "linked_command_id",
+      "linkedCommandId",
+      "command_id",
+      "commandId",
+      "Command_ID",
+      "Linked_Command",
+      "Linked_Command_ID",
+      "linked_run",
+      "linkedRun",
+      "run_record_id",
+      "runRecordId",
+      "run_id",
+      "runId",
+      "Run_Record_ID",
+      "Run_ID",
+      "Linked_Run",
+      "flow_id",
+      "flowId",
+      "Flow_ID",
+      "root_event_id",
+      "rootEventId",
+      "Root_Event_ID",
     ]),
   ]);
 }
 
 function getIncidentCandidates(incident: IncidentItem): string[] {
-  const fields = (
-    (incident as Record<string, unknown>).fields ?? {}
-  ) as Record<string, unknown>;
+  const fields =
+    incident && typeof incident === "object"
+      ? (((incident as Record<string, unknown>).fields ?? {}) as Record<
+          string,
+          unknown
+        >)
+      : {};
 
-  const pick = (...keys: string[]) =>
-    uniqueTexts([recordText(incident, keys), recordText(fields, keys)]);
+  const topLevel = (keys: string[]) => recordTexts(incident, keys);
+  const nestedFields = (keys: string[]) => recordTexts(fields, keys);
 
   return uniqueTexts([
-    ...pick("id"),
-    ...pick("flow_id", "flowId", "Flow_ID"),
-    ...pick("root_event_id", "rootEventId", "Root_Event_ID"),
-    ...pick("linked_command", "linkedCommand", "Linked_Command"),
-    ...pick("command_id", "commandId", "Command_ID"),
-    ...pick("linked_run", "linkedRun", "Linked_Run"),
-    ...pick("run_record_id", "runRecordId", "Run_Record_ID"),
-    ...pick("run_id", "runId", "Run_ID"),
-    ...pick("name", "Name"),
+    ...topLevel(["id"]),
+    ...topLevel(["title", "Title", "name", "Name"]),
+
+    ...topLevel(["flow_id", "flowId", "Flow_ID"]),
+    ...nestedFields(["flow_id", "flowId", "Flow_ID"]),
+
+    ...topLevel(["root_event_id", "rootEventId", "Root_Event_ID"]),
+    ...nestedFields(["root_event_id", "rootEventId", "Root_Event_ID"]),
+
+    ...topLevel([
+      "linked_command",
+      "linkedCommand",
+      "linked_command_id",
+      "linkedCommandId",
+      "Linked_Command",
+      "Linked_Command_ID",
+      "command_id",
+      "commandId",
+      "Command_ID",
+    ]),
+    ...nestedFields([
+      "linked_command",
+      "linkedCommand",
+      "linked_command_id",
+      "linkedCommandId",
+      "Linked_Command",
+      "Linked_Command_ID",
+      "command_id",
+      "commandId",
+      "Command_ID",
+    ]),
+
+    ...topLevel([
+      "linked_run",
+      "linkedRun",
+      "run_record_id",
+      "runRecordId",
+      "run_id",
+      "runId",
+      "Linked_Run",
+      "Run_Record_ID",
+      "Run_ID",
+    ]),
+    ...nestedFields([
+      "linked_run",
+      "linkedRun",
+      "run_record_id",
+      "runRecordId",
+      "run_id",
+      "runId",
+      "Linked_Run",
+      "Run_Record_ID",
+      "Run_ID",
+    ]),
+
+    ...topLevel([
+      "incident_record_id",
+      "incidentRecordId",
+      "Incident_Record_ID",
+      "incident_record",
+      "incidentRecord",
+      "Incident_Record",
+    ]),
+    ...nestedFields([
+      "incident_record_id",
+      "incidentRecordId",
+      "Incident_Record_ID",
+      "incident_record",
+      "incidentRecord",
+      "Incident_Record",
+    ]),
+
+    ...topLevel(["error_id", "errorId", "Error_ID"]),
+    ...nestedFields(["error_id", "errorId", "Error_ID"]),
   ]);
 }
 
@@ -442,6 +684,87 @@ function buildRegistryOnlyFlowSummaries(
   return summaries;
 }
 
+function buildIncidentOnlyFlowSummaries(
+  incidents: IncidentItem[],
+  existingFlows: FlowSummary[]
+): FlowSummary[] {
+  const existingCandidates = new Set<string>();
+
+  for (const flow of existingFlows) {
+    [flow.flowId, flow.rootEventId, flow.sourceRecordId, flow.key]
+      .filter(Boolean)
+      .forEach((value) => existingCandidates.add(String(value)));
+  }
+
+  const groups = new Map<string, IncidentItem[]>();
+
+  for (const incident of incidents) {
+    const flowId = text(incident.flow_id);
+    const rootEventId = text(incident.root_event_id);
+
+    if (!flowId && !rootEventId) {
+      continue;
+    }
+
+    const shouldSkip = [flowId, rootEventId, String(incident.id || "")]
+      .filter(Boolean)
+      .some((value) => existingCandidates.has(String(value)));
+
+    if (shouldSkip) {
+      continue;
+    }
+
+    const key = getIncidentGroupKey(incident);
+    if (!key) continue;
+
+    const bucket = groups.get(key) ?? [];
+    bucket.push(incident);
+    groups.set(key, bucket);
+  }
+
+  const summaries: FlowSummary[] = [];
+
+  for (const [key, group] of groups.entries()) {
+    const latest =
+      [...group].sort(
+        (a, b) => getIncidentActivityTs(b) - getIncidentActivityTs(a)
+      )[0] ?? null;
+
+    if (!latest) continue;
+
+    const flowId =
+      text(latest.flow_id) ||
+      text(latest.root_event_id) ||
+      `incident-${String(latest.id || "")}`;
+
+    const rootEventId = text(latest.root_event_id) || flowId;
+    const workspaceId = text(latest.workspace_id) || "production";
+    const lastActivityTs = Math.max(...group.map(getIncidentActivityTs), 0);
+
+    summaries.push({
+      key,
+      flowId,
+      rootEventId,
+      workspaceId,
+      status: computeIncidentOnlyStatus(group),
+      steps: 0,
+      rootCapability: "Incident",
+      terminalCapability: "Incident",
+      durationMs: 0,
+      lastActivityTs,
+      hasIncident: true,
+      incidentCount: group.length,
+      firstIncidentId: String(latest.id || ""),
+      commands: [],
+      readingMode: "registry-only",
+      sourceRecordId: String(latest.id || rootEventId || flowId),
+      isPartial: true,
+    });
+  }
+
+  return summaries;
+}
+
 function buildAllFlowSummaries(
   commands: CommandItem[],
   registryFlows: FlowDetail[],
@@ -453,8 +776,12 @@ function buildAllFlowSummaries(
     enriched,
     incidents
   );
+  const incidentOnly = buildIncidentOnlyFlowSummaries(incidents, [
+    ...enriched,
+    ...registryOnly,
+  ]);
 
-  return [...enriched, ...registryOnly].sort((a, b) => {
+  return [...enriched, ...registryOnly, ...incidentOnly].sort((a, b) => {
     const priorityDiff =
       getFlowStatusPriority(a.status) - getFlowStatusPriority(b.status);
     if (priorityDiff !== 0) return priorityDiff;
