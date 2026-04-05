@@ -113,6 +113,39 @@ function safeDetailId(flow: FlowSummary): string {
   return encodeURIComponent(detailId);
 }
 
+function hasLinkedIncidents(flow: FlowSummary): boolean {
+  return (
+    Boolean(flow.hasIncident) ||
+    (typeof flow.incidentCount === "number" && flow.incidentCount > 0) ||
+    Boolean(flow.firstIncidentId)
+  );
+}
+
+function incidentsHref(flow: FlowSummary): string {
+  const params = new URLSearchParams();
+
+  if (flow.flowId) {
+    params.set("flow_id", flow.flowId);
+  }
+
+  if (flow.rootEventId && flow.rootEventId !== "—") {
+    params.set("root_event_id", flow.rootEventId);
+  }
+
+  if (flow.sourceRecordId) {
+    params.set("source_record_id", flow.sourceRecordId);
+  }
+
+  params.set("from", "flows");
+
+  const query = params.toString();
+  return query ? `/incidents?${query}` : "/incidents";
+}
+
+function incidentsCtaLabel(flow: FlowSummary): string {
+  return flow.incidentCount > 1 ? "Voir les incidents" : "Voir l’incident";
+}
+
 function statCard(label: string, value: string | number) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -318,8 +351,8 @@ export default function FlowsClient({
         : status === "failed"
         ? firstFailed
         : status === "retry"
-        ? firstRetry
-        : safeFlows.find((flow) => flow.status === status) || null;
+          ? firstRetry
+          : safeFlows.find((flow) => flow.status === status) || null;
 
     setFilter(status);
     setSearch("");
@@ -413,7 +446,7 @@ export default function FlowsClient({
                     onClick={() => focusFirst("running")}
                     className="inline-flex w-full justify-center rounded-full border border-sky-500/30 bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-200 transition hover:bg-sky-500/20 sm:w-auto"
                   >
-                    Ouvrir le premier en cours
+                    Ouvrir le premier running
                   </button>
                 </div>
               </div>
@@ -450,6 +483,15 @@ export default function FlowsClient({
                   >
                     Ouvrir le premier en échec
                   </button>
+
+                  {hasLinkedIncidents(firstFailed) ? (
+                    <Link
+                      href={incidentsHref(firstFailed)}
+                      className="inline-flex w-full justify-center rounded-full border border-rose-500/20 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 sm:w-auto"
+                    >
+                      {incidentsCtaLabel(firstFailed)}
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -614,6 +656,15 @@ export default function FlowsClient({
             >
               {incidentLabel(selectedFlow)}
             </span>
+
+            {hasLinkedIncidents(selectedFlow) ? (
+              <Link
+                href={incidentsHref(selectedFlow)}
+                className="inline-flex rounded-full border border-rose-500/20 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-200 transition hover:bg-rose-500/15"
+              >
+                {incidentsCtaLabel(selectedFlow)}
+              </Link>
+            ) : null}
           </div>
 
           {selectedFlow.readingMode === "registry-only" ? (
@@ -820,6 +871,15 @@ export default function FlowsClient({
                         {selected ? "Flow actif" : "Sélectionner"}
                       </button>
 
+                      {hasLinkedIncidents(flow) ? (
+                        <Link
+                          href={incidentsHref(flow)}
+                          className="inline-flex w-full justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15 sm:w-auto"
+                        >
+                          {incidentsCtaLabel(flow)}
+                        </Link>
+                      ) : null}
+
                       <Link
                         href={`/flows/${safeDetailId(flow)}`}
                         className="inline-flex w-full justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 sm:w-auto"
@@ -934,6 +994,15 @@ export default function FlowsClient({
                       >
                         {selected ? "Flow actif" : "Sélectionner"}
                       </button>
+
+                      {hasLinkedIncidents(flow) ? (
+                        <Link
+                          href={incidentsHref(flow)}
+                          className="inline-flex w-full justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15 sm:w-auto"
+                        >
+                          {incidentsCtaLabel(flow)}
+                        </Link>
+                      ) : null}
 
                       <Link
                         href={`/flows/${safeDetailId(flow)}`}
