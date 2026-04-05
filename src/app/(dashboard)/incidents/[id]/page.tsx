@@ -10,21 +10,24 @@ type PageProps = {
   params: Promise<{
     id: string;
   }>;
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
-
-type ResolvedSearchParams = Record<string, string | string[] | undefined>;
 
 function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
-function navButtonClass(variant: "default" | "primary" = "default") {
+function actionLinkClassName(
+  variant: "default" | "primary" | "soft" = "default"
+) {
   if (variant === "primary") {
-    return "inline-flex w-full justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
-  return "inline-flex w-full justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
+  if (variant === "soft") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
+  }
+
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
 }
 
 function formatDate(value?: string | null) {
@@ -47,41 +50,36 @@ function toText(value: unknown, fallback = "—") {
 
 function toNumber(value: unknown, fallback = 0) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim() !== "") {
-    const n = Number(value);
-    if (Number.isFinite(n)) return n;
-  }
-  return fallback;
-}
 
-function queryValue(
-  searchParams: ResolvedSearchParams | undefined,
-  key: string
-): string {
-  const raw = searchParams?.[key];
-  if (Array.isArray(raw)) {
-    return (raw[0] || "").trim();
-  }
-  return (raw || "").trim();
-}
-
-function buildHref(
-  pathname: string,
-  params?: Record<string, string | undefined>
-): string {
-  if (!params) return pathname;
-
-  const qs = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(params)) {
-    const clean = (value || "").trim();
-    if (clean) {
-      qs.set(key, clean);
+  if (typeof value === "string") {
+    const clean = value.trim();
+    if (clean !== "") {
+      const n = Number(clean);
+      if (Number.isFinite(n)) return n;
     }
   }
 
-  const query = qs.toString();
-  return query ? `${pathname}?${query}` : pathname;
+  return fallback;
+}
+
+function getSlaRemainingLabel(incident: IncidentItem) {
+  const rawValue: unknown = incident.sla_remaining_minutes;
+
+  if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+    return `${rawValue} min`;
+  }
+
+  if (typeof rawValue === "string") {
+    const clean = rawValue.trim();
+    if (clean !== "") {
+      const n = Number(clean);
+      if (Number.isFinite(n)) {
+        return `${n} min`;
+      }
+    }
+  }
+
+  return "—";
 }
 
 function getIncidentTitle(incident: IncidentItem) {
@@ -380,21 +378,20 @@ function getLastAction(incident: IncidentItem) {
   return toText(incident.last_action);
 }
 
-function getSlaRemainingLabel(incident: IncidentItem) {
-  const value = incident.sla_remaining_minutes;
+function getSourceFlowHref(incident: IncidentItem) {
+  const sourceTarget = getRootEventId(incident) || getFlowId(incident);
+  return sourceTarget ? `/flows/${encodeURIComponent(sourceTarget)}` : "";
+}
 
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return `${value} min`;
-  }
+function getLinkedFlowHref(incident: IncidentItem) {
+  const flowId = getFlowId(incident);
+  return flowId ? `/flows/${encodeURIComponent(flowId)}` : "";
+}
 
-  if (typeof value === "string" && value.trim() !== "") {
-    const n = Number(value);
-    if (Number.isFinite(n)) {
-      return `${n} min`;
-    }
-  }
-
-  return "—";
+function getLinkedCommandHref(incident: IncidentItem) {
+  const commandRecord = getCommandRecord(incident);
+  if (!commandRecord || commandRecord === "—") return "";
+  return `/commands/${encodeURIComponent(commandRecord)}`;
 }
 
 function isLegacyNoiseIncident(incident: IncidentItem) {
@@ -441,87 +438,8 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   );
 }
 
-function buildFilteredIncidentsHref(
-  incident: IncidentItem,
-  searchParams: ResolvedSearchParams | undefined
-) {
-  const from = queryValue(searchParams, "from");
-  const flowId = queryValue(searchParams, "flow_id") || getFlowId(incident);
-  const rootEventId =
-    queryValue(searchParams, "root_event_id") || getRootEventId(incident);
-  const sourceRecordId = queryValue(searchParams, "source_record_id");
-
-  if (from === "flows") {
-    return buildHref("/incidents", {
-      from: "flows",
-      flow_id: flowId,
-      root_event_id: rootEventId,
-      source_record_id: sourceRecordId,
-    });
-  }
-
-  return "/incidents";
-}
-
-function buildFlowSourceHref(
-  incident: IncidentItem,
-  searchParams: ResolvedSearchParams | undefined
-) {
-  const routeId =
-    queryValue(searchParams, "source_record_id") ||
-    queryValue(searchParams, "flow_id") ||
-    queryValue(searchParams, "root_event_id") ||
-    getFlowId(incident) ||
-    getRootEventId(incident);
-
-  if (!routeId) return "";
-
-  return `/flows/${encodeURIComponent(routeId)}`;
-}
-
-function buildLinkedFlowHref(
-  incident: IncidentItem,
-  searchParams: ResolvedSearchParams | undefined
-) {
-  const routeId =
-    getFlowId(incident) ||
-    queryValue(searchParams, "flow_id") ||
-    getRootEventId(incident) ||
-    queryValue(searchParams, "root_event_id") ||
-    queryValue(searchParams, "source_record_id");
-
-  if (!routeId) return "";
-
-  return `/flows/${encodeURIComponent(routeId)}`;
-}
-
-function buildCommandSourceHref(
-  incident: IncidentItem,
-  searchParams: ResolvedSearchParams | undefined
-) {
-  const commandId =
-    queryValue(searchParams, "command_id") ||
-    (getCommandRecord(incident) !== "—" ? getCommandRecord(incident) : "");
-
-  if (!commandId) return "";
-
-  return buildHref(`/commands/${encodeURIComponent(commandId)}`, {
-    from: "incidents",
-    incident_id: String(incident.id),
-    flow_id: getFlowId(incident) || queryValue(searchParams, "flow_id"),
-    root_event_id:
-      getRootEventId(incident) || queryValue(searchParams, "root_event_id"),
-  });
-}
-
-export default async function IncidentDetailPage({
-  params,
-  searchParams,
-}: PageProps) {
+export default async function IncidentDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const resolvedSearchParams = searchParams
-    ? await searchParams
-    : ({} as ResolvedSearchParams);
 
   let data: IncidentsResponse | null = null;
 
@@ -535,7 +453,10 @@ export default async function IncidentDetailPage({
     ? data.incidents
     : [];
 
-  const cleanIncidents = incidents.filter((item) => !isLegacyNoiseIncident(item));
+  const cleanIncidents = incidents.filter(
+    (item) => !isLegacyNoiseIncident(item)
+  );
+
   const incident = cleanIncidents.find((item) => item.id === id);
 
   if (!incident) {
@@ -565,30 +486,16 @@ export default async function IncidentDetailPage({
   const nextAction = getNextAction(incident);
   const priorityScore = getPriorityScore(incident);
 
-  const from = queryValue(resolvedSearchParams, "from");
-  const filteredIncidentsHref = buildFilteredIncidentsHref(
-    incident,
-    resolvedSearchParams
-  );
-  const allIncidentsHref = "/incidents";
-  const flowSourceHref = buildFlowSourceHref(incident, resolvedSearchParams);
-  const linkedFlowHref = buildLinkedFlowHref(incident, resolvedSearchParams);
-  const commandSourceHref = buildCommandSourceHref(
-    incident,
-    resolvedSearchParams
-  );
-
-  const showAllIncidentsButton = filteredIncidentsHref !== allIncidentsHref || from;
-  const showReturnToFlowSource = from === "flows" && Boolean(flowSourceHref);
-  const showReturnToCommandSource =
-    from === "commands" && Boolean(commandSourceHref);
+  const sourceFlowHref = getSourceFlowHref(incident);
+  const linkedFlowHref = getLinkedFlowHref(incident);
+  const linkedCommandHref = getLinkedCommandHref(incident);
 
   return (
     <div className="space-y-6">
       <div className="border-b border-white/10 pb-4">
         <div className="text-sm text-zinc-400">
           <Link
-            href={filteredIncidentsHref}
+            href="/incidents"
             className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
           >
             Incidents
@@ -695,8 +602,7 @@ export default async function IncidentDetailPage({
               Error ID: <span className="text-zinc-200">{errorId}</span>
             </div>
             <div>
-              Dernière action:{" "}
-              <span className="text-zinc-200">{lastAction}</span>
+              Dernière action: <span className="text-zinc-200">{lastAction}</span>
             </div>
             <div>
               Note de résolution:{" "}
@@ -767,12 +673,12 @@ export default async function IncidentDetailPage({
           <div className="space-y-4 text-sm text-zinc-400">
             <div className="break-all">
               Flow:{" "}
-              {linkedFlowHref ? (
+              {flowId ? (
                 <Link
-                  href={linkedFlowHref}
+                  href={`/flows/${encodeURIComponent(flowId)}`}
                   className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
                 >
-                  {flowId || queryValue(resolvedSearchParams, "flow_id") || "—"}
+                  {flowId}
                 </Link>
               ) : (
                 <span className="text-zinc-200">—</span>
@@ -791,9 +697,9 @@ export default async function IncidentDetailPage({
 
             <div className="break-all">
               Command:{" "}
-              {commandRecord !== "—" && commandRecord ? (
+              {linkedCommandHref ? (
                 <Link
-                  href={`/commands/${encodeURIComponent(commandRecord)}`}
+                  href={linkedCommandHref}
                   className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
                 >
                   {commandRecord}
@@ -808,32 +714,39 @@ export default async function IncidentDetailPage({
         <div className={cardClassName()}>
           <div className="mb-4 text-lg font-medium text-white">Navigation</div>
 
-          <div className="space-y-3 text-sm">
-            <Link href={filteredIncidentsHref} className={navButtonClass()}>
+          <div className="space-y-3">
+            <Link href="/incidents" className={actionLinkClassName("soft")}>
               Retour à la liste incidents
             </Link>
 
-            {showAllIncidentsButton ? (
-              <Link href={allIncidentsHref} className={navButtonClass("primary")}>
-                Voir tous les incidents
-              </Link>
-            ) : null}
+            <Link href="/incidents" className={actionLinkClassName("primary")}>
+              Voir tous les incidents
+            </Link>
 
-            {showReturnToCommandSource ? (
-              <Link href={commandSourceHref} className={navButtonClass()}>
-                Retour à la command source
-              </Link>
-            ) : null}
-
-            {showReturnToFlowSource ? (
-              <Link href={flowSourceHref} className={navButtonClass()}>
+            {sourceFlowHref ? (
+              <Link
+                href={sourceFlowHref}
+                className={actionLinkClassName("soft")}
+              >
                 Retour au flow source
               </Link>
             ) : null}
 
             {linkedFlowHref ? (
-              <Link href={linkedFlowHref} className={navButtonClass()}>
+              <Link
+                href={linkedFlowHref}
+                className={actionLinkClassName("soft")}
+              >
                 Ouvrir le flow lié
+              </Link>
+            ) : null}
+
+            {linkedCommandHref ? (
+              <Link
+                href={linkedCommandHref}
+                className={actionLinkClassName("soft")}
+              >
+                Ouvrir la command liée
               </Link>
             ) : null}
           </div>
