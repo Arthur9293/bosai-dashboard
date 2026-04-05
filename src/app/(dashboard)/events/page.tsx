@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { fetchEvents } from "@/lib/api";
+import { fetchCommands, fetchEvents } from "@/lib/api";
 
 type EventItem = {
   id: string;
@@ -19,6 +19,21 @@ type EventItem = {
   source?: string | null;
   run_id?: string | null;
   payload?: unknown;
+  [key: string]: unknown;
+};
+
+type CommandItem = {
+  id: string;
+  flow_id?: string | null;
+  root_event_id?: string | null;
+  input_json?: unknown;
+  command_input_json?: unknown;
+  payload_json?: unknown;
+  input?: unknown;
+  result_json?: unknown;
+  result?: unknown;
+  output_json?: unknown;
+  output?: unknown;
   [key: string]: unknown;
 };
 
@@ -55,29 +70,6 @@ function getEventDate(event: EventItem) {
   return event.updated_at || event.processed_at || event.created_at || null;
 }
 
-function getLinkedCommandId(event: EventItem) {
-  if (event.command_id && String(event.command_id).trim()) {
-    return String(event.command_id).trim();
-  }
-
-  if (Array.isArray(event.linked_command) && event.linked_command.length > 0) {
-    const first = String(event.linked_command[0] || "").trim();
-    if (first) return first;
-  }
-
-  return "";
-}
-
-function getFlowTarget(event: EventItem) {
-  const flow = String(event.flow_id || "").trim();
-  if (flow) return flow;
-
-  const root = String(event.root_event_id || "").trim();
-  if (root) return root;
-
-  return "";
-}
-
 function badgeTone(status?: string) {
   const s = (status || "").toLowerCase();
 
@@ -112,8 +104,91 @@ function actionButtonClassName(variant: "default" | "primary" = "default") {
   return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10";
 }
 
+function firstNonEmptyString(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const text = String(item ?? "").trim();
+        if (text) return text;
+      }
+      continue;
+    }
+
+    const text = String(value).trim();
+    if (text) return text;
+  }
+
+  return "";
+}
+
+function parseJsonMaybe(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  if (typeof value !== "string") return {};
+
+  const trimmed = value.trim();
+  if (!trimmed) return {};
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {}
+
+  return {};
+}
+
+function getLinkedCommandId(event: EventItem) {
+  return firstNonEmptyString(event.command_id, event.linked_command);
+}
+
+function getCommandFlowTarget(command?: CommandItem | null) {
+  if (!command) return "";
+
+  const inputPayload = parseJsonMaybe(
+    command.input_json ??
+      command.command_input_json ??
+      command.payload_json ??
+      command.input ??
+      null
+  );
+
+  const resultPayload = parseJsonMaybe(
+    command.result_json ?? command.result ?? command.output_json ?? command.output ?? null
+  );
+
+  return firstNonEmptyString(
+    command.flow_id,
+    command.root_event_id,
+    inputPayload.flow_id,
+    inputPayload.flowid,
+    inputPayload.root_event_id,
+    inputPayload.rootEventId,
+    inputPayload.rooteventid,
+    resultPayload.flow_id,
+    resultPayload.flowid,
+    resultPayload.root_event_id,
+    resultPayload.rootEventId,
+    resultPayload.rooteventid
+  );
+}
+
+function getEventFlowTarget(event: EventItem, command?: CommandItem | null) {
+  return firstNonEmptyString(
+    event.flow_id,
+    event.root_event_id,
+    getCommandFlowTarget(command)
+  );
+}
+
 export default async function EventsPage() {
   let events: EventItem[] = [];
+  let commands: CommandItem[] = [];
   let stats: EventStats = {};
   let sourceConnected = false;
 
@@ -134,6 +209,17 @@ export default async function EventsPage() {
     stats = {};
     sourceConnected = false;
   }
+
+  try {
+    const commandsData = await fetchCommands();
+    if (Array.isArray(commandsData?.commands)) {
+      commands = commandsData.commands as CommandItem[];
+    }
+  } catch {
+    commands = [];
+  }
+
+  const commandsById = new Map(commands.map((command) => [command.id, command]));
 
   const newCount = stats.new ?? 0;
   const queuedCount = stats.queued ?? 0;
@@ -228,7 +314,7 @@ export default async function EventsPage() {
                 Latest processed
               </div>
               <div className="mt-3 text-xl font-semibold text-white">
-                {formatDate(getEventDate(latestProcessed || {} as EventItem))}
+                {formatDate(getEventDate(latestProcessed || ({} as EventItem)))}
               </div>
             </div>
 
@@ -237,7 +323,7 @@ export default async function EventsPage() {
                 Latest queued
               </div>
               <div className="mt-3 text-xl font-semibold text-white">
-                {formatDate(getEventDate(latestQueued || {} as EventItem))}
+                {formatDate(getEventDate(latestQueued || ({} as EventItem)))}
               </div>
             </div>
 
@@ -246,7 +332,7 @@ export default async function EventsPage() {
                 Latest error
               </div>
               <div className="mt-3 text-xl font-semibold text-white">
-                {formatDate(getEventDate(latestError || {} as EventItem))}
+                {formatDate(getEventDate(latestError || ({} as EventItem)))}
               </div>
             </div>
 
@@ -270,7 +356,10 @@ export default async function EventsPage() {
         ) : (
           list.map((event) => {
             const linkedCommand = getLinkedCommandId(event);
-            const flowTarget = getFlowTarget(event);
+            const linkedCommandRecord = linkedCommand
+              ? commandsById.get(linkedCommand)
+              : undefined;
+            const flowTarget = getEventFlowTarget(event, linkedCommandRecord);
 
             return (
               <article
@@ -337,7 +426,7 @@ export default async function EventsPage() {
                       Flow
                     </div>
                     <div className="mt-3 break-all text-xl font-semibold text-white">
-                      {event.flow_id || "—"}
+                      {flowTarget || "—"}
                     </div>
                   </div>
 
