@@ -5,7 +5,9 @@ import FlowGraphClient from "../FlowGraphClient";
 type PageProps = {
   params: Promise<{
     id: string;
-  }>;
+  }> | {
+    id: string;
+  };
 };
 
 type AnyRecord = Record<string, any>;
@@ -58,6 +60,20 @@ function softPanelClassName() {
 
 function emptyStateClassName() {
   return "rounded-2xl border border-dashed border-white/10 bg-white/5 px-5 py-8 text-sm text-zinc-500";
+}
+
+function actionLinkClassName(
+  variant: "default" | "primary" | "danger" = "default"
+) {
+  if (variant === "primary") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+  }
+
+  if (variant === "danger") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
+  }
+
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
 }
 
 function toText(value: unknown, fallback = ""): string {
@@ -175,15 +191,7 @@ function statusTone(status: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function stepBadgeTone(label: "ROOT" | "TERMINAL" | "STEP") {
-  if (label === "ROOT") {
-    return "bg-white/5 text-zinc-300 border border-white/10";
-  }
-
-  if (label === "TERMINAL") {
-    return "bg-white/5 text-zinc-300 border border-white/10";
-  }
-
+function stepBadgeTone() {
   return "bg-white/5 text-zinc-300 border border-white/10";
 }
 
@@ -191,6 +199,12 @@ function incidentTone(hasIncident: boolean) {
   return hasIncident
     ? "bg-rose-500/15 text-rose-300 border border-rose-500/20"
     : "bg-zinc-800 text-zinc-300 border border-white/10";
+}
+
+function incidentLabel(count: number, hasIncident: boolean) {
+  if (!hasIncident || count <= 0) return "Aucun incident";
+  if (count === 1) return "1 incident";
+  return `${count} incidents`;
 }
 
 function getJsonSources(record: AnyRecord) {
@@ -209,7 +223,11 @@ function getJsonSources(record: AnyRecord) {
   return { inputParsed, resultParsed };
 }
 
-function pickFirstText(record: AnyRecord, candidates: string[], fallback = ""): string {
+function pickFirstText(
+  record: AnyRecord,
+  candidates: string[],
+  fallback = ""
+): string {
   for (const key of candidates) {
     const value = record[key];
     const text = toText(value, "");
@@ -218,7 +236,11 @@ function pickFirstText(record: AnyRecord, candidates: string[], fallback = ""): 
   return fallback;
 }
 
-function pickFirstNumber(record: AnyRecord, candidates: string[], fallback = 0): number {
+function pickFirstNumber(
+  record: AnyRecord,
+  candidates: string[],
+  fallback = 0
+): number {
   for (const key of candidates) {
     const value = record[key];
     const num = toNumber(value, Number.NaN);
@@ -229,20 +251,32 @@ function pickFirstNumber(record: AnyRecord, candidates: string[], fallback = 0):
 
 function normalizeFlowSummary(flow: AnyRecord): FlowSummaryLike {
   return {
-    key: toText(flow.key || flow.flowId || flow.flow_id || flow.sourceRecordId || flow.source_record_id || ""),
+    key: toText(
+      flow.key ||
+        flow.flowId ||
+        flow.flow_id ||
+        flow.sourceRecordId ||
+        flow.source_record_id ||
+        ""
+    ),
     flowId: toText(flow.flowId || flow.flow_id || ""),
     rootEventId: toText(flow.rootEventId || flow.root_event_id || ""),
     workspaceId: toText(flow.workspaceId || flow.workspace_id || "production"),
     status: toText(flow.status || "unknown"),
     steps: toNumber(flow.steps, 0),
-    rootCapability: toText(flow.rootCapability || flow.root_capability || "Non disponible"),
-    terminalCapability: toText(flow.terminalCapability || flow.terminal_capability || "Non disponible"),
+    rootCapability: toText(
+      flow.rootCapability || flow.root_capability || "Non disponible"
+    ),
+    terminalCapability: toText(
+      flow.terminalCapability || flow.terminal_capability || "Non disponible"
+    ),
     durationMs: toNumber(flow.durationMs || flow.duration_ms, 0),
     lastActivityTs: toNumber(flow.lastActivityTs || flow.last_activity_ts, 0),
     hasIncident: toBoolean(flow.hasIncident, false),
     incidentCount: toNumber(flow.incidentCount, 0),
     firstIncidentId: toText(flow.firstIncidentId || "", ""),
-    readingMode: flow.readingMode === "registry-only" ? "registry-only" : "enriched",
+    readingMode:
+      flow.readingMode === "registry-only" ? "registry-only" : "enriched",
     sourceRecordId: toText(flow.sourceRecordId || flow.source_record_id || "", ""),
     isPartial: toBoolean(flow.isPartial, false),
   };
@@ -276,7 +310,11 @@ function getCommandStatus(record: AnyRecord, resultParsed: AnyRecord): string {
   return raw || "unknown";
 }
 
-function getCommandCapability(record: AnyRecord, inputParsed: AnyRecord, resultParsed: AnyRecord): string {
+function getCommandCapability(
+  record: AnyRecord,
+  inputParsed: AnyRecord,
+  resultParsed: AnyRecord
+): string {
   return pickFirstText(
     { ...record, ...inputParsed, ...resultParsed },
     ["capability", "Capability", "mapped_capability"],
@@ -284,7 +322,11 @@ function getCommandCapability(record: AnyRecord, inputParsed: AnyRecord, resultP
   );
 }
 
-function getCommandFlowId(record: AnyRecord, inputParsed: AnyRecord, resultParsed: AnyRecord): string {
+function getCommandFlowId(
+  record: AnyRecord,
+  inputParsed: AnyRecord,
+  resultParsed: AnyRecord
+): string {
   return pickFirstText(
     { ...record, ...inputParsed, ...resultParsed },
     ["flow_id", "flowId", "flowid"],
@@ -292,7 +334,11 @@ function getCommandFlowId(record: AnyRecord, inputParsed: AnyRecord, resultParse
   );
 }
 
-function getCommandRootEventId(record: AnyRecord, inputParsed: AnyRecord, resultParsed: AnyRecord): string {
+function getCommandRootEventId(
+  record: AnyRecord,
+  inputParsed: AnyRecord,
+  resultParsed: AnyRecord
+): string {
   return pickFirstText(
     { ...record, ...inputParsed, ...resultParsed },
     ["root_event_id", "rootEventId", "rooteventid", "event_id", "eventId"],
@@ -300,7 +346,11 @@ function getCommandRootEventId(record: AnyRecord, inputParsed: AnyRecord, result
   );
 }
 
-function getCommandWorkspaceId(record: AnyRecord, inputParsed: AnyRecord, resultParsed: AnyRecord): string {
+function getCommandWorkspaceId(
+  record: AnyRecord,
+  inputParsed: AnyRecord,
+  resultParsed: AnyRecord
+): string {
   return pickFirstText(
     { ...record, ...inputParsed, ...resultParsed },
     ["workspace_id", "workspaceId", "Workspace_ID", "workspace"],
@@ -323,7 +373,11 @@ function normalizeTimelineItem(record: AnyRecord): TimelineItem {
     createdAt: pickFirstText(record, ["created_at", "Created_At"], ""),
     startedAt: pickFirstText(record, ["started_at", "Started_At"], ""),
     finishedAt: pickFirstText(record, ["finished_at", "Finished_At"], ""),
-    stepIndex: pickFirstNumber({ ...record, ...inputParsed, ...resultParsed }, ["step_index", "stepIndex"], 0),
+    stepIndex: pickFirstNumber(
+      { ...record, ...inputParsed, ...resultParsed },
+      ["step_index", "stepIndex"],
+      0
+    ),
     parentCommandId: pickFirstText(
       { ...record, ...inputParsed, ...resultParsed },
       ["parent_command_id", "parentCommandId", "linked_command", "Linked_Command"],
@@ -338,7 +392,9 @@ function normalizeTimelineItem(record: AnyRecord): TimelineItem {
         record.command_input_json ??
         inputParsed
     ),
-    resultJson: prettyJson(record.result_json ?? record.output_json ?? resultParsed),
+    resultJson: prettyJson(
+      record.result_json ?? record.output_json ?? resultParsed
+    ),
     isRoot: false,
     isTerminal: false,
   };
@@ -379,7 +435,12 @@ function getDurationMs(items: TimelineItem[]): number {
       0
   ).getTime();
 
-  if (!Number.isFinite(firstTs) || !Number.isFinite(lastTs) || firstTs <= 0 || lastTs <= 0) {
+  if (
+    !Number.isFinite(firstTs) ||
+    !Number.isFinite(lastTs) ||
+    firstTs <= 0 ||
+    lastTs <= 0
+  ) {
     return 0;
   }
 
@@ -387,7 +448,11 @@ function getDurationMs(items: TimelineItem[]): number {
   return diff > 0 ? diff : 0;
 }
 
-function buildIncidentsHref(flowId: string, rootEventId: string, sourceRecordId: string) {
+function buildIncidentsHref(
+  flowId: string,
+  rootEventId: string,
+  sourceRecordId: string
+) {
   const params = new URLSearchParams();
 
   if (flowId) params.set("flow_id", flowId);
@@ -412,19 +477,26 @@ function isTimelineRetry(status: string) {
   return ["retry", "retriable"].includes(status);
 }
 
-function resolveFlowStatus(items: TimelineItem[], summary?: FlowSummaryLike | null): string {
+function resolveFlowStatus(
+  items: TimelineItem[],
+  summary?: FlowSummaryLike | null
+): string {
   if (summary?.status) return summary.status;
 
   if (items.some((item) => isTimelineFailed(item.status))) return "failed";
   if (items.some((item) => isTimelineRunning(item.status))) return "running";
   if (items.some((item) => isTimelineRetry(item.status))) return "retry";
-  if (items.length > 0 && items.every((item) => item.status === "done")) return "success";
+  if (items.length > 0 && items.every((item) => item.status === "done")) {
+    return "success";
+  }
 
   return "unknown";
 }
 
 export default async function FlowDetailPage({ params }: PageProps) {
-  const { id } = await params;
+  const resolvedParams = await Promise.resolve(params);
+  const id = decodeURIComponent(resolvedParams.id);
+
   const api = await import("@/lib/api");
 
   const fetchCommands = (api as AnyRecord).fetchCommands as undefined | (() => Promise<any>);
@@ -544,13 +616,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
     flowSummary?.readingMode ||
     (matchedTimeline.length > 0 ? "enriched" : "registry-only");
 
-  const incidentCount =
-    flowSummary?.incidentCount ??
-    matchedIncidents.length;
-
-  const hasIncident =
-    flowSummary?.hasIncident ??
-    incidentCount > 0;
+  const incidentCount = flowSummary?.incidentCount ?? matchedIncidents.length;
+  const hasIncident = flowSummary?.hasIncident ?? incidentCount > 0;
 
   const rootCapability =
     flowSummary?.rootCapability ||
@@ -563,20 +630,18 @@ export default async function FlowDetailPage({ params }: PageProps) {
     "Non disponible";
 
   const lastActivityTs =
-    flowSummary?.lastActivityTs ||
-    getLastKnownTimestamp(matchedTimeline);
+    flowSummary?.lastActivityTs || getLastKnownTimestamp(matchedTimeline);
 
-  const durationMs =
-    flowSummary?.durationMs ||
-    getDurationMs(matchedTimeline);
+  const durationMs = flowSummary?.durationMs || getDurationMs(matchedTimeline);
 
   const resolvedStatus = resolveFlowStatus(matchedTimeline, flowSummary);
-  const title =
-    flowSummary?.flowId ||
-    matchedTimeline[0]?.flowId ||
-    id;
+  const title = flowSummary?.flowId || matchedTimeline[0]?.flowId || id;
 
-  const commandsCount = matchedTimeline.length;
+  const displayedSteps =
+    flowSummary?.steps && flowSummary.steps > 0
+      ? flowSummary.steps
+      : matchedTimeline.length;
+
   const doneCount = matchedTimeline.filter((item) => item.status === "done").length;
   const runningCount = matchedTimeline.filter((item) => isTimelineRunning(item.status)).length;
   const failedCount = matchedTimeline.filter((item) => isTimelineFailed(item.status)).length;
@@ -629,7 +694,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
           </span>
 
           <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
-            {commandsCount} step{commandsCount > 1 ? "s" : ""}
+            {displayedSteps} étape{displayedSteps > 1 ? "s" : ""}
           </span>
 
           {readingMode === "registry-only" || flowSummary?.isPartial ? (
@@ -642,15 +707,22 @@ export default async function FlowDetailPage({ params }: PageProps) {
             </span>
           ) : null}
 
-          {hasIncident ? (
-            <Link
-              href={incidentsHref}
-              className="inline-flex rounded-full border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15"
-            >
+          <span
+            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${incidentTone(
+              hasIncident
+            )}`}
+          >
+            {incidentLabel(incidentCount, hasIncident)}
+          </span>
+        </div>
+
+        {hasIncident ? (
+          <div className="mt-4">
+            <Link href={incidentsHref} className={actionLinkClassName("danger")}>
               Voir les incidents
             </Link>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
 
       {readingMode === "registry-only" ? (
@@ -667,22 +739,22 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Commandes</div>
-          <div className="mt-3 text-4xl font-semibold text-white">{commandsCount}</div>
+          <div className="text-sm text-zinc-400">Étapes</div>
+          <div className="mt-3 text-4xl font-semibold text-white">{displayedSteps}</div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Done</div>
+          <div className="text-sm text-zinc-400">Terminées</div>
           <div className="mt-3 text-4xl font-semibold text-emerald-300">{doneCount}</div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Running / Queued</div>
+          <div className="text-sm text-zinc-400">En cours / En file</div>
           <div className="mt-3 text-4xl font-semibold text-sky-300">{runningCount}</div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Failed</div>
+          <div className="text-sm text-zinc-400">Échecs</div>
           <div className="mt-3 text-4xl font-semibold text-rose-300">{failedCount}</div>
         </div>
       </section>
@@ -712,52 +784,59 @@ export default async function FlowDetailPage({ params }: PageProps) {
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Incident lié</div>
           <div className="mt-3 text-xl font-semibold text-white">
-            {hasIncident ? `${incidentCount} incident${incidentCount > 1 ? "s" : ""}` : "Aucun incident"}
+            {incidentLabel(incidentCount, hasIncident)}
           </div>
         </div>
       </section>
 
       <section className={cardClassName()}>
         <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/40">
-          Flow identity
+          Identité du flow
         </div>
 
         <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-3">
           <div>
-            <span className="text-zinc-500">Flow key:</span> {title}
+            <span className="text-zinc-500">Flow key :</span> {title}
           </div>
           <div>
-            <span className="text-zinc-500">Root event:</span> {rootEventId || "—"}
+            <span className="text-zinc-500">Root event :</span> {rootEventId || "—"}
           </div>
           <div>
-            <span className="text-zinc-500">Workspace:</span> {workspaceId || "—"}
+            <span className="text-zinc-500">Workspace :</span> {workspaceId || "—"}
           </div>
           <div>
-            <span className="text-zinc-500">Last step:</span>{" "}
+            <span className="text-zinc-500">Dernière étape :</span>{" "}
             {matchedTimeline[matchedTimeline.length - 1]?.capability || terminalCapability}
           </div>
           <div>
-            <span className="text-zinc-500">Last activity:</span>{" "}
+            <span className="text-zinc-500">Dernière activité :</span>{" "}
             {lastActivityTs > 0 ? formatDate(lastActivityTs) : "—"}
           </div>
           <div>
-            <span className="text-zinc-500">Last status:</span>{" "}
+            <span className="text-zinc-500">Dernier statut :</span>{" "}
             {resolvedStatus.toUpperCase()}
           </div>
+
           {sourceRecordId ? (
             <div className="md:col-span-2 xl:col-span-3 break-all">
-              <span className="text-zinc-500">Source record:</span> {sourceRecordId}
+              <span className="text-zinc-500">Source record :</span> {sourceRecordId}
             </div>
           ) : null}
+
+          <div className="md:col-span-2 xl:col-span-3">
+            <span className="text-zinc-500">Type de lecture :</span>{" "}
+            {readingMode === "registry-only" ? "Registre uniquement" : "Enrichie"}
+          </div>
         </div>
       </section>
 
       <section className={cardClassName()}>
         <div className="mb-2 text-xs uppercase tracking-[0.2em] text-white/40">
-          Execution graph
+          Graphe d’exécution
         </div>
         <p className="mb-4 text-sm text-zinc-400">
-          Touchez un nœud du graphe pour aller directement à l’étape correspondante dans la timeline.
+          Touchez un nœud du graphe pour aller directement à l’étape correspondante
+          dans la timeline.
         </p>
 
         {graphCommands.length > 0 ? (
@@ -771,7 +850,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
       <section className={cardClassName()}>
         <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/40">
-          Execution timeline
+          Timeline d’exécution
         </div>
 
         {matchedTimeline.length === 0 ? (
@@ -801,18 +880,14 @@ export default async function FlowDetailPage({ params }: PageProps) {
                       </span>
 
                       <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${stepBadgeTone(
-                          "STEP"
-                        )}`}
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${stepBadgeTone()}`}
                       >
                         STEP {item.stepIndex}
                       </span>
 
                       {item.isRoot ? (
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${stepBadgeTone(
-                            "ROOT"
-                          )}`}
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${stepBadgeTone()}`}
                         >
                           ROOT
                         </span>
@@ -820,9 +895,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
                       {item.isTerminal ? (
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${stepBadgeTone(
-                            "TERMINAL"
-                          )}`}
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${stepBadgeTone()}`}
                         >
                           TERMINAL
                         </span>
@@ -830,12 +903,36 @@ export default async function FlowDetailPage({ params }: PageProps) {
                     </div>
 
                     <div className="mt-4 grid gap-2 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-                      <div>ID: <span className="text-zinc-200 break-all">{item.id || "—"}</span></div>
-                      <div>Parent: <span className="text-zinc-200 break-all">{item.parentCommandId || "—"}</span></div>
-                      <div>Worker: <span className="text-zinc-200">{item.worker || "—"}</span></div>
-                      <div>Started: <span className="text-zinc-200">{formatDate(item.startedAt || item.createdAt)}</span></div>
-                      <div>Finished: <span className="text-zinc-200">{formatDate(item.finishedAt)}</span></div>
-                      <div>Flow: <span className="text-zinc-200 break-all">{item.flowId || flowId || "—"}</span></div>
+                      <div>
+                        ID: <span className="break-all text-zinc-200">{item.id || "—"}</span>
+                      </div>
+                      <div>
+                        Parent:{" "}
+                        <span className="break-all text-zinc-200">
+                          {item.parentCommandId || "—"}
+                        </span>
+                      </div>
+                      <div>
+                        Worker: <span className="text-zinc-200">{item.worker || "—"}</span>
+                      </div>
+                      <div>
+                        Démarré:{" "}
+                        <span className="text-zinc-200">
+                          {formatDate(item.startedAt || item.createdAt)}
+                        </span>
+                      </div>
+                      <div>
+                        Terminé:{" "}
+                        <span className="text-zinc-200">
+                          {formatDate(item.finishedAt)}
+                        </span>
+                      </div>
+                      <div>
+                        Flow:{" "}
+                        <span className="break-all text-zinc-200">
+                          {item.flowId || flowId || "—"}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -847,18 +944,18 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className={cardClassName()}>
-          <div className="mb-4 text-xl font-semibold text-white">États vides</div>
+          <div className="mb-4 text-xl font-semibold text-white">Résumé rapide</div>
 
           <div className="space-y-3 text-sm text-zinc-300">
             <div className={softPanelClassName()}>
-              <div className="text-zinc-400">Incident</div>
+              <div className="text-zinc-400">Incidents</div>
               <div className="mt-2 flex items-center gap-2">
                 <span
                   className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${incidentTone(
                     hasIncident
                   )}`}
                 >
-                  {hasIncident ? `${incidentCount} incident${incidentCount > 1 ? "s" : ""}` : "Aucun incident"}
+                  {incidentLabel(incidentCount, hasIncident)}
                 </span>
               </div>
             </div>
@@ -887,18 +984,12 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <div className="mb-4 text-xl font-semibold text-white">Navigation</div>
 
           <div className="flex flex-col gap-3">
-            <Link
-              href="/flows"
-              className="inline-flex w-full justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10"
-            >
+            <Link href="/flows" className={actionLinkClassName()}>
               Retour aux flows
             </Link>
 
             {hasIncident ? (
-              <Link
-                href={incidentsHref}
-                className="inline-flex w-full justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15"
-              >
+              <Link href={incidentsHref} className={actionLinkClassName("danger")}>
                 Voir les incidents
               </Link>
             ) : null}
