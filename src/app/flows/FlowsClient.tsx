@@ -108,7 +108,7 @@ function statCard(label: string, value: string | number) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="text-sm text-zinc-400">{label}</div>
-      <div className="mt-2 break-all text-xl font-semibold text-white">
+      <div className="mt-2 text-xl font-semibold text-white [overflow-wrap:anywhere]">
         {value}
       </div>
     </div>
@@ -361,7 +361,7 @@ export default function FlowsClient({
                   </span>
                 </div>
 
-                <div className="mt-4 break-all text-lg font-semibold text-white">
+                <div className="mt-4 min-w-0 text-lg font-semibold text-white [overflow-wrap:anywhere]">
                   {firstRunning.flowId}
                 </div>
 
@@ -369,11 +369,11 @@ export default function FlowsClient({
                   Activité: {formatFlowActivity(firstRunning)}
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
                     type="button"
                     onClick={() => focusFirst("running")}
-                    className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-200 transition hover:bg-sky-500/20"
+                    className="inline-flex w-full justify-center rounded-full border border-sky-500/30 bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-200 transition hover:bg-sky-500/20 sm:w-auto"
                   >
                     Ouvrir le premier running
                   </button>
@@ -396,7 +396,7 @@ export default function FlowsClient({
                   </span>
                 </div>
 
-                <div className="mt-4 break-all text-lg font-semibold text-white">
+                <div className="mt-4 min-w-0 text-lg font-semibold text-white [overflow-wrap:anywhere]">
                   {firstFailed.flowId}
                 </div>
 
@@ -404,11 +404,11 @@ export default function FlowsClient({
                   Activité: {formatFlowActivity(firstFailed)}
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
                     type="button"
                     onClick={() => focusFirst("failed")}
-                    className="inline-flex rounded-full border border-rose-500/30 bg-rose-500/15 px-4 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/20"
+                    className="inline-flex w-full justify-center rounded-full border border-rose-500/30 bg-rose-500/15 px-4 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/20 sm:w-auto"
                   >
                     Ouvrir le premier failed
                   </button>
@@ -431,7 +431,7 @@ export default function FlowsClient({
                   </span>
                 </div>
 
-                <div className="mt-4 break-all text-lg font-semibold text-white">
+                <div className="mt-4 min-w-0 text-lg font-semibold text-white [overflow-wrap:anywhere]">
                   {firstRetry.flowId}
                 </div>
 
@@ -439,18 +439,18 @@ export default function FlowsClient({
                   Activité: {formatFlowActivity(firstRetry)}
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
                     type="button"
                     onClick={() => focusFirst("retry")}
-                    className="inline-flex rounded-full border border-violet-500/30 bg-violet-500/15 px-4 py-2 text-sm font-medium text-violet-200 transition hover:bg-violet-500/20"
+                    className="inline-flex w-full justify-center rounded-full border border-violet-500/30 bg-violet-500/15 px-4 py-2 text-sm font-medium text-violet-200 transition hover:bg-violet-500/20 sm:w-auto"
                   >
                     Ouvrir le premier retry
                   </button>
 
                   <Link
                     href={`/flows/${safeDetailId(firstRetry)}`}
-                    className="inline-flex rounded-full border border-violet-500/20 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+                    className="inline-flex w-full justify-center rounded-full border border-violet-500/20 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 sm:w-auto"
                   >
                     Voir le détail
                   </Link>
@@ -474,11 +474,11 @@ export default function FlowsClient({
           className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:border-emerald-500/30 focus:bg-white/10"
         />
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <button
             type="button"
             onClick={clearSearch}
-            className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+            className="inline-flex w-full justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 sm:w-auto"
           >
             Effacer
           </button>
@@ -486,7 +486,7 @@ export default function FlowsClient({
           <button
             type="button"
             onClick={resetView}
-            className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+            className="inline-flex w-full justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 sm:w-auto"
           >
             Réinitialiser la vue
           </button>
@@ -494,7 +494,7 @@ export default function FlowsClient({
           <button
             type="button"
             onClick={goToPriorityFlow}
-            className="inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20"
+            className="inline-flex w-full justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20 sm:w-auto"
           >
             Revenir au flow prioritaire
           </button>
@@ -609,13 +609,13 @@ export default function FlowsClient({
                 <div className="grid gap-3 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-4">
                   <div>
                     Flow:{" "}
-                    <span className="break-all text-zinc-200">
+                    <span className="text-zinc-200 [overflow-wrap:anywhere]">
                       {selectedFlow.flowId}
                     </span>
                   </div>
                   <div>
                     Root:{" "}
-                    <span className="break-all text-zinc-200">
+                    <span className="text-zinc-200 [overflow-wrap:anywhere]">
                       {selectedFlow.rootEventId}
                     </span>
                   </div>
@@ -664,13 +664,13 @@ export default function FlowsClient({
                 <div className="grid gap-3 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-4">
                   <div>
                     Flow:{" "}
-                    <span className="break-all text-zinc-200">
+                    <span className="text-zinc-200 [overflow-wrap:anywhere]">
                       {selectedFlow.flowId}
                     </span>
                   </div>
                   <div>
                     Root:{" "}
-                    <span className="break-all text-zinc-200">
+                    <span className="text-zinc-200 [overflow-wrap:anywhere]">
                       {selectedFlow.rootEventId}
                     </span>
                   </div>
@@ -735,20 +735,22 @@ export default function FlowsClient({
                         : "border-white/10 bg-white/5"
                     }`}
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0 flex-1">
-                        <div className="break-all text-xl font-semibold text-white">
+                        <div className="min-w-0 text-xl font-semibold text-white [overflow-wrap:anywhere]">
                           {flow.flowId}
                         </div>
 
                         <div className="mt-3 space-y-1 text-sm text-white/70">
                           <div>Steps: {flow.steps}</div>
-                          <div className="break-all">Root: {flow.rootEventId}</div>
+                          <div className="[overflow-wrap:anywhere]">
+                            Root: {flow.rootEventId}
+                          </div>
                           <div>Activité: {formatFlowActivity(flow)}</div>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 lg:justify-end">
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
                             flow.status
@@ -767,11 +769,11 @@ export default function FlowsClient({
                       </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                       <button
                         type="button"
                         onClick={() => selectFlow(flow)}
-                        className={`inline-flex rounded-full px-4 py-2 text-sm font-medium transition ${
+                        className={`inline-flex w-full justify-center rounded-full px-4 py-2 text-sm font-medium transition sm:w-auto ${
                           selected
                             ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
                             : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
@@ -782,7 +784,7 @@ export default function FlowsClient({
 
                       <Link
                         href={`/flows/${safeDetailId(flow)}`}
-                        className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+                        className="inline-flex w-full justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 sm:w-auto"
                       >
                         Voir le détail
                       </Link>
@@ -818,9 +820,9 @@ export default function FlowsClient({
                         : "border-white/10 bg-white/5"
                     }`}
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0 flex-1">
-                        <div className="break-all text-xl font-semibold text-white">
+                        <div className="min-w-0 text-xl font-semibold text-white [overflow-wrap:anywhere]">
                           {flow.flowId}
                         </div>
 
@@ -830,9 +832,9 @@ export default function FlowsClient({
                             <span className="text-zinc-200">Registry-only</span>
                           </div>
 
-                          <div className="break-all">
+                          <div className="[overflow-wrap:anywhere]">
                             Source / Root record:{" "}
-                            <span className="break-all font-mono text-zinc-200">
+                            <span className="font-mono text-zinc-200 [overflow-wrap:anywhere]">
                               {flow.sourceRecordId || flow.rootEventId}
                             </span>
                           </div>
@@ -853,7 +855,7 @@ export default function FlowsClient({
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 lg:justify-end">
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
                             flow.status
@@ -880,11 +882,11 @@ export default function FlowsClient({
                       </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                       <button
                         type="button"
                         onClick={() => selectFlow(flow)}
-                        className={`inline-flex rounded-full px-4 py-2 text-sm font-medium transition ${
+                        className={`inline-flex w-full justify-center rounded-full px-4 py-2 text-sm font-medium transition sm:w-auto ${
                           selected
                             ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
                             : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
@@ -895,7 +897,7 @@ export default function FlowsClient({
 
                       <Link
                         href={`/flows/${safeDetailId(flow)}`}
-                        className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+                        className="inline-flex w-full justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 sm:w-auto"
                       >
                         Voir le détail
                       </Link>
