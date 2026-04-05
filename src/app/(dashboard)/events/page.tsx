@@ -1,41 +1,5 @@
 import Link from "next/link";
-import { fetchCommands, fetchEvents } from "@/lib/api";
-
-type EventItem = {
-  id: string;
-  event_type?: string;
-  type?: string;
-  status?: string;
-  command_created?: boolean;
-  linked_command?: string[];
-  workspace_id?: string | null;
-  flow_id?: string | null;
-  root_event_id?: string | null;
-  command_id?: string | null;
-  mapped_capability?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  processed_at?: string | null;
-  source?: string | null;
-  run_id?: string | null;
-  payload?: unknown;
-  [key: string]: unknown;
-};
-
-type CommandItem = {
-  id: string;
-  flow_id?: string | null;
-  root_event_id?: string | null;
-  input_json?: unknown;
-  command_input_json?: unknown;
-  payload_json?: unknown;
-  input?: unknown;
-  result_json?: unknown;
-  result?: unknown;
-  output_json?: unknown;
-  output?: unknown;
-  [key: string]: unknown;
-};
+import { fetchEvents, type EventItem } from "@/lib/api";
 
 type EventStats = {
   new?: number;
@@ -45,6 +9,28 @@ type EventStats = {
   error?: number;
   other?: number;
 };
+
+function cardClassName() {
+  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+}
+
+function actionLinkClassName(
+  variant: "default" | "primary" | "soft" = "default",
+  disabled = false
+) {
+  const base =
+    "inline-flex items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition";
+
+  if (disabled) {
+    return `${base} cursor-not-allowed border border-white/10 bg-white/5 text-zinc-500 opacity-60`;
+  }
+
+  if (variant === "primary") {
+    return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
+  }
+
+  return `${base} border border-white/10 bg-white/5 text-white hover:bg-white/10`;
+}
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -58,16 +44,123 @@ function formatDate(value?: string | null) {
   }).format(d);
 }
 
+function toRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function toText(value: unknown, fallback = "—") {
+  if (value === null || value === undefined) return fallback;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = toText(item, "");
+      if (candidate) return candidate;
+    }
+    return fallback;
+  }
+
+  const text = String(value).trim();
+  return text || fallback;
+}
+
+function toTextOrEmpty(value: unknown) {
+  return toText(value, "");
+}
+
 function getEventType(event: EventItem) {
-  return event.event_type || event.type || "unknown";
+  return (
+    toTextOrEmpty((event as Record<string, unknown>).mapped_capability) ||
+    toTextOrEmpty(event.event_type) ||
+    toTextOrEmpty(event.type) ||
+    "unknown"
+  );
 }
 
 function getEventStatus(event: EventItem) {
-  return event.status || "unknown";
+  return toTextOrEmpty(event.status) || "unknown";
 }
 
 function getEventDate(event: EventItem) {
-  return event.updated_at || event.processed_at || event.created_at || null;
+  return (
+    toTextOrEmpty(event.updated_at) ||
+    toTextOrEmpty(event.processed_at) ||
+    toTextOrEmpty(event.created_at) ||
+    ""
+  );
+}
+
+function getWorkspace(event: EventItem) {
+  if (toTextOrEmpty(event.workspace_id)) return toTextOrEmpty(event.workspace_id);
+
+  const payload = toRecord(event.payload);
+  return (
+    toTextOrEmpty(payload.workspace_id) ||
+    toTextOrEmpty(payload.workspaceId) ||
+    toTextOrEmpty(payload.Workspace_ID) ||
+    "—"
+  );
+}
+
+function getFlowId(event: EventItem) {
+  if (toTextOrEmpty(event.flow_id)) return toTextOrEmpty(event.flow_id);
+
+  const payload = toRecord(event.payload);
+  return (
+    toTextOrEmpty(payload.flow_id) ||
+    toTextOrEmpty(payload.flowId) ||
+    toTextOrEmpty(payload.flowid) ||
+    ""
+  );
+}
+
+function getRootEventId(event: EventItem) {
+  if (toTextOrEmpty(event.root_event_id)) return toTextOrEmpty(event.root_event_id);
+
+  const payload = toRecord(event.payload);
+  return (
+    toTextOrEmpty(payload.root_event_id) ||
+    toTextOrEmpty(payload.rootEventId) ||
+    toTextOrEmpty(payload.rooteventid) ||
+    ""
+  );
+}
+
+function getFlowTarget(event: EventItem) {
+  return getFlowId(event) || getRootEventId(event) || "";
+}
+
+function getLinkedCommand(event: EventItem) {
+  if (toTextOrEmpty(event.command_id)) return toTextOrEmpty(event.command_id);
+
+  const raw = (event as Record<string, unknown>).linked_command;
+  if (Array.isArray(raw) && raw.length > 0) {
+    return toTextOrEmpty(raw[0]);
+  }
+
+  const payload = toRecord(event.payload);
+  return (
+    toTextOrEmpty(payload.command_id) ||
+    toTextOrEmpty(payload.commandId) ||
+    ""
+  );
+}
+
+function getSource(event: EventItem) {
+  const direct = toTextOrEmpty((event as Record<string, unknown>).source);
+  if (direct) return direct;
+
+  const payload = toRecord(event.payload);
+  return toTextOrEmpty(payload.source) || "—";
+}
+
+function hasCommandCreated(event: EventItem) {
+  const direct = (event as Record<string, unknown>).command_created;
+  if (typeof direct === "boolean") return direct;
+
+  return Boolean(getLinkedCommand(event));
 }
 
 function badgeTone(status?: string) {
@@ -81,114 +174,31 @@ function badgeTone(status?: string) {
     return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
   }
 
-  if (["ignored"].includes(s)) {
-    return "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20";
-  }
-
   if (["error", "failed", "dead"].includes(s)) {
     return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
+  }
+
+  if (["ignored"].includes(s)) {
+    return "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20";
   }
 
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
-}
+function latestByStatus(events: EventItem[], status: string) {
+  const filtered = events
+    .filter((event) => getEventStatus(event).toLowerCase() === status.toLowerCase())
+    .sort(
+      (a, b) =>
+        new Date(getEventDate(b) || 0).getTime() -
+        new Date(getEventDate(a) || 0).getTime()
+    );
 
-function actionButtonClassName(variant: "default" | "primary" = "default") {
-  if (variant === "primary") {
-    return "inline-flex items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
-  }
-
-  return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10";
-}
-
-function firstNonEmptyString(...values: unknown[]) {
-  for (const value of values) {
-    if (value === null || value === undefined) continue;
-
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        const text = String(item ?? "").trim();
-        if (text) return text;
-      }
-      continue;
-    }
-
-    const text = String(value).trim();
-    if (text) return text;
-  }
-
-  return "";
-}
-
-function parseJsonMaybe(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-
-  if (typeof value !== "string") return {};
-
-  const trimmed = value.trim();
-  if (!trimmed) return {};
-
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {}
-
-  return {};
-}
-
-function getLinkedCommandId(event: EventItem) {
-  return firstNonEmptyString(event.command_id, event.linked_command);
-}
-
-function getCommandFlowTarget(command?: CommandItem | null) {
-  if (!command) return "";
-
-  const inputPayload = parseJsonMaybe(
-    command.input_json ??
-      command.command_input_json ??
-      command.payload_json ??
-      command.input ??
-      null
-  );
-
-  const resultPayload = parseJsonMaybe(
-    command.result_json ?? command.result ?? command.output_json ?? command.output ?? null
-  );
-
-  return firstNonEmptyString(
-    command.flow_id,
-    command.root_event_id,
-    inputPayload.flow_id,
-    inputPayload.flowid,
-    inputPayload.root_event_id,
-    inputPayload.rootEventId,
-    inputPayload.rooteventid,
-    resultPayload.flow_id,
-    resultPayload.flowid,
-    resultPayload.root_event_id,
-    resultPayload.rootEventId,
-    resultPayload.rooteventid
-  );
-}
-
-function getEventFlowTarget(event: EventItem, command?: CommandItem | null) {
-  return firstNonEmptyString(
-    event.flow_id,
-    event.root_event_id,
-    getCommandFlowTarget(command)
-  );
+  return filtered[0] || null;
 }
 
 export default async function EventsPage() {
   let events: EventItem[] = [];
-  let commands: CommandItem[] = [];
   let stats: EventStats = {};
   let sourceConnected = false;
 
@@ -196,7 +206,7 @@ export default async function EventsPage() {
     const data = await fetchEvents();
 
     if (Array.isArray(data?.events)) {
-      events = data.events as EventItem[];
+      events = data.events;
     }
 
     if (data?.stats && typeof data.stats === "object") {
@@ -210,17 +220,6 @@ export default async function EventsPage() {
     sourceConnected = false;
   }
 
-  try {
-    const commandsData = await fetchCommands();
-    if (Array.isArray(commandsData?.commands)) {
-      commands = commandsData.commands as CommandItem[];
-    }
-  } catch {
-    commands = [];
-  }
-
-  const commandsById = new Map(commands.map((command) => [command.id, command]));
-
   const newCount = stats.new ?? 0;
   const queuedCount = stats.queued ?? 0;
   const processedCount = stats.processed ?? 0;
@@ -228,27 +227,18 @@ export default async function EventsPage() {
   const errorCount = stats.error ?? 0;
   const otherCount = stats.other ?? 0;
 
-  const sortedEvents = [...events].sort(
-    (a, b) =>
-      new Date(getEventDate(b) || 0).getTime() -
-      new Date(getEventDate(a) || 0).getTime()
-  );
+  const list = [...events]
+    .sort(
+      (a, b) =>
+        new Date(getEventDate(b) || 0).getTime() -
+        new Date(getEventDate(a) || 0).getTime()
+    )
+    .slice(0, 30);
 
-  const list = sortedEvents.slice(0, 50);
-
-  const latestProcessed = sortedEvents.find(
-    (event) => getEventStatus(event).toLowerCase() === "processed"
-  );
-  const latestQueued = sortedEvents.find(
-    (event) => getEventStatus(event).toLowerCase() === "queued"
-  );
-  const latestError = sortedEvents.find((event) =>
-    ["error", "failed", "dead"].includes(getEventStatus(event).toLowerCase())
-  );
-
-  const commandsCreatedCount = sortedEvents.filter(
-    (event) => event.command_created === true
-  ).length;
+  const latestProcessed = latestByStatus(events, "processed");
+  const latestQueued = latestByStatus(events, "queued");
+  const latestError = latestByStatus(events, "error");
+  const commandsCreatedCount = events.filter((event) => hasCommandCreated(event)).length;
 
   return (
     <div className="space-y-6">
@@ -287,7 +277,7 @@ export default async function EventsPage() {
           <div className="mt-3 text-4xl font-semibold text-white">
             {sourceConnected ? "Connected" : "Unavailable"}
           </div>
-          <div className="mt-3">
+          <div className="mt-4">
             <span className="inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/15 px-3 py-1 text-sm font-medium text-emerald-300">
               {sourceConnected ? "LIVE SOURCE" : "NO SOURCE"}
             </span>
@@ -295,14 +285,14 @@ export default async function EventsPage() {
         </div>
 
         <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-4 flex items-center justify-between gap-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
                 Event stream
               </div>
-              <h2 className="mt-2 text-2xl font-semibold text-white">
+              <div className="mt-2 text-2xl font-semibold text-white">
                 Historique récent
-              </h2>
+              </div>
             </div>
 
             <div className="text-sm text-zinc-500">{list.length} visible(s)</div>
@@ -314,7 +304,7 @@ export default async function EventsPage() {
                 Latest processed
               </div>
               <div className="mt-3 text-xl font-semibold text-white">
-                {formatDate(getEventDate(latestProcessed || ({} as EventItem)))}
+                {formatDate(latestProcessed ? getEventDate(latestProcessed) : "")}
               </div>
             </div>
 
@@ -323,7 +313,7 @@ export default async function EventsPage() {
                 Latest queued
               </div>
               <div className="mt-3 text-xl font-semibold text-white">
-                {formatDate(getEventDate(latestQueued || ({} as EventItem)))}
+                {formatDate(latestQueued ? getEventDate(latestQueued) : "")}
               </div>
             </div>
 
@@ -332,7 +322,7 @@ export default async function EventsPage() {
                 Latest error
               </div>
               <div className="mt-3 text-xl font-semibold text-white">
-                {formatDate(getEventDate(latestError || ({} as EventItem)))}
+                {formatDate(latestError ? getEventDate(latestError) : "")}
               </div>
             </div>
 
@@ -348,18 +338,16 @@ export default async function EventsPage() {
         </div>
       </section>
 
-      <section className="space-y-4">
+      <section className="grid grid-cols-1 gap-4">
         {list.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
             Aucun événement affiché.
           </div>
         ) : (
           list.map((event) => {
-            const linkedCommand = getLinkedCommandId(event);
-            const linkedCommandRecord = linkedCommand
-              ? commandsById.get(linkedCommand)
-              : undefined;
-            const flowTarget = getEventFlowTarget(event, linkedCommandRecord);
+            const status = getEventStatus(event);
+            const linkedCommand = getLinkedCommand(event);
+            const flowTarget = getFlowTarget(event);
 
             return (
               <article
@@ -378,15 +366,15 @@ export default async function EventsPage() {
                       </h2>
 
                       <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
-                          getEventStatus(event)
+                        className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${badgeTone(
+                          status
                         )}`}
                       >
-                        {getEventStatus(event).toUpperCase()}
+                        {status.toUpperCase()}
                       </span>
 
-                      {event.command_created ? (
-                        <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
+                      {hasCommandCreated(event) ? (
+                        <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm font-medium text-zinc-300">
                           COMMAND CREATED
                         </span>
                       ) : null}
@@ -395,120 +383,120 @@ export default async function EventsPage() {
                     <div className="mt-4 break-all text-sm text-zinc-400">
                       ID: <span className="text-zinc-200">{event.id}</span>
                     </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Workspace
+                        </div>
+                        <div className="mt-3 break-all text-xl font-semibold text-white">
+                          {getWorkspace(event)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Capability
+                        </div>
+                        <div className="mt-3 break-all text-xl font-semibold text-white">
+                          {toTextOrEmpty(event.mapped_capability) || "—"}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Flow
+                        </div>
+                        <div className="mt-3 break-all text-xl font-semibold text-white">
+                          {getFlowId(event) || "—"}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Root event
+                        </div>
+                        <div className="mt-3 break-all text-xl font-semibold text-white">
+                          {getRootEventId(event) || "—"}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Linked command
+                        </div>
+                        <div className="mt-3 break-all text-xl font-semibold text-white">
+                          {linkedCommand || "—"}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Source
+                        </div>
+                        <div className="mt-3 break-all text-xl font-semibold text-white">
+                          {getSource(event)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Updated
+                        </div>
+                        <div className="mt-3 text-xl font-semibold text-white">
+                          {formatDate(event.updated_at)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                          Processed
+                        </div>
+                        <div className="mt-3 text-xl font-semibold text-white">
+                          {formatDate(event.processed_at)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <Link
+                        href={`/events/${encodeURIComponent(String(event.id))}`}
+                        className={actionLinkClassName("primary")}
+                      >
+                        Ouvrir l’event
+                      </Link>
+
+                      {linkedCommand ? (
+                        <Link
+                          href={`/commands/${encodeURIComponent(linkedCommand)}`}
+                          className={actionLinkClassName("soft")}
+                        >
+                          Ouvrir la command liée
+                        </Link>
+                      ) : (
+                        <span className={actionLinkClassName("soft", true)}>
+                          Ouvrir la command liée
+                        </span>
+                      )}
+
+                      {flowTarget ? (
+                        <Link
+                          href={`/flows/${encodeURIComponent(flowTarget)}`}
+                          className={actionLinkClassName("soft")}
+                        >
+                          Ouvrir le flow lié
+                        </Link>
+                      ) : (
+                        <span className={actionLinkClassName("soft", true)}>
+                          Ouvrir le flow lié
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                    EVENT SIGNAL
+                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500 xl:pt-1">
+                    Event signal
                   </div>
-                </div>
-
-                <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Workspace
-                    </div>
-                    <div className="mt-3 break-all text-xl font-semibold text-white">
-                      {event.workspace_id || "—"}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Capability
-                    </div>
-                    <div className="mt-3 break-all text-xl font-semibold text-white">
-                      {event.mapped_capability || "—"}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Flow
-                    </div>
-                    <div className="mt-3 break-all text-xl font-semibold text-white">
-                      {flowTarget || "—"}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Root event
-                    </div>
-                    <div className="mt-3 break-all text-xl font-semibold text-white">
-                      {event.root_event_id || "—"}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Linked command
-                    </div>
-                    <div className="mt-3 break-all text-xl font-semibold text-white">
-                      {linkedCommand || "—"}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Source
-                    </div>
-                    <div className="mt-3 break-all text-xl font-semibold text-white">
-                      {event.source || "—"}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Updated
-                    </div>
-                    <div className="mt-3 text-xl font-semibold text-white">
-                      {formatDate(getEventDate(event))}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      Processed
-                    </div>
-                    <div className="mt-3 text-xl font-semibold text-white">
-                      {formatDate(event.processed_at || null)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-5 flex flex-wrap gap-3">
-                  <Link
-                    href={`/events/${encodeURIComponent(event.id)}`}
-                    className={actionButtonClassName("primary")}
-                  >
-                    Ouvrir l’event
-                  </Link>
-
-                  {linkedCommand ? (
-                    <Link
-                      href={`/commands/${encodeURIComponent(linkedCommand)}`}
-                      className={actionButtonClassName()}
-                    >
-                      Ouvrir la command liée
-                    </Link>
-                  ) : (
-                    <div className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-zinc-500">
-                      Ouvrir la command liée
-                    </div>
-                  )}
-
-                  {flowTarget ? (
-                    <Link
-                      href={`/flows/${encodeURIComponent(flowTarget)}`}
-                      className={actionButtonClassName()}
-                    >
-                      Ouvrir le flow lié
-                    </Link>
-                  ) : (
-                    <div className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-zinc-500">
-                      Ouvrir le flow lié
-                    </div>
-                  )}
                 </div>
               </article>
             );
