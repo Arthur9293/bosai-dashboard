@@ -1,34 +1,80 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import {
   fetchCommands,
+  fetchEvents,
   fetchIncidents,
   type CommandItem,
-  type CommandsResponse,
+  type EventItem,
   type IncidentItem,
-  type IncidentsResponse,
 } from "@/lib/api";
 
 type PageProps = {
-  params: Promise<{
-    id: string;
-  }>;
+  params:
+    | Promise<{
+        id: string;
+      }>
+    | {
+        id: string;
+      };
 };
 
 function cardClassName() {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
-function buttonClassName(variant: "default" | "primary" = "default") {
-  if (variant === "primary") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-5 py-3 text-base font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+function actionLinkClassName(
+  variant: "default" | "primary" | "soft" = "default",
+  disabled = false
+) {
+  const base =
+    "inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
+
+  if (disabled) {
+    return `${base} cursor-not-allowed border border-white/10 bg-white/5 text-zinc-500 opacity-60`;
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-base font-medium text-white transition hover:bg-white/[0.08]";
+  if (variant === "primary") {
+    return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
+  }
+
+  return `${base} border border-white/10 bg-white/5 text-white hover:bg-white/10`;
 }
 
-function labelClassName() {
-  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+function toRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function toText(value: unknown, fallback = "—"): string {
+  if (value === null || value === undefined) return fallback;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const v = toText(item, "");
+      if (v) return v;
+    }
+    return fallback;
+  }
+
+  const text = String(value).trim();
+  return text || fallback;
+}
+
+function toTextOrEmpty(value: unknown): string {
+  return toText(value, "");
+}
+
+function toNumber(value: unknown, fallback?: number): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+
+  return fallback;
 }
 
 function formatDate(value?: string | null) {
@@ -43,869 +89,330 @@ function formatDate(value?: string | null) {
   }).format(d);
 }
 
-function formatDurationMs(value: unknown) {
-  const ms = toNumber(value, NaN);
-  if (!Number.isFinite(ms) || ms <= 0) return "—";
-
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
+function formatDurationSeconds(value?: number) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return `${value}s`;
 }
 
-function toText(value: unknown, fallback = "—") {
-  if (value === null || value === undefined) return fallback;
-  const text = String(value).trim();
-  return text || fallback;
-}
+function tone(status?: string) {
+  const s = (status || "").toLowerCase();
 
-function toNumber(value: unknown, fallback = 0) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-
-  if (typeof value === "string" && value.trim() !== "") {
-    const n = Number(value);
-    if (Number.isFinite(n)) return n;
+  if (["done", "processed", "success"].includes(s)) {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  return fallback;
+  if (["running"].includes(s)) {
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+  }
+
+  if (["queued", "retry", "pending"].includes(s)) {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  if (["error", "failed", "dead"].includes(s)) {
+    return "bg-red-500/15 text-red-300 border border-red-500/20";
+  }
+
+  if (["unsupported"].includes(s)) {
+    return "bg-zinc-700 text-zinc-300 border border-zinc-600";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function firstNonEmptyString(...values: unknown[]) {
-  for (const value of values) {
-    if (value === null || value === undefined) continue;
+function parseJsonMaybe(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "object") return value;
 
-    const text = String(value).trim();
-    if (text) return text;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+}
+
+function stringifyPretty(value: unknown) {
+  const parsed = parseJsonMaybe(value);
+
+  try {
+    return JSON.stringify(parsed ?? {}, null, 2);
+  } catch {
+    return JSON.stringify({ value: String(parsed) }, null, 2);
+  }
+}
+
+function getCommandId(command: CommandItem) {
+  return toTextOrEmpty(command.id);
+}
+
+function getCommandName(command: CommandItem) {
+  return (
+    toTextOrEmpty(command.capability) ||
+    toTextOrEmpty(command.name) ||
+    "Unknown command"
+  );
+}
+
+function getCommandStatus(command: CommandItem) {
+  return toTextOrEmpty(command.status) || "unknown";
+}
+
+function getRunRecordId(command: CommandItem) {
+  return (
+    toTextOrEmpty(command.run_record_id) ||
+    toTextOrEmpty(command.linked_run) ||
+    "—"
+  );
+}
+
+function getFlowId(command: CommandItem) {
+  return toTextOrEmpty(command.flow_id);
+}
+
+function getRootEventId(command: CommandItem) {
+  return toTextOrEmpty(command.root_event_id);
+}
+
+function getParentCommandId(command: CommandItem) {
+  return toTextOrEmpty(command.parent_command_id);
+}
+
+function getWorker(command: CommandItem) {
+  return toTextOrEmpty(command.worker) || "—";
+}
+
+function getWorkspace(command: CommandItem) {
+  return toTextOrEmpty(command.workspace_id) || "—";
+}
+
+function getError(command: CommandItem) {
+  return toTextOrEmpty(command.error) || "—";
+}
+
+function getStartedAt(command: CommandItem) {
+  return toTextOrEmpty(command.started_at) || "";
+}
+
+function getFinishedAt(command: CommandItem) {
+  return toTextOrEmpty(command.finished_at) || "";
+}
+
+function getCreatedAt(command: CommandItem) {
+  return toTextOrEmpty(command.created_at) || "";
+}
+
+function getUpdatedAt(command: CommandItem) {
+  return toTextOrEmpty(command.updated_at) || "";
+}
+
+function getDurationSeconds(command: CommandItem) {
+  const direct = toNumber(
+    (command as Record<string, unknown>).duration_seconds ??
+      (command as Record<string, unknown>).duration ??
+      (command as Record<string, unknown>).Duration_seconds ??
+      (command as Record<string, unknown>).Duration
+  );
+  if (typeof direct === "number") return direct;
+
+  const started = getStartedAt(command);
+  const finished = getFinishedAt(command);
+
+  if (!started || !finished) return undefined;
+
+  const s = new Date(started).getTime();
+  const f = new Date(finished).getTime();
+
+  if (!Number.isFinite(s) || !Number.isFinite(f) || f < s) return undefined;
+  return Math.round((f - s) / 1000);
+}
+
+function getLinkedCommandFromEvent(event: EventItem) {
+  const direct = toTextOrEmpty((event as Record<string, unknown>).command_id);
+  if (direct) return direct;
+
+  const linked = (event as Record<string, unknown>).linked_command;
+  if (Array.isArray(linked) && linked.length > 0) {
+    return toTextOrEmpty(linked[0]);
   }
 
   return "";
 }
 
-function parseJsonMaybe(value: unknown): unknown {
-  if (value === null || value === undefined) return null;
-
-  if (typeof value === "object") {
-    return value;
-  }
-
-  if (typeof value !== "string") return null;
-
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return null;
-  }
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-
-  return {};
-}
-
-function toStringArray(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => String(item ?? "").trim())
-      .filter(Boolean);
-  }
-
-  if (typeof value === "string") {
-    const text = value.trim();
-    return text ? [text] : [];
-  }
-
-  return [];
-}
-
-function normalizeKey(value: unknown) {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
-
-function prettyJson(value: unknown) {
-  if (value === null || value === undefined) {
-    return "{}";
-  }
-
-  const parsed = parseJsonMaybe(value);
-
-  if (parsed !== null) {
-    try {
-      return JSON.stringify(parsed, null, 2);
-    } catch {
-      return "{}";
-    }
-  }
-
-  if (typeof value === "string") {
-    return value.trim() || "{}";
-  }
-
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return "{}";
-  }
-}
-
-function statusTone(status: string) {
-  const normalized = status.trim().toLowerCase();
-
-  if (["done", "success", "resolved"].includes(normalized)) {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (["running", "in_progress", "processing"].includes(normalized)) {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  if (["retry"].includes(normalized)) {
-    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
-  }
-
-  if (["error", "failed", "blocked"].includes(normalized)) {
-    return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-}
-
-function incidentStatusTone(status: string) {
-  const normalized = status.trim().toLowerCase();
-
-  if (normalized === "resolved") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (normalized === "escalated") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (normalized === "open") {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-}
-
-function incidentSeverityTone(severity: string) {
-  const normalized = severity.trim().toLowerCase();
-
-  if (normalized === "critical") {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  if (normalized === "high") {
-    return "bg-orange-500/15 text-orange-300 border border-orange-500/20";
-  }
-
-  if (normalized === "medium") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (normalized === "low") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-}
-
-function incidentSlaTone(label: string) {
-  const normalized = label.trim().toLowerCase();
-
-  if (normalized === "resolved" || normalized === "ok") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (normalized === "warning") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (normalized === "breached") {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  if (normalized === "open") {
-    return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-}
-
-function getIncidentTitle(incident: IncidentItem) {
-  return incident.title || incident.name || incident.error_id || "Untitled incident";
-}
-
-function getIncidentStatusRaw(incident: IncidentItem) {
-  return (incident.status || incident.statut_incident || "").trim();
-}
-
-function getIncidentSeverityRaw(incident: IncidentItem) {
-  return (incident.severity || "").trim();
-}
-
-function getIncidentStatusNormalized(incident: IncidentItem) {
-  const raw = getIncidentStatusRaw(incident).toLowerCase();
-  const sla = (incident.sla_status || "").trim().toLowerCase();
-  const hasResolvedAt = Boolean(incident.resolved_at);
-
-  if (hasResolvedAt) return "resolved";
-
-  if (!raw) {
-    if (sla === "breached") return "open";
-    return "open";
-  }
-
-  if (["open", "opened", "new", "active", "en cours"].includes(raw)) {
-    return "open";
-  }
-
-  if (["escalated", "escalade", "escaladé"].includes(raw)) {
-    return "escalated";
-  }
-
-  if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw)) {
-    return "resolved";
-  }
-
-  return raw;
-}
-
-function getIncidentStatusLabel(incident: IncidentItem) {
-  const normalized = getIncidentStatusNormalized(incident);
-
-  if (normalized === "open") return "OPEN";
-  if (normalized === "escalated") return "ESCALATED";
-  if (normalized === "resolved") return "RESOLVED";
-
-  const raw = getIncidentStatusRaw(incident);
-  return raw ? raw.toUpperCase() : "OPEN";
-}
-
-function getIncidentSeverityNormalized(incident: IncidentItem) {
-  const raw = getIncidentSeverityRaw(incident).toLowerCase();
-
-  if (!raw) {
-    if ((incident.sla_status || "").toLowerCase() === "breached") {
-      return "critical";
-    }
-    return "unknown";
-  }
-
-  if (["critical", "critique"].includes(raw)) return "critical";
-  if (["high", "élevé", "eleve"].includes(raw)) return "high";
-  if (["warning", "warn", "medium", "moyen"].includes(raw)) return "medium";
-  if (["low", "faible"].includes(raw)) return "low";
-
-  return raw;
-}
-
-function getIncidentSeverityLabel(incident: IncidentItem) {
-  const normalized = getIncidentSeverityNormalized(incident);
-
-  if (normalized === "critical") return "CRITICAL";
-  if (normalized === "high") return "HIGH";
-  if (normalized === "medium") return "MEDIUM";
-  if (normalized === "low") return "LOW";
-
-  const raw = getIncidentSeverityRaw(incident);
-  return raw ? raw.toUpperCase() : "UNKNOWN";
-}
-
-function getIncidentSlaLabel(incident: IncidentItem) {
-  const resolvedLike =
-    Boolean(incident.resolved_at) ||
-    getIncidentStatusNormalized(incident) === "resolved";
-
-  if (resolvedLike) return "RESOLVED";
-
-  const sla = (incident.sla_status || "").trim();
-  if (sla) return sla.toUpperCase();
-
-  if (
-    typeof incident.sla_remaining_minutes === "number" &&
-    incident.sla_remaining_minutes < 0
-  ) {
-    return "BREACHED";
-  }
-
-  return "OPEN";
-}
-
-function getIncidentWorkspace(incident: IncidentItem) {
-  return firstNonEmptyString(incident.workspace_id, incident.workspace, "—");
-}
-
-function getIncidentFlowId(incident: IncidentItem) {
-  return firstNonEmptyString(incident.flow_id);
-}
-
-function getIncidentRootEventId(incident: IncidentItem) {
-  return firstNonEmptyString(incident.root_event_id);
-}
-
-function getIncidentRunRecordId(incident: IncidentItem) {
-  return firstNonEmptyString(
-    incident.run_record_id,
-    incident.linked_run,
-    incident.run_id
-  );
-}
-
-function getIncidentCommandIds(incident: IncidentItem) {
-  const ids = new Set<string>();
-
-  const direct = firstNonEmptyString(
-    incident.command_id,
-    incident.linked_command
-  );
-  if (direct) ids.add(direct);
-
-  for (const item of toStringArray(
-    (incident as Record<string, unknown>).linked_command
-  )) {
-    ids.add(item);
-  }
-
-  return Array.from(ids);
-}
-
-function getIncidentOpenedAt(incident: IncidentItem) {
-  return incident.opened_at || incident.created_at;
-}
-
-function isLegacyNoiseIncident(incident: IncidentItem) {
-  const title = getIncidentTitle(incident).trim().toLowerCase();
-  const category = (incident.category || "").trim().toLowerCase();
-  const reason = (incident.reason || "").trim().toLowerCase();
-  const errorId = (incident.error_id || "").trim();
-  const resolutionNote = (incident.resolution_note || "").trim();
-  const lastAction = (incident.last_action || "").trim();
-  const flowId = getIncidentFlowId(incident);
-  const rootEventId = getIncidentRootEventId(incident);
-  const commandIds = getIncidentCommandIds(incident);
-  const runRecord = getIncidentRunRecordId(incident);
-
-  const isGenericTitle = title === "incident" || title === "untitled incident";
-  const isGenericCategory =
-    category === "" || category === "—" || category === "unknown_incident";
-  const isGenericReason =
-    reason === "" || reason === "—" || reason === "incident_create";
-
-  const hasNoLinking =
-    !flowId && !rootEventId && !runRecord && commandIds.length === 0;
-
-  const hasStrongBusinessSignal =
-    errorId !== "" ||
-    resolutionNote !== "" ||
-    lastAction !== "" ||
-    category === "http_failure" ||
-    reason === "http_5xx_exhausted" ||
-    reason === "http_status_error" ||
-    reason === "forbidden_host" ||
-    !hasNoLinking;
-
+function getFlowIdFromEvent(event: EventItem) {
+  const direct = toTextOrEmpty((event as Record<string, unknown>).flow_id);
+  if (direct) return direct;
+
+  const payload = toRecord((event as Record<string, unknown>).payload);
   return (
-    isGenericTitle &&
-    isGenericCategory &&
-    isGenericReason &&
-    !hasStrongBusinessSignal
+    toTextOrEmpty(payload.flow_id) ||
+    toTextOrEmpty(payload.flowId) ||
+    toTextOrEmpty(payload.flowid) ||
+    ""
   );
 }
 
-type NormalizedCommand = {
-  raw: CommandItem;
-  recordId: string;
-  commandId: string;
-  capability: string;
-  status: string;
-  worker: string;
-  workspace: string;
-  createdAt: string;
-  startedAt: string;
-  finishedAt: string;
-  durationMs: number | null;
-  flowId: string;
-  rootEventId: string;
-  runRecordId: string;
-  parentCommandId: string;
-  incidentRecordId: string;
-  incidentCreateOk: boolean | null;
-  lastError: string;
-  decision: string;
-  reason: string;
-  severity: string;
-  category: string;
-  httpStatus: string;
-  spawnedCount: string;
-  nextCapability: string;
-  inputPreview: string;
-  resultPreview: string;
-};
+function getRootEventIdFromEvent(event: EventItem) {
+  const direct = toTextOrEmpty((event as Record<string, unknown>).root_event_id);
+  if (direct) return direct;
 
-function normalizeCommand(command: CommandItem): NormalizedCommand {
-  const raw = command as Record<string, unknown>;
-  const inputPayload = asRecord(
-    parseJsonMaybe(
-      raw.input_json ??
-        raw.command_input_json ??
-        raw.payload_json ??
-        raw.input ??
-        null
-    )
+  const payload = toRecord((event as Record<string, unknown>).payload);
+  return (
+    toTextOrEmpty(payload.root_event_id) ||
+    toTextOrEmpty(payload.rootEventId) ||
+    toTextOrEmpty(payload.rooteventid) ||
+    ""
   );
-  const resultPayload = asRecord(
-    parseJsonMaybe(
-      raw.result_json ??
-        raw.result ??
-        raw.output_json ??
-        raw.output ??
-        null
-    )
+}
+
+function getWorkspaceFromEvent(event: EventItem) {
+  const direct = toTextOrEmpty((event as Record<string, unknown>).workspace_id);
+  if (direct) return direct;
+
+  const payload = toRecord((event as Record<string, unknown>).payload);
+  return (
+    toTextOrEmpty(payload.workspace_id) ||
+    toTextOrEmpty(payload.workspaceId) ||
+    toTextOrEmpty(payload.Workspace_ID) ||
+    ""
   );
+}
 
-  const spawnSummary = asRecord(resultPayload.spawn_summary);
-  const nextCommands = Array.isArray(resultPayload.next_commands)
-    ? resultPayload.next_commands
-    : [];
-  const firstNextCommand = asRecord(nextCommands[0]);
-
-  const recordId = firstNonEmptyString(raw.id);
-  const commandId = firstNonEmptyString(
-    raw.command_id,
-    inputPayload.command_id,
-    inputPayload.commandId,
-    inputPayload.commandid,
-    resultPayload.command_id,
-    resultPayload.commandId,
-    resultPayload.commandid,
-    recordId
-  );
-
-  const createdAt = firstNonEmptyString(
-    raw.created_at,
-    raw.createdAt,
-    inputPayload.created_at,
-    resultPayload.created_at
-  );
-
-  const startedAt = firstNonEmptyString(
-    raw.started_at,
-    raw.startedAt,
-    inputPayload.started_at,
-    resultPayload.started_at
-  );
-
-  const finishedAt = firstNonEmptyString(
-    raw.finished_at,
-    raw.finishedAt,
-    inputPayload.finished_at,
-    resultPayload.finished_at
-  );
-
-  let durationMs =
-    Number.isFinite(toNumber(raw.duration_ms, NaN))
-      ? toNumber(raw.duration_ms, NaN)
-      : Number.isFinite(toNumber(raw.durationMs, NaN))
-        ? toNumber(raw.durationMs, NaN)
-        : NaN;
-
-  if (!Number.isFinite(durationMs) && startedAt && finishedAt) {
-    const startTs = new Date(startedAt).getTime();
-    const endTs = new Date(finishedAt).getTime();
-
-    if (Number.isFinite(startTs) && Number.isFinite(endTs) && endTs >= startTs) {
-      durationMs = endTs - startTs;
-    }
-  }
+function buildSyntheticCommandFromEvent(
+  event: EventItem,
+  targetCommandId: string
+): CommandItem {
+  const payload = toRecord((event as Record<string, unknown>).payload);
 
   return {
-    raw: command,
-    recordId,
-    commandId,
-    capability: firstNonEmptyString(raw.capability, raw.name, "command"),
-    status: firstNonEmptyString(raw.status, "unknown"),
-    worker: firstNonEmptyString(raw.worker, raw.worker_id, "—"),
-    workspace: firstNonEmptyString(
-      raw.workspace_id,
-      raw.workspace,
-      inputPayload.workspace_id,
-      inputPayload.workspaceId,
-      inputPayload.workspaceid,
-      resultPayload.workspace_id,
-      resultPayload.workspaceId,
-      "production"
-    ),
-    createdAt,
-    startedAt,
-    finishedAt,
-    durationMs: Number.isFinite(durationMs) ? durationMs : null,
-    flowId: firstNonEmptyString(
-      raw.flow_id,
-      raw.flowid,
-      raw.flowId,
-      inputPayload.flow_id,
-      inputPayload.flowid,
-      inputPayload.flowId,
-      resultPayload.flow_id,
-      resultPayload.flowid,
-      resultPayload.flowId
-    ),
-    rootEventId: firstNonEmptyString(
-      raw.root_event_id,
-      raw.rootEventId,
-      raw.rooteventid,
-      inputPayload.root_event_id,
-      inputPayload.rootEventId,
-      inputPayload.rooteventid,
-      inputPayload.event_id,
-      inputPayload.eventId,
-      inputPayload.eventid,
-      resultPayload.root_event_id,
-      resultPayload.rootEventId,
-      resultPayload.rooteventid,
-      resultPayload.event_id,
-      resultPayload.eventId,
-      resultPayload.eventid
-    ),
-    runRecordId: firstNonEmptyString(
-      raw.run_record_id,
-      raw.runRecordId,
-      raw.runrecordid,
-      inputPayload.run_record_id,
-      inputPayload.runRecordId,
-      inputPayload.runrecordid,
-      inputPayload.linked_run,
-      resultPayload.run_record_id,
-      resultPayload.runRecordId,
-      resultPayload.runrecordid,
-      resultPayload.linked_run
-    ),
-    parentCommandId: firstNonEmptyString(
-      raw.parent_command_id,
-      raw.parentCommandId,
-      raw.parentcommandid,
-      inputPayload.parent_command_id,
-      inputPayload.parentCommandId,
-      inputPayload.parentcommandid,
-      resultPayload.parent_command_id,
-      resultPayload.parentCommandId,
-      resultPayload.parentcommandid
-    ),
-    incidentRecordId: firstNonEmptyString(
-      raw.incident_record_id,
-      raw.incidentRecordId,
-      raw.incidentrecordid,
-      inputPayload.incident_record_id,
-      inputPayload.incidentRecordId,
-      inputPayload.incidentrecordid,
-      resultPayload.incident_record_id,
-      resultPayload.incidentRecordId,
-      resultPayload.incidentrecordid
-    ),
-    incidentCreateOk:
-      typeof resultPayload.incident_create_ok === "boolean"
-        ? (resultPayload.incident_create_ok as boolean)
-        : typeof inputPayload.incident_create_ok === "boolean"
-          ? (inputPayload.incident_create_ok as boolean)
-          : null,
-    lastError: firstNonEmptyString(
-      raw.last_error,
-      raw.error,
-      resultPayload.last_error,
-      resultPayload.error,
-      inputPayload.last_error,
-      inputPayload.error
-    ),
-    decision: firstNonEmptyString(resultPayload.decision, inputPayload.decision),
-    reason: firstNonEmptyString(resultPayload.reason, inputPayload.reason),
-    severity: firstNonEmptyString(resultPayload.severity, inputPayload.severity),
-    category: firstNonEmptyString(resultPayload.category, inputPayload.category),
-    httpStatus: firstNonEmptyString(
-      resultPayload.http_status,
-      inputPayload.http_status,
-      raw.http_status
-    ),
-    spawnedCount: firstNonEmptyString(
-      resultPayload.spawned_count,
-      spawnSummary.spawned,
-      inputPayload.spawned_count
-    ),
-    nextCapability: firstNonEmptyString(
-      firstNextCommand.capability,
-      resultPayload.next_capability,
-      inputPayload.next_capability,
-      inputPayload.nextaction
-    ),
-    inputPreview: prettyJson(
-      raw.input_json ??
-        raw.command_input_json ??
-        raw.payload_json ??
-        raw.input ??
-        {}
-    ),
-    resultPreview: prettyJson(
-      raw.result_json ?? raw.result ?? raw.output_json ?? raw.output ?? {}
-    ),
+    id: targetCommandId,
+    capability:
+      toTextOrEmpty((event as Record<string, unknown>).mapped_capability) ||
+      toTextOrEmpty((event as Record<string, unknown>).event_type) ||
+      "linked_command",
+    status:
+      toTextOrEmpty((event as Record<string, unknown>).status) || "processed",
+    workspace_id: getWorkspaceFromEvent(event) || undefined,
+    flow_id: getFlowIdFromEvent(event) || undefined,
+    root_event_id: getRootEventIdFromEvent(event) || undefined,
+    linked_run:
+      toTextOrEmpty((event as Record<string, unknown>).run_id) ||
+      toTextOrEmpty(payload.run_id) ||
+      undefined,
+    run_record_id:
+      toTextOrEmpty((event as Record<string, unknown>).run_id) ||
+      toTextOrEmpty(payload.run_id) ||
+      undefined,
+    started_at:
+      toTextOrEmpty((event as Record<string, unknown>).processed_at) || undefined,
+    finished_at:
+      toTextOrEmpty((event as Record<string, unknown>).processed_at) || undefined,
+    updated_at:
+      toTextOrEmpty((event as Record<string, unknown>).updated_at) ||
+      toTextOrEmpty((event as Record<string, unknown>).processed_at) ||
+      undefined,
+    created_at:
+      toTextOrEmpty((event as Record<string, unknown>).created_at) || undefined,
+    input: payload,
+    result: {
+      source: "synthetic_from_event",
+      event_id: toTextOrEmpty((event as Record<string, unknown>).id),
+      note: "Commande absente de la fenêtre /commands, détail reconstruit depuis /events.",
+    },
   };
 }
 
-type MatchedIncident = {
-  incident: IncidentItem;
-  score: number;
-};
+function matchIncidents(command: CommandItem, incidents: IncidentItem[]) {
+  const commandId = getCommandId(command);
+  const flowId = getFlowId(command);
+  const rootEventId = getRootEventId(command);
 
-function scoreIncidentMatch(
-  incident: IncidentItem,
-  command: NormalizedCommand
-): number {
-  const incidentId = firstNonEmptyString(incident.id);
-  const incidentFlowId = getIncidentFlowId(incident);
-  const incidentRootEventId = getIncidentRootEventId(incident);
-  const incidentRunRecordId = getIncidentRunRecordId(incident);
-  const incidentWorkspace = getIncidentWorkspace(incident);
-  const incidentCommandIds = getIncidentCommandIds(incident);
+  return incidents.filter((incident) => {
+    const incidentCommandId =
+      toTextOrEmpty(incident.command_id) || toTextOrEmpty(incident.linked_command);
+    const incidentFlowId = toTextOrEmpty(incident.flow_id);
+    const incidentRootEventId = toTextOrEmpty(incident.root_event_id);
 
-  const normalizedCommandRecordId = normalizeKey(command.recordId);
-  const normalizedCommandId = normalizeKey(command.commandId);
-  const normalizedIncidentRecordId = normalizeKey(command.incidentRecordId);
-  const normalizedFlowId = normalizeKey(command.flowId);
-  const normalizedRootEventId = normalizeKey(command.rootEventId);
-  const normalizedRunRecordId = normalizeKey(command.runRecordId);
-  const normalizedWorkspace = normalizeKey(command.workspace);
+    if (commandId && incidentCommandId === commandId) return true;
+    if (flowId && incidentFlowId === flowId) return true;
+    if (rootEventId && incidentRootEventId === rootEventId) return true;
 
-  let score = 0;
-
-  if (
-    normalizedIncidentRecordId &&
-    normalizeKey(incidentId) === normalizedIncidentRecordId
-  ) {
-    score += 1000;
-  }
-
-  const incidentCommandKeySet = new Set(incidentCommandIds.map(normalizeKey));
-  if (
-    normalizedCommandRecordId &&
-    incidentCommandKeySet.has(normalizedCommandRecordId)
-  ) {
-    score += 700;
-  }
-
-  if (normalizedCommandId && incidentCommandKeySet.has(normalizedCommandId)) {
-    score += 700;
-  }
-
-  if (
-    normalizedRunRecordId &&
-    normalizeKey(incidentRunRecordId) === normalizedRunRecordId
-  ) {
-    score += 500;
-  }
-
-  if (normalizedFlowId && normalizeKey(incidentFlowId) === normalizedFlowId) {
-    score += 350;
-  }
-
-  if (
-    normalizedRootEventId &&
-    normalizeKey(incidentRootEventId) === normalizedRootEventId
-  ) {
-    score += 300;
-  }
-
-  if (
-    normalizedWorkspace &&
-    normalizeKey(incidentWorkspace) === normalizedWorkspace
-  ) {
-    score += 80;
-  }
-
-  return score;
-}
-
-function findLinkedIncidents(
-  incidents: IncidentItem[],
-  command: NormalizedCommand
-): MatchedIncident[] {
-  const matched = incidents
-    .map((incident) => ({
-      incident,
-      score: scoreIncidentMatch(incident, command),
-    }))
-    .filter((item) => item.score >= 500)
-    .sort((a, b) => b.score - a.score);
-
-  const seen = new Set<string>();
-  const unique: MatchedIncident[] = [];
-
-  for (const item of matched) {
-    const id = item.incident.id;
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    unique.push(item);
-  }
-
-  return unique;
-}
-
-function LinkedIncidentCard({ incident }: { incident: IncidentItem }) {
-  const title = getIncidentTitle(incident);
-  const statusLabel = getIncidentStatusLabel(incident);
-  const severityLabel = getIncidentSeverityLabel(incident);
-  const slaLabel = getIncidentSlaLabel(incident);
-  const openedAt = getIncidentOpenedAt(incident);
-
-  return (
-    <article className={cardClassName()}>
-      <div className="space-y-4">
-        <div className={labelClassName()}>Incident lié</div>
-
-        <div className="space-y-3">
-          <Link
-            href={`/incidents/${encodeURIComponent(incident.id)}`}
-            className="block text-lg font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
-          >
-            {title}
-          </Link>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${incidentStatusTone(
-                getIncidentStatusNormalized(incident)
-              )}`}
-            >
-              {statusLabel}
-            </span>
-
-            <span
-              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${incidentSeverityTone(
-                getIncidentSeverityNormalized(incident)
-              )}`}
-            >
-              {severityLabel}
-            </span>
-
-            <span
-              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${incidentSlaTone(
-                getIncidentSlaLabel(incident)
-              )}`}
-            >
-              SLA {slaLabel}
-            </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2">
-          <div>
-            <span className={labelClassName()}>Opened</span>
-            <div className="mt-1 text-zinc-200">{formatDate(openedAt)}</div>
-          </div>
-
-          <div>
-            <span className={labelClassName()}>Workspace</span>
-            <div className="mt-1 text-zinc-200">{getIncidentWorkspace(incident)}</div>
-          </div>
-
-          <div className="break-all">
-            <span className={labelClassName()}>Flow</span>
-            <div className="mt-1 text-zinc-200">
-              {getIncidentFlowId(incident) || "—"}
-            </div>
-          </div>
-
-          <div className="break-all">
-            <span className={labelClassName()}>Root event</span>
-            <div className="mt-1 text-zinc-200">
-              {getIncidentRootEventId(incident) || "—"}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <Link
-            href={`/incidents/${encodeURIComponent(incident.id)}`}
-            className={buttonClassName()}
-          >
-            Ouvrir l’incident
-          </Link>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function InfoRow({
-  label,
-  value,
-  breakAll = false,
-}: {
-  label: string;
-  value: string;
-  breakAll?: boolean;
-}) {
-  return (
-    <div className={breakAll ? "break-all" : undefined}>
-      <span className={labelClassName()}>{label}</span>
-      <div className="mt-1 text-zinc-200">{value}</div>
-    </div>
-  );
+    return false;
+  });
 }
 
 export default async function CommandDetailPage({ params }: PageProps) {
-  const { id } = await params;
+  const resolvedParams = await Promise.resolve(params);
+  const id = decodeURIComponent(resolvedParams.id);
 
-  let commandsData: CommandsResponse | null = null;
-  let incidentsData: IncidentsResponse | null = null;
+  const [commandsData, eventsData, incidentsData] = await Promise.allSettled([
+    fetchCommands(),
+    fetchEvents(),
+    fetchIncidents(),
+  ]);
 
-  try {
-    commandsData = await fetchCommands();
-  } catch {
-    commandsData = null;
-  }
+  const commands =
+    commandsData.status === "fulfilled" && Array.isArray(commandsData.value?.commands)
+      ? commandsData.value.commands
+      : [];
 
-  try {
-    incidentsData = await fetchIncidents();
-  } catch {
-    incidentsData = null;
-  }
+  const events =
+    eventsData.status === "fulfilled" && Array.isArray(eventsData.value?.events)
+      ? eventsData.value.events
+      : [];
 
-  const commands: CommandItem[] = Array.isArray(commandsData?.commands)
-    ? commandsData.commands
-    : [];
+  const incidents =
+    incidentsData.status === "fulfilled" &&
+    Array.isArray(incidentsData.value?.incidents)
+      ? incidentsData.value.incidents
+      : [];
 
-  const incidents: IncidentItem[] = Array.isArray(incidentsData?.incidents)
-    ? incidentsData.incidents
-    : [];
+  let command = commands.find((item) => String(item.id) === id) || null;
 
-  const command = commands.find((item) => item.id === id);
+  let fallbackEvent: EventItem | null = null;
 
   if (!command) {
-    notFound();
+    fallbackEvent =
+      events.find((event) => getLinkedCommandFromEvent(event) === id) || null;
+
+    if (fallbackEvent) {
+      command = buildSyntheticCommandFromEvent(fallbackEvent, id);
+    }
   }
 
-  const normalized = normalizeCommand(command);
+  const linkedIncidents = command ? matchIncidents(command, incidents) : [];
 
-  const usableIncidents = incidents.filter((item) => !isLegacyNoiseIncident(item));
-  const linkedIncidents = findLinkedIncidents(usableIncidents, normalized);
+  const title = command ? getCommandName(command) : "Command introuvable";
+  const status = command ? getCommandStatus(command) : "unknown";
+  const flowId = command ? getFlowId(command) : "";
+  const rootEventId = command ? getRootEventId(command) : "";
+  const runRecordId = command ? getRunRecordId(command) : "—";
+  const workspace = command ? getWorkspace(command) : "—";
+  const worker = command ? getWorker(command) : "—";
+  const error = command ? getError(command) : "—";
+  const parentCommandId = command ? getParentCommandId(command) : "";
+  const durationSeconds = command ? getDurationSeconds(command) : undefined;
+  const startedAt = command ? getStartedAt(command) : "";
+  const finishedAt = command ? getFinishedAt(command) : "";
+  const createdAt = command ? getCreatedAt(command) : "";
+  const updatedAt = command ? getUpdatedAt(command) : "";
+  const inputPreview = command ? stringifyPretty(command.input) : "{}";
+  const resultPreview = command ? stringifyPretty(command.result) : "{}";
 
-  const canOpenFlow = Boolean(normalized.flowId || normalized.rootEventId);
-  const flowTarget = normalized.flowId || normalized.rootEventId;
+  const hasFlow = Boolean(flowId);
+  const hasRootEvent = Boolean(rootEventId);
+  const hasParent = Boolean(parentCommandId);
+  const fallbackMode = Boolean(fallbackEvent) && !commands.find((item) => String(item.id) === id);
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-4 border-b border-white/10 pb-6">
+    <div className="space-y-6">
+      <div className="border-b border-white/10 pb-4">
         <div className="text-sm text-zinc-400">
           <Link
             href="/commands"
@@ -913,257 +420,252 @@ export default async function CommandDetailPage({ params }: PageProps) {
           >
             Commands
           </Link>{" "}
-          / {normalized.capability}
+          / {title}
         </div>
 
-        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          {normalized.capability}
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+          {title}
         </h1>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${statusTone(
-              normalized.status
+            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${tone(
+              status
             )}`}
           >
-            {normalized.status.toUpperCase()}
+            {status.toUpperCase()}
           </span>
 
-          <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-200">
-            Worker {normalized.worker}
-          </span>
+          {fallbackMode ? (
+            <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-sm font-medium text-amber-300">
+              FALLBACK FROM EVENT
+            </span>
+          ) : null}
 
-          <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-200">
-            {normalized.workspace}
+          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
+            COMMAND DETAIL
           </span>
+        </div>
+
+        {fallbackMode ? (
+          <p className="mt-4 max-w-3xl text-sm text-amber-300/90">
+            Cette commande n’est pas revenue dans la fenêtre actuelle de <code>/commands</code>.
+            La page a été reconstruite automatiquement depuis l’event lié pour éviter le 404.
+          </p>
+        ) : null}
+      </div>
+
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Created</div>
+          <div className="mt-3 text-xl font-semibold text-white">
+            {formatDate(createdAt)}
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Started</div>
+          <div className="mt-3 text-xl font-semibold text-white">
+            {formatDate(startedAt)}
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Finished</div>
+          <div className="mt-3 text-xl font-semibold text-white">
+            {formatDate(finishedAt)}
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Duration</div>
+          <div className="mt-3 text-xl font-semibold text-white">
+            {formatDurationSeconds(durationSeconds)}
+          </div>
         </div>
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className={cardClassName()}>
-          <div className={labelClassName()}>Created</div>
-          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
-            {formatDate(normalized.createdAt)}
+        <div className={`${cardClassName()} xl:col-span-2`}>
+          <div className="mb-4 text-lg font-medium text-white">
+            Contexte command
           </div>
-        </div>
 
-        <div className={cardClassName()}>
-          <div className={labelClassName()}>Started</div>
-          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
-            {formatDate(normalized.startedAt)}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className={labelClassName()}>Finished</div>
-          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
-            {formatDate(normalized.finishedAt)}
-          </div>
-        </div>
-
-        <div className="xl:col-span-3">
-          <div className={cardClassName()}>
-            <div className={labelClassName()}>Durée totale</div>
-            <div className="mt-3 text-xl font-semibold tracking-tight text-white">
-              {formatDurationMs(normalized.durationMs)}
+          <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
+            <div>
+              Capability: <span className="text-zinc-200">{title}</span>
             </div>
+            <div>
+              Status: <span className="text-zinc-200">{status.toUpperCase()}</span>
+            </div>
+            <div>
+              Workspace: <span className="text-zinc-200">{workspace}</span>
+            </div>
+            <div>
+              Worker: <span className="text-zinc-200">{worker}</span>
+            </div>
+            <div>
+              Run record: <span className="break-all text-zinc-200">{runRecordId}</span>
+            </div>
+            <div>
+              Parent command:{" "}
+              <span className="break-all text-zinc-200">
+                {parentCommandId || "—"}
+              </span>
+            </div>
+            <div className="md:col-span-2">
+              Error: <span className="break-all text-zinc-200">{error}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="mb-4 text-lg font-medium text-white">
+            Liens flow
+          </div>
+
+          <div className="space-y-4 text-sm text-zinc-400">
+            <div className="break-all">
+              Flow:{" "}
+              {hasFlow ? (
+                <Link
+                  href={`/flows/${encodeURIComponent(flowId)}`}
+                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  {flowId}
+                </Link>
+              ) : (
+                <span className="text-zinc-200">—</span>
+              )}
+            </div>
+
+            <div className="break-all">
+              Root event:{" "}
+              <span className="text-zinc-200">{rootEventId || "—"}</span>
+            </div>
+
+            <div className="break-all">
+              Command ID:{" "}
+              <span className="text-zinc-200">{command ? getCommandId(command) : id}</span>
+            </div>
+
+            {fallbackEvent ? (
+              <div className="break-all">
+                Source event:{" "}
+                <Link
+                  href={`/events/${encodeURIComponent(String(fallbackEvent.id))}`}
+                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  {String(fallbackEvent.id)}
+                </Link>
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">
-            Contexte command
-          </div>
-
-          <div className="grid gap-4 text-sm text-zinc-400 sm:grid-cols-2">
-            <InfoRow label="Capability" value={normalized.capability} />
-            <InfoRow label="Status" value={normalized.status.toUpperCase()} />
-            <InfoRow label="Worker" value={normalized.worker} />
-            <InfoRow label="Workspace" value={normalized.workspace} />
-            <InfoRow
-              label="Record ID"
-              value={normalized.recordId || "—"}
-              breakAll
-            />
-            <InfoRow
-              label="Command ID"
-              value={normalized.commandId || "—"}
-              breakAll
-            />
-            <InfoRow label="Retry count" value="0" />
-            <InfoRow
-              label="Parent command"
-              value={normalized.parentCommandId || "—"}
-              breakAll
-            />
-            <InfoRow
-              label="Run record"
-              value={normalized.runRecordId || "—"}
-              breakAll
-            />
-            <div className="sm:col-span-2">
-              <InfoRow label="Last error" value={normalized.lastError || "—"} />
-            </div>
-          </div>
+          <div className="mb-4 text-lg font-medium text-white">Input preview</div>
+          <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+{inputPreview}
+          </pre>
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">Liens flow</div>
-
-          <div className="grid gap-4 text-sm text-zinc-400 sm:grid-cols-2">
-            <InfoRow label="Flow" value={normalized.flowId || "—"} breakAll />
-            <InfoRow
-              label="Root event"
-              value={normalized.rootEventId || "—"}
-              breakAll
-            />
-            <InfoRow
-              label="Run record"
-              value={normalized.runRecordId || "—"}
-              breakAll
-            />
-            <InfoRow
-              label="Parent command"
-              value={normalized.parentCommandId || "—"}
-              breakAll
-            />
-          </div>
+          <div className="mb-4 text-lg font-medium text-white">Result preview</div>
+          <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+{resultPreview}
+          </pre>
         </div>
       </section>
 
-      <section className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">
-          Diagnostic routing
-        </div>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className={cardClassName()}>
+          <div className="mb-4 text-lg font-medium text-white">Incidents liés</div>
 
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
-          <InfoRow label="Decision" value={normalized.decision || "—"} />
-          <InfoRow label="Reason" value={normalized.reason || "—"} />
-          <InfoRow label="Severity" value={normalized.severity || "—"} />
-          <InfoRow label="Category" value={normalized.category || "—"} />
-          <InfoRow label="HTTP status" value={normalized.httpStatus || "—"} />
-          <InfoRow
-            label="incident_create_ok"
-            value={
-              normalized.incidentCreateOk === null
-                ? "—"
-                : String(normalized.incidentCreateOk)
-            }
-          />
-          <InfoRow
-            label="incident_record_id"
-            value={normalized.incidentRecordId || "—"}
-            breakAll
-          />
-          <InfoRow
-            label="spawned_count"
-            value={normalized.spawnedCount || "—"}
-          />
-          <div className="md:col-span-2">
-            <InfoRow
-              label="next capability"
-              value={normalized.nextCapability || "—"}
-            />
-          </div>
-        </div>
-      </section>
-
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Input preview</div>
-        <pre className="max-h-[560px] overflow-auto rounded-[24px] border border-white/10 bg-black/30 p-5 text-sm leading-6 text-zinc-200">
-{normalized.inputPreview}
-        </pre>
-      </section>
-
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Result preview</div>
-        <pre className="max-h-[560px] overflow-auto rounded-[24px] border border-white/10 bg-black/30 p-5 text-sm leading-6 text-zinc-200">
-{normalized.resultPreview}
-        </pre>
-      </section>
-
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Incidents liés</div>
-
-        {linkedIncidents.length === 0 ? (
-          <div className="rounded-[24px] border border-dashed border-white/10 px-5 py-8 text-base text-zinc-400">
-            <div>Aucun incident lié détecté pour cette command.</div>
-
-            <div className="mt-4 space-y-2 text-zinc-500">
-              <div>
-                Vérification secondaire effectuée via{" "}
-                <span className="text-zinc-300">flow_id</span>,{" "}
-                <span className="text-zinc-300">root_event_id</span> et{" "}
-                <span className="text-zinc-300">run_record_id</span>.
-              </div>
-
-              <div>
-                incident_record_id est{" "}
-                <span className="text-zinc-300">
-                  {normalized.incidentRecordId || "absent"}
-                </span>
-                .
-              </div>
-
-              <div>
-                incident_create_ok ={" "}
-                <span className="text-zinc-300">
-                  {normalized.incidentCreateOk === null
-                    ? "—"
-                    : String(normalized.incidentCreateOk)}
-                </span>
-                .
-              </div>
+          {linkedIncidents.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-sm text-zinc-500">
+              Aucun incident lié détecté pour cette commande.
             </div>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {linkedIncidents.map(({ incident }) => (
-              <LinkedIncidentCard key={incident.id} incident={incident} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Navigation</div>
-
-        <div className="space-y-3">
-          <Link href="/commands" className={buttonClassName()}>
-            Retour à la liste commands
-          </Link>
-
-          <Link href="/commands" className={buttonClassName()}>
-            Voir toutes les commands
-          </Link>
-
-          {canOpenFlow && flowTarget ? (
-            <Link
-              href={`/flows/${encodeURIComponent(flowTarget)}`}
-              className={buttonClassName()}
-            >
-              Retour au flow source
-            </Link>
           ) : (
-            <div className="inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-base font-medium text-zinc-500">
-              Retour au flow source
+            <div className="space-y-3">
+              {linkedIncidents.slice(0, 5).map((incident) => {
+                const incidentId = String(incident.id || "");
+                const incidentTitle =
+                  toTextOrEmpty(incident.title) ||
+                  toTextOrEmpty(incident.name) ||
+                  "Incident";
+
+                return (
+                  <Link
+                    key={incidentId}
+                    href={`/incidents/${encodeURIComponent(incidentId)}`}
+                    className="block rounded-xl border border-white/10 bg-black/20 px-4 py-4 transition hover:bg-black/30"
+                  >
+                    <div className="text-sm font-medium text-white">
+                      {incidentTitle}
+                    </div>
+                    <div className="mt-1 text-sm text-zinc-400">
+                      {toTextOrEmpty(incident.status) ||
+                        toTextOrEmpty(incident.statut_incident) ||
+                        "—"}
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           )}
+        </div>
 
-          {canOpenFlow && flowTarget ? (
-            <Link
-              href={`/flows/${encodeURIComponent(flowTarget)}`}
-              className={buttonClassName("primary")}
-            >
-              Ouvrir le flow lié
+        <div className={cardClassName()}>
+          <div className="mb-4 text-lg font-medium text-white">Navigation</div>
+
+          <div className="space-y-3">
+            <Link href="/commands" className={actionLinkClassName("soft")}>
+              Retour à la liste commands
             </Link>
-          ) : (
-            <div className="inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-base font-medium text-zinc-500">
-              Ouvrir le flow lié
-            </div>
-          )}
+
+            <Link href="/commands" className={actionLinkClassName("primary")}>
+              Voir toutes les commands
+            </Link>
+
+            {hasParent ? (
+              <Link
+                href={`/commands/${encodeURIComponent(parentCommandId)}`}
+                className={actionLinkClassName("soft")}
+              >
+                Ouvrir la command parente
+              </Link>
+            ) : null}
+
+            {hasFlow ? (
+              <Link
+                href={`/flows/${encodeURIComponent(flowId)}`}
+                className={actionLinkClassName("soft")}
+              >
+                Ouvrir le flow lié
+              </Link>
+            ) : null}
+
+            {hasRootEvent ? (
+              <Link
+                href={`/events/${encodeURIComponent(rootEventId)}`}
+                className={actionLinkClassName("soft")}
+              >
+                Ouvrir le root event
+              </Link>
+            ) : null}
+
+            {fallbackEvent ? (
+              <Link
+                href={`/events/${encodeURIComponent(String(fallbackEvent.id))}`}
+                className={actionLinkClassName("soft")}
+              >
+                Retour à l’event source
+              </Link>
+            ) : null}
+          </div>
         </div>
       </section>
     </div>
