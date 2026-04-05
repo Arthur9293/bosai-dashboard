@@ -6,27 +6,15 @@ import {
   type IncidentsResponse,
 } from "@/lib/api";
 
-type SearchParams = Promise<
-  Record<string, string | string[] | undefined>
->;
-
 type PageProps = {
   params: Promise<{
     id: string;
   }>;
-  searchParams?: SearchParams;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 function cardClassName() {
   return "rounded-2xl border border-white/10 bg-white/5 p-5";
-}
-
-function buttonClassName(variant: "default" | "accent" = "default") {
-  if (variant === "accent") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
-  }
-
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
 }
 
 function formatDate(value?: string | null) {
@@ -56,21 +44,58 @@ function toNumber(value: unknown, fallback = 0) {
   return fallback;
 }
 
-function readSearchParam(
-  searchParams: Record<string, string | string[] | undefined>,
-  key: string
-) {
-  const value = searchParams[key];
-
+function getQueryText(value: string | string[] | undefined) {
   if (Array.isArray(value)) {
-    return (value[0] || "").trim();
+    const first = value.find((item) => String(item).trim() !== "");
+    return first ? String(first).trim() : "";
   }
 
-  return (value || "").trim();
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function buildIncidentsHref(options: {
+  flowId?: string;
+  rootEventId?: string;
+  sourceRecordId?: string;
+  from?: string;
+}) {
+  const params = new URLSearchParams();
+
+  if (options.flowId) {
+    params.set("flow_id", options.flowId);
+  }
+
+  if (options.rootEventId && options.rootEventId !== "—") {
+    params.set("root_event_id", options.rootEventId);
+  }
+
+  if (options.sourceRecordId && options.sourceRecordId !== "—") {
+    params.set("source_record_id", options.sourceRecordId);
+  }
+
+  if (options.from) {
+    params.set("from", options.from);
+  }
+
+  const query = params.toString();
+  return query ? `/incidents?${query}` : "/incidents";
+}
+
+function buildFlowHref(options: {
+  flowId?: string;
+  rootEventId?: string;
+  sourceRecordId?: string;
+}) {
+  const target =
+    options.flowId || options.sourceRecordId || options.rootEventId || "";
+
+  return target ? `/flows/${encodeURIComponent(target)}` : "";
 }
 
 function getIncidentTitle(incident: IncidentItem) {
-  return incident.title || incident.name || incident.error_id || "Untitled incident";
+  return (
+    incident.title || incident.name || incident.error_id || "Untitled incident"
+  );
 }
 
 function getIncidentStatusRaw(incident: IncidentItem) {
@@ -95,9 +120,11 @@ function getIncidentStatusNormalized(incident: IncidentItem) {
     return "open";
   }
 
-  if (["open", "opened", "new", "active", "en cours"].includes(raw)) return "open";
+  if (["open", "opened", "new", "active", "en cours"].includes(raw))
+    return "open";
   if (["escalated", "escalade", "escaladé"].includes(raw)) return "escalated";
-  if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw)) return "resolved";
+  if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw))
+    return "resolved";
 
   return raw;
 }
@@ -117,7 +144,8 @@ function getIncidentSeverityNormalized(incident: IncidentItem) {
   const raw = getIncidentSeverityRaw(incident).toLowerCase();
 
   if (!raw) {
-    if ((incident.sla_status || "").toLowerCase() === "breached") return "critical";
+    if ((incident.sla_status || "").toLowerCase() === "breached")
+      return "critical";
     return "unknown";
   }
 
@@ -303,7 +331,9 @@ function getWorkspace(incident: IncidentItem) {
 }
 
 function getRunRecord(incident: IncidentItem) {
-  return incident.run_record_id || incident.linked_run || incident.run_id || "—";
+  return (
+    incident.run_record_id || incident.linked_run || incident.run_id || "—"
+  );
 }
 
 function getCommandRecord(incident: IncidentItem) {
@@ -335,7 +365,8 @@ function getSuggestedAction(incident: IncidentItem) {
 
   if (status === "escalated") return "Review escalated incident";
   if (severity === "critical") return "Prioritize immediate review";
-  if ((incident.sla_status || "").toLowerCase() === "breached") return "Review SLA breach";
+  if ((incident.sla_status || "").toLowerCase() === "breached")
+    return "Review SLA breach";
   if (status === "resolved") return "Verify final resolution state";
 
   return "Monitor flow and resolution";
@@ -361,8 +392,7 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   const commandRecord = getCommandRecord(incident);
   const runRecord = getRunRecord(incident);
 
-  const isGenericTitle =
-    title === "incident" || title === "untitled incident";
+  const isGenericTitle = title === "incident" || title === "untitled incident";
 
   const isGenericCategory =
     category === "" || category === "—" || category === "unknown_incident";
@@ -386,53 +416,12 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
     reason === "forbidden_host" ||
     !hasNoLinking;
 
-  return isGenericTitle && isGenericCategory && isGenericReason && !hasStrongBusinessSignal;
-}
-
-function buildIncidentsBackHref(
-  searchParams: Record<string, string | string[] | undefined>
-) {
-  const params = new URLSearchParams();
-
-  const flowId = readSearchParam(searchParams, "flow_id");
-  const rootEventId = readSearchParam(searchParams, "root_event_id");
-  const sourceRecordId = readSearchParam(searchParams, "source_record_id");
-  const from = readSearchParam(searchParams, "from");
-
-  if (flowId) params.set("flow_id", flowId);
-  if (rootEventId) params.set("root_event_id", rootEventId);
-  if (sourceRecordId) params.set("source_record_id", sourceRecordId);
-  if (from) params.set("from", from);
-
-  const query = params.toString();
-  return query ? `/incidents?${query}` : "/incidents";
-}
-
-function buildFlowsBackHref(
-  incident: IncidentItem,
-  searchParams: Record<string, string | string[] | undefined>
-) {
-  const flowId = getFlowId(incident);
-  if (flowId) {
-    return `/flows/${encodeURIComponent(flowId)}`;
-  }
-
-  const searchFlowId = readSearchParam(searchParams, "flow_id");
-  if (searchFlowId) {
-    return `/flows/${encodeURIComponent(searchFlowId)}`;
-  }
-
-  const searchRootEventId = readSearchParam(searchParams, "root_event_id");
-  if (searchRootEventId) {
-    return `/flows/${encodeURIComponent(searchRootEventId)}`;
-  }
-
-  const sourceRecordId = readSearchParam(searchParams, "source_record_id");
-  if (sourceRecordId) {
-    return `/flows/${encodeURIComponent(sourceRecordId)}`;
-  }
-
-  return "/flows";
+  return (
+    isGenericTitle &&
+    isGenericCategory &&
+    isGenericReason &&
+    !hasStrongBusinessSignal
+  );
 }
 
 export default async function IncidentDetailPage({
@@ -450,7 +439,9 @@ export default async function IncidentDetailPage({
     data = null;
   }
 
-  const incidents: IncidentItem[] = Array.isArray(data?.incidents) ? data.incidents : [];
+  const incidents: IncidentItem[] = Array.isArray(data?.incidents)
+    ? data.incidents
+    : [];
   const cleanIncidents = incidents.filter((item) => !isLegacyNoiseIncident(item));
   const incident = cleanIncidents.find((item) => item.id === id);
 
@@ -481,29 +472,44 @@ export default async function IncidentDetailPage({
   const nextAction = getNextAction(incident);
   const priorityScore = getPriorityScore(incident);
 
-  const incidentsBackHref = buildIncidentsBackHref(resolvedSearchParams);
-  const flowsBackHref = buildFlowsBackHref(incident, resolvedSearchParams);
+  const contextFlowId = getQueryText(resolvedSearchParams.flow_id);
+  const contextRootEventId = getQueryText(resolvedSearchParams.root_event_id);
+  const contextSourceRecordId = getQueryText(
+    resolvedSearchParams.source_record_id
+  );
+  const contextFrom = getQueryText(resolvedSearchParams.from);
 
-  const from = readSearchParam(resolvedSearchParams, "from");
-  const filterFlowId = readSearchParam(resolvedSearchParams, "flow_id");
-  const filterRootEventId = readSearchParam(resolvedSearchParams, "root_event_id");
-  const filterSourceRecordId = readSearchParam(resolvedSearchParams, "source_record_id");
+  const hasFlowContext = Boolean(
+    contextFlowId || contextRootEventId || contextSourceRecordId
+  );
 
-  const openedFromFlows =
-    from === "flows" ||
-    Boolean(filterFlowId) ||
-    Boolean(filterRootEventId) ||
-    Boolean(filterSourceRecordId);
+  const filteredIncidentsHref = buildIncidentsHref({
+    flowId: contextFlowId,
+    rootEventId: contextRootEventId,
+    sourceRecordId: contextSourceRecordId,
+    from: contextFrom || "flows",
+  });
+
+  const linkedFlowHref = buildFlowHref({
+    flowId,
+    rootEventId,
+  });
+
+  const contextualFlowHref = buildFlowHref({
+    flowId: contextFlowId || flowId,
+    rootEventId: contextRootEventId || rootEventId,
+    sourceRecordId: contextSourceRecordId,
+  });
 
   return (
     <div className="space-y-6">
       <div className="border-b border-white/10 pb-4">
         <div className="text-sm text-zinc-400">
           <Link
-            href={incidentsBackHref}
+            href={hasFlowContext ? filteredIncidentsHref : "/incidents"}
             className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
           >
-            Incidents
+            {hasFlowContext ? "Incidents filtrés" : "Incidents"}
           </Link>{" "}
           / {title}
         </div>
@@ -549,39 +555,54 @@ export default async function IncidentDetailPage({
         </div>
       </div>
 
-      {openedFromFlows ? (
+      {hasFlowContext ? (
         <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5">
           <div className="mb-4 text-lg font-medium text-emerald-200">
-            Contexte de navigation
+            Contexte depuis Flows
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {filterFlowId ? (
+            {contextFlowId ? (
               <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-zinc-200">
-                flow_id: {filterFlowId}
+                flow_id: {contextFlowId}
               </span>
             ) : null}
 
-            {filterRootEventId ? (
+            {contextRootEventId ? (
               <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-zinc-200">
-                root_event_id: {filterRootEventId}
+                root_event_id: {contextRootEventId}
               </span>
             ) : null}
 
-            {filterSourceRecordId ? (
+            {contextSourceRecordId ? (
               <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-zinc-200">
-                source_record_id: {filterSourceRecordId}
+                source_record_id: {contextSourceRecordId}
               </span>
             ) : null}
           </div>
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-            <Link href={flowsBackHref} className={buttonClassName()}>
-              Retour au flow lié
+            <Link
+              href={filteredIncidentsHref}
+              className="inline-flex w-full justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10 sm:w-auto"
+            >
+              Retour aux incidents filtrés
             </Link>
 
-            <Link href={incidentsBackHref} className={buttonClassName("accent")}>
-              Retour aux incidents filtrés
+            {contextualFlowHref ? (
+              <Link
+                href={contextualFlowHref}
+                className="inline-flex w-full justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20 sm:w-auto"
+              >
+                Retour au flow source
+              </Link>
+            ) : null}
+
+            <Link
+              href="/incidents"
+              className="inline-flex w-full justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20 sm:w-auto"
+            >
+              Voir tous les incidents
             </Link>
           </div>
         </section>
@@ -636,10 +657,12 @@ export default async function IncidentDetailPage({
               Workspace: <span className="text-zinc-200">{workspace}</span>
             </div>
             <div>
-              Source: <span className="text-zinc-200">{toText(incident.source)}</span>
+              Source:{" "}
+              <span className="text-zinc-200">{toText(incident.source)}</span>
             </div>
             <div>
-              Worker: <span className="text-zinc-200">{toText(incident.worker)}</span>
+              Worker:{" "}
+              <span className="text-zinc-200">{toText(incident.worker)}</span>
             </div>
             <div>
               Error ID: <span className="text-zinc-200">{errorId}</span>
@@ -648,22 +671,28 @@ export default async function IncidentDetailPage({
               Last action: <span className="text-zinc-200">{lastAction}</span>
             </div>
             <div>
-              Resolution note: <span className="text-zinc-200">{resolutionNote}</span>
+              Resolution note:{" "}
+              <span className="text-zinc-200">{resolutionNote}</span>
             </div>
             <div>
-              Decision status: <span className="text-purple-300">{decisionStatus || "—"}</span>
+              Decision status:{" "}
+              <span className="text-purple-300">{decisionStatus || "—"}</span>
             </div>
             <div>
-              Decision reason: <span className="text-zinc-200">{decisionReason || "—"}</span>
+              Decision reason:{" "}
+              <span className="text-zinc-200">{decisionReason || "—"}</span>
             </div>
             <div>
-              Next action: <span className="text-zinc-200">{nextAction || "—"}</span>
+              Next action:{" "}
+              <span className="text-zinc-200">{nextAction || "—"}</span>
             </div>
             <div>
-              Priority score: <span className="text-zinc-200">{priorityScore}</span>
+              Priority score:{" "}
+              <span className="text-zinc-200">{priorityScore}</span>
             </div>
             <div className="md:col-span-2">
-              Suggested action: <span className="text-zinc-200">{suggestedAction}</span>
+              Suggested action:{" "}
+              <span className="text-zinc-200">{suggestedAction}</span>
             </div>
           </div>
         </div>
@@ -704,16 +733,14 @@ export default async function IncidentDetailPage({
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-4 text-lg font-medium text-white">
-            Flow links
-          </div>
+          <div className="mb-4 text-lg font-medium text-white">Flow links</div>
 
           <div className="space-y-4 text-sm text-zinc-400">
             <div className="break-all">
               Flow:{" "}
-              {flowId ? (
+              {linkedFlowHref && flowId ? (
                 <Link
-                  href={`/flows/${encodeURIComponent(flowId)}`}
+                  href={linkedFlowHref}
                   className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
                 >
                   {flowId}
@@ -724,7 +751,8 @@ export default async function IncidentDetailPage({
             </div>
 
             <div className="break-all">
-              Root event: <span className="text-zinc-200">{toText(rootEventId)}</span>
+              Root event:{" "}
+              <span className="text-zinc-200">{toText(rootEventId)}</span>
             </div>
 
             <div className="break-all">
@@ -748,26 +776,69 @@ export default async function IncidentDetailPage({
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">
-            Navigation
-          </div>
+          <div className="mb-4 text-lg font-medium text-white">Navigation</div>
 
-          <div className="space-y-3">
-            <Link href={incidentsBackHref} className={buttonClassName()}>
-              Retour à la liste incidents
-            </Link>
+          <div className="space-y-3 text-sm">
+            {hasFlowContext ? (
+              <div>
+                <Link
+                  href={filteredIncidentsHref}
+                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  Retour aux incidents filtrés
+                </Link>
+              </div>
+            ) : (
+              <div>
+                <Link
+                  href="/incidents"
+                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  Retour à la liste incidents
+                </Link>
+              </div>
+            )}
 
-            <Link href={flowsBackHref} className={buttonClassName()}>
-              Ouvrir le flow lié
-            </Link>
+            <div>
+              <Link
+                href="/incidents"
+                className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+              >
+                Voir tous les incidents
+              </Link>
+            </div>
+
+            {contextualFlowHref ? (
+              <div>
+                <Link
+                  href={contextualFlowHref}
+                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  Retour au flow source
+                </Link>
+              </div>
+            ) : null}
+
+            {linkedFlowHref ? (
+              <div>
+                <Link
+                  href={linkedFlowHref}
+                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  Ouvrir le flow lié
+                </Link>
+              </div>
+            ) : null}
 
             {commandRecord !== "—" && commandRecord ? (
-              <Link
-                href={`/commands/${encodeURIComponent(commandRecord)}`}
-                className={buttonClassName()}
-              >
-                Ouvrir la command liée
-              </Link>
+              <div>
+                <Link
+                  href={`/commands/${encodeURIComponent(commandRecord)}`}
+                  className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  Ouvrir la command liée
+                </Link>
+              </div>
             ) : null}
           </div>
         </div>
