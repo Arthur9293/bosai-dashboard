@@ -92,6 +92,136 @@ type CommandStatsCompat = {
   done?: number;
 };
 
+function toRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function toText(value: unknown, fallback = "—") {
+  if (value === null || value === undefined) return fallback;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = toText(item, "");
+      if (candidate) return candidate;
+    }
+    return fallback;
+  }
+
+  const text = String(value).trim();
+  return text || fallback;
+}
+
+function toTextOrEmpty(value: unknown) {
+  return toText(value, "");
+}
+
+function prettifyHealthKey(key: string) {
+  return key
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function formatHealthDetailValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+
+  if (typeof value === "boolean") {
+    return value ? "OK" : "KO";
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "—";
+  }
+
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text ? text.toUpperCase() : "—";
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "—";
+    return formatHealthDetailValue(value[0]);
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+
+    const direct =
+      record.status ??
+      record.state ??
+      record.health ??
+      record.value ??
+      record.result ??
+      record.message ??
+      record.ok ??
+      record.healthy ??
+      record.enabled;
+
+    if (direct !== undefined) {
+      return formatHealthDetailValue(direct);
+    }
+
+    return "LOADED";
+  }
+
+  return "—";
+}
+
+function buildHealthRows(
+  score: number,
+  rawStatus: string,
+  details: Record<string, unknown>
+) {
+  const rows: Array<{ label: string; value: string }> = [
+    {
+      label: "Health status",
+      value: healthLabel(score, rawStatus),
+    },
+  ];
+
+  const usedKeys = new Set<string>();
+
+  const priorityGroups = [
+    { label: "Worker", keys: ["worker", "worker_status", "worker_health", "worker_ok"] },
+    { label: "Airtable", keys: ["airtable", "airtable_status", "airtable_ok"] },
+    { label: "Scheduler", keys: ["scheduler", "scheduler_status", "scheduler_ok"] },
+    { label: "Policies", keys: ["policies", "policies_status", "policies_loaded"] },
+    { label: "Event engine", keys: ["event_engine", "event_engine_status"] },
+    {
+      label: "Command orchestrator",
+      keys: ["command_orchestrator", "command_orchestrator_status"],
+    },
+  ];
+
+  for (const group of priorityGroups) {
+    const matchKey = group.keys.find((key) => details[key] !== undefined);
+    if (!matchKey) continue;
+
+    usedKeys.add(matchKey);
+    rows.push({
+      label: group.label,
+      value: formatHealthDetailValue(details[matchKey]),
+    });
+  }
+
+  if (rows.length < 5) {
+    for (const [key, value] of Object.entries(details)) {
+      if (usedKeys.has(key)) continue;
+      rows.push({
+        label: prettifyHealthKey(key),
+        value: formatHealthDetailValue(value),
+      });
+      if (rows.length >= 5) break;
+    }
+  }
+
+  return rows;
+}
+
 function getIncidentTitle(incident: IncidentItem) {
   return incident.title || incident.name || incident.error_id || "Untitled incident";
 }
@@ -176,15 +306,31 @@ function severityTone(severity: string) {
 function systemStatusTone(value: string) {
   const normalized = value.trim().toLowerCase();
 
-  if (normalized === "ok" || normalized === "loaded" || normalized === "healthy") {
+  if (
+    normalized === "ok" ||
+    normalized === "loaded" ||
+    normalized === "healthy" ||
+    normalized === "stable" ||
+    normalized === "up"
+  ) {
     return "text-emerald-400";
   }
 
-  if (normalized.includes("warn")) {
+  if (
+    normalized.includes("warn") ||
+    normalized === "à surveiller" ||
+    normalized === "degraded"
+  ) {
     return "text-amber-400";
   }
 
-  if (normalized === "error" || normalized === "critical") {
+  if (
+    normalized === "error" ||
+    normalized === "critical" ||
+    normalized === "critique" ||
+    normalized === "ko" ||
+    normalized === "down"
+  ) {
     return "text-red-400";
   }
 
@@ -240,6 +386,8 @@ export default async function OverviewPage() {
 
   const healthScore = health?.score ?? 0;
   const healthStatus = health?.status ?? "";
+  const healthDetails = toRecord(health?.details);
+  const healthRows = buildHealthRows(healthScore, healthStatus, healthDetails);
 
   const totalRuns = runs?.count ?? 0;
   const runningRuns = runs?.stats?.running ?? 0;
@@ -358,23 +506,21 @@ export default async function OverviewPage() {
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={cardClassName()}>
           <div className="mb-5 text-lg font-medium text-white">System health</div>
+
           <div className="space-y-3 text-sm">
-            <MetricRow
-              label="Health status"
-              value={<span className={systemStatusTone(healthLabel(healthScore, healthStatus))}>{healthLabel(healthScore, healthStatus)}</span>}
-            />
-            <MetricRow
-              label="Worker"
-              value={<span className={systemStatusTone("healthy")}>Healthy</span>}
-            />
-            <MetricRow
-              label="Airtable"
-              value={<span className={systemStatusTone("ok")}>OK</span>}
-            />
-            <MetricRow
-              label="Policies"
-              value={<span className={systemStatusTone("loaded")}>Loaded</span>}
-            />
+            {healthRows.map((row) => (
+              <MetricRow
+                key={row.label}
+                label={row.label}
+                value={<span className={systemStatusTone(row.value)}>{row.value}</span>}
+              />
+            ))}
+          </div>
+
+          <div className="mt-4 text-xs text-zinc-500">
+            {Object.keys(healthDetails).length > 0
+              ? `${Object.keys(healthDetails).length} détail(s) live reçu(s) depuis /health/score.`
+              : "Aucun détail live exposé par /health/score pour le moment."}
           </div>
 
           <div className="mt-5">
