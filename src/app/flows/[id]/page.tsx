@@ -115,6 +115,14 @@ function toBoolean(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
+function firstNonEmpty(...values: unknown[]): string {
+  for (const value of values) {
+    const text = toText(value, "");
+    if (text) return text;
+  }
+  return "";
+}
+
 function parseMaybeJson(value: unknown): Record<string, unknown> {
   if (!value) return {};
 
@@ -221,6 +229,42 @@ function incidentLabel(count: number, hasIncident: boolean) {
   return `${count} incidents`;
 }
 
+function buildCommandStats(
+  commands: CommandItem[]
+): Record<string, number | undefined> {
+  const stats: Record<string, number> = {
+    queued: 0,
+    running: 0,
+    retry: 0,
+    done: 0,
+    error: 0,
+    dead: 0,
+    other: 0,
+  };
+
+  for (const cmd of commands) {
+    const status = toText(cmd.status).toLowerCase();
+
+    if (["queue", "queued", "pending", "new"].includes(status)) {
+      stats.queued += 1;
+    } else if (["running", "processing"].includes(status)) {
+      stats.running += 1;
+    } else if (["retry", "retriable"].includes(status)) {
+      stats.retry += 1;
+    } else if (["done", "success", "completed", "processed"].includes(status)) {
+      stats.done += 1;
+    } else if (["error", "failed", "blocked"].includes(status)) {
+      stats.error += 1;
+    } else if (["dead"].includes(status)) {
+      stats.dead += 1;
+    } else {
+      stats.other += 1;
+    }
+  }
+
+  return stats;
+}
+
 function getEventPayload(event: EventItem): Record<string, unknown> {
   return parseMaybeJson(event.payload);
 }
@@ -271,6 +315,48 @@ function getEventLinkedCommand(event: EventItem): string {
     toText(record.Linked_Command) ||
     toText(payload.command_id) ||
     toText(payload.commandId) ||
+    ""
+  );
+}
+
+function getEventFlowId(event: EventItem): string {
+  const payload = getEventPayload(event);
+
+  return (
+    toText(event.flow_id) ||
+    toText(payload.flow_id) ||
+    toText(payload.flowId) ||
+    toText(payload.flowid) ||
+    ""
+  );
+}
+
+function getEventRootEventId(event: EventItem): string {
+  const payload = getEventPayload(event);
+
+  return (
+    toText(event.root_event_id) ||
+    toText(payload.root_event_id) ||
+    toText(payload.rootEventId) ||
+    ""
+  );
+}
+
+function getEventSourceRecordId(event: EventItem): string {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
+  return (
+    toText(event.source_record_id) ||
+    toText(event.source_event_id) ||
+    toText(record.source_record_id) ||
+    toText(record.Source_Record_ID) ||
+    toText(record.source_event_id) ||
+    toText(record.Source_Event_ID) ||
+    toText(payload.source_record_id) ||
+    toText(payload.sourceRecordId) ||
+    toText(payload.source_event_id) ||
+    toText(payload.sourceEventId) ||
     ""
   );
 }
@@ -347,17 +433,162 @@ function getCommandWorkspaceId(command: CommandItem): string {
   );
 }
 
+function getCommandCapability(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toText(command.capability) ||
+    toText(input.capability) ||
+    toText(result.capability) ||
+    "unknown_capability"
+  );
+}
+
+function matchCommandToFlow(
+  command: CommandItem,
+  identifiers: string[]
+): boolean {
+  const candidates = [
+    toText(command.id),
+    toText(command.flow_id),
+    toText(command.root_event_id),
+    toText(command.source_event_id),
+    getCommandFlowId(command),
+    getCommandRootEventId(command),
+    getCommandSourceEventId(command),
+  ].filter(Boolean);
+
+  return candidates.some((candidate) => identifiers.includes(candidate));
+}
+
+function matchEvent(
+  event: EventItem,
+  identifiers: string[],
+  linkedCommands: string[]
+): boolean {
+  const candidates = [
+    toText(event.id),
+    toText(event.flow_id),
+    toText(event.root_event_id),
+    toText(event.source_record_id),
+    toText(event.source_event_id),
+    getEventFlowId(event),
+    getEventRootEventId(event),
+    getEventSourceRecordId(event),
+  ].filter(Boolean);
+
+  if (candidates.some((candidate) => identifiers.includes(candidate))) {
+    return true;
+  }
+
+  const linkedCommand = getEventLinkedCommand(event);
+  if (linkedCommand && linkedCommands.includes(linkedCommand)) {
+    return true;
+  }
+
+  return false;
+}
+
+function buildSyntheticFlowFromLooseRefs(
+  targetId: string,
+  commands: CommandItem[],
+  events: EventItem[],
+  incidents: IncidentItem[]
+): FlowDetail | null {
+  const target = toText(targetId);
+  if (!target) return null;
+
+  const matchedCommands = commands.filter((command) =>
+    matchCommandToFlow(command, [target])
+  );
+
+  const linkedCommandIds = matchedCommands
+    .map((command) => toText(command.id))
+    .filter(Boolean);
+
+  const matchedEvents = events.filter((event) =>
+    matchEvent(event, [target], linkedCommandIds)
+  );
+
+  const matchedIncidents = incidents.filter((incident) => {
+    const candidates = [
+      toText(incident.id),
+      toText(incident.flow_id),
+      toText(incident.root_event_id),
+      toText(incident.source_record_id),
+      toText(incident.command_id),
+      toText(incident.linked_command),
+    ].filter(Boolean);
+
+    return candidates.includes(target);
+  });
+
+  if (
+    matchedCommands.length === 0 &&
+    matchedEvents.length === 0 &&
+    matchedIncidents.length === 0
+  ) {
+    return null;
+  }
+
+  const firstCommand = matchedCommands[0] ?? null;
+  const firstEvent = matchedEvents[0] ?? null;
+  const firstIncident = matchedIncidents[0] ?? null;
+
+  const sourceRecordId = firstNonEmpty(
+    firstEvent?.source_record_id,
+    firstEvent?.source_event_id,
+    getEventSourceRecordId(firstEvent as EventItem),
+    firstIncident?.source_record_id,
+    firstCommand ? getCommandSourceEventId(firstCommand) : "",
+    target
+  );
+
+  const rootEventId = firstNonEmpty(
+    firstEvent?.root_event_id,
+    getEventRootEventId(firstEvent as EventItem),
+    firstIncident?.root_event_id,
+    firstCommand ? getCommandRootEventId(firstCommand) : "",
+    sourceRecordId
+  );
+
+  const flowId = firstNonEmpty(
+    firstEvent?.flow_id,
+    getEventFlowId(firstEvent as EventItem),
+    firstIncident?.flow_id,
+    firstCommand ? getCommandFlowId(firstCommand) : "",
+    isRecordIdLike(target) ? "" : target
+  );
+
+  const workspaceId = firstNonEmpty(
+    firstEvent?.workspace_id,
+    firstIncident?.workspace_id,
+    firstCommand ? getCommandWorkspaceId(firstCommand) : "",
+    "production"
+  );
+
+  return {
+    id: flowId || sourceRecordId || rootEventId || target,
+    flow_id: flowId || undefined,
+    root_event_id: rootEventId || undefined,
+    source_record_id: sourceRecordId || undefined,
+    source_event_id: sourceRecordId || undefined,
+    workspace_id: workspaceId,
+    reading_mode: matchedCommands.length > 0 ? "enriched" : "registry-only",
+    is_partial: matchedCommands.length === 0,
+    count: matchedCommands.length,
+    commands: matchedCommands,
+    stats: buildCommandStats(matchedCommands),
+  };
+}
+
 function normalizeTimelineItem(command: CommandItem): TimelineItem {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
 
   const id = toText(command.id);
-  const capability =
-    toText(command.capability) ||
-    toText(input.capability) ||
-    toText(result.capability) ||
-    "unknown_capability";
-
+  const capability = getCommandCapability(command);
   const status =
     toText(command.status) ||
     toText(result.status) ||
@@ -377,13 +608,12 @@ function normalizeTimelineItem(command: CommandItem): TimelineItem {
     toText(result.parentCommandId) ||
     "";
 
-  const rawStepIndex =
+  const stepIndexCandidate =
     toNumber(command.step_index, Number.NaN) ||
     toNumber(input.step_index, Number.NaN) ||
     toNumber(input.stepIndex, Number.NaN) ||
     toNumber(result.step_index, Number.NaN) ||
-    toNumber(result.stepIndex, Number.NaN) ||
-    0;
+    toNumber(result.stepIndex, Number.NaN);
 
   return {
     id,
@@ -393,7 +623,7 @@ function normalizeTimelineItem(command: CommandItem): TimelineItem {
     createdAt: toText(command.created_at),
     startedAt: toText(command.started_at),
     finishedAt: toText(command.finished_at),
-    stepIndex: Number.isFinite(rawStepIndex) ? rawStepIndex : 0,
+    stepIndex: Number.isFinite(stepIndexCandidate) ? stepIndexCandidate : 0,
     parentCommandId,
     flowId,
     rootEventId,
@@ -417,19 +647,6 @@ function sortTimeline(items: TimelineItem[]): TimelineItem[] {
 
     return aTs - bTs;
   });
-}
-
-function dedupeTimeline(items: TimelineItem[]): TimelineItem[] {
-  const map = new Map<string, TimelineItem>();
-
-  for (const item of items) {
-    if (!item.id) continue;
-    if (!map.has(item.id)) {
-      map.set(item.id, item);
-    }
-  }
-
-  return Array.from(map.values());
 }
 
 function getDurationMs(items: TimelineItem[]): number {
@@ -470,37 +687,6 @@ function getLastKnownTimestamp(items: TimelineItem[]): number {
 
   if (values.length === 0) return 0;
   return Math.max(...values);
-}
-
-function buildCommandStats(commands: CommandItem[]) {
-  const stats = {
-    done: 0,
-    error: 0,
-    dead: 0,
-    running: 0,
-    retry: 0,
-    queued: 0,
-  };
-
-  for (const command of commands) {
-    const status = toText(command.status).toLowerCase();
-
-    if (["processed", "done", "success", "completed"].includes(status)) {
-      stats.done += 1;
-    } else if (["error", "failed", "blocked"].includes(status)) {
-      stats.error += 1;
-    } else if (["dead"].includes(status)) {
-      stats.dead += 1;
-    } else if (["running", "processing"].includes(status)) {
-      stats.running += 1;
-    } else if (["retry", "retriable"].includes(status)) {
-      stats.retry += 1;
-    } else if (["queued", "pending", "new"].includes(status)) {
-      stats.queued += 1;
-    }
-  }
-
-  return stats;
 }
 
 function resolveFlowStatus(flow: FlowDetail, items: TimelineItem[]): string {
@@ -565,58 +751,6 @@ function resolveFlowStatus(flow: FlowDetail, items: TimelineItem[]): string {
   return "unknown";
 }
 
-function matchEvent(
-  event: EventItem,
-  identifiers: string[],
-  linkedCommands: string[]
-): boolean {
-  const payload = getEventPayload(event);
-
-  const candidates = [
-    toText(event.id),
-    toText(event.root_event_id),
-    toText(event.source_record_id),
-    toText(event.source_event_id),
-    toText(event.flow_id),
-    toText(event.command_id),
-    toText((event as Record<string, unknown>).linked_command),
-    toText(payload.root_event_id),
-    toText(payload.rootEventId),
-    toText(payload.source_record_id),
-    toText(payload.sourceRecordId),
-    toText(payload.source_event_id),
-    toText(payload.sourceEventId),
-    toText(payload.flow_id),
-    toText(payload.flowId),
-    toText(payload.command_id),
-    toText(payload.commandId),
-  ].filter(Boolean);
-
-  if (candidates.some((candidate) => identifiers.includes(candidate))) {
-    return true;
-  }
-
-  if (linkedCommands.length > 0) {
-    const linkedCommand = getEventLinkedCommand(event);
-    if (linkedCommand && linkedCommands.includes(linkedCommand)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function matchCommandToFlow(command: CommandItem, identifiers: string[]): boolean {
-  const candidates = [
-    toText(command.id),
-    getCommandFlowId(command),
-    getCommandRootEventId(command),
-    getCommandSourceEventId(command),
-  ].filter(Boolean);
-
-  return candidates.some((candidate) => identifiers.includes(candidate));
-}
-
 function dedupeIncidents(items: IncidentItem[]): IncidentItem[] {
   const seen = new Set<string>();
   const output: IncidentItem[] = [];
@@ -661,125 +795,46 @@ function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string)
   return flowId || sourceRecordId || rootEventId || id || "Flow";
 }
 
-function buildSyntheticFlowFromLooseRefs(
-  targetId: string,
-  commands: CommandItem[],
-  events: EventItem[],
-  incidents: IncidentItem[]
-): FlowDetail | null {
-  const target = toText(targetId);
-  if (!target) return null;
-
-  const matchedCommands = commands.filter((command) =>
-    matchCommandToFlow(command, [target])
-  );
-
-  const matchedEvents = events.filter((event) =>
-    matchEvent(event, [target], matchedCommands.map((command) => toText(command.id)).filter(Boolean))
-  );
-
-  const matchedIncidents = incidents.filter((incident) => {
-    const candidates = [
-      toText(incident.id),
-      toText(incident.flow_id),
-      toText(incident.root_event_id),
-      toText(incident.source_record_id),
-      toText(incident.command_id),
-      toText(incident.linked_command),
-    ].filter(Boolean);
-
-    return candidates.includes(target);
-  });
-
-  if (
-    matchedCommands.length === 0 &&
-    matchedEvents.length === 0 &&
-    matchedIncidents.length === 0
-  ) {
-    return null;
-  }
-
-  const sourceRecordId =
-    toText(matchedEvents[0]?.source_record_id) ||
-    toText(matchedEvents[0]?.source_event_id) ||
-    toText(matchedIncidents[0]?.source_record_id) ||
-    getCommandSourceEventId(matchedCommands[0] as CommandItem) ||
-    target;
-
-  const rootEventId =
-    toText(matchedEvents[0]?.root_event_id) ||
-    toText(matchedIncidents[0]?.root_event_id) ||
-    getCommandRootEventId(matchedCommands[0] as CommandItem) ||
-    sourceRecordId;
-
-  const flowId =
-    toText(matchedEvents[0]?.flow_id) ||
-    toText(matchedIncidents[0]?.flow_id) ||
-    getCommandFlowId(matchedCommands[0] as CommandItem) ||
-    (isRecordIdLike(target) ? "" : target);
-
-  const workspaceId =
-    toText(matchedEvents[0]?.workspace_id) ||
-    toText(matchedIncidents[0]?.workspace_id) ||
-    getCommandWorkspaceId(matchedCommands[0] as CommandItem) ||
-    "production";
-
-  return {
-    id: flowId || sourceRecordId || rootEventId || target,
-    flow_id: flowId || undefined,
-    root_event_id: rootEventId || undefined,
-    source_record_id: sourceRecordId || undefined,
-    source_event_id: sourceRecordId || undefined,
-    workspace_id: workspaceId,
-    reading_mode: matchedCommands.length > 0 ? "enriched" : "registry-only",
-    is_partial: matchedCommands.length === 0,
-    count: matchedCommands.length,
-    commands: matchedCommands,
-    stats: buildCommandStats(matchedCommands),
-  };
-}
-
 export default async function FlowDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
 
-  let flow: FlowDetail | null = null;
+  const [flowResult, commandsResult, eventsResult, incidentsResult] =
+    await Promise.allSettled([
+      fetchFlowById(id),
+      fetchCommands(500),
+      fetchEvents(500),
+      fetchIncidents(300),
+    ]);
 
-  try {
-    flow = await fetchFlowById(id);
-  } catch {
-    flow = null;
-  }
-
-  let allCommands: CommandItem[] = [];
-  let allEvents: EventItem[] = [];
-  let allIncidents: IncidentItem[] = [];
-
-  try {
-    const commandsData = await fetchCommands(500);
-    allCommands = Array.isArray(commandsData?.commands) ? commandsData.commands : [];
-  } catch {
-    allCommands = [];
-  }
-
-  try {
-    const eventsData = await fetchEvents(500);
-    allEvents = Array.isArray(eventsData?.events) ? eventsData.events : [];
-  } catch {
-    allEvents = [];
-  }
-
-  try {
-    const incidentsData = await fetchIncidents(300);
-    allIncidents = Array.isArray(incidentsData?.incidents)
-      ? incidentsData.incidents
+  const looseCommands =
+    commandsResult.status === "fulfilled" &&
+    Array.isArray(commandsResult.value?.commands)
+      ? commandsResult.value.commands
       : [];
-  } catch {
-    allIncidents = [];
-  }
+
+  const looseEvents =
+    eventsResult.status === "fulfilled" &&
+    Array.isArray(eventsResult.value?.events)
+      ? eventsResult.value.events
+      : [];
+
+  const looseIncidents =
+    incidentsResult.status === "fulfilled" &&
+    Array.isArray(incidentsResult.value?.incidents)
+      ? incidentsResult.value.incidents
+      : [];
+
+  let flow: FlowDetail | null =
+    flowResult.status === "fulfilled" ? flowResult.value : null;
 
   if (!flow) {
-    flow = buildSyntheticFlowFromLooseRefs(id, allCommands, allEvents, allIncidents);
+    flow = buildSyntheticFlowFromLooseRefs(
+      id,
+      looseCommands,
+      looseEvents,
+      looseIncidents
+    );
   }
 
   if (!flow) {
@@ -791,56 +846,38 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const sourceRecordId =
     toText(flow.source_record_id) || toText(flow.source_event_id) || rootEventId;
 
+  const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
+
   const baseCommands = Array.isArray(flow.commands) ? flow.commands : [];
-  const baseTimeline = baseCommands.map(normalizeTimelineItem);
+  const fallbackCommands = looseCommands.filter((command) =>
+    matchCommandToFlow(command, identifiers)
+  );
 
-  let sourceEvent: EventItem | null =
-    allEvents.find((event) =>
-      matchEvent(
-        event,
-        [id, flowId, rootEventId, sourceRecordId].filter(Boolean),
-        []
-      )
-    ) || null;
+  const mergedCommandsMap = new Map<string, CommandItem>();
+  for (const command of [...baseCommands, ...fallbackCommands]) {
+    const commandId = toText(command.id);
+    if (!commandId) continue;
+    if (!mergedCommandsMap.has(commandId)) {
+      mergedCommandsMap.set(commandId, command);
+    }
+  }
 
-  const linkedCommandId = sourceEvent ? getEventLinkedCommand(sourceEvent) : "";
+  const mergedCommands = Array.from(mergedCommandsMap.values());
 
-  const fallbackIdentifiers = [
-    id,
-    flowId,
-    rootEventId,
-    sourceRecordId,
-    sourceEvent ? toText(sourceEvent.id) : "",
-    linkedCommandId,
-  ].filter(Boolean);
-
-  const fallbackTimeline = allCommands
-    .filter((command) => matchCommandToFlow(command, fallbackIdentifiers))
-    .map(normalizeTimelineItem);
-
-  const mergedTimeline = dedupeTimeline([...baseTimeline, ...fallbackTimeline]);
-
-  const sortedTimeline = sortTimeline(mergedTimeline).map((item, index, arr) => ({
+  const timelineBase = mergedCommands.map(normalizeTimelineItem);
+  const sortedTimeline = sortTimeline(timelineBase).map((item, index, arr) => ({
     ...item,
     isRoot: index === 0,
     isTerminal: index === arr.length - 1,
   }));
 
-  if (!sourceEvent) {
-    const linkedCommands = sortedTimeline.map((item) => item.id).filter(Boolean);
+  const linkedCommands = sortedTimeline.map((item) => item.id).filter(Boolean);
 
-    sourceEvent =
-      allEvents.find((event) =>
-        matchEvent(
-          event,
-          [id, flowId, rootEventId, sourceRecordId].filter(Boolean),
-          linkedCommands
-        )
-      ) || null;
-  }
+  const sourceEvent =
+    looseEvents.find((event) => matchEvent(event, identifiers, linkedCommands)) || null;
 
   const incidents = dedupeIncidents(
-    allIncidents.filter((incident) => {
+    looseIncidents.filter((incident) => {
       const candidates = [
         toText(incident.id),
         toText(incident.flow_id),
@@ -848,23 +885,22 @@ export default async function FlowDetailPage({ params }: PageProps) {
         toText(incident.source_record_id),
         toText(incident.command_id),
         toText(incident.linked_command),
-        ...sortedTimeline.map((item) => item.id),
       ].filter(Boolean);
 
-      const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
-
-      return candidates.some((candidate) => identifiers.includes(candidate));
+      return (
+        candidates.some((candidate) => identifiers.includes(candidate)) ||
+        linkedCommands.some((commandId) => candidates.includes(commandId))
+      );
     })
   );
 
   const readingMode =
-    sortedTimeline.length > 0
-      ? "enriched"
-      : flow.reading_mode === "registry-only"
-      ? "registry-only"
-      : "enriched";
+    flow.reading_mode === "registry-only" ? "registry-only" : "enriched";
 
-  const isPartial = sortedTimeline.length === 0;
+  const isPartial =
+    toBoolean(flow.is_partial, false) ||
+    readingMode === "registry-only" ||
+    sortedTimeline.length === 0;
 
   const title = buildTitle(flow, sourceEvent, id);
   const resolvedStatus = resolveFlowStatus(flow, sortedTimeline);
@@ -886,11 +922,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
   ).length;
 
   const displayedSteps =
-    sortedTimeline.length > 0
-      ? sortedTimeline.length
-      : toNumber(flow.count, 0) > 0
-      ? toNumber(flow.count, 0)
-      : 0;
+    sortedTimeline.length > 0 ? sortedTimeline.length : toNumber(flow.count, 0);
 
   const rootCapability =
     sortedTimeline[0]?.capability ||
@@ -1072,9 +1104,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <div>
             Workspace:{" "}
             <span className="text-zinc-200">
-              {toText(flow.workspace_id) ||
-                sortedTimeline[0]?.workspaceId ||
-                "production"}
+              {toText(flow.workspace_id) || "production"}
             </span>
           </div>
           <div>
@@ -1117,8 +1147,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
           <div className="space-y-4 text-sm text-zinc-400">
             <div>
-              Event ID :{" "}
-              <span className="break-all text-zinc-200">{sourceEvent.id}</span>
+              Event ID : <span className="break-all text-zinc-200">{sourceEvent.id}</span>
             </div>
             <div>
               Type : <span className="text-zinc-200">{getEventType(sourceEvent)}</span>
@@ -1128,8 +1157,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
               <span className="text-zinc-200">{getEventCapability(sourceEvent)}</span>
             </div>
             <div>
-              Source :{" "}
-              <span className="text-zinc-200">{getEventSource(sourceEvent)}</span>
+              Source : <span className="text-zinc-200">{getEventSource(sourceEvent)}</span>
             </div>
             <div>
               Linked command :{" "}
