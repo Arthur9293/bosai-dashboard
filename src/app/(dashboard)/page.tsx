@@ -203,7 +203,7 @@ function MetricRow({
 }: {
   label: string;
   value: ReactNode;
-}): JSX.Element {
+}) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
       <span className="text-zinc-400">{label}</span>
