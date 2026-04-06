@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import FlowGraphClient from "../FlowGraphClient";
 import {
-  fetchCommands,
+  fetchCommandById,
   fetchEvents,
   fetchFlowById,
   fetchIncidents,
@@ -175,12 +175,6 @@ function isRecordIdLike(value: string): boolean {
   return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
 }
 
-function uniqueStrings(values: Array<string | undefined | null>): string[] {
-  return Array.from(
-    new Set(values.map((value) => toText(value)).filter(Boolean))
-  );
-}
-
 function tone(status?: string): string {
   const s = (status || "").trim().toLowerCase();
 
@@ -261,8 +255,39 @@ function getEventSource(event: EventItem): string {
   return toText(record.source) || toText(payload.source) || "—";
 }
 
+function getEventStatus(event: EventItem): string {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
+  return (
+    toText(event.status) ||
+    toText(record.status) ||
+    toText(record.Status) ||
+    toText(record.status_select) ||
+    toText(record.Status_select) ||
+    toText(payload.status) ||
+    toText(payload.status_select) ||
+    "unknown"
+  );
+}
+
 function getEventProcessedAt(event: EventItem): string {
   return toText(event.processed_at);
+}
+
+function getEventActivityTs(event: EventItem | null): number {
+  if (!event) return 0;
+
+  const values = [
+    toText(event.processed_at),
+    toText(event.updated_at),
+    toText(event.created_at),
+  ]
+    .map((value) => (value ? new Date(value).getTime() : 0))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  if (values.length === 0) return 0;
+  return Math.max(...values);
 }
 
 function getEventLinkedCommand(event: EventItem): string {
@@ -277,36 +302,6 @@ function getEventLinkedCommand(event: EventItem): string {
     toText(record.Linked_Command) ||
     toText(payload.command_id) ||
     toText(payload.commandId) ||
-    ""
-  );
-}
-
-function getEventRootEventId(event: EventItem): string {
-  const payload = getEventPayload(event);
-
-  return (
-    toText(event.root_event_id) ||
-    toText(payload.root_event_id) ||
-    toText(payload.rootEventId) ||
-    ""
-  );
-}
-
-function getEventSourceRecordId(event: EventItem): string {
-  const payload = getEventPayload(event);
-  const record = event as Record<string, unknown>;
-
-  return (
-    toText(event.source_record_id) ||
-    toText(event.source_event_id) ||
-    toText(record.source_record_id) ||
-    toText(record.Source_Record_ID) ||
-    toText(record.source_event_id) ||
-    toText(record.Source_Event_ID) ||
-    toText(payload.source_record_id) ||
-    toText(payload.sourceRecordId) ||
-    toText(payload.source_event_id) ||
-    toText(payload.sourceEventId) ||
     ""
   );
 }
@@ -355,121 +350,108 @@ function getCommandRootEventId(command: CommandItem): string {
   );
 }
 
-function getCommandFlowId(command: CommandItem): string {
+function normalizeTimelineItem(command: CommandItem): TimelineItem {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
 
-  return (
+  const id = toText(command.id);
+  const capability =
+    toText(command.capability) ||
+    toText(input.capability) ||
+    toText(result.capability) ||
+    "unknown_capability";
+
+  const status =
+    toText(command.status) ||
+    toText(result.status) ||
+    toText(result.status_select) ||
+    "unknown";
+
+  const flowId =
     toText(command.flow_id) ||
     toText(input.flow_id) ||
     toText(input.flowId) ||
     toText(result.flow_id) ||
     toText(result.flowId) ||
-    ""
-  );
-}
+    "";
 
-function getCommandWorkspace(command: CommandItem): string {
-  const input = getCommandInput(command);
-  const result = getCommandResult(command);
+  const sourceEventId = getCommandSourceEventId(command);
 
-  return (
+  const rootEventId =
+    getCommandRootEventId(command) || sourceEventId || "";
+
+  const workspaceId =
     toText(command.workspace_id) ||
     toText(input.workspace_id) ||
     toText(input.workspaceId) ||
     toText(result.workspace_id) ||
     toText(result.workspaceId) ||
-    "production"
-  );
-}
+    "production";
 
-function getCommandParentId(command: CommandItem): string {
-  const input = getCommandInput(command);
-  const result = getCommandResult(command);
-
-  return (
+  const parentCommandId =
     toText(command.parent_command_id) ||
     toText(input.parent_command_id) ||
     toText(input.parentCommandId) ||
     toText(result.parent_command_id) ||
     toText(result.parentCommandId) ||
-    ""
-  );
-}
+    "";
 
-function getCommandCapability(command: CommandItem): string {
-  const input = getCommandInput(command);
-  const result = getCommandResult(command);
+  const stepCandidates = [
+    command.step_index,
+    input.step_index,
+    input.stepIndex,
+    result.step_index,
+    result.stepIndex,
+  ];
 
-  return (
-    toText(command.capability) ||
-    toText(input.capability) ||
-    toText(result.capability) ||
-    "unknown_capability"
-  );
-}
+  let stepIndex = 0;
+  for (const candidate of stepCandidates) {
+    const parsed = toNumber(candidate, Number.NaN);
+    if (Number.isFinite(parsed)) {
+      stepIndex = parsed;
+      break;
+    }
+  }
 
-function getCommandStatus(command: CommandItem): string {
-  const result = getCommandResult(command);
-
-  return (
-    toText(command.status) ||
-    toText(result.status) ||
-    toText(result.status_select) ||
-    "unknown"
-  );
-}
-
-function getCommandStepIndex(command: CommandItem): number {
-  const input = getCommandInput(command);
-  const result = getCommandResult(command);
-
-  const direct = toNumber(command.step_index, Number.NaN);
-  if (Number.isFinite(direct)) return direct;
-
-  const inputStep =
-    toNumber(input.step_index, Number.NaN) ||
-    toNumber(input.stepIndex, Number.NaN);
-  if (Number.isFinite(inputStep)) return inputStep;
-
-  const resultStep =
-    toNumber(result.step_index, Number.NaN) ||
-    toNumber(result.stepIndex, Number.NaN);
-  if (Number.isFinite(resultStep)) return resultStep;
-
-  return 0;
-}
-
-function getCommandTokens(command: CommandItem): string[] {
-  return uniqueStrings([
-    toText(command.id),
-    getCommandFlowId(command),
-    getCommandRootEventId(command),
-    getCommandSourceEventId(command),
-    getCommandParentId(command),
-  ]);
-}
-
-function normalizeTimelineItem(command: CommandItem): TimelineItem {
   return {
-    id: toText(command.id),
-    capability: getCommandCapability(command),
-    status: getCommandStatus(command),
+    id,
+    capability,
+    status,
     worker: toText(command.worker) || "—",
     createdAt: toText(command.created_at),
     startedAt: toText(command.started_at),
     finishedAt: toText(command.finished_at),
-    stepIndex: getCommandStepIndex(command),
-    parentCommandId: getCommandParentId(command),
-    flowId: getCommandFlowId(command),
-    rootEventId: getCommandRootEventId(command),
-    sourceEventId: getCommandSourceEventId(command),
-    workspaceId: getCommandWorkspace(command),
+    stepIndex,
+    parentCommandId,
+    flowId,
+    rootEventId,
+    sourceEventId,
+    workspaceId,
     inputJson: stringifyPretty(command.input ?? {}),
     resultJson: stringifyPretty(command.result ?? {}),
     isRoot: false,
     isTerminal: false,
   };
+}
+
+function buildSyntheticTimelineFromCommand(
+  command: CommandItem,
+  fallbackFlowId: string,
+  fallbackRootEventId: string,
+  fallbackSourceEventId: string
+): TimelineItem[] {
+  const item = normalizeTimelineItem(command);
+
+  return [
+    {
+      ...item,
+      flowId: item.flowId || fallbackFlowId,
+      rootEventId: item.rootEventId || fallbackRootEventId || fallbackSourceEventId,
+      sourceEventId: item.sourceEventId || fallbackSourceEventId,
+      isRoot: true,
+      isTerminal: true,
+    },
+  ];
 }
 
 function sortTimeline(items: TimelineItem[]): TimelineItem[] {
@@ -525,115 +507,46 @@ function getLastKnownTimestamp(items: TimelineItem[]): number {
   return Math.max(...values);
 }
 
-function dedupeCommands(items: CommandItem[]): CommandItem[] {
-  const seen = new Set<string>();
-  const output: CommandItem[] = [];
-
-  for (const item of items) {
-    const id = toText(item.id);
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    output.push(item);
-  }
-
-  return output;
+function getIncidentStatus(incident: IncidentItem): string {
+  return (
+    toText(incident.status) ||
+    toText(incident.statut_incident) ||
+    toText(incident.sla_status) ||
+    "unknown"
+  ).toLowerCase();
 }
 
-function dedupeIncidents(items: IncidentItem[]): IncidentItem[] {
-  const seen = new Set<string>();
-  const output: IncidentItem[] = [];
+function getIncidentActivityTs(incident: IncidentItem): number {
+  const values = [
+    toText(incident.resolved_at),
+    toText(incident.updated_at),
+    toText(incident.opened_at),
+    toText(incident.created_at),
+  ]
+    .map((value) => (value ? new Date(value).getTime() : 0))
+    .filter((value) => Number.isFinite(value) && value > 0);
 
-  for (const item of items) {
-    const id = toText(item.id);
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    output.push(item);
-  }
-
-  return output;
-}
-
-function matchEvent(
-  event: EventItem,
-  identifiers: Set<string>,
-  commandIds: Set<string>
-): boolean {
-  const payload = getEventPayload(event);
-
-  const candidates = uniqueStrings([
-    toText(event.id),
-    toText(event.root_event_id),
-    toText(event.source_record_id),
-    toText(event.source_event_id),
-    toText(event.flow_id),
-    toText(event.command_id),
-    toText((event as Record<string, unknown>).linked_command),
-    toText(payload.root_event_id),
-    toText(payload.rootEventId),
-    toText(payload.source_record_id),
-    toText(payload.sourceRecordId),
-    toText(payload.source_event_id),
-    toText(payload.sourceEventId),
-    toText(payload.flow_id),
-    toText(payload.flowId),
-    toText(payload.command_id),
-    toText(payload.commandId),
-  ]);
-
-  if (candidates.some((candidate) => identifiers.has(candidate))) {
-    return true;
-  }
-
-  const linkedCommand = getEventLinkedCommand(event);
-  if (linkedCommand && commandIds.has(linkedCommand)) {
-    return true;
-  }
-
-  return false;
-}
-
-function collectRelatedCommands(
-  allCommands: CommandItem[],
-  identifierValues: string[],
-  seedCommandIds: string[]
-): CommandItem[] {
-  const identifiers = new Set(uniqueStrings(identifierValues));
-  const seeds = new Set(uniqueStrings([...identifierValues, ...seedCommandIds]));
-  const selected = new Map<string, CommandItem>();
-
-  let changed = true;
-
-  while (changed) {
-    changed = false;
-
-    for (const command of allCommands) {
-      const commandId = toText(command.id);
-      if (!commandId || selected.has(commandId)) continue;
-
-      const tokens = getCommandTokens(command);
-      const matches = tokens.some(
-        (token) => identifiers.has(token) || seeds.has(token)
-      );
-
-      if (!matches) continue;
-
-      selected.set(commandId, command);
-      changed = true;
-
-      for (const token of tokens) {
-        if (token) seeds.add(token);
-      }
-    }
-  }
-
-  return Array.from(selected.values());
+  if (values.length === 0) return 0;
+  return Math.max(...values);
 }
 
 function resolveFlowStatus(
   flow: FlowDetail,
   items: TimelineItem[],
-  partialFallback: boolean
+  sourceEvent: EventItem | null,
+  incidents: IncidentItem[],
+  isPartial: boolean
 ): string {
+  if (
+    incidents.some((incident) =>
+      ["failed", "error", "dead", "blocked", "escalated", "open", "breached"].includes(
+        getIncidentStatus(incident)
+      )
+    )
+  ) {
+    return "failed";
+  }
+
   if (
     items.some((item) =>
       ["error", "failed", "dead", "blocked"].includes(item.status.toLowerCase())
@@ -660,6 +573,22 @@ function resolveFlowStatus(
     return "running";
   }
 
+  const sourceEventStatus = sourceEvent
+    ? getEventStatus(sourceEvent).toLowerCase()
+    : "";
+
+  if (["failed", "error", "dead", "blocked"].includes(sourceEventStatus)) {
+    return "failed";
+  }
+
+  if (["retry", "retriable"].includes(sourceEventStatus)) {
+    return "retry";
+  }
+
+  if (["running", "queued", "pending", "processing", "new"].includes(sourceEventStatus)) {
+    return "running";
+  }
+
   if (
     items.length > 0 &&
     items.every((item) =>
@@ -671,12 +600,16 @@ function resolveFlowStatus(
     return "processed";
   }
 
+  if (["processed", "done", "success", "completed"].includes(sourceEventStatus)) {
+    return "processed";
+  }
+
   const flowStats =
     flow.stats && typeof flow.stats === "object" ? flow.stats : undefined;
 
   if (flowStats) {
     const running =
-      toNumber(flowStats.running, 0) + toNumber(flowStats.queued, 0) > 0;
+      toNumber(flowStats.running, 0) + toNumber((flowStats as Record<string, unknown>).queued, 0) > 0;
     const failed =
       toNumber(flowStats.error, 0) + toNumber(flowStats.dead, 0) > 0;
     const retry = toNumber(flowStats.retry, 0) > 0;
@@ -688,14 +621,73 @@ function resolveFlowStatus(
     if (done) return "processed";
   }
 
-  if (flow.reading_mode === "registry-only" || flow.is_partial || partialFallback) {
+  if (isPartial) {
     return "partial";
   }
 
   return "unknown";
 }
 
-function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string): string {
+function matchEvent(
+  event: EventItem,
+  identifiers: string[],
+  linkedCommands: string[]
+): boolean {
+  const payload = getEventPayload(event);
+
+  const candidates = [
+    toText(event.id),
+    toText(event.root_event_id),
+    toText(event.source_record_id),
+    toText(event.source_event_id),
+    toText(event.flow_id),
+    toText(event.command_id),
+    toText((event as Record<string, unknown>).linked_command),
+    toText(payload.root_event_id),
+    toText(payload.rootEventId),
+    toText(payload.source_record_id),
+    toText(payload.sourceRecordId),
+    toText(payload.source_event_id),
+    toText(payload.sourceEventId),
+    toText(payload.flow_id),
+    toText(payload.flowId),
+    toText(payload.command_id),
+    toText(payload.commandId),
+  ].filter(Boolean);
+
+  if (candidates.some((candidate) => identifiers.includes(candidate))) {
+    return true;
+  }
+
+  if (linkedCommands.length > 0) {
+    const linkedCommand = getEventLinkedCommand(event);
+    if (linkedCommand && linkedCommands.includes(linkedCommand)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function dedupeIncidents(items: IncidentItem[]): IncidentItem[] {
+  const seen = new Set<string>();
+  const output: IncidentItem[] = [];
+
+  for (const item of items) {
+    const id = toText(item.id);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    output.push(item);
+  }
+
+  return output;
+}
+
+function buildTitle(
+  flow: FlowDetail,
+  sourceEvent: EventItem | null,
+  id: string
+): string {
   const flowId = toText(flow.flow_id);
 
   if (flowId && !isRecordIdLike(flowId)) {
@@ -744,102 +736,82 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const flowId = toText(flow.flow_id);
   const rootEventId = toText(flow.root_event_id);
   const sourceRecordId =
-    toText(flow.source_record_id) || toText(flow.source_event_id) || rootEventId;
-
-  const identifierValues = uniqueStrings([id, flowId, rootEventId, sourceRecordId]);
-
-  let allEvents: EventItem[] = [];
-  let allIncidents: IncidentItem[] = [];
-  let allCommands: CommandItem[] = [];
-
-  try {
-    const [eventsData, incidentsData, commandsData] = await Promise.all([
-      fetchEvents(500),
-      fetchIncidents(300),
-      fetchCommands(500),
-    ]);
-
-    allEvents = Array.isArray(eventsData?.events) ? eventsData.events : [];
-    allIncidents = Array.isArray(incidentsData?.incidents)
-      ? incidentsData.incidents
-      : [];
-    allCommands = Array.isArray(commandsData?.commands)
-      ? commandsData.commands
-      : [];
-  } catch {
-    allEvents = [];
-    allIncidents = [];
-    allCommands = [];
-  }
+    toText(flow.source_record_id) ||
+    toText(flow.source_event_id) ||
+    rootEventId;
 
   const baseCommands = Array.isArray(flow.commands) ? flow.commands : [];
+  let timelineBase = baseCommands.map(normalizeTimelineItem);
 
-  let sourceEvent: EventItem | null =
-    allEvents.find((event) =>
-      matchEvent(event, new Set(identifierValues), new Set())
-    ) || null;
+  let sourceEvent: EventItem | null = null;
 
-  const seedCommandIds = uniqueStrings([
-    ...baseCommands.map((command) => toText(command.id)),
-    sourceEvent ? getEventLinkedCommand(sourceEvent) : "",
-    ...allIncidents.map((incident) => toText(incident.command_id)),
-    ...allIncidents.map((incident) => toText(incident.linked_command)),
-  ]);
+  try {
+    const eventsData = await fetchEvents(500);
+    const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
 
-  const relatedCommands = collectRelatedCommands(
-    allCommands,
-    identifierValues,
-    seedCommandIds
-  );
-
-  const mergedCommands = dedupeCommands([...baseCommands, ...relatedCommands]);
-
-  if (!sourceEvent) {
-    const mergedCommandIds = new Set(
-      mergedCommands.map((command) => toText(command.id)).filter(Boolean)
-    );
+    const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
+    const linkedCommands = timelineBase.map((item) => item.id).filter(Boolean);
 
     sourceEvent =
-      allEvents.find((event) =>
-        matchEvent(event, new Set(identifierValues), mergedCommandIds)
-      ) || null;
+      events.find((event) => matchEvent(event, identifiers, linkedCommands)) || null;
+  } catch {
+    sourceEvent = null;
   }
 
-  const timelineBase = mergedCommands.map(normalizeTimelineItem);
+  const linkedCommandId = sourceEvent ? getEventLinkedCommand(sourceEvent) : "";
+
+  if (timelineBase.length === 0 && linkedCommandId) {
+    try {
+      const linkedCommand = await fetchCommandById(linkedCommandId, 500);
+
+      if (linkedCommand) {
+        timelineBase = buildSyntheticTimelineFromCommand(
+          linkedCommand,
+          flowId,
+          rootEventId,
+          sourceRecordId
+        );
+      }
+    } catch {
+      // keep registry-only fallback without breaking detail page
+    }
+  }
+
   const sortedTimeline = sortTimeline(timelineBase).map((item, index, arr) => ({
     ...item,
     isRoot: index === 0,
     isTerminal: index === arr.length - 1,
   }));
 
-  const commandIds = new Set(
-    mergedCommands.map((command) => toText(command.id)).filter(Boolean)
-  );
+  let incidents: IncidentItem[] = [];
 
-  const incidents = dedupeIncidents(
-    allIncidents.filter((incident) => {
-      const candidates = uniqueStrings([
-        toText(incident.id),
-        toText(incident.flow_id),
-        toText(incident.root_event_id),
-        toText(incident.source_record_id),
-        toText(incident.command_id),
-        toText(incident.linked_command),
-      ]);
+  try {
+    const incidentsData = await fetchIncidents(300);
+    const allIncidents = Array.isArray(incidentsData?.incidents)
+      ? incidentsData.incidents
+      : [];
 
-      if (candidates.some((candidate) => identifierValues.includes(candidate))) {
-        return true;
-      }
+    const identifiers = [id, flowId, rootEventId, sourceRecordId, linkedCommandId].filter(
+      Boolean
+    );
 
-      const incidentCommandId = toText(incident.command_id);
-      const incidentLinkedCommandId = toText(incident.linked_command);
+    incidents = dedupeIncidents(
+      allIncidents.filter((incident) => {
+        const candidates = [
+          toText(incident.id),
+          toText(incident.flow_id),
+          toText(incident.root_event_id),
+          toText(incident.source_record_id),
+          toText(incident.command_id),
+          toText(incident.linked_command),
+        ].filter(Boolean);
 
-      return (
-        (incidentCommandId && commandIds.has(incidentCommandId)) ||
-        (incidentLinkedCommandId && commandIds.has(incidentLinkedCommandId))
-      );
-    })
-  );
+        return candidates.some((candidate) => identifiers.includes(candidate));
+      })
+    );
+  } catch {
+    incidents = [];
+  }
 
   const readingMode =
     flow.reading_mode === "registry-only" ? "registry-only" : "enriched";
@@ -850,71 +822,48 @@ export default async function FlowDetailPage({ params }: PageProps) {
     sortedTimeline.length === 0;
 
   const title = buildTitle(flow, sourceEvent, id);
-  const resolvedStatus = resolveFlowStatus(flow, sortedTimeline, isPartial);
+  const resolvedStatus = resolveFlowStatus(
+    flow,
+    sortedTimeline,
+    sourceEvent,
+    incidents,
+    isPartial
+  );
+
   const durationMs = getDurationMs(sortedTimeline);
 
   const timelineLastActivityTs = getLastKnownTimestamp(sortedTimeline);
-  const sourceEventTs = sourceEvent
-    ? new Date(
-        getEventProcessedAt(sourceEvent) ||
-          toText(sourceEvent.updated_at) ||
-          toText(sourceEvent.created_at) ||
-          0
-      ).getTime()
-    : 0;
-
-  const incidentTsValues = incidents
-    .map((incident) =>
-      new Date(
-        toText(incident.resolved_at) ||
-          toText(incident.updated_at) ||
-          toText(incident.created_at) ||
-          toText(incident.opened_at) ||
-          0
-      ).getTime()
-    )
-    .filter((value) => Number.isFinite(value) && value > 0);
-
-  const incidentsLastTs =
-    incidentTsValues.length > 0 ? Math.max(...incidentTsValues) : 0;
+  const sourceEventActivityTs = getEventActivityTs(sourceEvent);
+  const incidentActivityTs =
+    incidents.length > 0 ? Math.max(...incidents.map(getIncidentActivityTs)) : 0;
 
   const lastActivityTs = Math.max(
     timelineLastActivityTs,
-    sourceEventTs > 0 ? sourceEventTs : 0,
-    incidentsLastTs
+    sourceEventActivityTs,
+    incidentActivityTs,
+    0
   );
 
-  const stats = flow.stats && typeof flow.stats === "object" ? flow.stats : {};
+  const doneCount = sortedTimeline.filter((item) =>
+    ["processed", "done", "success", "completed"].includes(item.status.toLowerCase())
+  ).length;
 
-  const doneCount =
-    sortedTimeline.length > 0
-      ? sortedTimeline.filter((item) =>
-          ["processed", "done", "success", "completed"].includes(
-            item.status.toLowerCase()
-          )
-        ).length
-      : toNumber(stats.done, 0);
+  const runningCount = sortedTimeline.filter((item) =>
+    ["running", "queued", "pending", "processing", "new"].includes(
+      item.status.toLowerCase()
+    )
+  ).length;
 
-  const runningCount =
-    sortedTimeline.length > 0
-      ? sortedTimeline.filter((item) =>
-          ["running", "queued", "pending", "processing", "new"].includes(
-            item.status.toLowerCase()
-          )
-        ).length
-      : toNumber(stats.running, 0) + toNumber(stats.queued, 0);
-
-  const failedCount =
-    sortedTimeline.length > 0
-      ? sortedTimeline.filter((item) =>
-          ["error", "failed", "dead", "blocked"].includes(
-            item.status.toLowerCase()
-          )
-        ).length
-      : toNumber(stats.error, 0) + toNumber(stats.dead, 0);
+  const failedCount = sortedTimeline.filter((item) =>
+    ["error", "failed", "dead", "blocked"].includes(item.status.toLowerCase())
+  ).length;
 
   const displayedSteps =
-    sortedTimeline.length > 0 ? sortedTimeline.length : toNumber(flow.count, 0);
+    sortedTimeline.length > 0
+      ? sortedTimeline.length
+      : toNumber(flow.count, 0) > 0
+      ? toNumber(flow.count, 0)
+      : 0;
 
   const rootCapability =
     sortedTimeline[0]?.capability ||
@@ -940,10 +889,10 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const sourceEventHref = sourceEvent
     ? `/events/${encodeURIComponent(sourceEvent.id)}`
     : rootEventId
-      ? `/events/${encodeURIComponent(rootEventId)}`
-      : sourceRecordId
-        ? `/events/${encodeURIComponent(sourceRecordId)}`
-        : "";
+    ? `/events/${encodeURIComponent(rootEventId)}`
+    : sourceRecordId
+    ? `/events/${encodeURIComponent(sourceRecordId)}`
+    : "";
 
   const incidentsHref = (() => {
     const params = new URLSearchParams();
@@ -955,6 +904,9 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
     return `/incidents?${params.toString()}`;
   })();
+
+  const showExtraPartialBadge =
+    isPartial && resolvedStatus.trim().toLowerCase() !== "partial";
 
   return (
     <div className="space-y-6">
@@ -995,7 +947,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
               : "Étapes non chargées"}
           </span>
 
-          {isPartial ? (
+          {showExtraPartialBadge ? (
             <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-sm font-medium text-amber-300">
               PARTIAL
             </span>
@@ -1139,8 +1091,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
           <div className="space-y-4 text-sm text-zinc-400">
             <div>
-              Event ID :{" "}
-              <span className="break-all text-zinc-200">{sourceEvent.id}</span>
+              Event ID : <span className="break-all text-zinc-200">{sourceEvent.id}</span>
             </div>
             <div>
               Type : <span className="text-zinc-200">{getEventType(sourceEvent)}</span>
