@@ -42,17 +42,18 @@ function actionLinkClassName(
 function formatDate(value?: string | null): string {
   if (!value) return "—";
 
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
 
   return new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "short",
     timeStyle: "short",
-  }).format(d);
+  }).format(date);
 }
 
 function parseMaybeJson(value: unknown): Record<string, unknown> {
   if (!value) return {};
+
   if (typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
   }
@@ -69,6 +70,14 @@ function parseMaybeJson(value: unknown): Record<string, unknown> {
   }
 
   return {};
+}
+
+function stringifyPretty(value: unknown): string {
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return JSON.stringify({ value: String(value) }, null, 2);
+  }
 }
 
 function toText(value: unknown, fallback = "—"): string {
@@ -91,21 +100,21 @@ function toTextOrEmpty(value: unknown): string {
 }
 
 function tone(status?: string): string {
-  const s = (status || "").toLowerCase();
+  const normalized = (status || "").trim().toLowerCase();
 
-  if (["processed", "done", "success"].includes(s)) {
+  if (["processed", "done", "success", "completed"].includes(normalized)) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  if (["queued", "pending", "new"].includes(s)) {
+  if (["queued", "pending", "new"].includes(normalized)) {
     return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
   }
 
-  if (["ignored"].includes(s)) {
+  if (["ignored"].includes(normalized)) {
     return "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20";
   }
 
-  if (["error", "failed", "dead"].includes(s)) {
+  if (["error", "failed", "dead", "blocked"].includes(normalized)) {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
   }
 
@@ -117,11 +126,13 @@ function getEventPayload(event: EventItem): Record<string, unknown> {
 }
 
 function getEventType(event: EventItem): string {
+  const payload = getEventPayload(event);
+
   return (
     toTextOrEmpty(event.event_type) ||
     toTextOrEmpty(event.type) ||
-    toTextOrEmpty(getEventPayload(event).event_type) ||
-    toTextOrEmpty(getEventPayload(event).type) ||
+    toTextOrEmpty(payload.event_type) ||
+    toTextOrEmpty(payload.type) ||
     "Event detail"
   );
 }
@@ -131,45 +142,52 @@ function getEventStatus(event: EventItem): string {
 }
 
 function getEventCapability(event: EventItem): string {
+  const payload = getEventPayload(event);
+
   return (
     toTextOrEmpty(event.mapped_capability) ||
-    toTextOrEmpty(getEventPayload(event).mapped_capability) ||
-    toTextOrEmpty(getEventPayload(event).capability) ||
+    toTextOrEmpty(payload.mapped_capability) ||
+    toTextOrEmpty(payload.capability) ||
     "—"
   );
 }
 
 function getEventWorkspace(event: EventItem): string {
+  const payload = getEventPayload(event);
+
   return (
     toTextOrEmpty(event.workspace_id) ||
-    toTextOrEmpty(getEventPayload(event).workspace_id) ||
-    toTextOrEmpty(getEventPayload(event).workspaceId) ||
+    toTextOrEmpty(payload.workspace_id) ||
+    toTextOrEmpty(payload.workspaceId) ||
     "—"
   );
 }
 
 function getEventSource(event: EventItem): string {
+  const payload = getEventPayload(event);
   const record = event as Record<string, unknown>;
 
   return (
     toTextOrEmpty(record.source) ||
-    toTextOrEmpty(getEventPayload(event).source) ||
+    toTextOrEmpty(payload.source) ||
     "—"
   );
 }
 
 function getEventRunId(event: EventItem): string {
+  const payload = getEventPayload(event);
   const record = event as Record<string, unknown>;
 
   return (
     toTextOrEmpty(record.run_id) ||
-    toTextOrEmpty(getEventPayload(event).run_id) ||
-    toTextOrEmpty(getEventPayload(event).runRecordId) ||
+    toTextOrEmpty(payload.run_id) ||
+    toTextOrEmpty(payload.runRecordId) ||
     "—"
   );
 }
 
 function getLinkedCommandValue(event: EventItem): string {
+  const payload = getEventPayload(event);
   const record = event as Record<string, unknown>;
 
   return (
@@ -178,8 +196,8 @@ function getLinkedCommandValue(event: EventItem): string {
     toTextOrEmpty(record.Command_ID) ||
     toTextOrEmpty(record.linked_command) ||
     toTextOrEmpty(record.Linked_Command) ||
-    toTextOrEmpty(getEventPayload(event).command_id) ||
-    toTextOrEmpty(getEventPayload(event).commandId) ||
+    toTextOrEmpty(payload.command_id) ||
+    toTextOrEmpty(payload.commandId) ||
     ""
   );
 }
@@ -197,17 +215,19 @@ function getEventRealFlowId(event: EventItem): string {
 }
 
 function getRootEventId(event: EventItem): string {
+  const payload = getEventPayload(event);
+
   return (
     toTextOrEmpty(event.root_event_id) ||
-    toTextOrEmpty(getEventPayload(event).root_event_id) ||
-    toTextOrEmpty(getEventPayload(event).rootEventId) ||
+    toTextOrEmpty(payload.root_event_id) ||
+    toTextOrEmpty(payload.rootEventId) ||
     ""
   );
 }
 
 function getSourceRecordId(event: EventItem): string {
-  const record = event as Record<string, unknown>;
   const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
 
   return (
     toTextOrEmpty(event.source_record_id) ||
@@ -274,14 +294,6 @@ function getProcessedAt(event: EventItem): string {
   return toTextOrEmpty(event.processed_at) || "";
 }
 
-function stringifyPretty(value: unknown): string {
-  try {
-    return JSON.stringify(value ?? {}, null, 2);
-  } catch {
-    return JSON.stringify({ value: String(value) }, null, 2);
-  }
-}
-
 function getCommandInput(command: CommandItem): Record<string, unknown> {
   return parseMaybeJson(command.input);
 }
@@ -291,52 +303,63 @@ function getCommandResult(command: CommandItem): Record<string, unknown> {
 }
 
 function getCommandRootEventId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
   return (
     toTextOrEmpty(command.root_event_id) ||
-    toTextOrEmpty(getCommandInput(command).root_event_id) ||
-    toTextOrEmpty(getCommandInput(command).rootEventId) ||
-    toTextOrEmpty(getCommandResult(command).root_event_id) ||
-    toTextOrEmpty(getCommandResult(command).rootEventId) ||
+    toTextOrEmpty(input.root_event_id) ||
+    toTextOrEmpty(input.rootEventId) ||
+    toTextOrEmpty(result.root_event_id) ||
+    toTextOrEmpty(result.rootEventId) ||
     ""
   );
 }
 
 function getCommandSourceEventId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
   const record = command as Record<string, unknown>;
 
   return (
     toTextOrEmpty(record.source_event_id) ||
     toTextOrEmpty(record.Source_Event_ID) ||
-    toTextOrEmpty(getCommandInput(command).source_event_id) ||
-    toTextOrEmpty(getCommandInput(command).sourceEventId) ||
-    toTextOrEmpty(getCommandInput(command).event_id) ||
-    toTextOrEmpty(getCommandInput(command).eventId) ||
-    toTextOrEmpty(getCommandResult(command).source_event_id) ||
-    toTextOrEmpty(getCommandResult(command).sourceEventId) ||
-    toTextOrEmpty(getCommandResult(command).event_id) ||
-    toTextOrEmpty(getCommandResult(command).eventId) ||
+    toTextOrEmpty(input.source_event_id) ||
+    toTextOrEmpty(input.sourceEventId) ||
+    toTextOrEmpty(input.event_id) ||
+    toTextOrEmpty(input.eventId) ||
+    toTextOrEmpty(result.source_event_id) ||
+    toTextOrEmpty(result.sourceEventId) ||
+    toTextOrEmpty(result.event_id) ||
+    toTextOrEmpty(result.eventId) ||
     ""
   );
 }
 
 function getCommandFlowId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
   return (
     toTextOrEmpty(command.flow_id) ||
-    toTextOrEmpty(getCommandInput(command).flow_id) ||
-    toTextOrEmpty(getCommandInput(command).flowId) ||
-    toTextOrEmpty(getCommandResult(command).flow_id) ||
-    toTextOrEmpty(getCommandResult(command).flowId) ||
+    toTextOrEmpty(input.flow_id) ||
+    toTextOrEmpty(input.flowId) ||
+    toTextOrEmpty(result.flow_id) ||
+    toTextOrEmpty(result.flowId) ||
     ""
   );
 }
 
 function getCommandWorkspace(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
   return (
     toTextOrEmpty(command.workspace_id) ||
-    toTextOrEmpty(getCommandInput(command).workspace_id) ||
-    toTextOrEmpty(getCommandInput(command).workspaceId) ||
-    toTextOrEmpty(getCommandResult(command).workspace_id) ||
-    toTextOrEmpty(getCommandResult(command).workspaceId) ||
+    toTextOrEmpty(input.workspace_id) ||
+    toTextOrEmpty(input.workspaceId) ||
+    toTextOrEmpty(result.workspace_id) ||
+    toTextOrEmpty(result.workspaceId) ||
     ""
   );
 }
@@ -350,10 +373,13 @@ function getCommandFinishedAt(command: CommandItem): string {
 }
 
 function getCommandCapability(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
   return (
     toTextOrEmpty(command.capability) ||
-    toTextOrEmpty(getCommandInput(command).capability) ||
-    toTextOrEmpty(getCommandResult(command).capability) ||
+    toTextOrEmpty(input.capability) ||
+    toTextOrEmpty(result.capability) ||
     ""
   );
 }
@@ -391,6 +417,12 @@ function buildSyntheticEventFromCommand(
 
 function isSyntheticEvent(event: EventItem): boolean {
   return toTextOrEmpty(getEventPayload(event).source) === "synthetic_from_command";
+}
+
+function getHeaderTitle(event: EventItem): string {
+  return getEventCapability(event) !== "—"
+    ? getEventCapability(event)
+    : getEventType(event);
 }
 
 export default async function EventDetailPage({ params }: PageProps) {
@@ -431,11 +463,12 @@ export default async function EventDetailPage({ params }: PageProps) {
     notFound();
   }
 
+  const title = getHeaderTitle(event);
+  const status = getEventStatus(event);
   const linkedCommand = getLinkedCommandValue(event);
   const flowDisplayTarget = getFlowDisplayTarget(event);
   const flowNavigationTarget = getFlowNavigationTarget(event);
   const rootEventId = getRootEventId(event);
-  const status = getEventStatus(event);
   const synthetic = isSyntheticEvent(event);
 
   const hasCommand = linkedCommand !== "";
@@ -451,11 +484,11 @@ export default async function EventDetailPage({ params }: PageProps) {
           >
             Events
           </Link>{" "}
-          / {getEventCapability(event) !== "—" ? getEventCapability(event) : getEventType(event)}
+          / {title}
         </div>
 
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          {getEventCapability(event) !== "—" ? getEventCapability(event) : getEventType(event)}
+          {title}
         </h1>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -468,7 +501,7 @@ export default async function EventDetailPage({ params }: PageProps) {
           </span>
 
           <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
-            COMMAND CREATED
+            {hasCommand ? "COMMAND CREATED" : "COMMAND MISSING"}
           </span>
 
           {synthetic ? (
@@ -540,7 +573,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
         <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
           <div>
-            Command created: <span className="text-zinc-200">Yes</span>
+            Command created: <span className="text-zinc-200">{hasCommand ? "Yes" : "No"}</span>
           </div>
           <div>
             Linked command:{" "}
