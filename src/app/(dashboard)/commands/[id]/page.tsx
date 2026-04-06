@@ -106,6 +106,14 @@ function toTextOrEmpty(value: unknown): string {
   return toText(value, "");
 }
 
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function isRecordIdLike(value: string): boolean {
+  return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
+}
+
 function tone(status?: string): string {
   const normalized = (status || "").trim().toLowerCase();
 
@@ -135,6 +143,8 @@ function tone(status?: string): string {
 
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
+
+/* ----------------------------- Command helpers ---------------------------- */
 
 function getCommandInput(command: CommandItem): Record<string, unknown> {
   return parseMaybeJson(command.input);
@@ -300,6 +310,8 @@ function getCommandTitle(command: CommandItem): string {
   );
 }
 
+/* ------------------------------ Event helpers ----------------------------- */
+
 function getEventPayload(event: EventItem): Record<string, unknown> {
   return parseMaybeJson(event.payload);
 }
@@ -323,7 +335,7 @@ function getEventLinkedCommand(event: EventItem): string {
 function getEventIdCandidates(event: EventItem): string[] {
   const payload = getEventPayload(event);
 
-  return [
+  return uniq([
     toTextOrEmpty(event.id),
     toTextOrEmpty(event.root_event_id),
     toTextOrEmpty(event.source_record_id),
@@ -337,19 +349,23 @@ function getEventIdCandidates(event: EventItem): string[] {
     toTextOrEmpty(payload.sourceEventId),
     toTextOrEmpty(payload.flow_id),
     toTextOrEmpty(payload.flowId),
-  ].filter(Boolean);
+  ]);
 }
 
+/* ----------------------------- Incident helpers --------------------------- */
+
 function getIncidentIdCandidates(incident: IncidentItem): string[] {
-  return [
+  return uniq([
     toTextOrEmpty(incident.id),
     toTextOrEmpty(incident.flow_id),
     toTextOrEmpty(incident.root_event_id),
     toTextOrEmpty((incident as Record<string, unknown>).source_record_id),
     toTextOrEmpty(incident.command_id),
     toTextOrEmpty(incident.linked_command),
-  ].filter(Boolean);
+  ]);
 }
+
+/* ------------------------------- Href helpers ----------------------------- */
 
 function buildFlowHref(command: CommandItem): string {
   const flowId = getCommandFlowId(command);
@@ -383,12 +399,12 @@ function buildSafeEventHref(
   }
 
   const rootEventId = getCommandRootEventId(command);
-  if (rootEventId) {
+  if (rootEventId && isRecordIdLike(rootEventId)) {
     return `/events/${encodeURIComponent(rootEventId)}`;
   }
 
   const sourceEventId = getCommandSourceEventId(command);
-  if (sourceEventId) {
+  if (sourceEventId && isRecordIdLike(sourceEventId)) {
     return `/events/${encodeURIComponent(sourceEventId)}`;
   }
 
@@ -442,13 +458,13 @@ export default async function CommandDetailPage({ params }: PageProps) {
   const toolKey = getCommandToolKey(command);
   const toolMode = getCommandToolMode(command);
 
-  const identifiers = [
+  const identifiers = uniq([
     String(command.id || ""),
     flowId,
     rootEventId,
     sourceEventId,
     runId === "—" ? "" : runId,
-  ].filter(Boolean);
+  ]);
 
   let matchedEvent: EventItem | null = null;
   try {
