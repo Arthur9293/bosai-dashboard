@@ -21,6 +21,12 @@ type RunStats = {
   other?: number;
 };
 
+type RunsResponse = {
+  runs?: RunItem[];
+  stats?: RunStats;
+  count?: number;
+};
+
 function formatDate(value?: string) {
   if (!value) return "—";
 
@@ -57,26 +63,52 @@ function formatDuration(startedAt?: string, finishedAt?: string) {
   return `${seconds}s`;
 }
 
-function tone(status?: string) {
-  const s = (status || "").toLowerCase();
+function normalizeStatus(status?: string) {
+  return (status || "").trim().toLowerCase();
+}
 
-  if (s === "done") {
+function tone(status?: string) {
+  const s = normalizeStatus(status);
+
+  if (["done", "processed", "success", "completed"].includes(s)) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  if (s === "running") {
+  if (["running", "processing"].includes(s)) {
     return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
   }
 
-  if (s === "error") {
+  if (["error", "failed", "dead"].includes(s)) {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
   }
 
-  if (s === "unsupported") {
+  if (["unsupported"].includes(s)) {
     return "bg-zinc-700 text-zinc-300 border border-zinc-600";
   }
 
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
+function signalTone(status?: string) {
+  const s = normalizeStatus(status);
+
+  if (["done", "processed", "success", "completed"].includes(s)) {
+    return "text-emerald-400";
+  }
+
+  if (["running", "processing"].includes(s)) {
+    return "text-sky-400";
+  }
+
+  if (["error", "failed", "dead"].includes(s)) {
+    return "text-red-400";
+  }
+
+  if (["unsupported"].includes(s)) {
+    return "text-zinc-400";
+  }
+
+  return "text-zinc-400";
 }
 
 function cardClassName() {
@@ -91,19 +123,8 @@ function metaLabelClassName() {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
-function signalTone(status?: string) {
-  const s = (status || "").toLowerCase();
-
-  if (s === "done") return "text-emerald-400";
-  if (s === "running") return "text-sky-400";
-  if (s === "error") return "text-red-400";
-  if (s === "unsupported") return "text-zinc-400";
-
-  return "text-zinc-400";
-}
-
 export default async function RunsPage() {
-  let data: any = null;
+  let data: RunsResponse | null = null;
 
   try {
     data = await fetchRuns();
@@ -111,10 +132,11 @@ export default async function RunsPage() {
     data = null;
   }
 
-  const runs: RunItem[] = data?.runs ?? [];
-  const stats = (data?.stats ?? {}) as RunStats;
+  const runs: RunItem[] = Array.isArray(data?.runs) ? data!.runs! : [];
+  const stats: RunStats =
+    data?.stats && typeof data.stats === "object" ? data.stats : {};
 
-  const totalRuns = data?.count ?? runs.length ?? 0;
+  const totalRuns = typeof data?.count === "number" ? data.count : runs.length;
   const runningCount = stats.running ?? 0;
   const doneCount = stats.done ?? 0;
   const errorCount = stats.error ?? 0;
@@ -122,11 +144,16 @@ export default async function RunsPage() {
   const otherCount = stats.other ?? 0;
 
   const visibleRuns = [...runs]
-    .sort(
-      (a, b) =>
-        new Date(b.started_at || 0).getTime() -
-        new Date(a.started_at || 0).getTime()
-    )
+    .sort((a, b) => {
+      const aTs = new Date(
+        a.finished_at || a.started_at || 0
+      ).getTime();
+      const bTs = new Date(
+        b.finished_at || b.started_at || 0
+      ).getTime();
+
+      return bTs - aTs;
+    })
     .slice(0, 50);
 
   return (
@@ -206,6 +233,7 @@ export default async function RunsPage() {
           <div className="space-y-4">
             {visibleRuns.map((run) => {
               const duration = formatDuration(run.started_at, run.finished_at);
+              const normalizedStatus = normalizeStatus(run.status);
 
               return (
                 <div
@@ -243,7 +271,7 @@ export default async function RunsPage() {
                           </div>
                           <div
                             className={`mt-2 text-sm font-medium ${signalTone(
-                              run.status
+                              normalizedStatus
                             )}`}
                           >
                             {(run.status || "unknown").toUpperCase()}
