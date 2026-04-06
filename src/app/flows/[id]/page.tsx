@@ -491,7 +491,8 @@ function buildSyntheticTimelineItemFromEvent(
     getEventSourceRecordId(event) ||
     fallbackId;
 
-  const sourceEventId = getEventSourceRecordId(event) || getEventRootEventId(event);
+  const sourceEventId =
+    getEventSourceRecordId(event) || getEventRootEventId(event);
 
   return {
     id: linkedCommand || toText(event.id) || fallbackId,
@@ -506,7 +507,8 @@ function buildSyntheticTimelineItemFromEvent(
     flowId,
     rootEventId,
     sourceEventId,
-    workspaceId: toText(flow.workspace_id) || getEventWorkspaceId(event) || "production",
+    workspaceId:
+      toText(flow.workspace_id) || getEventWorkspaceId(event) || "production",
     inputJson: stringifyPretty(event.payload ?? {}),
     resultJson: stringifyPretty({
       source: "synthetic_from_event",
@@ -562,7 +564,10 @@ function getDurationMs(items: TimelineItem[]): number {
   return diff > 0 ? diff : 0;
 }
 
-function getLastKnownTimestamp(items: TimelineItem[], sourceEvent: EventItem | null): number {
+function getLastKnownTimestamp(
+  items: TimelineItem[],
+  sourceEvent: EventItem | null
+): number {
   const values = items
     .map((item) =>
       new Date(item.finishedAt || item.startedAt || item.createdAt || 0).getTime()
@@ -752,6 +757,26 @@ function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string)
   return flowId || sourceRecordId || rootEventId || id || "Flow";
 }
 
+function buildSafeEventHref(
+  sourceEvent: EventItem | null,
+  rootEventId: string,
+  sourceRecordId: string
+): string {
+  if (sourceEvent?.id) {
+    return `/events/${encodeURIComponent(sourceEvent.id)}`;
+  }
+
+  if (rootEventId && isRecordIdLike(rootEventId)) {
+    return `/events/${encodeURIComponent(rootEventId)}`;
+  }
+
+  if (sourceRecordId && isRecordIdLike(sourceRecordId)) {
+    return `/events/${encodeURIComponent(sourceRecordId)}`;
+  }
+
+  return "";
+}
+
 export default async function FlowDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
@@ -891,13 +916,11 @@ export default async function FlowDetailPage({ params }: PageProps) {
         }))
       : [];
 
-  const sourceEventHref = sourceEvent
-    ? `/events/${encodeURIComponent(sourceEvent.id)}`
-    : rootEventId
-    ? `/events/${encodeURIComponent(rootEventId)}`
-    : sourceRecordId
-    ? `/events/${encodeURIComponent(sourceRecordId)}`
-    : "";
+  const sourceEventHref = buildSafeEventHref(
+    sourceEvent,
+    rootEventId,
+    sourceRecordId
+  );
 
   const incidentsHref = (() => {
     const params = new URLSearchParams();
