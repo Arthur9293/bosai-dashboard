@@ -11,7 +11,11 @@ type EventStats = {
 };
 
 function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function emptyStateClassName() {
+  return "rounded-[28px] border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500";
 }
 
 function actionLinkClassName(
@@ -22,14 +26,26 @@ function actionLinkClassName(
     "inline-flex items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition";
 
   if (disabled) {
-    return `${base} cursor-not-allowed border border-white/10 bg-white/5 text-zinc-500 opacity-60`;
+    return `${base} cursor-not-allowed border border-white/10 bg-white/[0.04] text-zinc-500 opacity-60`;
   }
 
   if (variant === "primary") {
     return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
   }
 
-  return `${base} border border-white/10 bg-white/5 text-white hover:bg-white/10`;
+  if (variant === "soft") {
+    return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+  }
+
+  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+}
+
+function sectionLabelClassName() {
+  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
+}
+
+function metaLabelClassName() {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
 function formatDate(value?: string | null): string {
@@ -70,12 +86,33 @@ function toTextOrEmpty(value: unknown): string {
   return toText(value, "");
 }
 
+function getEventPayload(event: EventItem): Record<string, unknown> {
+  return toRecord(event.payload);
+}
+
 function getEventType(event: EventItem): string {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
   return (
-    toTextOrEmpty((event as Record<string, unknown>).mapped_capability) ||
+    toTextOrEmpty(record.mapped_capability) ||
     toTextOrEmpty(event.event_type) ||
     toTextOrEmpty(event.type) ||
+    toTextOrEmpty(payload.event_type) ||
+    toTextOrEmpty(payload.type) ||
     "unknown"
+  );
+}
+
+function getEventCapability(event: EventItem): string {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
+  return (
+    toTextOrEmpty(record.mapped_capability) ||
+    toTextOrEmpty(payload.mapped_capability) ||
+    toTextOrEmpty(payload.capability) ||
+    "—"
   );
 }
 
@@ -95,7 +132,7 @@ function getEventDate(event: EventItem): string {
 function getWorkspace(event: EventItem): string {
   if (toTextOrEmpty(event.workspace_id)) return toTextOrEmpty(event.workspace_id);
 
-  const payload = toRecord(event.payload);
+  const payload = getEventPayload(event);
   return (
     toTextOrEmpty(payload.workspace_id) ||
     toTextOrEmpty(payload.workspaceId) ||
@@ -107,7 +144,7 @@ function getWorkspace(event: EventItem): string {
 function getFlowId(event: EventItem): string {
   if (toTextOrEmpty(event.flow_id)) return toTextOrEmpty(event.flow_id);
 
-  const payload = toRecord(event.payload);
+  const payload = getEventPayload(event);
   return (
     toTextOrEmpty(payload.flow_id) ||
     toTextOrEmpty(payload.flowId) ||
@@ -119,7 +156,7 @@ function getFlowId(event: EventItem): string {
 function getRootEventId(event: EventItem): string {
   if (toTextOrEmpty(event.root_event_id)) return toTextOrEmpty(event.root_event_id);
 
-  const payload = toRecord(event.payload);
+  const payload = getEventPayload(event);
   return (
     toTextOrEmpty(payload.root_event_id) ||
     toTextOrEmpty(payload.rootEventId) ||
@@ -128,20 +165,44 @@ function getRootEventId(event: EventItem): string {
   );
 }
 
+function getSourceRecordId(event: EventItem): string {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
+  return (
+    toTextOrEmpty(event.source_record_id) ||
+    toTextOrEmpty(event.source_event_id) ||
+    toTextOrEmpty(record.source_record_id) ||
+    toTextOrEmpty(record.Source_Record_ID) ||
+    toTextOrEmpty(record.source_event_id) ||
+    toTextOrEmpty(record.Source_Event_ID) ||
+    toTextOrEmpty(payload.source_record_id) ||
+    toTextOrEmpty(payload.sourceRecordId) ||
+    toTextOrEmpty(payload.source_event_id) ||
+    toTextOrEmpty(payload.sourceEventId) ||
+    ""
+  );
+}
+
 function getFlowTarget(event: EventItem): string {
-  return getFlowId(event) || getRootEventId(event) || "";
+  return getFlowId(event) || getRootEventId(event) || getSourceRecordId(event) || "";
 }
 
 function getLinkedCommand(event: EventItem): string {
   if (toTextOrEmpty(event.command_id)) return toTextOrEmpty(event.command_id);
 
-  const raw = (event as Record<string, unknown>).linked_command;
+  const record = event as Record<string, unknown>;
+  const raw = record.linked_command;
   if (Array.isArray(raw) && raw.length > 0) {
     return toTextOrEmpty(raw[0]);
   }
 
-  const payload = toRecord(event.payload);
+  const payload = getEventPayload(event);
   return (
+    toTextOrEmpty(record.command_id) ||
+    toTextOrEmpty(record.Command_ID) ||
+    toTextOrEmpty(record.linked_command) ||
+    toTextOrEmpty(record.Linked_Command) ||
     toTextOrEmpty(payload.command_id) ||
     toTextOrEmpty(payload.commandId) ||
     ""
@@ -149,24 +210,28 @@ function getLinkedCommand(event: EventItem): string {
 }
 
 function getSource(event: EventItem): string {
-  const direct = toTextOrEmpty((event as Record<string, unknown>).source);
-  if (direct) return direct;
+  const record = event as Record<string, unknown>;
+  const payload = getEventPayload(event);
 
-  const payload = toRecord(event.payload);
-  return toTextOrEmpty(payload.source) || "—";
+  return (
+    toTextOrEmpty(record.source) ||
+    toTextOrEmpty(payload.source) ||
+    "—"
+  );
 }
 
 function hasCommandCreated(event: EventItem): boolean {
-  const direct = (event as Record<string, unknown>).command_created;
-  if (typeof direct === "boolean") return direct;
+  const record = event as Record<string, unknown>;
+  const direct = record.command_created;
 
+  if (typeof direct === "boolean") return direct;
   return Boolean(getLinkedCommand(event));
 }
 
 function badgeTone(status?: string): string {
-  const s = (status || "").toLowerCase();
+  const s = (status || "").trim().toLowerCase();
 
-  if (["processed", "done", "success"].includes(s)) {
+  if (["processed", "done", "success", "completed"].includes(s)) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
@@ -174,7 +239,11 @@ function badgeTone(status?: string): string {
     return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
   }
 
-  if (["error", "failed", "dead"].includes(s)) {
+  if (["running", "processing"].includes(s)) {
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+  }
+
+  if (["error", "failed", "dead", "blocked"].includes(s)) {
     return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
   }
 
@@ -195,6 +264,147 @@ function latestByStatus(events: EventItem[], status: string): EventItem | null {
     );
 
   return filtered[0] || null;
+}
+
+function EventCard({ event }: { event: EventItem }) {
+  const status = getEventStatus(event);
+  const linkedCommand = getLinkedCommand(event);
+  const flowTarget = getFlowTarget(event);
+  const capability = getEventCapability(event);
+
+  return (
+    <article className={cardClassName()}>
+      <div className="flex h-full flex-col gap-5">
+        <div className="space-y-4 border-b border-white/10 pb-4">
+          <div className={sectionLabelClassName()}>BOSAI Event</div>
+
+          <div className="space-y-3">
+            <Link
+              href={`/events/${encodeURIComponent(String(event.id))}`}
+              className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
+            >
+              {getEventType(event)}
+            </Link>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${badgeTone(
+                  status
+                )}`}
+              >
+                {status.toUpperCase()}
+              </span>
+
+              {capability !== "—" ? (
+                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
+                  {capability}
+                </span>
+              ) : null}
+
+              {hasCommandCreated(event) ? (
+                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
+                  COMMAND CREATED
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
+            <span>
+              Workspace: <span className="text-zinc-300">{getWorkspace(event)}</span>
+            </span>
+            <span>
+              Source: <span className="text-zinc-300">{getSource(event)}</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <div className={metaLabelClassName()}>Event ID</div>
+            <div className="mt-1 break-all text-zinc-200">{event.id}</div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Flow</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {getFlowId(event) || "—"}
+            </div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Root event</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {getRootEventId(event) || "—"}
+            </div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Linked command</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {linkedCommand || "—"}
+            </div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Updated</div>
+            <div className="mt-1 text-zinc-200">
+              {formatDate(event.updated_at)}
+            </div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Processed</div>
+            <div className="mt-1 text-zinc-200">
+              {formatDate(event.processed_at)}
+            </div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Created</div>
+            <div className="mt-1 text-zinc-200">
+              {formatDate(event.created_at)}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href={`/events/${encodeURIComponent(String(event.id))}`}
+            className={actionLinkClassName("primary")}
+          >
+            Ouvrir l’event
+          </Link>
+
+          {linkedCommand ? (
+            <Link
+              href={`/commands/${encodeURIComponent(linkedCommand)}`}
+              className={actionLinkClassName("soft")}
+            >
+              Ouvrir la command liée
+            </Link>
+          ) : (
+            <span className={actionLinkClassName("soft", true)}>
+              Ouvrir la command liée
+            </span>
+          )}
+
+          {flowTarget ? (
+            <Link
+              href={`/flows/${encodeURIComponent(flowTarget)}`}
+              className={actionLinkClassName("soft")}
+            >
+              Ouvrir le flow lié
+            </Link>
+          ) : (
+            <span className={actionLinkClassName("soft", true)}>
+              Ouvrir le flow lié
+            </span>
+          )}
+        </div>
+      </div>
+    </article>
+  );
 }
 
 export default async function EventsPage() {
@@ -241,19 +451,20 @@ export default async function EventsPage() {
   const commandsCreatedCount = events.filter((event) => hasCommandCreated(event)).length;
 
   return (
-    <div className="space-y-6">
-      <div className="border-b border-white/10 pb-4">
-        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-          Operations
+    <div className="space-y-8">
+      <section className="space-y-3 border-b border-white/10 pb-6">
+        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
+
+        <div>
+          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+            Events
+          </h1>
+          <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
+            Flux des événements BOSAI. Cette vue affiche les events, leur statut,
+            leur rattachement pipeline et les liens vers les commands et flows.
+          </p>
         </div>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-          Events
-        </h1>
-        <p className="mt-2 max-w-3xl text-sm text-zinc-400 sm:text-base">
-          Flux des événements BOSAI. Cette vue affiche les events, leur statut,
-          leur rattachement pipeline et les liens vers les commands et flows.
-        </p>
-      </div>
+      </section>
 
       <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
         {[
@@ -266,7 +477,9 @@ export default async function EventsPage() {
         ].map(([label, value]) => (
           <div key={label} className={cardClassName()}>
             <div className="text-sm text-zinc-400">{label}</div>
-            <div className="mt-3 text-4xl font-semibold text-white">{value}</div>
+            <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
+              {value}
+            </div>
           </div>
         ))}
       </section>
@@ -274,11 +487,17 @@ export default async function EventsPage() {
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Source status</div>
-          <div className="mt-3 text-4xl font-semibold text-white">
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
             {sourceConnected ? "Connected" : "Unavailable"}
           </div>
           <div className="mt-4">
-            <span className="inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/15 px-3 py-1 text-sm font-medium text-emerald-300">
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${
+                sourceConnected
+                  ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                  : "border border-white/10 bg-white/[0.04] text-zinc-300"
+              }`}
+            >
               {sourceConnected ? "LIVE SOURCE" : "NO SOURCE"}
             </span>
           </div>
@@ -287,10 +506,8 @@ export default async function EventsPage() {
         <div className={`${cardClassName()} xl:col-span-2`}>
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                Event stream
-              </div>
-              <div className="mt-2 text-2xl font-semibold text-white">
+              <div className={sectionLabelClassName()}>Event stream</div>
+              <div className="mt-2 text-2xl font-semibold tracking-tight text-white">
                 Historique récent
               </div>
             </div>
@@ -299,37 +516,29 @@ export default async function EventsPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                Latest processed
-              </div>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
+              <div className={metaLabelClassName()}>Latest processed</div>
               <div className="mt-3 text-xl font-semibold text-white">
                 {formatDate(latestProcessed ? getEventDate(latestProcessed) : "")}
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                Latest queued
-              </div>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
+              <div className={metaLabelClassName()}>Latest queued</div>
               <div className="mt-3 text-xl font-semibold text-white">
                 {formatDate(latestQueued ? getEventDate(latestQueued) : "")}
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                Latest error
-              </div>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
+              <div className={metaLabelClassName()}>Latest error</div>
               <div className="mt-3 text-xl font-semibold text-white">
                 {formatDate(latestError ? getEventDate(latestError) : "")}
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                Commands created
-              </div>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
+              <div className={metaLabelClassName()}>Commands created</div>
               <div className="mt-3 text-xl font-semibold text-white">
                 {commandsCreatedCount}
               </div>
@@ -340,167 +549,9 @@ export default async function EventsPage() {
 
       <section className="grid grid-cols-1 gap-4">
         {list.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
-            Aucun événement affiché.
-          </div>
+          <div className={emptyStateClassName()}>Aucun événement affiché.</div>
         ) : (
-          list.map((event) => {
-            const status = getEventStatus(event);
-            const linkedCommand = getLinkedCommand(event);
-            const flowTarget = getFlowTarget(event);
-
-            return (
-              <article
-                key={event.id}
-                className="rounded-2xl border border-white/10 bg-white/5 p-5"
-              >
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                      BOSAI EVENT
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <h2 className="break-all text-2xl font-semibold text-white">
-                        {getEventType(event)}
-                      </h2>
-
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${badgeTone(
-                          status
-                        )}`}
-                      >
-                        {status.toUpperCase()}
-                      </span>
-
-                      {hasCommandCreated(event) ? (
-                        <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm font-medium text-zinc-300">
-                          COMMAND CREATED
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="mt-4 break-all text-sm text-zinc-400">
-                      ID: <span className="text-zinc-200">{event.id}</span>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          Workspace
-                        </div>
-                        <div className="mt-3 break-all text-xl font-semibold text-white">
-                          {getWorkspace(event)}
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          Capability
-                        </div>
-                        <div className="mt-3 break-all text-xl font-semibold text-white">
-                          {toTextOrEmpty(event.mapped_capability) || "—"}
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          Flow
-                        </div>
-                        <div className="mt-3 break-all text-xl font-semibold text-white">
-                          {getFlowId(event) || "—"}
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          Root event
-                        </div>
-                        <div className="mt-3 break-all text-xl font-semibold text-white">
-                          {getRootEventId(event) || "—"}
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          Linked command
-                        </div>
-                        <div className="mt-3 break-all text-xl font-semibold text-white">
-                          {linkedCommand || "—"}
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          Source
-                        </div>
-                        <div className="mt-3 break-all text-xl font-semibold text-white">
-                          {getSource(event)}
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          Updated
-                        </div>
-                        <div className="mt-3 text-xl font-semibold text-white">
-                          {formatDate(event.updated_at)}
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          Processed
-                        </div>
-                        <div className="mt-3 text-xl font-semibold text-white">
-                          {formatDate(event.processed_at)}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 flex flex-wrap gap-3">
-                      <Link
-                        href={`/events/${encodeURIComponent(String(event.id))}`}
-                        className={actionLinkClassName("primary")}
-                      >
-                        Ouvrir l’event
-                      </Link>
-
-                      {linkedCommand ? (
-                        <Link
-                          href={`/commands/${encodeURIComponent(linkedCommand)}`}
-                          className={actionLinkClassName("soft")}
-                        >
-                          Ouvrir la command liée
-                        </Link>
-                      ) : (
-                        <span className={actionLinkClassName("soft", true)}>
-                          Ouvrir la command liée
-                        </span>
-                      )}
-
-                      {flowTarget ? (
-                        <Link
-                          href={`/flows/${encodeURIComponent(flowTarget)}`}
-                          className={actionLinkClassName("soft")}
-                        >
-                          Ouvrir le flow lié
-                        </Link>
-                      ) : (
-                        <span className={actionLinkClassName("soft", true)}>
-                          Ouvrir le flow lié
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500 xl:pt-1">
-                    Event signal
-                  </div>
-                </div>
-              </article>
-            );
-          })
+          list.map((event) => <EventCard key={String(event.id)} event={event} />)
         )}
       </section>
     </div>
