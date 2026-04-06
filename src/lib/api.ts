@@ -500,6 +500,58 @@ export type IncidentsResponse = {
   };
 };
 
+export type SlaItem = {
+  id: string;
+  title?: string;
+  name?: string;
+  status?: string;
+  sla_status?: string;
+  severity?: string;
+  escalation_queued?: boolean;
+  sla_remaining_minutes?: number;
+  remaining_minutes?: number;
+  opened_at?: string;
+  created_at?: string;
+  updated_at?: string;
+  resolved_at?: string;
+  deadline_at?: string;
+  breached_at?: string;
+  last_sla_check?: string;
+  workspace_id?: string;
+  workspace?: string;
+  run_record_id?: string;
+  linked_run?: string;
+  run_id?: string;
+  command_id?: string;
+  linked_command?: string;
+  flow_id?: string;
+  root_event_id?: string;
+  source_record_id?: string;
+  category?: string;
+  reason?: string;
+  source?: string;
+  worker?: string;
+  error_id?: string;
+  resolution_note?: string;
+  last_action?: string;
+  priority_score?: number | string;
+  [key: string]: unknown;
+};
+
+export type SlaResponse = {
+  count?: number;
+  incidents?: SlaItem[];
+  stats?: {
+    ok?: number;
+    warning?: number;
+    breached?: number;
+    escalated?: number;
+    unknown?: number;
+    escalation_queued?: number;
+    [key: string]: number | undefined;
+  };
+};
+
 export type ToolItem = {
   id: string;
   name?: string;
@@ -1010,6 +1062,164 @@ function normalizeIncidentItem(raw: unknown): IncidentItem {
   };
 }
 
+function normalizeSlaItem(raw: unknown): SlaItem {
+  const record = unwrapRecord(raw);
+  const contextRecords = [record];
+
+  return {
+    ...record,
+    id:
+      asString(
+        firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
+      ) || "",
+    title: asString(firstDefined(record, ["title", "Title", "name", "Name"])),
+    name: asString(firstDefined(record, ["name", "Name", "title", "Title"])),
+    status: asString(
+      firstDefined(record, [
+        "status",
+        "Status",
+        "status_select",
+        "Status_select",
+        "statut_incident",
+        "Statut_incident",
+        "Statut incident",
+      ])
+    ),
+    sla_status: asString(
+      firstDefined(record, [
+        "sla_status",
+        "SLA_Status",
+        "SLA status",
+        "sla",
+        "SLA",
+      ])
+    ),
+    severity: asString(firstDefined(record, ["severity", "Severity"])),
+    escalation_queued: asBoolean(
+      firstDefined(record, [
+        "escalation_queued",
+        "Escalation_Queued",
+        "escalade_en_queue",
+        "Escalade_en_queue",
+      ])
+    ),
+    sla_remaining_minutes: asNumber(
+      firstDefined(record, [
+        "sla_remaining_minutes",
+        "SLA_Remaining_Minutes",
+        "Temps restant SLA",
+      ])
+    ),
+    remaining_minutes: asNumber(
+      firstDefined(record, [
+        "remaining_minutes",
+        "Remaining_Minutes",
+        "sla_remaining_minutes",
+        "SLA_Remaining_Minutes",
+        "Temps restant SLA",
+      ])
+    ),
+    opened_at: asString(
+      firstDefined(record, [
+        "opened_at",
+        "Opened_At",
+        "created_at",
+        "Created_At",
+      ])
+    ),
+    created_at: asString(
+      firstDefined(record, ["created_at", "Created_At", "createdAt"])
+    ),
+    updated_at: asString(
+      firstDefined(record, ["updated_at", "Updated_At", "updatedAt"])
+    ),
+    resolved_at: asString(
+      firstDefined(record, ["resolved_at", "Resolved_At", "resolvedAt"])
+    ),
+    deadline_at: asString(
+      firstDefined(record, ["deadline_at", "Deadline_At", "deadlineAt"])
+    ),
+    breached_at: asString(
+      firstDefined(record, ["breached_at", "Breached_At", "breachedAt"])
+    ),
+    last_sla_check: asString(
+      firstDefined(record, ["last_sla_check", "Last_SLA_Check"])
+    ),
+    workspace_id: asString(
+      firstDefinedMany(contextRecords, [
+        "workspace_id",
+        "Workspace_ID",
+        "workspace",
+        "Workspace",
+      ])
+    ),
+    workspace: asString(firstDefined(record, ["workspace", "Workspace"])),
+    run_record_id: asString(
+      firstDefined(record, [
+        "run_record_id",
+        "Run_Record_ID",
+        "linked_run",
+        "Linked_Run",
+      ])
+    ),
+    linked_run: asString(
+      firstDefined(record, [
+        "linked_run",
+        "Linked_Run",
+        "run_record_id",
+        "Run_Record_ID",
+      ])
+    ),
+    run_id: asString(firstDefined(record, ["run_id", "Run_ID"])),
+    command_id: asString(
+      firstDefined(record, [
+        "command_id",
+        "Command_ID",
+        "linked_command",
+        "Linked_Command",
+      ])
+    ),
+    linked_command: asString(
+      firstDefined(record, [
+        "linked_command",
+        "Linked_Command",
+        "command_id",
+        "Command_ID",
+      ])
+    ),
+    flow_id: asString(
+      firstDefined(record, ["flow_id", "Flow_ID", "flowId", "FlowId"])
+    ),
+    root_event_id: asString(
+      firstDefined(record, [
+        "root_event_id",
+        "Root_Event_ID",
+        "rootEventId",
+        "RootEventId",
+      ])
+    ),
+    source_record_id: asString(
+      firstDefined(record, [
+        "source_record_id",
+        "Source_Record_ID",
+        "sourceRecordId",
+      ])
+    ),
+    category: asString(firstDefined(record, ["category", "Category"])),
+    reason: asString(firstDefined(record, ["reason", "Reason"])),
+    source: asString(firstDefined(record, ["source", "Source"])),
+    worker: asString(firstDefined(record, ["worker", "Worker"])),
+    error_id: asString(firstDefined(record, ["error_id", "Error_ID"])),
+    resolution_note: asString(
+      firstDefined(record, ["resolution_note", "Resolution_Note"])
+    ),
+    last_action: asString(firstDefined(record, ["last_action", "Last_Action"])),
+    priority_score:
+      asNumber(firstDefined(record, ["priority_score", "Priority_Score"])) ??
+      asString(firstDefined(record, ["priority_score", "Priority_Score"])),
+  };
+}
+
 function normalizeToolItem(raw: unknown): ToolItem {
   const record = unwrapRecord(raw);
 
@@ -1322,6 +1532,44 @@ export async function fetchIncidents(limit = 30): Promise<IncidentsResponse> {
       asNumber(firstDefined(data, ["count", "Count"])) ?? incidents.length,
     incidents,
     stats,
+  };
+}
+
+export async function fetchSla(limit = 50): Promise<SlaResponse> {
+  const safeLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.trunc(limit))
+    : 50;
+
+  const data = await safeFetch<JsonRecord>(`/sla?limit=${safeLimit}`);
+
+  const incidents = asArray(
+    firstDefined(data, [
+      "incidents",
+      "Incidents",
+      "sla",
+      "Sla",
+      "items",
+      "Items",
+      "records",
+      "Records",
+    ])
+  ).map((item) => normalizeSlaItem(item));
+
+  const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
+
+  return {
+    ...data,
+    count: asNumber(firstDefined(data, ["count", "Count"])) ?? incidents.length,
+    incidents,
+    stats: {
+      ok: stats.ok,
+      warning: stats.warning,
+      breached: stats.breached,
+      escalated: stats.escalated,
+      unknown: stats.unknown,
+      escalation_queued: stats.escalation_queued,
+      ...stats,
+    },
   };
 }
 
