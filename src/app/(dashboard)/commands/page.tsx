@@ -1,238 +1,646 @@
 import Link from "next/link";
-import { fetchCommands } from "../../../lib/api";
+import {
+  fetchCommands,
+  type CommandItem,
+  type CommandsResponse,
+} from "@/lib/api";
 
-type CommandItem = {
-  id: string;
-  capability?: string;
-  status?: string;
-  priority?: number;
-  flow_id?: string;
-  root_event_id?: string;
-  parent_command_id?: string;
-  worker?: string;
-  workspace_id?: string;
-  started_at?: string;
-  finished_at?: string;
-  created_at?: string;
+type PageProps = {
+  searchParams?: Promise<{
+    flow_id?: string | string[];
+    root_event_id?: string | string[];
+    source_event_id?: string | string[];
+    from?: string | string[];
+  }>;
 };
 
-type CommandStats = {
-  queue?: number;
-  queued?: number;
-  running?: number;
-  done?: number;
-  retry?: number;
-  dead?: number;
-  error?: number;
-  failed?: number;
-};
-
-function formatDate(value?: string) {
-  if (!value) return "—";
-  const d = new Date(value);
-  return isNaN(d.getTime())
-    ? value
-    : new Intl.DateTimeFormat("fr-FR", {
-        dateStyle: "short",
-        timeStyle: "short",
-      }).format(d);
+function cardClassName() {
+  return "rounded-2xl border border-white/10 bg-white/5 p-5";
 }
 
-function tone(status?: string) {
-  const s = (status || "").toLowerCase();
-
-  if (s === "done") {
-    return "border border-emerald-500/20 bg-emerald-500/15 text-emerald-300";
+function actionLinkClassName(
+  variant: "default" | "primary" | "soft" = "default"
+) {
+  if (variant === "primary") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
-  if (s === "queued" || s === "queue") {
-    return "border border-amber-500/20 bg-amber-500/15 text-amber-300";
-  }
-
-  if (s === "running") {
-    return "border border-sky-500/20 bg-sky-500/15 text-sky-300";
-  }
-
-  if (s === "retry") {
-    return "border border-violet-500/20 bg-violet-500/15 text-violet-300";
-  }
-
-  if (["error", "failed", "dead"].includes(s)) {
-    return "border border-rose-500/20 bg-rose-500/15 text-rose-300";
-  }
-
-  return "border border-zinc-700 bg-zinc-800 text-zinc-300";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
 }
 
-function shellClassName() {
-  return "space-y-8";
-}
-
-function surfaceClassName() {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
-
-function statCardClassName() {
-  return `${surfaceClassName()} px-5 py-4 md:px-6 md:py-5`;
-}
-
-function commandCardClassName() {
-  return `${surfaceClassName()} block p-5 md:p-6 transition hover:border-white/15 hover:bg-white/[0.05]`;
+function sectionLabelClassName() {
+  return "text-xs uppercase tracking-[0.22em] text-zinc-500";
 }
 
 function metaLabelClassName() {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
-export default async function CommandsPage() {
-  let data: any = null;
+function formatDate(value?: string | null): string {
+  if (!value) return "—";
 
-  try {
-    data = await fetchCommands();
-  } catch {}
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
 
-  const commands: CommandItem[] = data?.commands ?? [];
-  const stats = (data?.stats ?? {}) as CommandStats;
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
 
-  const queued = stats.queue ?? stats.queued ?? 0;
-  const running = stats.running ?? 0;
-  const done = stats.done ?? 0;
-  const retry = stats.retry ?? 0;
-  const dead = stats.dead ?? stats.error ?? stats.failed ?? 0;
+function toText(value: unknown, fallback = "—"): string {
+  if (value === null || value === undefined) return fallback;
 
-  const list = [...commands]
-    .sort(
-      (a, b) =>
-        new Date(b.created_at || 0).getTime() -
-        new Date(a.created_at || 0).getTime()
-    )
-    .slice(0, 50);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = toText(item, "");
+      if (candidate) return candidate;
+    }
+    return fallback;
+  }
+
+  const text = String(value).trim();
+  return text || fallback;
+}
+
+function toTextOrEmpty(value: unknown): string {
+  return toText(value, "");
+}
+
+function firstParam(value?: string | string[]) {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
+function parseMaybeJson(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
+function tone(status?: string): string {
+  const normalized = (status || "").trim().toLowerCase();
+
+  if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+
+  if (["queued", "pending", "new"].includes(normalized)) {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  if (["running", "processing"].includes(normalized)) {
+    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
+  }
+
+  if (["retry", "retriable"].includes(normalized)) {
+    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
+  }
+
+  if (["ignored"].includes(normalized)) {
+    return "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20";
+  }
+
+  if (["error", "failed", "dead", "blocked"].includes(normalized)) {
+    return "bg-red-500/15 text-red-300 border border-red-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
+function getCommandInput(command: CommandItem): Record<string, unknown> {
+  return parseMaybeJson(command.input);
+}
+
+function getCommandResult(command: CommandItem): Record<string, unknown> {
+  return parseMaybeJson(command.result);
+}
+
+function getCommandStatus(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
 
   return (
-    <div className={shellClassName()}>
-      <section className="space-y-3 border-b border-white/10 pb-6">
-        <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
-          BOSAI Dashboard
+    toTextOrEmpty(command.status) ||
+    toTextOrEmpty(result.status) ||
+    toTextOrEmpty(result.status_select) ||
+    toTextOrEmpty(input.status) ||
+    "unknown"
+  );
+}
+
+function getCommandCapability(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toTextOrEmpty(command.capability) ||
+    toTextOrEmpty(input.capability) ||
+    toTextOrEmpty(result.capability) ||
+    "unknown_capability"
+  );
+}
+
+function getCommandTitle(command: CommandItem): string {
+  return (
+    toTextOrEmpty(command.name) ||
+    getCommandCapability(command) ||
+    "Command detail"
+  );
+}
+
+function getCommandWorkspace(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toTextOrEmpty(command.workspace_id) ||
+    toTextOrEmpty(input.workspace_id) ||
+    toTextOrEmpty(input.workspaceId) ||
+    toTextOrEmpty(result.workspace_id) ||
+    toTextOrEmpty(result.workspaceId) ||
+    "—"
+  );
+}
+
+function getCommandFlowId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toTextOrEmpty(command.flow_id) ||
+    toTextOrEmpty(input.flow_id) ||
+    toTextOrEmpty(input.flowId) ||
+    toTextOrEmpty(result.flow_id) ||
+    toTextOrEmpty(result.flowId) ||
+    ""
+  );
+}
+
+function getCommandRootEventId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toTextOrEmpty(command.root_event_id) ||
+    toTextOrEmpty(input.root_event_id) ||
+    toTextOrEmpty(input.rootEventId) ||
+    toTextOrEmpty(result.root_event_id) ||
+    toTextOrEmpty(result.rootEventId) ||
+    ""
+  );
+}
+
+function getCommandSourceEventId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
+
+  return (
+    toTextOrEmpty(record.source_event_id) ||
+    toTextOrEmpty(record.Source_Event_ID) ||
+    toTextOrEmpty(input.source_event_id) ||
+    toTextOrEmpty(input.sourceEventId) ||
+    toTextOrEmpty(input.event_id) ||
+    toTextOrEmpty(input.eventId) ||
+    toTextOrEmpty(result.source_event_id) ||
+    toTextOrEmpty(result.sourceEventId) ||
+    toTextOrEmpty(result.event_id) ||
+    toTextOrEmpty(result.eventId) ||
+    ""
+  );
+}
+
+function getCommandRunId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toTextOrEmpty(command.run_record_id) ||
+    toTextOrEmpty(command.linked_run) ||
+    toTextOrEmpty(input.run_record_id) ||
+    toTextOrEmpty(input.runRecordId) ||
+    toTextOrEmpty(input.run_id) ||
+    toTextOrEmpty(input.runId) ||
+    toTextOrEmpty(result.run_record_id) ||
+    toTextOrEmpty(result.runRecordId) ||
+    toTextOrEmpty(result.run_id) ||
+    toTextOrEmpty(result.runId) ||
+    "—"
+  );
+}
+
+function getCommandParentId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toTextOrEmpty(command.parent_command_id) ||
+    toTextOrEmpty(input.parent_command_id) ||
+    toTextOrEmpty(input.parentCommandId) ||
+    toTextOrEmpty(result.parent_command_id) ||
+    toTextOrEmpty(result.parentCommandId) ||
+    ""
+  );
+}
+
+function getCommandToolKey(command: CommandItem): string {
+  return toTextOrEmpty(command.tool_key);
+}
+
+function getCommandToolMode(command: CommandItem): string {
+  return toTextOrEmpty(command.tool_mode);
+}
+
+function getCommandCreatedAt(command: CommandItem): string {
+  return toTextOrEmpty(command.created_at);
+}
+
+function getCommandStartedAt(command: CommandItem): string {
+  return toTextOrEmpty(command.started_at);
+}
+
+function getCommandFinishedAt(command: CommandItem): string {
+  return toTextOrEmpty(command.finished_at);
+}
+
+function getCommandError(command: CommandItem): string {
+  return toTextOrEmpty(command.error);
+}
+
+function commandMatchesFilters(
+  command: CommandItem,
+  filters: {
+    flowId: string;
+    rootEventId: string;
+    sourceEventId: string;
+  }
+) {
+  const flowId = getCommandFlowId(command);
+  const rootEventId = getCommandRootEventId(command);
+  const sourceEventId = getCommandSourceEventId(command);
+
+  if (filters.flowId && flowId !== filters.flowId) {
+    return false;
+  }
+
+  if (filters.rootEventId && rootEventId !== filters.rootEventId) {
+    return false;
+  }
+
+  if (filters.sourceEventId && sourceEventId !== filters.sourceEventId) {
+    return false;
+  }
+
+  return true;
+}
+
+function getBackToFlowsHref(filters: {
+  flowId: string;
+  rootEventId: string;
+  sourceEventId: string;
+}) {
+  if (filters.flowId) {
+    return `/flows/${encodeURIComponent(filters.flowId)}`;
+  }
+
+  if (filters.rootEventId) {
+    return `/flows/${encodeURIComponent(filters.rootEventId)}`;
+  }
+
+  if (filters.sourceEventId) {
+    return `/flows/${encodeURIComponent(filters.sourceEventId)}`;
+  }
+
+  return "/flows";
+}
+
+function CommandCard({ command }: { command: CommandItem }) {
+  const id = String(command.id || "");
+  const title = getCommandTitle(command);
+  const status = getCommandStatus(command);
+  const capability = getCommandCapability(command);
+  const workspace = getCommandWorkspace(command);
+  const flowId = getCommandFlowId(command);
+  const rootEventId = getCommandRootEventId(command);
+  const sourceEventId = getCommandSourceEventId(command);
+  const runId = getCommandRunId(command);
+  const parentId = getCommandParentId(command);
+  const toolKey = getCommandToolKey(command);
+  const toolMode = getCommandToolMode(command);
+  const errorText = getCommandError(command);
+
+  return (
+    <article className={cardClassName()}>
+      <div className="flex h-full flex-col gap-5">
+        <div className="space-y-4 border-b border-white/10 pb-4">
+          <div className={sectionLabelClassName()}>BOSAI Command</div>
+
+          <div className="space-y-3">
+            <Link
+              href={`/commands/${encodeURIComponent(id)}`}
+              className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
+            >
+              {title}
+            </Link>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
+                  status
+                )}`}
+              >
+                {status.toUpperCase()}
+              </span>
+
+              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                {capability}
+              </span>
+
+              {toolKey ? (
+                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                  TOOL {toolKey}
+                </span>
+              ) : null}
+
+              {toolMode ? (
+                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                  MODE {toolMode}
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
+            <span>
+              Workspace: <span className="text-zinc-300">{workspace}</span>
+            </span>
+            <span>
+              Run: <span className="text-zinc-300">{runId}</span>
+            </span>
+            <span>
+              Parent: <span className="text-zinc-300">{parentId || "—"}</span>
+            </span>
+          </div>
         </div>
+
+        <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+          <div>
+            <div className={metaLabelClassName()}>ID</div>
+            <div className="mt-1 break-all text-zinc-200">{id}</div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Flow</div>
+            <div className="mt-1 break-all text-zinc-200">{flowId || "—"}</div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Root event</div>
+            <div className="mt-1 break-all text-zinc-200">{rootEventId || "—"}</div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Source event</div>
+            <div className="mt-1 break-all text-zinc-200">{sourceEventId || "—"}</div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Created</div>
+            <div className="mt-1 text-zinc-200">
+              {formatDate(getCommandCreatedAt(command))}
+            </div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Started</div>
+            <div className="mt-1 text-zinc-200">
+              {formatDate(getCommandStartedAt(command))}
+            </div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Finished</div>
+            <div className="mt-1 text-zinc-200">
+              {formatDate(getCommandFinishedAt(command))}
+            </div>
+          </div>
+
+          <div className="md:col-span-2 xl:col-span-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Error</div>
+            <div className="mt-1 break-all text-zinc-200">{errorText || "—"}</div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <Link
+            href={`/commands/${encodeURIComponent(id)}`}
+            className={actionLinkClassName("primary")}
+          >
+            Ouvrir le détail
+          </Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export default async function CommandsPage({ searchParams }: PageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+
+  const flowId = firstParam(resolvedSearchParams.flow_id).trim();
+  const rootEventId = firstParam(resolvedSearchParams.root_event_id).trim();
+  const sourceEventId = firstParam(resolvedSearchParams.source_event_id).trim();
+  const from = firstParam(resolvedSearchParams.from).trim();
+
+  let data: CommandsResponse | null = null;
+
+  try {
+    data = await fetchCommands(300);
+  } catch {
+    data = null;
+  }
+
+  const commands: CommandItem[] = Array.isArray(data?.commands)
+    ? data.commands
+    : [];
+
+  const hasFilters = Boolean(flowId || rootEventId || sourceEventId);
+
+  const visibleCommands = hasFilters
+    ? commands.filter((command) =>
+        commandMatchesFilters(command, {
+          flowId,
+          rootEventId,
+          sourceEventId,
+        })
+      )
+    : commands;
+
+  const queuedCommands = visibleCommands.filter((item) =>
+    ["queued", "pending", "new"].includes(getCommandStatus(item).toLowerCase())
+  );
+
+  const runningCommands = visibleCommands.filter((item) =>
+    ["running", "processing"].includes(getCommandStatus(item).toLowerCase())
+  );
+
+  const retryCommands = visibleCommands.filter((item) =>
+    ["retry", "retriable"].includes(getCommandStatus(item).toLowerCase())
+  );
+
+  const failedCommands = visibleCommands.filter((item) =>
+    ["error", "failed", "dead", "blocked"].includes(
+      getCommandStatus(item).toLowerCase()
+    )
+  );
+
+  const doneCommands = visibleCommands.filter((item) =>
+    ["processed", "done", "success", "completed", "resolved"].includes(
+      getCommandStatus(item).toLowerCase()
+    )
+  );
+
+  const sortedCommands = [...visibleCommands].sort((a, b) => {
+    const aTs = new Date(
+      getCommandFinishedAt(a) ||
+        getCommandStartedAt(a) ||
+        getCommandCreatedAt(a) ||
+        0
+    ).getTime();
+
+    const bTs = new Date(
+      getCommandFinishedAt(b) ||
+        getCommandStartedAt(b) ||
+        getCommandCreatedAt(b) ||
+        0
+    ).getTime();
+
+    return bTs - aTs;
+  });
+
+  const backToFlowsHref =
+    from === "flows" || from === "flow_detail"
+      ? getBackToFlowsHref({ flowId, rootEventId, sourceEventId })
+      : "/flows";
+
+  return (
+    <div className="space-y-8">
+      <section className="space-y-3 border-b border-white/10 pb-6">
+        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
 
         <div>
           <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
             Commands
           </h1>
-
-          <p className="mt-2 text-base text-zinc-400 sm:text-lg">
-            Monitoring et orchestration des commandes BOSAI
+          <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
+            Vue de la file d’exécution BOSAI. Cette page permet de suivre les
+            commands, leur statut, leur liaison au flow, et leur détail.
           </p>
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-4 xl:grid-cols-5">
-        {[
-          ["Queued", queued],
-          ["Running", running],
-          ["Done", done],
-          ["Retry", retry],
-          ["Dead", dead],
-        ].map(([label, value]) => (
-          <div key={label} className={statCardClassName()}>
-            <div className="text-sm text-zinc-400">{label}</div>
-            <div className="mt-2 text-3xl font-semibold tracking-tight text-white">
-              {value}
-            </div>
+      {hasFilters ? (
+        <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5">
+          <div className="mb-4 text-lg font-medium text-emerald-200">
+            Filtré depuis Flows
           </div>
-        ))}
+
+          <div className="flex flex-wrap gap-3">
+            {flowId ? (
+              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+                flow_id: {flowId}
+              </span>
+            ) : null}
+
+            {rootEventId ? (
+              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+                root_event_id: {rootEventId}
+              </span>
+            ) : null}
+
+            {sourceEventId ? (
+              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+                source_event_id: {sourceEventId}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="mt-5 space-y-3">
+            <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
+              Retour aux flows
+            </Link>
+
+            <Link href="/commands" className={actionLinkClassName("primary")}>
+              Voir toutes les commands
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Queued</div>
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-amber-300">
+            {queuedCommands.length}
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Running</div>
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-sky-300">
+            {runningCommands.length}
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Retry</div>
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-violet-300">
+            {retryCommands.length}
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Failed</div>
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-red-300">
+            {failedCommands.length}
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="text-sm text-zinc-400">Done</div>
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-emerald-300">
+            {doneCommands.length}
+          </div>
+        </div>
       </section>
 
-      <section className="space-y-4">
-        {list.map((cmd) => (
-          <Link
-            key={cmd.id}
-            href={`/commands/${cmd.id}`}
-            className={commandCardClassName()}
-          >
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 space-y-2">
-                  <div className={metaLabelClassName()}>{cmd.capability || "command"}</div>
-
-                  <div className="break-all text-lg font-semibold tracking-tight text-white md:text-xl">
-                    {cmd.id}
-                  </div>
-                </div>
-
-                <div className="sm:pl-4">
-                  <span
-                    className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${tone(
-                      cmd.status
-                    )}`}
-                  >
-                    {(cmd.status || "unknown").toUpperCase()}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid gap-x-5 gap-y-3 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-                <div className="break-all">
-                  <span className={metaLabelClassName()}>Flow</span>
-                  <div className="mt-1 text-zinc-200">{cmd.flow_id || "—"}</div>
-                </div>
-
-                <div className="break-all">
-                  <span className={metaLabelClassName()}>Event</span>
-                  <div className="mt-1 text-zinc-200">
-                    {cmd.root_event_id || "—"}
-                  </div>
-                </div>
-
-                <div className="break-all">
-                  <span className={metaLabelClassName()}>Parent</span>
-                  <div className="mt-1 text-zinc-200">
-                    {cmd.parent_command_id || "—"}
-                  </div>
-                </div>
-
-                <div>
-                  <span className={metaLabelClassName()}>Worker</span>
-                  <div className="mt-1 text-zinc-200">{cmd.worker || "—"}</div>
-                </div>
-
-                <div>
-                  <span className={metaLabelClassName()}>Priority</span>
-                  <div className="mt-1 text-zinc-200">{cmd.priority ?? "—"}</div>
-                </div>
-
-                <div>
-                  <span className={metaLabelClassName()}>Workspace</span>
-                  <div className="mt-1 text-zinc-200">
-                    {cmd.workspace_id || "—"}
-                  </div>
-                </div>
-
-                <div>
-                  <span className={metaLabelClassName()}>Created</span>
-                  <div className="mt-1 text-zinc-200">
-                    {formatDate(cmd.created_at)}
-                  </div>
-                </div>
-
-                <div>
-                  <span className={metaLabelClassName()}>Started</span>
-                  <div className="mt-1 text-zinc-200">
-                    {formatDate(cmd.started_at)}
-                  </div>
-                </div>
-
-                <div>
-                  <span className={metaLabelClassName()}>Finished</span>
-                  <div className="mt-1 text-zinc-200">
-                    {formatDate(cmd.finished_at)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </section>
+      {sortedCommands.length === 0 ? (
+        <section className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500">
+          Aucune command visible pour le moment.
+        </section>
+      ) : (
+        <section className="space-y-4">
+          {sortedCommands.map((command) => (
+            <CommandCard key={String(command.id)} command={command} />
+          ))}
+        </section>
+      )}
     </div>
   );
 }
