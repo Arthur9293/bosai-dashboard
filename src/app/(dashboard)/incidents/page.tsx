@@ -76,6 +76,35 @@ function firstParam(value?: string | string[]) {
   return value || "";
 }
 
+function cleanId(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isSyntheticIncidentFlowId(value: string): boolean {
+  return value.trim().toLowerCase().startsWith("incident-");
+}
+
+function pickBestFlowTarget(input: {
+  sourceRecordId?: unknown;
+  flowId?: unknown;
+  rootEventId?: unknown;
+  linkedCommand?: unknown;
+}) {
+  const sourceRecordId = cleanId(input.sourceRecordId);
+  const flowId = cleanId(input.flowId);
+  const rootEventId = cleanId(input.rootEventId);
+  const linkedCommand = cleanId(input.linkedCommand);
+
+  if (sourceRecordId) return sourceRecordId;
+  if (flowId && !isSyntheticIncidentFlowId(flowId)) return flowId;
+  if (rootEventId && !isSyntheticIncidentFlowId(rootEventId)) return rootEventId;
+  if (flowId) return flowId;
+  if (rootEventId) return rootEventId;
+  if (linkedCommand) return linkedCommand;
+
+  return "";
+}
+
 function getIncidentTitle(incident: IncidentItem) {
   return (
     incident.title || incident.name || incident.error_id || "Untitled incident"
@@ -340,6 +369,17 @@ function getSourceRecordId(incident: IncidentItem) {
   return toTextOrEmpty((incident as Record<string, unknown>).source_record_id);
 }
 
+function getIncidentFlowTarget(incident: IncidentItem) {
+  const commandRecord = getCommandRecord(incident);
+
+  return pickBestFlowTarget({
+    sourceRecordId: getSourceRecordId(incident),
+    flowId: getFlowId(incident),
+    rootEventId: getRootEventId(incident),
+    linkedCommand: commandRecord !== "—" ? commandRecord : "",
+  });
+}
+
 function getCategory(incident: IncidentItem) {
   return incident.category || "—";
 }
@@ -445,19 +485,13 @@ function getBackToFlowsHref(filters: {
   rootEventId: string;
   sourceRecordId: string;
 }) {
-  if (filters.flowId) {
-    return `/flows/${encodeURIComponent(filters.flowId)}`;
-  }
+  const target = pickBestFlowTarget({
+    sourceRecordId: filters.sourceRecordId,
+    flowId: filters.flowId,
+    rootEventId: filters.rootEventId,
+  });
 
-  if (filters.rootEventId) {
-    return `/flows/${encodeURIComponent(filters.rootEventId)}`;
-  }
-
-  if (filters.sourceRecordId) {
-    return `/flows/${encodeURIComponent(filters.sourceRecordId)}`;
-  }
-
-  return "/flows";
+  return target ? `/flows/${encodeURIComponent(target)}` : "/flows";
 }
 
 function MetaItem({
@@ -483,10 +517,10 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
   const severityLabel = getIncidentSeverityLabel(incident);
   const slaLabel = getSlaLabel(incident);
   const decisionStatus = getDecisionStatus(incident);
-  const flowId = getFlowId(incident);
-  const commandRecord = getCommandRecord(incident);
+  const flowTarget = getIncidentFlowTarget(incident);
   const rootEventId = getRootEventId(incident);
   const runRecord = getRunRecord(incident);
+  const commandRecord = getCommandRecord(incident);
   const suggestedAction = getSuggestedAction(incident);
 
   return (
@@ -572,12 +606,12 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
           <MetaItem
             label="Flow"
             value={
-              flowId ? (
+              flowTarget ? (
                 <Link
-                  href={`/flows/${encodeURIComponent(flowId)}`}
+                  href={`/flows/${encodeURIComponent(flowTarget)}`}
                   className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
                 >
-                  {flowId}
+                  {flowTarget}
                 </Link>
               ) : (
                 "—"
