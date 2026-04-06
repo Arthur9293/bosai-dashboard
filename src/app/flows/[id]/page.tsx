@@ -478,6 +478,7 @@ function buildSyntheticTimelineItemFromEvent(
 ): TimelineItem {
   const processedAt = getEventProcessedAt(event);
   const linkedCommand = getEventLinkedCommand(event);
+
   const flowId =
     toText(flow.flow_id) ||
     getEventFlowId(event) ||
