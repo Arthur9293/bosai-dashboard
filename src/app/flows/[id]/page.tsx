@@ -472,6 +472,37 @@ function getLastKnownTimestamp(items: TimelineItem[]): number {
   return Math.max(...values);
 }
 
+function buildCommandStats(commands: CommandItem[]) {
+  const stats = {
+    done: 0,
+    error: 0,
+    dead: 0,
+    running: 0,
+    retry: 0,
+    queued: 0,
+  };
+
+  for (const command of commands) {
+    const status = toText(command.status).toLowerCase();
+
+    if (["processed", "done", "success", "completed"].includes(status)) {
+      stats.done += 1;
+    } else if (["error", "failed", "blocked"].includes(status)) {
+      stats.error += 1;
+    } else if (["dead"].includes(status)) {
+      stats.dead += 1;
+    } else if (["running", "processing"].includes(status)) {
+      stats.running += 1;
+    } else if (["retry", "retriable"].includes(status)) {
+      stats.retry += 1;
+    } else if (["queued", "pending", "new"].includes(status)) {
+      stats.queued += 1;
+    }
+  }
+
+  return stats;
+}
+
 function resolveFlowStatus(flow: FlowDetail, items: TimelineItem[]): string {
   const flowStats =
     flow.stats && typeof flow.stats === "object" ? flow.stats : undefined;
@@ -630,6 +661,84 @@ function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string)
   return flowId || sourceRecordId || rootEventId || id || "Flow";
 }
 
+function buildSyntheticFlowFromLooseRefs(
+  targetId: string,
+  commands: CommandItem[],
+  events: EventItem[],
+  incidents: IncidentItem[]
+): FlowDetail | null {
+  const target = toText(targetId);
+  if (!target) return null;
+
+  const matchedCommands = commands.filter((command) =>
+    matchCommandToFlow(command, [target])
+  );
+
+  const matchedEvents = events.filter((event) =>
+    matchEvent(event, [target], matchedCommands.map((command) => toText(command.id)).filter(Boolean))
+  );
+
+  const matchedIncidents = incidents.filter((incident) => {
+    const candidates = [
+      toText(incident.id),
+      toText(incident.flow_id),
+      toText(incident.root_event_id),
+      toText(incident.source_record_id),
+      toText(incident.command_id),
+      toText(incident.linked_command),
+    ].filter(Boolean);
+
+    return candidates.includes(target);
+  });
+
+  if (
+    matchedCommands.length === 0 &&
+    matchedEvents.length === 0 &&
+    matchedIncidents.length === 0
+  ) {
+    return null;
+  }
+
+  const sourceRecordId =
+    toText(matchedEvents[0]?.source_record_id) ||
+    toText(matchedEvents[0]?.source_event_id) ||
+    toText(matchedIncidents[0]?.source_record_id) ||
+    getCommandSourceEventId(matchedCommands[0] as CommandItem) ||
+    target;
+
+  const rootEventId =
+    toText(matchedEvents[0]?.root_event_id) ||
+    toText(matchedIncidents[0]?.root_event_id) ||
+    getCommandRootEventId(matchedCommands[0] as CommandItem) ||
+    sourceRecordId;
+
+  const flowId =
+    toText(matchedEvents[0]?.flow_id) ||
+    toText(matchedIncidents[0]?.flow_id) ||
+    getCommandFlowId(matchedCommands[0] as CommandItem) ||
+    (isRecordIdLike(target) ? "" : target);
+
+  const workspaceId =
+    toText(matchedEvents[0]?.workspace_id) ||
+    toText(matchedIncidents[0]?.workspace_id) ||
+    getCommandWorkspaceId(matchedCommands[0] as CommandItem) ||
+    "production";
+
+  return {
+    id: flowId || sourceRecordId || rootEventId || target,
+    flow_id: flowId || undefined,
+    root_event_id: rootEventId || undefined,
+    source_record_id: sourceRecordId || undefined,
+    source_event_id: sourceRecordId || undefined,
+    workspace_id: workspaceId,
+    reading_mode: matchedCommands.length > 0 ? "enriched" : "registry-only",
+    is_partial: matchedCommands.length === 0,
+    count: matchedCommands.length,
+    commands: matchedCommands,
+    stats: buildCommandStats(matchedCommands),
+  };
+}
+
 export default async function FlowDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
@@ -640,6 +749,37 @@ export default async function FlowDetailPage({ params }: PageProps) {
     flow = await fetchFlowById(id);
   } catch {
     flow = null;
+  }
+
+  let allCommands: CommandItem[] = [];
+  let allEvents: EventItem[] = [];
+  let allIncidents: IncidentItem[] = [];
+
+  try {
+    const commandsData = await fetchCommands(500);
+    allCommands = Array.isArray(commandsData?.commands) ? commandsData.commands : [];
+  } catch {
+    allCommands = [];
+  }
+
+  try {
+    const eventsData = await fetchEvents(500);
+    allEvents = Array.isArray(eventsData?.events) ? eventsData.events : [];
+  } catch {
+    allEvents = [];
+  }
+
+  try {
+    const incidentsData = await fetchIncidents(300);
+    allIncidents = Array.isArray(incidentsData?.incidents)
+      ? incidentsData.incidents
+      : [];
+  } catch {
+    allIncidents = [];
+  }
+
+  if (!flow) {
+    flow = buildSyntheticFlowFromLooseRefs(id, allCommands, allEvents, allIncidents);
   }
 
   if (!flow) {
@@ -654,44 +794,29 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const baseCommands = Array.isArray(flow.commands) ? flow.commands : [];
   const baseTimeline = baseCommands.map(normalizeTimelineItem);
 
-  let sourceEvent: EventItem | null = null;
+  let sourceEvent: EventItem | null =
+    allEvents.find((event) =>
+      matchEvent(
+        event,
+        [id, flowId, rootEventId, sourceRecordId].filter(Boolean),
+        []
+      )
+    ) || null;
 
-  try {
-    const eventsData = await fetchEvents(500);
-    const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
+  const linkedCommandId = sourceEvent ? getEventLinkedCommand(sourceEvent) : "";
 
-    const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
+  const fallbackIdentifiers = [
+    id,
+    flowId,
+    rootEventId,
+    sourceRecordId,
+    sourceEvent ? toText(sourceEvent.id) : "",
+    linkedCommandId,
+  ].filter(Boolean);
 
-    sourceEvent = events.find((event) => matchEvent(event, identifiers, [])) || null;
-  } catch {
-    sourceEvent = null;
-  }
-
-  let fallbackTimeline: TimelineItem[] = [];
-
-  try {
-    const commandsData = await fetchCommands(500);
-    const allCommands = Array.isArray(commandsData?.commands)
-      ? commandsData.commands
-      : [];
-
-    const linkedCommandId = sourceEvent ? getEventLinkedCommand(sourceEvent) : "";
-
-    const identifiers = [
-      id,
-      flowId,
-      rootEventId,
-      sourceRecordId,
-      sourceEvent ? toText(sourceEvent.id) : "",
-      linkedCommandId,
-    ].filter(Boolean);
-
-    fallbackTimeline = allCommands
-      .filter((command) => matchCommandToFlow(command, identifiers))
-      .map(normalizeTimelineItem);
-  } catch {
-    fallbackTimeline = [];
-  }
+  const fallbackTimeline = allCommands
+    .filter((command) => matchCommandToFlow(command, fallbackIdentifiers))
+    .map(normalizeTimelineItem);
 
   const mergedTimeline = dedupeTimeline([...baseTimeline, ...fallbackTimeline]);
 
@@ -702,53 +827,35 @@ export default async function FlowDetailPage({ params }: PageProps) {
   }));
 
   if (!sourceEvent) {
-    try {
-      const eventsData = await fetchEvents(500);
-      const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
+    const linkedCommands = sortedTimeline.map((item) => item.id).filter(Boolean);
+
+    sourceEvent =
+      allEvents.find((event) =>
+        matchEvent(
+          event,
+          [id, flowId, rootEventId, sourceRecordId].filter(Boolean),
+          linkedCommands
+        )
+      ) || null;
+  }
+
+  const incidents = dedupeIncidents(
+    allIncidents.filter((incident) => {
+      const candidates = [
+        toText(incident.id),
+        toText(incident.flow_id),
+        toText(incident.root_event_id),
+        toText(incident.source_record_id),
+        toText(incident.command_id),
+        toText(incident.linked_command),
+        ...sortedTimeline.map((item) => item.id),
+      ].filter(Boolean);
 
       const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
-      const linkedCommands = sortedTimeline.map((item) => item.id).filter(Boolean);
 
-      sourceEvent =
-        events.find((event) => matchEvent(event, identifiers, linkedCommands)) || null;
-    } catch {
-      sourceEvent = null;
-    }
-  }
-
-  let incidents: IncidentItem[] = [];
-
-  try {
-    const incidentsData = await fetchIncidents(300);
-    const allIncidents = Array.isArray(incidentsData?.incidents)
-      ? incidentsData.incidents
-      : [];
-
-    const identifiers = [
-      id,
-      flowId,
-      rootEventId,
-      sourceRecordId,
-      ...(sortedTimeline.map((item) => item.id).filter(Boolean)),
-    ].filter(Boolean);
-
-    incidents = dedupeIncidents(
-      allIncidents.filter((incident) => {
-        const candidates = [
-          toText(incident.id),
-          toText(incident.flow_id),
-          toText(incident.root_event_id),
-          toText(incident.source_record_id),
-          toText(incident.command_id),
-          toText(incident.linked_command),
-        ].filter(Boolean);
-
-        return candidates.some((candidate) => identifiers.includes(candidate));
-      })
-    );
-  } catch {
-    incidents = [];
-  }
+      return candidates.some((candidate) => identifiers.includes(candidate));
+    })
+  );
 
   const readingMode =
     sortedTimeline.length > 0
