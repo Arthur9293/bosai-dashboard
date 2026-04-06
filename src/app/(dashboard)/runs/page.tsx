@@ -1,7 +1,8 @@
-import { fetchRuns, type RunsResponse } from "@/lib/api";
+import Link from "next/link";
+import { fetchRuns } from "../../../lib/api";
 import { PageHeader } from "../../../components/ui/page-header";
 
-type RunItem = Record<string, unknown>;
+type RunRecord = Record<string, unknown>;
 
 type RunStats = {
   running?: number;
@@ -10,6 +11,15 @@ type RunStats = {
   unsupported?: number;
   other?: number;
 };
+
+function firstDefined(record: RunRecord, keys: string[]): unknown {
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null) {
+      return record[key];
+    }
+  }
+  return undefined;
+}
 
 function toText(value: unknown, fallback = "—"): string {
   if (value === null || value === undefined) return fallback;
@@ -26,25 +36,9 @@ function toText(value: unknown, fallback = "—"): string {
   return text || fallback;
 }
 
-function toTextOrEmpty(value: unknown): string {
-  return toText(value, "");
-}
-
-function toNumber(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-
-  return undefined;
-}
-
-function toBoolean(value: unknown): boolean | undefined {
+function toBoolean(value: unknown, fallback = false): boolean {
   if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
 
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
@@ -52,78 +46,21 @@ function toBoolean(value: unknown): boolean | undefined {
     if (["false", "0", "no", "non"].includes(normalized)) return false;
   }
 
-  if (typeof value === "number") {
-    if (value === 1) return true;
-    if (value === 0) return false;
+  return fallback;
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
   }
 
-  return undefined;
+  return fallback;
 }
 
-function firstDefined(record: RunItem, keys: string[]): unknown {
-  for (const key of keys) {
-    if (record[key] !== undefined && record[key] !== null) {
-      return record[key];
-    }
-  }
-  return undefined;
-}
-
-function getRunRecordId(run: RunItem): string {
-  return (
-    toTextOrEmpty(firstDefined(run, ["id", "ID", "record_id", "Record_ID"])) || "—"
-  );
-}
-
-function getRunId(run: RunItem): string {
-  return toTextOrEmpty(firstDefined(run, ["run_id", "Run_ID", "runId"])) || "—";
-}
-
-function getWorker(run: RunItem): string {
-  return toTextOrEmpty(firstDefined(run, ["worker", "Worker"])) || "—";
-}
-
-function getCapability(run: RunItem): string {
-  return (
-    toTextOrEmpty(
-      firstDefined(run, ["capability", "Capability", "name", "Name"])
-    ) || "Unknown capability"
-  );
-}
-
-function getStatus(run: RunItem): string {
-  return (
-    toTextOrEmpty(
-      firstDefined(run, ["status", "Status", "status_select", "Status_select"])
-    ) || "unknown"
-  );
-}
-
-function getPriority(run: RunItem): number | string {
-  const value = firstDefined(run, ["priority", "Priority"]);
-  const numeric = toNumber(value);
-
-  if (numeric !== undefined) return numeric;
-  return toText(value, "—");
-}
-
-function getStartedAt(run: RunItem): string {
-  return toTextOrEmpty(firstDefined(run, ["started_at", "Started_At", "startedAt"]));
-}
-
-function getFinishedAt(run: RunItem): string {
-  return toTextOrEmpty(firstDefined(run, ["finished_at", "Finished_At", "finishedAt"]));
-}
-
-function getCreatedAt(run: RunItem): string {
-  return toTextOrEmpty(firstDefined(run, ["created_at", "Created_At", "createdAt"]));
-}
-
-function getDryRun(run: RunItem): boolean {
-  return toBoolean(firstDefined(run, ["dry_run", "Dry_Run", "dryRun"])) ?? false;
-}
-
-function formatDate(value?: string) {
+function formatDate(value?: string): string {
   if (!value) return "—";
 
   const d = new Date(value);
@@ -135,11 +72,11 @@ function formatDate(value?: string) {
   }).format(d);
 }
 
-function formatNumber(value?: number) {
+function formatNumber(value?: number): string {
   return typeof value === "number" ? value.toString() : "0";
 }
 
-function formatDuration(startedAt?: string, finishedAt?: string) {
+function formatDuration(startedAt?: string, finishedAt?: string): string {
   if (!startedAt || !finishedAt) return "—";
 
   const start = new Date(startedAt).getTime();
@@ -159,10 +96,10 @@ function formatDuration(startedAt?: string, finishedAt?: string) {
   return `${seconds}s`;
 }
 
-function tone(status?: string) {
+function tone(status?: string): string {
   const s = (status || "").toLowerCase();
 
-  if (["done", "processed", "success", "completed"].includes(s)) {
+  if (s === "done") {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
@@ -170,7 +107,7 @@ function tone(status?: string) {
     return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
   }
 
-  if (["error", "failed"].includes(s)) {
+  if (s === "error") {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
   }
 
@@ -181,31 +118,79 @@ function tone(status?: string) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function cardClassName() {
+function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
-function sectionLabelClassName() {
+function sectionLabelClassName(): string {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
 
-function metaLabelClassName() {
+function metaLabelClassName(): string {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
-function signalTone(status?: string) {
+function signalTone(status?: string): string {
   const s = (status || "").toLowerCase();
 
-  if (["done", "processed", "success", "completed"].includes(s)) return "text-emerald-400";
+  if (s === "done") return "text-emerald-400";
   if (s === "running") return "text-sky-400";
-  if (["error", "failed"].includes(s)) return "text-red-400";
+  if (s === "error") return "text-red-400";
   if (s === "unsupported") return "text-zinc-400";
 
   return "text-zinc-400";
 }
 
+function getRunId(run: RunRecord): string {
+  return toText(firstDefined(run, ["id", "ID", "record_id", "Record_ID"]), "");
+}
+
+function getRunPublicId(run: RunRecord): string {
+  return toText(firstDefined(run, ["run_id", "Run_ID"]), "");
+}
+
+function getRunCapability(run: RunRecord): string {
+  return toText(
+    firstDefined(run, ["capability", "Capability", "name", "Name"]),
+    "Unknown capability"
+  );
+}
+
+function getRunStatus(run: RunRecord): string {
+  return toText(
+    firstDefined(run, ["status", "Status", "status_select", "Status_select"]),
+    "unknown"
+  );
+}
+
+function getRunWorker(run: RunRecord): string {
+  return toText(firstDefined(run, ["worker", "Worker"]), "—");
+}
+
+function getRunPriority(run: RunRecord): string {
+  const raw = firstDefined(run, ["priority", "Priority"]);
+  if (raw === undefined || raw === null || raw === "") return "—";
+  return String(raw);
+}
+
+function getRunStartedAt(run: RunRecord): string {
+  return toText(firstDefined(run, ["started_at", "Started_At"]), "");
+}
+
+function getRunFinishedAt(run: RunRecord): string {
+  return toText(firstDefined(run, ["finished_at", "Finished_At"]), "");
+}
+
+function getRunRunId(run: RunRecord): string {
+  return toText(firstDefined(run, ["run_id", "Run_ID"]), "—");
+}
+
+function getRunDryRun(run: RunRecord): boolean {
+  return toBoolean(firstDefined(run, ["dry_run", "Dry_Run"]), false);
+}
+
 export default async function RunsPage() {
-  let data: RunsResponse | null = null;
+  let data: Awaited<ReturnType<typeof fetchRuns>> | null = null;
 
   try {
     data = await fetchRuns();
@@ -213,8 +198,8 @@ export default async function RunsPage() {
     data = null;
   }
 
-  const runs: RunItem[] = Array.isArray(data?.runs) ? data.runs : [];
-  const stats = (data?.stats ?? {}) as RunStats;
+  const runs: RunRecord[] = Array.isArray(data?.runs) ? data.runs : [];
+  const stats = ((data?.stats ?? {}) as RunStats) || {};
 
   const totalRuns = data?.count ?? runs.length ?? 0;
   const runningCount = stats.running ?? 0;
@@ -225,14 +210,8 @@ export default async function RunsPage() {
 
   const visibleRuns = [...runs]
     .sort((a, b) => {
-      const aTs = new Date(
-        getStartedAt(a) || getFinishedAt(a) || getCreatedAt(a) || 0
-      ).getTime();
-
-      const bTs = new Date(
-        getStartedAt(b) || getFinishedAt(b) || getCreatedAt(b) || 0
-      ).getTime();
-
+      const aTs = new Date(getRunStartedAt(a) || 0).getTime();
+      const bTs = new Date(getRunStartedAt(b) || 0).getTime();
       return bTs - aTs;
     })
     .slice(0, 50);
@@ -313,15 +292,20 @@ export default async function RunsPage() {
         ) : (
           <div className="space-y-4">
             {visibleRuns.map((run) => {
-              const startedAt = getStartedAt(run);
-              const finishedAt = getFinishedAt(run);
-              const status = getStatus(run);
-              const duration = formatDuration(startedAt, finishedAt);
+              const id = getRunId(run);
+              const capability = getRunCapability(run);
+              const status = getRunStatus(run);
+              const dryRun = getRunDryRun(run);
+              const duration = formatDuration(
+                getRunStartedAt(run),
+                getRunFinishedAt(run)
+              );
 
               return (
-                <div
-                  key={getRunRecordId(run)}
-                  className="rounded-[24px] border border-white/10 bg-black/20 p-4 md:p-5"
+                <Link
+                  key={id || `${capability}-${getRunStartedAt(run)}`}
+                  href={`/runs/${encodeURIComponent(id || getRunPublicId(run))}`}
+                  className="block rounded-[24px] border border-white/10 bg-black/20 p-4 transition hover:border-white/15 hover:bg-white/[0.04] md:p-5"
                 >
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0 flex-1 space-y-4">
@@ -331,7 +315,7 @@ export default async function RunsPage() {
 
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <div className="break-words text-lg font-semibold tracking-tight text-white">
-                              {getCapability(run)}
+                              {capability}
                             </div>
 
                             <span
@@ -343,7 +327,7 @@ export default async function RunsPage() {
                             </span>
 
                             <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                              {getDryRun(run) ? "DRY RUN" : "LIVE"}
+                              {dryRun ? "DRY RUN" : "LIVE"}
                             </span>
                           </div>
                         </div>
@@ -363,42 +347,42 @@ export default async function RunsPage() {
                       </div>
 
                       <div className="break-all text-sm text-zinc-400">
-                        ID: <span className="text-zinc-300">{getRunRecordId(run)}</span>
+                        ID: <span className="text-zinc-300">{id || "—"}</span>
                       </div>
 
                       <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
                         <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
                           <div className={metaLabelClassName()}>Run ID</div>
                           <div className="mt-1 break-all text-zinc-200">
-                            {getRunId(run)}
+                            {getRunRunId(run)}
                           </div>
                         </div>
 
                         <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
                           <div className={metaLabelClassName()}>Worker</div>
                           <div className="mt-1 text-zinc-200">
-                            {getWorker(run)}
+                            {getRunWorker(run)}
                           </div>
                         </div>
 
                         <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
                           <div className={metaLabelClassName()}>Priority</div>
                           <div className="mt-1 text-zinc-200">
-                            {getPriority(run)}
+                            {getRunPriority(run)}
                           </div>
                         </div>
 
                         <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
                           <div className={metaLabelClassName()}>Started</div>
                           <div className="mt-1 text-zinc-200">
-                            {formatDate(startedAt)}
+                            {formatDate(getRunStartedAt(run))}
                           </div>
                         </div>
 
                         <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
                           <div className={metaLabelClassName()}>Finished</div>
                           <div className="mt-1 text-zinc-200">
-                            {formatDate(finishedAt)}
+                            {formatDate(getRunFinishedAt(run))}
                           </div>
                         </div>
 
@@ -407,9 +391,13 @@ export default async function RunsPage() {
                           <div className="mt-1 text-zinc-200">{duration}</div>
                         </div>
                       </div>
+
+                      <div className="pt-1 text-sm font-medium text-zinc-300">
+                        Ouvrir le détail →
+                      </div>
                     </div>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>
