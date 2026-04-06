@@ -13,19 +13,99 @@ type RunItem = {
   dry_run?: boolean | null;
 };
 
-type RunStats = {
-  running?: number;
-  done?: number;
-  error?: number;
-  unsupported?: number;
-  other?: number;
-};
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
 
-type RunsResponse = {
-  runs?: RunItem[];
-  stats?: RunStats;
-  count?: number;
-};
+function toText(value: unknown, fallback = ""): string {
+  if (value === null || value === undefined) return fallback;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = toText(item, "");
+      if (candidate) return candidate;
+    }
+    return fallback;
+  }
+
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text || fallback;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return fallback;
+}
+
+function toNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+function toBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "oui"].includes(normalized)) return true;
+    if (["false", "0", "no", "non"].includes(normalized)) return false;
+  }
+
+  return undefined;
+}
+
+function normalizeRun(value: unknown): RunItem | null {
+  if (!isRecord(value)) return null;
+
+  const id =
+    toText(value.id) ||
+    toText(value.run_id) ||
+    toText(value.runId) ||
+    toText(value.Run_ID);
+
+  if (!id) return null;
+
+  return {
+    id,
+    run_id:
+      toText(value.run_id) ||
+      toText(value.runId) ||
+      toText(value.Run_ID) ||
+      undefined,
+    worker: toText(value.worker) || toText(value.Worker) || undefined,
+    capability:
+      toText(value.capability) || toText(value.Capability) || undefined,
+    status:
+      toText(value.status) ||
+      toText(value.status_select) ||
+      toText(value.Status_select) ||
+      undefined,
+    priority: toNumber(value.priority) ?? toNumber(value.Priority),
+    started_at:
+      toText(value.started_at) || toText(value.Started_At) || undefined,
+    finished_at:
+      toText(value.finished_at) || toText(value.Finished_At) || undefined,
+    dry_run: toBoolean(value.dry_run) ?? toBoolean(value.Dry_Run) ?? null,
+  };
+}
 
 function formatDate(value?: string) {
   if (!value) return "—";
@@ -124,7 +204,7 @@ function metaLabelClassName() {
 }
 
 export default async function RunsPage() {
-  let data: RunsResponse | null = null;
+  let data: Awaited<ReturnType<typeof fetchRuns>> | null = null;
 
   try {
     data = await fetchRuns();
@@ -132,27 +212,25 @@ export default async function RunsPage() {
     data = null;
   }
 
-  const runs: RunItem[] = Array.isArray(data?.runs) ? data!.runs! : [];
-  const stats: RunStats =
-    data?.stats && typeof data.stats === "object" ? data.stats : {};
+  const rawRuns = Array.isArray(data?.runs) ? data.runs : [];
+  const runs: RunItem[] = rawRuns
+    .map((item) => normalizeRun(item))
+    .filter((item): item is RunItem => item !== null);
+
+  const rawStats = isRecord(data?.stats) ? data.stats : {};
 
   const totalRuns = typeof data?.count === "number" ? data.count : runs.length;
-  const runningCount = stats.running ?? 0;
-  const doneCount = stats.done ?? 0;
-  const errorCount = stats.error ?? 0;
-  const unsupportedCount = stats.unsupported ?? 0;
-  const otherCount = stats.other ?? 0;
+  const runningCount = toNumber(rawStats.running) ?? 0;
+  const doneCount = toNumber(rawStats.done) ?? 0;
+  const errorCount = toNumber(rawStats.error) ?? 0;
+  const unsupportedCount = toNumber(rawStats.unsupported) ?? 0;
+  const otherCount = toNumber(rawStats.other) ?? 0;
 
   const visibleRuns = [...runs]
     .sort((a, b) => {
-      const aTs = new Date(
-        a.finished_at || a.started_at || 0
-      ).getTime();
-      const bTs = new Date(
-        b.finished_at || b.started_at || 0
-      ).getTime();
-
-      return bTs - aTs;
+      const aTs = new Date(b.finished_at || b.started_at || 0).getTime();
+      const bTs = new Date(a.finished_at || a.started_at || 0).getTime();
+      return aTs - bTs;
     })
     .slice(0, 50);
 
