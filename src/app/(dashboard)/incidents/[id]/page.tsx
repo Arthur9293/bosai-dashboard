@@ -79,6 +79,35 @@ function formatDate(value?: string | number | null): string {
   }).format(d);
 }
 
+function cleanId(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isSyntheticIncidentFlowId(value: string): boolean {
+  return value.trim().toLowerCase().startsWith("incident-");
+}
+
+function pickBestFlowTarget(input: {
+  sourceRecordId?: unknown;
+  flowId?: unknown;
+  rootEventId?: unknown;
+  linkedCommand?: unknown;
+}) {
+  const sourceRecordId = cleanId(input.sourceRecordId);
+  const flowId = cleanId(input.flowId);
+  const rootEventId = cleanId(input.rootEventId);
+  const linkedCommand = cleanId(input.linkedCommand);
+
+  if (sourceRecordId) return sourceRecordId;
+  if (flowId && !isSyntheticIncidentFlowId(flowId)) return flowId;
+  if (rootEventId && !isSyntheticIncidentFlowId(rootEventId)) return rootEventId;
+  if (flowId) return flowId;
+  if (rootEventId) return rootEventId;
+  if (linkedCommand) return linkedCommand;
+
+  return "";
+}
+
 function getIncidentTitle(incident: IncidentItem) {
   return firstText(
     [incident.title, incident.name, incident.error_id],
@@ -345,6 +374,17 @@ function getSourceRecordId(incident: IncidentItem) {
   return toText((incident as Record<string, unknown>).source_record_id, "");
 }
 
+function getIncidentFlowTarget(incident: IncidentItem) {
+  const commandRecord = getCommandRecord(incident);
+
+  return pickBestFlowTarget({
+    sourceRecordId: getSourceRecordId(incident),
+    flowId: getFlowId(incident),
+    rootEventId: getRootEventId(incident),
+    linkedCommand: commandRecord !== "—" ? commandRecord : "",
+  });
+}
+
 function getCategory(incident: IncidentItem) {
   return firstText([incident.category], "—");
 }
@@ -379,13 +419,13 @@ function getLastAction(incident: IncidentItem) {
 }
 
 function getSourceFlowHref(incident: IncidentItem) {
-  const sourceTarget = getRootEventId(incident) || getFlowId(incident);
-  return sourceTarget ? `/flows/${encodeURIComponent(sourceTarget)}` : "";
+  const target = getIncidentFlowTarget(incident);
+  return target ? `/flows/${encodeURIComponent(target)}` : "";
 }
 
 function getLinkedFlowHref(incident: IncidentItem) {
-  const flowId = getFlowId(incident);
-  return flowId ? `/flows/${encodeURIComponent(flowId)}` : "";
+  const target = getIncidentFlowTarget(incident);
+  return target ? `/flows/${encodeURIComponent(target)}` : "";
 }
 
 function getLinkedCommandHref(incident: IncidentItem) {
@@ -403,6 +443,7 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   const lastAction = toText(incident.last_action, "");
   const flowId = getFlowId(incident);
   const rootEventId = getRootEventId(incident);
+  const sourceRecordId = getSourceRecordId(incident);
   const commandRecord = getCommandRecord(incident);
   const runRecord = getRunRecord(incident);
 
@@ -415,6 +456,7 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   const hasNoLinking =
     flowId === "" &&
     rootEventId === "" &&
+    sourceRecordId === "" &&
     (commandRecord === "" || commandRecord === "—") &&
     (runRecord === "" || runRecord === "—");
 
@@ -483,6 +525,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const updatedAt = getUpdatedAt(incident);
   const resolvedAt = getResolvedAt(incident);
   const flowId = getFlowId(incident);
+  const flowTarget = getIncidentFlowTarget(incident);
   const commandRecord = getCommandRecord(incident);
   const runRecord = getRunRecord(incident);
   const rootEventId = getRootEventId(incident);
@@ -669,12 +712,12 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             <MetaItem
               label="Flow"
               value={
-                flowId ? (
+                flowTarget ? (
                   <Link
-                    href={`/flows/${encodeURIComponent(flowId)}`}
+                    href={`/flows/${encodeURIComponent(flowTarget)}`}
                     className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
                   >
-                    {flowId}
+                    {flowTarget}
                   </Link>
                 ) : (
                   "—"
@@ -682,6 +725,8 @@ export default async function IncidentDetailPage({ params }: PageProps) {
               }
               breakAll
             />
+
+            <MetaItem label="Raw flow_id" value={flowId || "—"} breakAll />
 
             <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
 
