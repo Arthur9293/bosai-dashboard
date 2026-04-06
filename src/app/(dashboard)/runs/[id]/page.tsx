@@ -2,9 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   fetchCommands,
+  fetchEvents,
   fetchIncidents,
   fetchRuns,
   type CommandItem,
+  type EventItem,
   type IncidentItem,
 } from "@/lib/api";
 
@@ -21,11 +23,19 @@ type PageProps = {
 type RunRecord = Record<string, unknown>;
 
 function cardClassName(): string {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+}
+
+function softPanelClassName(): string {
+  return "rounded-2xl border border-white/10 bg-black/20 p-4";
+}
+
+function emptyStateClassName(): string {
+  return "rounded-2xl border border-dashed border-white/10 bg-white/5 px-5 py-8 text-sm text-zinc-500";
 }
 
 function actionLinkClassName(
-  variant: "default" | "primary" | "soft" | "danger" = "default",
+  variant: "default" | "primary" | "danger" = "default",
   disabled = false
 ): string {
   const base =
@@ -85,15 +95,6 @@ function toBoolean(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
-function firstDefined(record: RunRecord, keys: string[]): unknown {
-  for (const key of keys) {
-    if (record[key] !== undefined && record[key] !== null) {
-      return record[key];
-    }
-  }
-  return undefined;
-}
-
 function parseMaybeJson(value: unknown): Record<string, unknown> {
   if (!value) return {};
 
@@ -123,19 +124,13 @@ function stringifyPretty(value: unknown): string {
   }
 }
 
-function uniq(values: string[]): string[] {
-  return Array.from(new Set(values.filter(Boolean)));
-}
-
-function isRecordIdLike(value: string): boolean {
-  return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return "—";
+function formatDate(value?: string | number | null): string {
+  if (value === null || value === undefined || value === "") return "—";
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) {
+    return typeof value === "string" ? value : "—";
+  }
 
   return new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "short",
@@ -143,17 +138,10 @@ function formatDate(value?: string | null): string {
   }).format(date);
 }
 
-function formatDuration(startedAt?: string, finishedAt?: string): string {
-  if (!startedAt || !finishedAt) return "—";
+function formatDuration(ms?: number): string {
+  if (!ms || ms <= 0 || Number.isNaN(ms)) return "—";
 
-  const start = new Date(startedAt).getTime();
-  const end = new Date(finishedAt).getTime();
-
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
-    return "—";
-  }
-
-  const totalSeconds = Math.floor((end - start) / 1000);
+  const totalSeconds = Math.floor(ms / 1000);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
@@ -164,149 +152,238 @@ function formatDuration(startedAt?: string, finishedAt?: string): string {
 }
 
 function tone(status?: string): string {
-  const normalized = (status || "").trim().toLowerCase();
+  const s = (status || "").trim().toLowerCase();
 
-  if (["done", "success", "completed", "processed", "resolved"].includes(normalized)) {
+  if (["processed", "done", "success", "completed", "resolved"].includes(s)) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  if (["running", "processing"].includes(normalized)) {
+  if (["running", "processing"].includes(s)) {
     return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
   }
 
-  if (["queued", "pending", "new"].includes(normalized)) {
+  if (["queued", "pending", "new"].includes(s)) {
     return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
   }
 
-  if (["retry", "retriable"].includes(normalized)) {
+  if (["retry", "retriable"].includes(s)) {
     return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
   }
 
-  if (["unsupported"].includes(normalized)) {
-    return "bg-zinc-700 text-zinc-300 border border-zinc-600";
+  if (["ignored"].includes(s)) {
+    return "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20";
   }
 
-  if (["error", "failed", "dead", "blocked"].includes(normalized)) {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
+  if (["error", "failed", "dead", "blocked", "escalated"].includes(s)) {
+    return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
   }
 
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-/* ------------------------------ Run helpers ------------------------------ */
+/* --------------------------------- Run --------------------------------- */
 
-function getRunId(run: RunRecord): string {
-  return toText(firstDefined(run, ["id", "ID", "record_id", "Record_ID"]));
+function getRunRecordId(run: RunRecord): string {
+  return (
+    toText(run.id) ||
+    toText(run.ID) ||
+    toText(run.record_id) ||
+    toText(run.Record_ID) ||
+    ""
+  );
 }
 
-function getRunRunId(run: RunRecord): string {
-  return toText(firstDefined(run, ["run_id", "Run_ID"]));
+function getRunId(run: RunRecord): string {
+  return (
+    toText(run.run_id) ||
+    toText(run.Run_ID) ||
+    toText(run.runId) ||
+    toText(run.RunId) ||
+    ""
+  );
 }
 
 function getRunCapability(run: RunRecord): string {
-  return toText(
-    firstDefined(run, ["capability", "Capability", "name", "Name"]),
+  return (
+    toText(run.capability) ||
+    toText(run.Capability) ||
+    toText(run.name) ||
+    toText(run.Name) ||
     "Unknown capability"
   );
 }
 
 function getRunStatus(run: RunRecord): string {
-  return toText(
-    firstDefined(run, ["status", "Status", "status_select", "Status_select"]),
+  return (
+    toText(run.status) ||
+    toText(run.Status) ||
+    toText(run.status_select) ||
+    toText(run.Status_select) ||
     "unknown"
   );
 }
 
 function getRunWorker(run: RunRecord): string {
-  return toText(firstDefined(run, ["worker", "Worker"]), "—");
+  return toText(run.worker) || toText(run.Worker) || "—";
 }
 
 function getRunPriority(run: RunRecord): string {
-  const raw = firstDefined(run, ["priority", "Priority"]);
-  if (raw === undefined || raw === null || raw === "") return "—";
-  return String(raw);
-}
+  const value =
+    toText(run.priority) ||
+    toText(run.Priority) ||
+    toText(run.priority_score) ||
+    toText(run.Priority_Score);
 
-function getRunDryRun(run: RunRecord): boolean {
-  return toBoolean(firstDefined(run, ["dry_run", "Dry_Run"]), false);
-}
-
-function getRunStartedAt(run: RunRecord): string {
-  return toText(firstDefined(run, ["started_at", "Started_At"]));
-}
-
-function getRunFinishedAt(run: RunRecord): string {
-  return toText(firstDefined(run, ["finished_at", "Finished_At"]));
+  return value || "—";
 }
 
 function getRunCreatedAt(run: RunRecord): string {
-  return toText(
-    firstDefined(run, ["created_at", "Created_At"]) || getRunStartedAt(run)
+  return (
+    toText(run.created_at) ||
+    toText(run.Created_At) ||
+    toText(run.started_at) ||
+    toText(run.Started_At) ||
+    ""
+  );
+}
+
+function getRunStartedAt(run: RunRecord): string {
+  return toText(run.started_at) || toText(run.Started_At) || "";
+}
+
+function getRunFinishedAt(run: RunRecord): string {
+  return toText(run.finished_at) || toText(run.Finished_At) || "";
+}
+
+function getRunWorkspace(run: RunRecord): string {
+  return (
+    toText(run.workspace_id) ||
+    toText(run.Workspace_ID) ||
+    toText(run.workspace) ||
+    toText(run.Workspace) ||
+    "—"
   );
 }
 
 function getRunAppName(run: RunRecord): string {
-  return toText(firstDefined(run, ["app_name", "App_Name"]), "—");
+  return toText(run.app_name) || toText(run.App_Name) || "—";
 }
 
 function getRunAppVersion(run: RunRecord): string {
-  return toText(firstDefined(run, ["app_version", "App_Version"]), "—");
+  return toText(run.app_version) || toText(run.App_Version) || "—";
 }
 
 function getRunIdempotencyKey(run: RunRecord): string {
-  return toText(
-    firstDefined(run, ["idempotency_key", "Idempotency_Key"]),
+  return (
+    toText(run.idempotency_key) ||
+    toText(run.Idempotency_Key) ||
+    toText(run.idempotencyKey) ||
     "—"
   );
 }
 
-function getRunInputRaw(run: RunRecord): unknown {
-  return firstDefined(run, [
-    "input_json",
-    "Input_JSON",
-    "input",
-    "Input",
-    "payload",
-    "Payload",
-  ]);
-}
-
-function getRunResultRaw(run: RunRecord): unknown {
-  return firstDefined(run, [
-    "result_json",
-    "Result_JSON",
-    "result",
-    "Result",
-  ]);
-}
-
-function getRunInputRecord(run: RunRecord): Record<string, unknown> {
-  return parseMaybeJson(getRunInputRaw(run));
-}
-
-function getRunResultRecord(run: RunRecord): Record<string, unknown> {
-  return parseMaybeJson(getRunResultRaw(run));
-}
-
-function getRunWorkspace(run: RunRecord): string {
-  const input = getRunInputRecord(run);
-  const result = getRunResultRecord(run);
-
+function getRunDryRun(run: RunRecord): boolean {
   return (
-    toText(firstDefined(run, ["workspace_id", "Workspace_ID"])) ||
-    toText(input.workspace_id) ||
-    toText(input.workspaceId) ||
-    toText(result.workspace_id) ||
-    toText(result.workspaceId) ||
-    "—"
+    toBoolean(run.dry_run) ||
+    toBoolean(run.Dry_Run) ||
+    toBoolean(run.dryRun) ||
+    false
   );
 }
 
-function getRunFlowId(run: RunRecord): string {
-  const input = getRunInputRecord(run);
-  const result = getRunResultRecord(run);
+function getRunInput(run: RunRecord): unknown {
+  return (
+    run.input ??
+    run.Input ??
+    run.input_json ??
+    run.Input_JSON ??
+    run.payload ??
+    run.Payload ??
+    {}
+  );
+}
+
+function getRunResult(run: RunRecord): unknown {
+  return (
+    run.result ??
+    run.Result ??
+    run.result_json ??
+    run.Result_JSON ??
+    run.output ??
+    run.Output ??
+    {}
+  );
+}
+
+function getRunDurationMs(run: RunRecord): number {
+  const direct =
+    toNumber(run.duration_ms) ||
+    toNumber(run.Duration_ms) ||
+    toNumber(run.durationMs);
+
+  if (Number.isFinite(direct) && direct > 0) {
+    return direct;
+  }
+
+  const startedAt = new Date(getRunStartedAt(run) || 0).getTime();
+  const finishedAt = new Date(getRunFinishedAt(run) || 0).getTime();
+
+  if (
+    Number.isFinite(startedAt) &&
+    Number.isFinite(finishedAt) &&
+    startedAt > 0 &&
+    finishedAt >= startedAt
+  ) {
+    return finishedAt - startedAt;
+  }
+
+  return 0;
+}
+
+/* ------------------------------- Commands ------------------------------- */
+
+function getCommandInput(command: CommandItem): Record<string, unknown> {
+  return parseMaybeJson(command.input);
+}
+
+function getCommandResult(command: CommandItem): Record<string, unknown> {
+  return parseMaybeJson(command.result);
+}
+
+function getCommandRunRecordId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
 
   return (
+    toText(command.run_record_id) ||
+    toText(input.run_record_id) ||
+    toText(input.runRecordId) ||
+    toText(result.run_record_id) ||
+    toText(result.runRecordId) ||
+    ""
+  );
+}
+
+function getCommandRunId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toText(command.linked_run) ||
+    toText(input.run_id) ||
+    toText(input.runId) ||
+    toText(result.run_id) ||
+    toText(result.runId) ||
+    ""
+  );
+}
+
+function getCommandFlowId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toText(command.flow_id) ||
     toText(input.flow_id) ||
     toText(input.flowId) ||
     toText(result.flow_id) ||
@@ -315,11 +392,12 @@ function getRunFlowId(run: RunRecord): string {
   );
 }
 
-function getRunRootEventId(run: RunRecord): string {
-  const input = getRunInputRecord(run);
-  const result = getRunResultRecord(run);
+function getCommandRootEventId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
 
   return (
+    toText(command.root_event_id) ||
     toText(input.root_event_id) ||
     toText(input.rootEventId) ||
     toText(result.root_event_id) ||
@@ -328,11 +406,15 @@ function getRunRootEventId(run: RunRecord): string {
   );
 }
 
-function getRunSourceEventId(run: RunRecord): string {
-  const input = getRunInputRecord(run);
-  const result = getRunResultRecord(run);
+function getCommandSourceEventId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
 
   return (
+    toText(command.source_event_id) ||
+    toText(record.source_event_id) ||
+    toText(record.Source_Event_ID) ||
     toText(input.source_event_id) ||
     toText(input.sourceEventId) ||
     toText(input.event_id) ||
@@ -345,158 +427,337 @@ function getRunSourceEventId(run: RunRecord): string {
   );
 }
 
-/* --------------------------- Related entities ---------------------------- */
+function getCommandCapability(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
 
-function commandMatchesRun(command: CommandItem, identifiers: string[]): boolean {
-  const input = parseMaybeJson(command.input);
-  const result = parseMaybeJson(command.result);
-
-  const candidates = uniq([
-    toText(command.run_record_id),
-    toText(command.linked_run),
-    toText(input.run_record_id),
-    toText(input.runRecordId),
-    toText(input.linked_run),
-    toText(input.run_id),
-    toText(input.runId),
-    toText(result.run_record_id),
-    toText(result.runRecordId),
-    toText(result.linked_run),
-    toText(result.run_id),
-    toText(result.runId),
-  ]);
-
-  return candidates.some((candidate) => identifiers.includes(candidate));
+  return (
+    toText(command.capability) ||
+    toText(input.capability) ||
+    toText(result.capability) ||
+    "Unknown capability"
+  );
 }
 
-function incidentMatchesRun(incident: IncidentItem, identifiers: string[]): boolean {
-  const candidates = uniq([
-    toText(incident.run_record_id),
-    toText(incident.linked_run),
-    toText(incident.run_id),
-  ]);
+function getCommandStatus(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
 
-  return candidates.some((candidate) => identifiers.includes(candidate));
+  return (
+    toText(command.status) ||
+    toText(result.status) ||
+    toText(result.status_select) ||
+    toText(input.status) ||
+    "unknown"
+  );
 }
+
+/* -------------------------------- Events -------------------------------- */
+
+function getEventPayload(event: EventItem): Record<string, unknown> {
+  return parseMaybeJson(event.payload);
+}
+
+function getEventRunId(event: EventItem): string {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
+  return (
+    toText(event.run_id) ||
+    toText(record.run_id) ||
+    toText(record.Run_ID) ||
+    toText(payload.run_id) ||
+    toText(payload.runId) ||
+    toText(payload.run_record_id) ||
+    toText(payload.runRecordId) ||
+    ""
+  );
+}
+
+function getEventLinkedCommand(event: EventItem): string {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
+  return (
+    toText(event.command_id) ||
+    toText(record.command_id) ||
+    toText(record.Command_ID) ||
+    toText(record.linked_command) ||
+    toText(record.Linked_Command) ||
+    toText(payload.command_id) ||
+    toText(payload.commandId) ||
+    ""
+  );
+}
+
+function getEventFlowId(event: EventItem): string {
+  const payload = getEventPayload(event);
+
+  return (
+    toText(event.flow_id) ||
+    toText(payload.flow_id) ||
+    toText(payload.flowId) ||
+    toText(payload.flowid) ||
+    ""
+  );
+}
+
+function getEventRootEventId(event: EventItem): string {
+  const payload = getEventPayload(event);
+
+  return (
+    toText(event.root_event_id) ||
+    toText(payload.root_event_id) ||
+    toText(payload.rootEventId) ||
+    ""
+  );
+}
+
+function getEventSourceRecordId(event: EventItem): string {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
+  return (
+    toText(event.source_record_id) ||
+    toText(event.source_event_id) ||
+    toText(record.source_record_id) ||
+    toText(record.Source_Record_ID) ||
+    toText(record.source_event_id) ||
+    toText(record.Source_Event_ID) ||
+    toText(payload.source_record_id) ||
+    toText(payload.sourceRecordId) ||
+    toText(payload.source_event_id) ||
+    toText(payload.sourceEventId) ||
+    ""
+  );
+}
+
+function getEventCapability(event: EventItem): string {
+  const payload = getEventPayload(event);
+
+  return (
+    toText(event.mapped_capability) ||
+    toText(payload.mapped_capability) ||
+    toText(payload.capability) ||
+    "—"
+  );
+}
+
+function getEventType(event: EventItem): string {
+  const payload = getEventPayload(event);
+
+  return (
+    toText(event.event_type) ||
+    toText(event.type) ||
+    toText(payload.event_type) ||
+    toText(payload.type) ||
+    "Event detail"
+  );
+}
+
+function getEventStatus(event: EventItem): string {
+  return toText(event.status) || "unknown";
+}
+
+/* ------------------------------- Incidents ------------------------------- */
+
+function getIncidentStatus(incident: IncidentItem): string {
+  const direct = String(incident.status || incident.statut_incident || "").trim();
+  if (direct) return direct;
+
+  const sla = String(incident.sla_status || "").trim().toLowerCase();
+  const remaining =
+    typeof incident.sla_remaining_minutes === "number"
+      ? incident.sla_remaining_minutes
+      : undefined;
+
+  if (sla === "breached") return "Open";
+  if (remaining !== undefined && remaining < 0) return "Open";
+
+  return "—";
+}
+
+function getIncidentTitle(incident: IncidentItem): string {
+  return incident.title || incident.name || incident.error_id || "Untitled incident";
+}
+
+/* -------------------------------- Hrefs -------------------------------- */
 
 function buildFlowHref(
-  run: RunRecord,
-  relatedCommands: CommandItem[]
+  relatedCommands: CommandItem[],
+  relatedEvents: EventItem[],
+  relatedIncidents: IncidentItem[]
 ): string {
-  const commandFlow =
-    toText(relatedCommands[0]?.flow_id) ||
-    toText(parseMaybeJson(relatedCommands[0]?.input).flow_id) ||
-    toText(parseMaybeJson(relatedCommands[0]?.input).flowId) ||
-    toText(parseMaybeJson(relatedCommands[0]?.result).flow_id) ||
-    toText(parseMaybeJson(relatedCommands[0]?.result).flowId);
+  const fromCommand =
+    relatedCommands.find((item) => getCommandFlowId(item))?.flow_id ||
+    relatedCommands.find((item) => getCommandRootEventId(item))?.root_event_id ||
+    relatedCommands.find((item) => getCommandSourceEventId(item))?.source_event_id;
 
-  const runFlow = getRunFlowId(run);
+  if (fromCommand) {
+    return `/flows/${encodeURIComponent(String(fromCommand))}`;
+  }
 
-  const target = commandFlow || runFlow;
-  if (!target) return "";
+  const fromEvent =
+    relatedEvents.find((item) => getEventFlowId(item))?.flow_id ||
+    relatedEvents.find((item) => getEventRootEventId(item))?.root_event_id ||
+    relatedEvents.find((item) => getEventSourceRecordId(item))?.source_record_id ||
+    relatedEvents.find((item) => item.source_event_id)?.source_event_id;
 
-  return `/flows/${encodeURIComponent(target)}`;
+  if (fromEvent) {
+    return `/flows/${encodeURIComponent(String(fromEvent))}`;
+  }
+
+  const fromIncident =
+    relatedIncidents.find((item) => item.flow_id)?.flow_id ||
+    relatedIncidents.find((item) => item.root_event_id)?.root_event_id ||
+    relatedIncidents.find((item) => item.source_record_id)?.source_record_id;
+
+  if (fromIncident) {
+    return `/flows/${encodeURIComponent(String(fromIncident))}`;
+  }
+
+  return "";
 }
 
-function buildEventHref(
-  run: RunRecord,
-  relatedCommands: CommandItem[]
-): string {
-  const commandEvent =
-    toText(relatedCommands[0]?.root_event_id) ||
-    toText(relatedCommands[0]?.source_event_id) ||
-    toText(parseMaybeJson(relatedCommands[0]?.input).root_event_id) ||
-    toText(parseMaybeJson(relatedCommands[0]?.input).rootEventId) ||
-    toText(parseMaybeJson(relatedCommands[0]?.input).source_event_id) ||
-    toText(parseMaybeJson(relatedCommands[0]?.input).sourceEventId);
-
-  const runEvent =
-    getRunRootEventId(run) || getRunSourceEventId(run);
-
-  const target = commandEvent || runEvent;
-  if (!target || !isRecordIdLike(target)) return "";
-
-  return `/events/${encodeURIComponent(target)}`;
+function buildEventHref(relatedEvents: EventItem[]): string {
+  const eventId = relatedEvents[0]?.id;
+  return eventId ? `/events/${encodeURIComponent(String(eventId))}` : "";
 }
 
-/* ----------------------------------------------------------------------- */
+function buildCommandHref(relatedCommands: CommandItem[]): string {
+  const commandId = relatedCommands[0]?.id;
+  return commandId ? `/commands/${encodeURIComponent(String(commandId))}` : "";
+}
+
+function buildIncidentHref(relatedIncidents: IncidentItem[]): string {
+  const incidentId = relatedIncidents[0]?.id;
+  return incidentId ? `/incidents/${encodeURIComponent(String(incidentId))}` : "";
+}
 
 export default async function RunDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
 
-  let data = null;
+  let run: RunRecord | null = null;
 
   try {
-    data = await fetchRuns();
+    const runsData = await fetchRuns();
+    const runs = Array.isArray(runsData?.runs) ? runsData.runs : [];
+
+    run =
+      runs.find((item) => {
+        const record = item as RunRecord;
+        return (
+          getRunRecordId(record) === id ||
+          getRunId(record) === id
+        );
+      }) || null;
   } catch {
-    data = null;
+    run = null;
   }
 
-  const runs = Array.isArray(data?.runs) ? data.runs : [];
-  const run =
-    runs.find((item) => getRunId(item as RunRecord) === id) ||
-    runs.find((item) => getRunRunId(item as RunRecord) === id) ||
-    null;
-
-  if (!run || typeof run !== "object" || Array.isArray(run)) {
+  if (!run) {
     notFound();
   }
 
-  const runRecord = run as RunRecord;
-
-  const runId = getRunId(runRecord);
-  const publicRunId = getRunRunId(runRecord);
-  const capability = getRunCapability(runRecord);
-  const status = getRunStatus(runRecord);
-  const worker = getRunWorker(runRecord);
-  const priority = getRunPriority(runRecord);
-  const startedAt = getRunStartedAt(runRecord);
-  const finishedAt = getRunFinishedAt(runRecord);
-  const createdAt = getRunCreatedAt(runRecord);
-  const duration = formatDuration(startedAt, finishedAt);
-  const dryRun = getRunDryRun(runRecord);
-  const workspace = getRunWorkspace(runRecord);
-  const appName = getRunAppName(runRecord);
-  const appVersion = getRunAppVersion(runRecord);
-  const idempotencyKey = getRunIdempotencyKey(runRecord);
-  const inputPretty = stringifyPretty(getRunInputRaw(runRecord) ?? {});
-  const resultPretty = stringifyPretty(getRunResultRaw(runRecord) ?? {});
-
-  const identifiers = uniq([runId, publicRunId]);
+  const recordId = getRunRecordId(run);
+  const runId = getRunId(run);
+  const capability = getRunCapability(run);
+  const status = getRunStatus(run);
+  const worker = getRunWorker(run);
+  const priority = getRunPriority(run);
+  const workspace = getRunWorkspace(run);
+  const appName = getRunAppName(run);
+  const appVersion = getRunAppVersion(run);
+  const idempotencyKey = getRunIdempotencyKey(run);
+  const dryRun = getRunDryRun(run);
+  const createdAt = getRunCreatedAt(run);
+  const startedAt = getRunStartedAt(run);
+  const finishedAt = getRunFinishedAt(run);
+  const durationMs = getRunDurationMs(run);
+  const inputJson = stringifyPretty(getRunInput(run));
+  const resultJson = stringifyPretty(getRunResult(run));
 
   let relatedCommands: CommandItem[] = [];
+  let relatedEvents: EventItem[] = [];
+  let relatedIncidents: IncidentItem[] = [];
+
   try {
-    const commandsData = await fetchCommands(300);
+    const commandsData = await fetchCommands(500);
     const commands = Array.isArray(commandsData?.commands)
       ? commandsData.commands
       : [];
 
-    relatedCommands = commands.filter((command) =>
-      commandMatchesRun(command, identifiers)
-    );
+    relatedCommands = commands.filter((command) => {
+      const commandRunRecordId = getCommandRunRecordId(command);
+      const commandRunId = getCommandRunId(command);
+
+      return Boolean(
+        (recordId && commandRunRecordId === recordId) ||
+          (runId && commandRunId === runId) ||
+          (runId && commandRunRecordId === runId) ||
+          (recordId && commandRunId === recordId)
+      );
+    });
   } catch {
     relatedCommands = [];
   }
 
-  let relatedIncidents: IncidentItem[] = [];
+  try {
+    const eventsData = await fetchEvents(500);
+    const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
+    const relatedCommandIds = relatedCommands.map((item) => String(item.id || ""));
+
+    relatedEvents = events.filter((event) => {
+      const eventRunId = getEventRunId(event);
+      const linkedCommand = getEventLinkedCommand(event);
+
+      return Boolean(
+        (runId && eventRunId === runId) ||
+          (recordId && eventRunId === recordId) ||
+          (linkedCommand && relatedCommandIds.includes(linkedCommand))
+      );
+    });
+  } catch {
+    relatedEvents = [];
+  }
+
   try {
     const incidentsData = await fetchIncidents(300);
     const incidents = Array.isArray(incidentsData?.incidents)
       ? incidentsData.incidents
       : [];
+    const relatedCommandIds = relatedCommands.map((item) => String(item.id || ""));
 
-    relatedIncidents = incidents.filter((incident) =>
-      incidentMatchesRun(incident, identifiers)
-    );
+    relatedIncidents = incidents.filter((incident) => {
+      const incidentRunRecordId = toText(incident.run_record_id);
+      const incidentLinkedRun = toText(incident.linked_run);
+      const incidentRunId = toText(incident.run_id);
+      const incidentCommandId = toText(incident.command_id);
+      const incidentLinkedCommand = toText(incident.linked_command);
+
+      return Boolean(
+        (recordId && incidentRunRecordId === recordId) ||
+          (runId && incidentLinkedRun === runId) ||
+          (recordId && incidentLinkedRun === recordId) ||
+          (runId && incidentRunId === runId) ||
+          (incidentCommandId && relatedCommandIds.includes(incidentCommandId)) ||
+          (incidentLinkedCommand && relatedCommandIds.includes(incidentLinkedCommand))
+      );
+    });
   } catch {
     relatedIncidents = [];
   }
 
-  const flowHref = buildFlowHref(runRecord, relatedCommands);
-  const eventHref = buildEventHref(runRecord, relatedCommands);
-  const firstCommandId = toText(relatedCommands[0]?.id);
-  const firstIncidentId = toText(relatedIncidents[0]?.id);
+  const flowHref = buildFlowHref(relatedCommands, relatedEvents, relatedIncidents);
+  const eventHref = buildEventHref(relatedEvents);
+  const commandHref = buildCommandHref(relatedCommands);
+  const incidentHref = buildIncidentHref(relatedIncidents);
+
+  const hasFlow = flowHref !== "";
+  const hasEvent = eventHref !== "";
+  const hasCommand = commandHref !== "";
+  const hasIncident = incidentHref !== "";
 
   return (
     <div className="space-y-6">
@@ -521,7 +782,7 @@ export default async function RunDetailPage({ params }: PageProps) {
               status
             )}`}
           >
-            {status.toUpperCase()}
+            {toText(status, "unknown").toUpperCase()}
           </span>
 
           <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
@@ -558,7 +819,9 @@ export default async function RunDetailPage({ params }: PageProps) {
 
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Duration</div>
-          <div className="mt-3 text-xl font-semibold text-white">{duration}</div>
+          <div className="mt-3 text-xl font-semibold text-white">
+            {formatDuration(durationMs)}
+          </div>
         </div>
       </section>
 
@@ -567,17 +830,16 @@ export default async function RunDetailPage({ params }: PageProps) {
 
         <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
-            Record ID: <span className="break-all text-zinc-200">{runId || "—"}</span>
+            Record ID: <span className="break-all text-zinc-200">{recordId || "—"}</span>
           </div>
           <div>
-            Run ID:{" "}
-            <span className="break-all text-zinc-200">{publicRunId || "—"}</span>
+            Run ID: <span className="break-all text-zinc-200">{runId || "—"}</span>
           </div>
           <div>
             Capability: <span className="text-zinc-200">{capability}</span>
           </div>
           <div>
-            Status: <span className="text-zinc-200">{status}</span>
+            Status: <span className="text-zinc-200">{status || "—"}</span>
           </div>
           <div>
             Worker: <span className="text-zinc-200">{worker}</span>
@@ -596,9 +858,7 @@ export default async function RunDetailPage({ params }: PageProps) {
           </div>
           <div className="md:col-span-2 xl:col-span-3">
             Idempotency key:{" "}
-            <span className="break-all text-zinc-200">
-              {idempotencyKey || "—"}
-            </span>
+            <span className="break-all text-zinc-200">{idempotencyKey}</span>
           </div>
         </div>
       </section>
@@ -608,49 +868,47 @@ export default async function RunDetailPage({ params }: PageProps) {
           <div className="mb-4 text-lg font-medium text-white">Related commands</div>
 
           {relatedCommands.length === 0 ? (
-            <div className="rounded-[24px] border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
+            <div className={emptyStateClassName()}>
               Aucune command liée détectée pour ce run.
             </div>
           ) : (
             <div className="space-y-3">
-              {relatedCommands.slice(0, 5).map((command) => {
-                const commandStatus = toText(command.status, "unknown");
-                const commandCapability =
-                  toText(command.capability) ||
-                  toText(parseMaybeJson(command.input).capability) ||
-                  toText(parseMaybeJson(command.result).capability) ||
-                  "command";
-
-                return (
-                  <Link
-                    key={String(command.id)}
-                    href={`/commands/${encodeURIComponent(String(command.id))}`}
-                    className="block rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 transition hover:border-white/15 hover:bg-white/[0.04]"
-                  >
-                    <div className="flex flex-col gap-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="break-words text-lg font-semibold text-white">
-                          {commandCapability}
-                        </div>
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
-                            commandStatus
-                          )}`}
-                        >
-                          {commandStatus.toUpperCase()}
-                        </span>
-                      </div>
-
-                      <div className="text-sm text-zinc-400">
-                        ID:{" "}
-                        <span className="break-all text-zinc-200">
-                          {String(command.id)}
-                        </span>
-                      </div>
+              {relatedCommands.slice(0, 5).map((command) => (
+                <Link
+                  key={String(command.id)}
+                  href={`/commands/${encodeURIComponent(String(command.id))}`}
+                  className="block rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:border-white/15 hover:bg-white/[0.04]"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="break-words text-lg font-semibold text-white">
+                      {getCommandCapability(command)}
                     </div>
-                  </Link>
-                );
-              })}
+
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
+                        getCommandStatus(command)
+                      )}`}
+                    >
+                      {toText(getCommandStatus(command), "unknown").toUpperCase()}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-zinc-400 md:grid-cols-2">
+                    <div>
+                      ID:{" "}
+                      <span className="break-all text-zinc-200">
+                        {String(command.id || "—")}
+                      </span>
+                    </div>
+                    <div>
+                      Flow:{" "}
+                      <span className="break-all text-zinc-200">
+                        {getCommandFlowId(command) || "—"}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
             </div>
           )}
         </div>
@@ -659,53 +917,47 @@ export default async function RunDetailPage({ params }: PageProps) {
           <div className="mb-4 text-lg font-medium text-white">Related incidents</div>
 
           {relatedIncidents.length === 0 ? (
-            <div className="rounded-[24px] border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
+            <div className={emptyStateClassName()}>
               Aucun incident lié détecté pour ce run.
             </div>
           ) : (
             <div className="space-y-3">
-              {relatedIncidents.slice(0, 5).map((incident) => {
-                const incidentTitle =
-                  toText(incident.title) ||
-                  toText(incident.name) ||
-                  toText(incident.error_id) ||
-                  "Incident";
-
-                const incidentStatus =
-                  toText(incident.status) ||
-                  toText(incident.statut_incident) ||
-                  "unknown";
-
-                return (
-                  <Link
-                    key={String(incident.id)}
-                    href={`/incidents/${encodeURIComponent(String(incident.id))}`}
-                    className="block rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 transition hover:border-white/15 hover:bg-white/[0.04]"
-                  >
-                    <div className="flex flex-col gap-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="break-words text-lg font-semibold text-white">
-                          {incidentTitle}
-                        </div>
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
-                            incidentStatus
-                          )}`}
-                        >
-                          {incidentStatus.toUpperCase()}
-                        </span>
-                      </div>
-
-                      <div className="text-sm text-zinc-400">
-                        ID:{" "}
-                        <span className="break-all text-zinc-200">
-                          {String(incident.id)}
-                        </span>
-                      </div>
+              {relatedIncidents.slice(0, 5).map((incident) => (
+                <Link
+                  key={String(incident.id)}
+                  href={`/incidents/${encodeURIComponent(String(incident.id))}`}
+                  className="block rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:border-white/15 hover:bg-white/[0.04]"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="break-words text-lg font-semibold text-white">
+                      {getIncidentTitle(incident)}
                     </div>
-                  </Link>
-                );
-              })}
+
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
+                        getIncidentStatus(incident)
+                      )}`}
+                    >
+                      {toText(getIncidentStatus(incident), "unknown").toUpperCase()}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-zinc-400 md:grid-cols-2">
+                    <div>
+                      ID:{" "}
+                      <span className="break-all text-zinc-200">
+                        {String(incident.id || "—")}
+                      </span>
+                    </div>
+                    <div>
+                      SLA:{" "}
+                      <span className="text-zinc-200">
+                        {toText(incident.sla_status, "—")}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
             </div>
           )}
         </div>
@@ -715,23 +967,44 @@ export default async function RunDetailPage({ params }: PageProps) {
         <div className={cardClassName()}>
           <div className="mb-4 text-lg font-medium text-white">Input preview</div>
           <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
-{inputPretty}
+{inputJson}
           </pre>
         </div>
 
         <div className={cardClassName()}>
           <div className="mb-4 text-lg font-medium text-white">Result preview</div>
           <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
-{resultPretty}
+{resultJson}
           </pre>
+        </div>
+      </section>
+
+      <section className={cardClassName()}>
+        <div className="mb-4 text-xl font-semibold text-white">Résumé rapide</div>
+
+        <div className="space-y-3 text-sm text-zinc-300">
+          <div className={softPanelClassName()}>
+            <div className="text-zinc-400">Commands détectées</div>
+            <div className="mt-2 text-zinc-200">{relatedCommands.length}</div>
+          </div>
+
+          <div className={softPanelClassName()}>
+            <div className="text-zinc-400">Events détectés</div>
+            <div className="mt-2 text-zinc-200">{relatedEvents.length}</div>
+          </div>
+
+          <div className={softPanelClassName()}>
+            <div className="text-zinc-400">Incidents détectés</div>
+            <div className="mt-2 text-zinc-200">{relatedIncidents.length}</div>
+          </div>
         </div>
       </section>
 
       <section className={cardClassName()}>
         <div className="mb-4 text-lg font-medium text-white">Navigation</div>
 
-        <div className="space-y-3">
-          <Link href="/runs" className={actionLinkClassName("soft")}>
+        <div className="flex flex-col gap-3">
+          <Link href="/runs" className={actionLinkClassName("default")}>
             Retour à la liste runs
           </Link>
 
@@ -739,44 +1012,38 @@ export default async function RunDetailPage({ params }: PageProps) {
             Voir tous les runs
           </Link>
 
-          {flowHref ? (
-            <Link href={flowHref} className={actionLinkClassName("soft")}>
+          {hasFlow ? (
+            <Link href={flowHref} className={actionLinkClassName("default")}>
               Ouvrir le flow lié
             </Link>
           ) : (
-            <span className={actionLinkClassName("soft", true)}>
+            <span className={actionLinkClassName("default", true)}>
               Ouvrir le flow lié
             </span>
           )}
 
-          {eventHref ? (
-            <Link href={eventHref} className={actionLinkClassName("soft")}>
+          {hasEvent ? (
+            <Link href={eventHref} className={actionLinkClassName("default")}>
               Ouvrir l’event lié
             </Link>
           ) : (
-            <span className={actionLinkClassName("soft", true)}>
+            <span className={actionLinkClassName("default", true)}>
               Ouvrir l’event lié
             </span>
           )}
 
-          {firstCommandId ? (
-            <Link
-              href={`/commands/${encodeURIComponent(firstCommandId)}`}
-              className={actionLinkClassName("soft")}
-            >
+          {hasCommand ? (
+            <Link href={commandHref} className={actionLinkClassName("default")}>
               Ouvrir la command liée
             </Link>
           ) : (
-            <span className={actionLinkClassName("soft", true)}>
+            <span className={actionLinkClassName("default", true)}>
               Ouvrir la command liée
             </span>
           )}
 
-          {firstIncidentId ? (
-            <Link
-              href={`/incidents/${encodeURIComponent(firstIncidentId)}`}
-              className={actionLinkClassName("danger")}
-            >
+          {hasIncident ? (
+            <Link href={incidentHref} className={actionLinkClassName("danger")}>
               Ouvrir l’incident lié
             </Link>
           ) : (
