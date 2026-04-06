@@ -212,23 +212,58 @@ function buildCommandStats(
   return stats;
 }
 
+function buildSyntheticFlowStatsFromEvents(
+  events: EventItem[]
+): Record<string, number | undefined> {
+  const stats: Record<string, number> = {
+    queued: 0,
+    running: 0,
+    retry: 0,
+    done: 0,
+    error: 0,
+    dead: 0,
+    other: 0,
+  };
+
+  for (const event of events) {
+    const status = String(event.status || "").trim().toLowerCase();
+
+    if (["queue", "queued", "pending", "new"].includes(status)) {
+      stats.queued += 1;
+    } else if (["running", "processing"].includes(status)) {
+      stats.running += 1;
+    } else if (["retry", "retriable"].includes(status)) {
+      stats.retry += 1;
+    } else if (["done", "success", "completed", "processed"].includes(status)) {
+      stats.done += 1;
+    } else if (["error", "failed", "blocked"].includes(status)) {
+      stats.error += 1;
+    } else if (["dead"].includes(status)) {
+      stats.dead += 1;
+    } else {
+      stats.other += 1;
+    }
+  }
+
+  return stats;
+}
+
 function buildSyntheticFlowDetail(
   id: string,
   commands: CommandItem[],
-  incidents: IncidentItem[]
+  incidents: IncidentItem[],
+  events: EventItem[] = []
 ): FlowDetail | null {
   const target = String(id || "").trim();
   if (!target) return null;
 
+  const matchesTarget = (value: unknown): boolean =>
+    String(value || "").trim() === target;
+
   const matchedCommands = commands.filter((cmd) =>
-    [
-      cmd.id,
-      cmd.flow_id,
-      cmd.root_event_id,
-      cmd.source_event_id,
-    ]
-      .map((value) => String(value || ""))
-      .includes(target)
+    [cmd.id, cmd.flow_id, cmd.root_event_id, cmd.source_event_id].some(
+      matchesTarget
+    )
   );
 
   const matchedIncidents = incidents.filter((incident) =>
@@ -237,29 +272,55 @@ function buildSyntheticFlowDetail(
       incident.flow_id,
       incident.root_event_id,
       incident.source_record_id,
-    ]
-      .map((value) => String(value || ""))
-      .includes(target)
+      incident.command_id,
+      incident.linked_command,
+    ].some(matchesTarget)
   );
 
-  if (matchedCommands.length === 0 && matchedIncidents.length === 0) {
+  const matchedEvents = events.filter((event) =>
+    [
+      event.id,
+      event.flow_id,
+      event.root_event_id,
+      event.source_record_id,
+      event.source_event_id,
+      event.command_id,
+      event.linked_command,
+    ].some(matchesTarget)
+  );
+
+  if (
+    matchedCommands.length === 0 &&
+    matchedIncidents.length === 0 &&
+    matchedEvents.length === 0
+  ) {
     return null;
   }
 
   const flowId =
     matchedCommands.find((cmd) => cmd.flow_id)?.flow_id ||
     matchedIncidents.find((incident) => incident.flow_id)?.flow_id ||
+    matchedEvents.find((event) => event.flow_id)?.flow_id ||
     (!isRecordIdLike(target) ? target : "");
 
   const rootEventId =
     matchedCommands.find((cmd) => cmd.root_event_id)?.root_event_id ||
     matchedCommands.find((cmd) => cmd.source_event_id)?.source_event_id ||
     matchedIncidents.find((incident) => incident.root_event_id)?.root_event_id ||
-    matchedIncidents.find((incident) => incident.source_record_id)?.source_record_id ||
+    matchedIncidents.find((incident) => incident.source_record_id)
+      ?.source_record_id ||
+    matchedEvents.find((event) => event.root_event_id)?.root_event_id ||
+    matchedEvents.find((event) => event.source_event_id)?.source_event_id ||
+    matchedEvents.find((event) => event.source_record_id)?.source_record_id ||
+    matchedEvents.find((event) => event.id)?.id ||
     (isRecordIdLike(target) ? target : "");
 
   const sourceRecordId =
-    matchedIncidents.find((incident) => incident.source_record_id)?.source_record_id ||
+    matchedIncidents.find((incident) => incident.source_record_id)
+      ?.source_record_id ||
+    matchedEvents.find((event) => event.source_record_id)?.source_record_id ||
+    matchedEvents.find((event) => event.source_event_id)?.source_event_id ||
+    matchedEvents.find((event) => event.id)?.id ||
     matchedCommands.find((cmd) => cmd.source_event_id)?.source_event_id ||
     rootEventId ||
     "";
@@ -267,7 +328,13 @@ function buildSyntheticFlowDetail(
   const workspaceId =
     matchedCommands.find((cmd) => cmd.workspace_id)?.workspace_id ||
     matchedIncidents.find((incident) => incident.workspace_id)?.workspace_id ||
+    matchedEvents.find((event) => event.workspace_id)?.workspace_id ||
     "production";
+
+  const stats =
+    matchedCommands.length > 0
+      ? buildCommandStats(matchedCommands)
+      : buildSyntheticFlowStatsFromEvents(matchedEvents);
 
   return {
     id: sourceRecordId || flowId || rootEventId || target,
@@ -276,9 +343,14 @@ function buildSyntheticFlowDetail(
     source_record_id: sourceRecordId || undefined,
     source_event_id: sourceRecordId || undefined,
     workspace_id: workspaceId,
-    count: matchedCommands.length,
+    count:
+      matchedCommands.length > 0
+        ? matchedCommands.length
+        : matchedEvents.length > 0
+        ? matchedEvents.length
+        : matchedIncidents.length,
     commands: matchedCommands,
-    stats: buildCommandStats(matchedCommands),
+    stats,
     reading_mode: matchedCommands.length > 0 ? "enriched" : "registry-only",
     is_partial: matchedCommands.length === 0,
   };
@@ -988,8 +1060,7 @@ function normalizeFlowDetail(raw: unknown): FlowDetail {
   const flowId =
     asString(
       firstDefined(record, ["flow_id", "Flow_ID", "flowId", "FlowId"])
-    ) ||
-    commands.find((cmd) => cmd.flow_id)?.flow_id;
+    ) || commands.find((cmd) => cmd.flow_id)?.flow_id;
 
   const sourceRecordId =
     asString(
@@ -998,8 +1069,7 @@ function normalizeFlowDetail(raw: unknown): FlowDetail {
         "Source_Record_ID",
         "sourceRecordId",
       ])
-    ) ||
-    commands.find((cmd) => cmd.source_event_id)?.source_event_id;
+    ) || commands.find((cmd) => cmd.source_event_id)?.source_event_id;
 
   const rootEventId =
     asString(
@@ -1014,8 +1084,7 @@ function normalizeFlowDetail(raw: unknown): FlowDetail {
     sourceRecordId;
 
   const statsRaw =
-    firstDefined(record, ["stats", "Stats"]) ||
-    buildCommandStats(commands);
+    firstDefined(record, ["stats", "Stats"]) || buildCommandStats(commands);
 
   return {
     ...record,
@@ -1325,9 +1394,10 @@ export async function fetchFlowById(id: string): Promise<FlowDetail | null> {
   }
 
   try {
-    const [commandsData, incidentsData] = await Promise.all([
+    const [commandsData, incidentsData, eventsData] = await Promise.all([
       fetchCommands(500),
       fetchIncidents(300),
+      fetchEvents(500),
     ]);
 
     const commands = Array.isArray(commandsData?.commands)
@@ -1336,8 +1406,9 @@ export async function fetchFlowById(id: string): Promise<FlowDetail | null> {
     const incidents = Array.isArray(incidentsData?.incidents)
       ? incidentsData.incidents
       : [];
+    const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
 
-    return buildSyntheticFlowDetail(target, commands, incidents);
+    return buildSyntheticFlowDetail(target, commands, incidents, events);
   } catch {
     return null;
   }
