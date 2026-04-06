@@ -757,24 +757,12 @@ function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string)
   return flowId || sourceRecordId || rootEventId || id || "Flow";
 }
 
-function buildSafeEventHref(
-  sourceEvent: EventItem | null,
-  rootEventId: string,
-  sourceRecordId: string
-): string {
-  if (sourceEvent?.id) {
-    return `/events/${encodeURIComponent(sourceEvent.id)}`;
+function buildSafeEventHref(sourceEvent: EventItem | null): string {
+  if (!sourceEvent?.id) {
+    return "";
   }
 
-  if (rootEventId && isRecordIdLike(rootEventId)) {
-    return `/events/${encodeURIComponent(rootEventId)}`;
-  }
-
-  if (sourceRecordId && isRecordIdLike(sourceRecordId)) {
-    return `/events/${encodeURIComponent(sourceRecordId)}`;
-  }
-
-  return "";
+  return `/events/${encodeURIComponent(sourceEvent.id)}`;
 }
 
 export default async function FlowDetailPage({ params }: PageProps) {
@@ -916,11 +904,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
         }))
       : [];
 
-  const sourceEventHref = buildSafeEventHref(
-    sourceEvent,
-    rootEventId,
-    sourceRecordId
-  );
+  const sourceEventHref = buildSafeEventHref(sourceEvent);
 
   const incidentsHref = (() => {
     const params = new URLSearchParams();
