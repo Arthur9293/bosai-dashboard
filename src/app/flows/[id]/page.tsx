@@ -39,7 +39,7 @@ type TimelineItem = {
   resultJson: string;
   isRoot: boolean;
   isTerminal: boolean;
-  isSynthetic: boolean;
+  syntheticSource?: "event";
 };
 
 function cardClassName() {
@@ -221,6 +221,14 @@ function incidentLabel(count: number, hasIncident: boolean) {
   return `${count} incidents`;
 }
 
+function modeTone(mode: "registry-only" | "enriched") {
+  if (mode === "registry-only") {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
 function getEventPayload(event: EventItem): Record<string, unknown> {
   return parseMaybeJson(event.payload);
 }
@@ -234,17 +242,6 @@ function getEventType(event: EventItem): string {
     toText(payload.event_type) ||
     toText(payload.type) ||
     "Event detail"
-  );
-}
-
-function getEventStatus(event: EventItem): string {
-  const payload = getEventPayload(event);
-
-  return (
-    toText(event.status) ||
-    toText(payload.status) ||
-    toText(payload.status_select) ||
-    "unknown"
   );
 }
 
@@ -266,13 +263,45 @@ function getEventSource(event: EventItem): string {
   return toText(record.source) || toText(payload.source) || "—";
 }
 
-function getEventWorkspace(event: EventItem): string {
+function getEventStatus(event: EventItem): string {
   const payload = getEventPayload(event);
 
   return (
-    toText(event.workspace_id) ||
-    toText(payload.workspace_id) ||
-    toText(payload.workspaceId) ||
+    toText(event.status) ||
+    toText(payload.status) ||
+    toText(payload.status_select) ||
+    "unknown"
+  );
+}
+
+function getEventProcessedAt(event: EventItem): string {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
+  return (
+    toText(event.processed_at) ||
+    toText(record.Processed_At) ||
+    toText(event.updated_at) ||
+    toText(record.Updated_At) ||
+    toText(event.created_at) ||
+    toText(record.Created_At) ||
+    toText(payload.processed_at) ||
+    ""
+  );
+}
+
+function getEventLinkedCommand(event: EventItem): string {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
+  return (
+    toText(event.command_id) ||
+    toText(record.command_id) ||
+    toText(record.Command_ID) ||
+    toText(record.linked_command) ||
+    toText(record.Linked_Command) ||
+    toText(payload.command_id) ||
+    toText(payload.commandId) ||
     ""
   );
 }
@@ -296,6 +325,7 @@ function getEventRootEventId(event: EventItem): string {
     toText(event.root_event_id) ||
     toText(payload.root_event_id) ||
     toText(payload.rootEventId) ||
+    toText(event.id) ||
     ""
   );
 }
@@ -320,33 +350,14 @@ function getEventSourceRecordId(event: EventItem): string {
   );
 }
 
-function getEventCreatedAt(event: EventItem): string {
-  const record = event as Record<string, unknown>;
-  return toText(event.created_at) || toText(record.Created_At) || "";
-}
-
-function getEventUpdatedAt(event: EventItem): string {
-  const record = event as Record<string, unknown>;
-  return toText(event.updated_at) || toText(record.Updated_At) || "";
-}
-
-function getEventProcessedAt(event: EventItem): string {
-  return toText(event.processed_at);
-}
-
-function getEventLinkedCommand(event: EventItem): string {
+function getEventWorkspaceId(event: EventItem): string {
   const payload = getEventPayload(event);
-  const record = event as Record<string, unknown>;
 
   return (
-    toText(event.command_id) ||
-    toText(record.command_id) ||
-    toText(record.Command_ID) ||
-    toText(record.linked_command) ||
-    toText(record.Linked_Command) ||
-    toText(payload.command_id) ||
-    toText(payload.commandId) ||
-    ""
+    toText(event.workspace_id) ||
+    toText(payload.workspace_id) ||
+    toText(payload.workspaceId) ||
+    "production"
   );
 }
 
@@ -431,7 +442,7 @@ function normalizeTimelineItem(command: CommandItem): TimelineItem {
     toText(result.parentCommandId) ||
     "";
 
-  const stepIndex =
+  const parsedStepIndex =
     toNumber(command.step_index, Number.NaN) ||
     toNumber(input.step_index, Number.NaN) ||
     toNumber(input.stepIndex, Number.NaN) ||
@@ -447,7 +458,7 @@ function normalizeTimelineItem(command: CommandItem): TimelineItem {
     createdAt: toText(command.created_at),
     startedAt: toText(command.started_at),
     finishedAt: toText(command.finished_at),
-    stepIndex: Number.isFinite(stepIndex) ? stepIndex : 0,
+    stepIndex: Number.isFinite(parsedStepIndex) ? parsedStepIndex : 0,
     parentCommandId,
     flowId,
     rootEventId,
@@ -457,57 +468,55 @@ function normalizeTimelineItem(command: CommandItem): TimelineItem {
     resultJson: stringifyPretty(command.result ?? {}),
     isRoot: false,
     isTerminal: false,
-    isSynthetic: false,
   };
 }
 
 function buildSyntheticTimelineItemFromEvent(
   event: EventItem,
-  fallbackFlowId: string,
-  fallbackRootEventId: string,
-  fallbackSourceRecordId: string
+  flow: FlowDetail,
+  fallbackId: string
 ): TimelineItem {
-  const processedAt =
-    getEventProcessedAt(event) ||
-    getEventUpdatedAt(event) ||
-    getEventCreatedAt(event);
+  const processedAt = getEventProcessedAt(event);
+  const linkedCommand = getEventLinkedCommand(event);
+  const flowId =
+    toText(flow.flow_id) ||
+    getEventFlowId(event) ||
+    getEventRootEventId(event) ||
+    getEventSourceRecordId(event) ||
+    fallbackId;
 
-  const capability =
-    getEventCapability(event) !== "—"
-      ? getEventCapability(event)
-      : getEventType(event);
+  const rootEventId =
+    toText(flow.root_event_id) ||
+    getEventRootEventId(event) ||
+    getEventSourceRecordId(event) ||
+    fallbackId;
+
+  const sourceEventId = getEventSourceRecordId(event) || getEventRootEventId(event);
 
   return {
-    id: getEventLinkedCommand(event) || event.id,
-    capability,
-    status: getEventStatus(event),
+    id: linkedCommand || toText(event.id) || fallbackId,
+    capability: getEventCapability(event) || getEventType(event) || "event_source",
+    status: getEventStatus(event) || "processed",
     worker: "—",
-    createdAt: getEventCreatedAt(event) || processedAt,
+    createdAt: processedAt,
     startedAt: processedAt,
     finishedAt: processedAt,
     stepIndex: 0,
     parentCommandId: "",
-    flowId:
-      getEventFlowId(event) ||
-      fallbackFlowId ||
-      getEventRootEventId(event) ||
-      fallbackRootEventId ||
-      fallbackSourceRecordId ||
-      event.id,
-    rootEventId:
-      getEventRootEventId(event) || fallbackRootEventId || event.id,
-    sourceEventId: event.id,
-    workspaceId: getEventWorkspace(event) || "production",
+    flowId,
+    rootEventId,
+    sourceEventId,
+    workspaceId: toText(flow.workspace_id) || getEventWorkspaceId(event) || "production",
     inputJson: stringifyPretty(event.payload ?? {}),
     resultJson: stringifyPretty({
       source: "synthetic_from_event",
       event_id: event.id,
-      linked_command: getEventLinkedCommand(event) || null,
-      note: "Étape reconstruite depuis l’event source.",
+      linked_command: linkedCommand || null,
+      note: "Étape reconstituée depuis l’event source pour éviter le 404.",
     }),
-    isRoot: true,
-    isTerminal: true,
-    isSynthetic: true,
+    isRoot: false,
+    isTerminal: false,
+    syntheticSource: "event",
   };
 }
 
@@ -553,10 +562,7 @@ function getDurationMs(items: TimelineItem[]): number {
   return diff > 0 ? diff : 0;
 }
 
-function getLastKnownTimestamp(
-  items: TimelineItem[],
-  sourceEvent: EventItem | null
-): number {
+function getLastKnownTimestamp(items: TimelineItem[], sourceEvent: EventItem | null): number {
   const values = items
     .map((item) =>
       new Date(item.finishedAt || item.startedAt || item.createdAt || 0).getTime()
@@ -568,15 +574,9 @@ function getLastKnownTimestamp(
   }
 
   if (sourceEvent) {
-    const fallbackTs = new Date(
-      getEventProcessedAt(sourceEvent) ||
-        getEventUpdatedAt(sourceEvent) ||
-        getEventCreatedAt(sourceEvent) ||
-        0
-    ).getTime();
-
-    if (Number.isFinite(fallbackTs) && fallbackTs > 0) {
-      return fallbackTs;
+    const ts = new Date(getEventProcessedAt(sourceEvent) || 0).getTime();
+    if (Number.isFinite(ts) && ts > 0) {
+      return ts;
     }
   }
 
@@ -588,9 +588,6 @@ function resolveFlowStatus(
   items: TimelineItem[],
   sourceEvent: EventItem | null
 ): string {
-  const flowStats =
-    flow.stats && typeof flow.stats === "object" ? flow.stats : undefined;
-
   if (
     items.some((item) =>
       ["error", "failed", "dead", "blocked"].includes(item.status.toLowerCase())
@@ -600,9 +597,7 @@ function resolveFlowStatus(
   }
 
   if (
-    items.some((item) =>
-      ["retry", "retriable"].includes(item.status.toLowerCase())
-    )
+    items.some((item) => ["retry", "retriable"].includes(item.status.toLowerCase()))
   ) {
     return "retry";
   }
@@ -628,27 +623,28 @@ function resolveFlowStatus(
     return "processed";
   }
 
-  const sourceStatus = sourceEvent ? getEventStatus(sourceEvent).toLowerCase() : "";
+  if (sourceEvent) {
+    const sourceStatus = getEventStatus(sourceEvent).toLowerCase();
 
-  if (
-    ["processed", "done", "success", "completed", "resolved"].includes(
-      sourceStatus
-    )
-  ) {
-    return "processed";
+    if (["processed", "done", "success", "completed"].includes(sourceStatus)) {
+      return "processed";
+    }
+
+    if (["running", "queued", "pending", "processing", "new"].includes(sourceStatus)) {
+      return "running";
+    }
+
+    if (["error", "failed", "dead", "blocked"].includes(sourceStatus)) {
+      return "failed";
+    }
+
+    if (["retry", "retriable"].includes(sourceStatus)) {
+      return "retry";
+    }
   }
 
-  if (["running", "queued", "pending", "processing", "new"].includes(sourceStatus)) {
-    return "running";
-  }
-
-  if (["retry", "retriable"].includes(sourceStatus)) {
-    return "retry";
-  }
-
-  if (["error", "failed", "dead", "blocked"].includes(sourceStatus)) {
-    return "failed";
-  }
+  const flowStats =
+    flow.stats && typeof flow.stats === "object" ? flow.stats : undefined;
 
   if (flowStats) {
     const running =
@@ -664,7 +660,7 @@ function resolveFlowStatus(
     if (done) return "processed";
   }
 
-  if (flow.reading_mode === "registry-only" || flow.is_partial) {
+  if (flow.reading_mode === "registry-only" || toBoolean(flow.is_partial, false)) {
     return "partial";
   }
 
@@ -726,11 +722,7 @@ function dedupeIncidents(items: IncidentItem[]): IncidentItem[] {
   return output;
 }
 
-function buildTitle(
-  flow: FlowDetail,
-  sourceEvent: EventItem | null,
-  id: string
-): string {
+function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string): string {
   const flowId = toText(flow.flow_id);
 
   if (flowId && !isRecordIdLike(flowId)) {
@@ -782,7 +774,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
     toText(flow.source_record_id) || toText(flow.source_event_id) || rootEventId;
 
   const baseCommands = Array.isArray(flow.commands) ? flow.commands : [];
-  const timelineFromCommands = baseCommands.map(normalizeTimelineItem);
+  const timelineBase = baseCommands.map(normalizeTimelineItem);
 
   let sourceEvent: EventItem | null = null;
 
@@ -791,7 +783,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
     const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
 
     const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
-    const linkedCommands = timelineFromCommands.map((item) => item.id).filter(Boolean);
+    const linkedCommands = timelineBase.map((item) => item.id).filter(Boolean);
 
     sourceEvent =
       events.find((event) => matchEvent(event, identifiers, linkedCommands)) || null;
@@ -799,26 +791,18 @@ export default async function FlowDetailPage({ params }: PageProps) {
     sourceEvent = null;
   }
 
-  const syntheticTimeline =
-    timelineFromCommands.length === 0 && sourceEvent
-      ? [
-          buildSyntheticTimelineItemFromEvent(
-            sourceEvent,
-            flowId,
-            rootEventId,
-            sourceRecordId
-          ),
-        ]
+  const reconstructedTimeline =
+    timelineBase.length === 0 && sourceEvent
+      ? [buildSyntheticTimelineItemFromEvent(sourceEvent, flow, id)]
       : [];
 
-  const timelineBase =
-    timelineFromCommands.length > 0 ? timelineFromCommands : syntheticTimeline;
-
-  const sortedTimeline = sortTimeline(timelineBase).map((item, index, arr) => ({
-    ...item,
-    isRoot: index === 0,
-    isTerminal: index === arr.length - 1,
-  }));
+  const sortedTimeline = sortTimeline([...timelineBase, ...reconstructedTimeline]).map(
+    (item, index, arr) => ({
+      ...item,
+      isRoot: index === 0,
+      isTerminal: index === arr.length - 1,
+    })
+  );
 
   let incidents: IncidentItem[] = [];
 
@@ -833,7 +817,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
       flowId,
       rootEventId,
       sourceRecordId,
-      ...sortedTimeline.map((item) => item.id),
+      sourceEvent ? getEventLinkedCommand(sourceEvent) : "",
     ].filter(Boolean);
 
     incidents = dedupeIncidents(
@@ -854,13 +838,13 @@ export default async function FlowDetailPage({ params }: PageProps) {
     incidents = [];
   }
 
-  const readingMode =
-    flow.reading_mode === "registry-only" ? "registry-only" : "enriched";
+  const readingMode: "registry-only" | "enriched" =
+    flow.reading_mode === "registry-only" || baseCommands.length === 0
+      ? "registry-only"
+      : "enriched";
 
-  const isPartial =
-    toBoolean(flow.is_partial, false) ||
-    readingMode === "registry-only" ||
-    timelineFromCommands.length === 0;
+  const isPartialObservability =
+    readingMode === "registry-only" || toBoolean(flow.is_partial, false);
 
   const title = buildTitle(flow, sourceEvent, id);
   const resolvedStatus = resolveFlowStatus(flow, sortedTimeline, sourceEvent);
@@ -868,9 +852,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const lastActivityTs = getLastKnownTimestamp(sortedTimeline, sourceEvent);
 
   const doneCount = sortedTimeline.filter((item) =>
-    ["processed", "done", "success", "completed", "resolved"].includes(
-      item.status.toLowerCase()
-    )
+    ["processed", "done", "success", "completed"].includes(item.status.toLowerCase())
   ).length;
 
   const runningCount = sortedTimeline.filter((item) =>
@@ -883,12 +865,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
     ["error", "failed", "dead", "blocked"].includes(item.status.toLowerCase())
   ).length;
 
-  const displayedSteps =
-    sortedTimeline.length > 0
-      ? sortedTimeline.length
-      : toNumber(flow.count, 0) > 0
-      ? toNumber(flow.count, 0)
-      : 0;
+  const displayedSteps = sortedTimeline.length;
 
   const rootCapability =
     sortedTimeline[0]?.capability ||
@@ -904,7 +881,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const incidentCount = incidents.length;
 
   const graphCommands =
-    timelineFromCommands.length > 0
+    readingMode === "enriched"
       ? sortedTimeline.map((item) => ({
           id: item.id,
           capability: item.capability,
@@ -933,21 +910,18 @@ export default async function FlowDetailPage({ params }: PageProps) {
     return `/incidents?${params.toString()}`;
   })();
 
-  const modeBadgeLabel =
-    readingMode === "registry-only" ? "REGISTRY-ONLY" : isPartial ? "PARTIAL" : "";
-
-  const timelineSummaryLabel =
-    sortedTimeline.length > 0
-      ? `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""}${
-          syntheticTimeline.length > 0 ? " reconstituée" : ""
-        }`
-      : "Aucune étape détaillée disponible.";
-
-  const graphSummaryLabel =
-    graphCommands.length > 0
-      ? "Disponible"
+  const timelineSummaryText =
+    sortedTimeline.length === 0
+      ? "Aucune étape détaillée disponible."
       : readingMode === "registry-only"
+      ? `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""} reconstituée${sortedTimeline.length > 1 ? "s" : ""}`
+      : `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""}`;
+
+  const graphSummaryText =
+    readingMode === "registry-only"
       ? "Indisponible en lecture registre uniquement."
+      : graphCommands.length > 0
+      ? "Disponible"
       : "Indisponible pour ce flow pour le moment.";
 
   return (
@@ -989,11 +963,13 @@ export default async function FlowDetailPage({ params }: PageProps) {
               : "Étapes non chargées"}
           </span>
 
-          {modeBadgeLabel ? (
-            <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-sm font-medium text-amber-300">
-              {modeBadgeLabel}
-            </span>
-          ) : null}
+          <span
+            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${modeTone(
+              readingMode
+            )}`}
+          >
+            {readingMode === "registry-only" ? "REGISTRY-ONLY" : "ENRICHED"}
+          </span>
 
           <span
             className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${incidentTone(
@@ -1005,7 +981,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </div>
       </div>
 
-      {isPartial ? (
+      {isPartialObservability ? (
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-5">
           <div className="text-2xl font-semibold text-amber-200">
             Observabilité partielle
@@ -1094,8 +1070,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
             </span>
           </div>
           <div>
-            Dernière étape:{" "}
-            <span className="text-zinc-200">{terminalCapability}</span>
+            Dernière étape: <span className="text-zinc-200">{terminalCapability}</span>
           </div>
           <div>
             Dernière activité:{" "}
@@ -1133,7 +1108,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
           <div className="space-y-4 text-sm text-zinc-400">
             <div>
-              Event ID : <span className="break-all text-zinc-200">{sourceEvent.id}</span>
+              Event ID :{" "}
+              <span className="break-all text-zinc-200">{sourceEvent.id}</span>
             </div>
             <div>
               Type : <span className="text-zinc-200">{getEventType(sourceEvent)}</span>
@@ -1181,7 +1157,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
         {graphCommands.length > 0 ? (
           <FlowGraphClient commands={graphCommands} />
         ) : (
-          <div className={emptyStateClassName()}>{graphSummaryLabel}</div>
+          <div className={emptyStateClassName()}>{graphSummaryText}</div>
         )}
       </section>
 
@@ -1198,7 +1174,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <div className="space-y-4">
             {sortedTimeline.map((item) => (
               <article
-                key={item.id}
+                key={`${item.id}-${item.stepIndex}`}
                 className="rounded-2xl border border-white/10 bg-white/5 p-4"
               >
                 <div className="flex flex-col gap-3">
@@ -1231,8 +1207,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
                       </span>
                     ) : null}
 
-                    {item.isSynthetic ? (
-                      <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300">
+                    {item.syntheticSource === "event" ? (
+                      <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-300">
                         SOURCE EVENT
                       </span>
                     ) : null}
@@ -1259,9 +1235,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
                     </div>
                     <div>
                       Terminé:{" "}
-                      <span className="text-zinc-200">
-                        {formatDate(item.finishedAt)}
-                      </span>
+                      <span className="text-zinc-200">{formatDate(item.finishedAt)}</span>
                     </div>
                     <div>
                       Flow:{" "}
@@ -1323,12 +1297,12 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
             <div className={softPanelClassName()}>
               <div className="text-zinc-400">Graphe</div>
-              <div className="mt-2 text-zinc-200">{graphSummaryLabel}</div>
+              <div className="mt-2 text-zinc-200">{graphSummaryText}</div>
             </div>
 
             <div className={softPanelClassName()}>
               <div className="text-zinc-400">Timeline</div>
-              <div className="mt-2 text-zinc-200">{timelineSummaryLabel}</div>
+              <div className="mt-2 text-zinc-200">{timelineSummaryText}</div>
             </div>
           </div>
         </div>
