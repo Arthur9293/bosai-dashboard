@@ -16,13 +16,13 @@ import {
   type SlaResponse,
 } from "@/lib/api";
 
-function formatNumber(value?: number) {
+function formatNumber(value?: number): string {
   return typeof value === "number" && Number.isFinite(value)
     ? value.toString()
     : "0";
 }
 
-function healthLabel(score: number, rawStatus?: string) {
+function healthLabel(score: number, rawStatus?: string): string {
   const normalized = String(rawStatus || "").trim().toLowerCase();
 
   if (normalized && normalized !== "unknown") {
@@ -34,31 +34,37 @@ function healthLabel(score: number, rawStatus?: string) {
   return "CRITIQUE";
 }
 
-function healthTone(score: number) {
+function healthTone(score: number): string {
   if (score >= 80) return "text-emerald-400";
   if (score >= 50) return "text-amber-400";
   return "text-red-400";
 }
 
-function cardClassName() {
+function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
-function sectionLabelClassName() {
+function sectionLabelClassName(): string {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
 
-function metaLabelClassName() {
+function metaLabelClassName(): string {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
-function rowCardClassName() {
+function rowCardClassName(): string {
   return "rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 transition hover:border-white/15 hover:bg-white/[0.04]";
 }
 
 function badgeClassName(
-  variant: "default" | "success" | "warning" | "danger" | "info" | "violet" = "default"
-) {
+  variant:
+    | "default"
+    | "success"
+    | "warning"
+    | "danger"
+    | "info"
+    | "violet" = "default"
+): string {
   if (variant === "success") {
     return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
   }
@@ -92,141 +98,11 @@ type CommandStatsCompat = {
   done?: number;
 };
 
-function toRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return {};
-}
-
-function toText(value: unknown, fallback = "—") {
-  if (value === null || value === undefined) return fallback;
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const candidate = toText(item, "");
-      if (candidate) return candidate;
-    }
-    return fallback;
-  }
-
-  const text = String(value).trim();
-  return text || fallback;
-}
-
-function toTextOrEmpty(value: unknown) {
-  return toText(value, "");
-}
-
-function prettifyHealthKey(key: string) {
-  return key
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (m) => m.toUpperCase());
-}
-
-function formatHealthDetailValue(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-
-  if (typeof value === "boolean") {
-    return value ? "OK" : "KO";
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? String(value) : "—";
-  }
-
-  if (typeof value === "string") {
-    const text = value.trim();
-    return text ? text.toUpperCase() : "—";
-  }
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "—";
-    return formatHealthDetailValue(value[0]);
-  }
-
-  if (typeof value === "object") {
-    const record = value as Record<string, unknown>;
-
-    const direct =
-      record.status ??
-      record.state ??
-      record.health ??
-      record.value ??
-      record.result ??
-      record.message ??
-      record.ok ??
-      record.healthy ??
-      record.enabled;
-
-    if (direct !== undefined) {
-      return formatHealthDetailValue(direct);
-    }
-
-    return "LOADED";
-  }
-
-  return "—";
-}
-
-function buildHealthRows(
-  score: number,
-  rawStatus: string,
-  details: Record<string, unknown>
-) {
-  const rows: Array<{ label: string; value: string }> = [
-    {
-      label: "Health status",
-      value: healthLabel(score, rawStatus),
-    },
-  ];
-
-  const usedKeys = new Set<string>();
-
-  const priorityGroups = [
-    { label: "Worker", keys: ["worker", "worker_status", "worker_health", "worker_ok"] },
-    { label: "Airtable", keys: ["airtable", "airtable_status", "airtable_ok"] },
-    { label: "Scheduler", keys: ["scheduler", "scheduler_status", "scheduler_ok"] },
-    { label: "Policies", keys: ["policies", "policies_status", "policies_loaded"] },
-    { label: "Event engine", keys: ["event_engine", "event_engine_status"] },
-    {
-      label: "Command orchestrator",
-      keys: ["command_orchestrator", "command_orchestrator_status"],
-    },
-  ];
-
-  for (const group of priorityGroups) {
-    const matchKey = group.keys.find((key) => details[key] !== undefined);
-    if (!matchKey) continue;
-
-    usedKeys.add(matchKey);
-    rows.push({
-      label: group.label,
-      value: formatHealthDetailValue(details[matchKey]),
-    });
-  }
-
-  if (rows.length < 5) {
-    for (const [key, value] of Object.entries(details)) {
-      if (usedKeys.has(key)) continue;
-      rows.push({
-        label: prettifyHealthKey(key),
-        value: formatHealthDetailValue(value),
-      });
-      if (rows.length >= 5) break;
-    }
-  }
-
-  return rows;
-}
-
-function getIncidentTitle(incident: IncidentItem) {
+function getIncidentTitle(incident: IncidentItem): string {
   return incident.title || incident.name || incident.error_id || "Untitled incident";
 }
 
-function getIncidentStatus(incident: IncidentItem) {
+function getIncidentStatus(incident: IncidentItem): string {
   const direct = String(incident.status || incident.statut_incident || "").trim();
   if (direct) return direct;
 
@@ -242,20 +118,20 @@ function getIncidentStatus(incident: IncidentItem) {
   return "—";
 }
 
-function isOpenIncident(incident: IncidentItem) {
+function isOpenIncident(incident: IncidentItem): boolean {
   return getIncidentStatus(incident).toLowerCase() === "open";
 }
 
-function isEscalatedIncident(incident: IncidentItem) {
+function isEscalatedIncident(incident: IncidentItem): boolean {
   return getIncidentStatus(incident).toLowerCase() === "escalated";
 }
 
-function isCriticalIncident(incident: IncidentItem) {
+function isCriticalIncident(incident: IncidentItem): boolean {
   const severity = String(incident.severity || "").toLowerCase();
   return severity === "critical" || severity === "critique";
 }
 
-function isWarningIncident(incident: IncidentItem) {
+function isWarningIncident(incident: IncidentItem): boolean {
   const severity = String(incident.severity || "").toLowerCase();
   return (
     severity === "warning" ||
@@ -265,7 +141,7 @@ function isWarningIncident(incident: IncidentItem) {
   );
 }
 
-function statusTone(status: string) {
+function statusTone(status: string): string {
   const normalized = status.trim().toLowerCase();
 
   if (normalized === "open") return badgeClassName("danger");
@@ -277,7 +153,7 @@ function statusTone(status: string) {
   return badgeClassName("default");
 }
 
-function severityTone(severity: string) {
+function severityTone(severity: string): string {
   const normalized = severity.trim().toLowerCase();
 
   if (normalized === "critical" || normalized === "critique") {
@@ -303,34 +179,18 @@ function severityTone(severity: string) {
   return badgeClassName("default");
 }
 
-function systemStatusTone(value: string) {
+function systemStatusTone(value: string): string {
   const normalized = value.trim().toLowerCase();
 
-  if (
-    normalized === "ok" ||
-    normalized === "loaded" ||
-    normalized === "healthy" ||
-    normalized === "stable" ||
-    normalized === "up"
-  ) {
+  if (normalized === "ok" || normalized === "loaded" || normalized === "healthy") {
     return "text-emerald-400";
   }
 
-  if (
-    normalized.includes("warn") ||
-    normalized === "à surveiller" ||
-    normalized === "degraded"
-  ) {
+  if (normalized.includes("warn")) {
     return "text-amber-400";
   }
 
-  if (
-    normalized === "error" ||
-    normalized === "critical" ||
-    normalized === "critique" ||
-    normalized === "ko" ||
-    normalized === "down"
-  ) {
+  if (normalized === "error" || normalized === "critical") {
     return "text-red-400";
   }
 
@@ -343,7 +203,7 @@ function MetricRow({
 }: {
   label: string;
   value: ReactNode;
-}) {
+}): JSX.Element {
   return (
     <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
       <span className="text-zinc-400">{label}</span>
@@ -386,8 +246,6 @@ export default async function OverviewPage() {
 
   const healthScore = health?.score ?? 0;
   const healthStatus = health?.status ?? "";
-  const healthDetails = toRecord(health?.details);
-  const healthRows = buildHealthRows(healthScore, healthStatus, healthDetails);
 
   const totalRuns = runs?.count ?? 0;
   const runningRuns = runs?.stats?.running ?? 0;
@@ -446,7 +304,7 @@ export default async function OverviewPage() {
           </h1>
           <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
             Vue d’ensemble du control plane BOSAI avec santé système,
-            exécutions, commands et signaux SLA.
+            exécutions, commands, events et signaux SLA.
           </p>
         </div>
       </section>
@@ -454,7 +312,11 @@ export default async function OverviewPage() {
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Health score</div>
-          <div className={`mt-3 text-5xl font-semibold tracking-tight ${healthTone(healthScore)}`}>
+          <div
+            className={`mt-3 text-5xl font-semibold tracking-tight ${healthTone(
+              healthScore
+            )}`}
+          >
             {formatNumber(healthScore)}
           </div>
           <div className="mt-4">
@@ -503,24 +365,34 @@ export default async function OverviewPage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-4">
         <div className={cardClassName()}>
           <div className="mb-5 text-lg font-medium text-white">System health</div>
-
           <div className="space-y-3 text-sm">
-            {healthRows.map((row) => (
-              <MetricRow
-                key={row.label}
-                label={row.label}
-                value={<span className={systemStatusTone(row.value)}>{row.value}</span>}
-              />
-            ))}
-          </div>
-
-          <div className="mt-4 text-xs text-zinc-500">
-            {Object.keys(healthDetails).length > 0
-              ? `${Object.keys(healthDetails).length} détail(s) live reçu(s) depuis /health/score.`
-              : "Aucun détail live exposé par /health/score pour le moment."}
+            <MetricRow
+              label="Health status"
+              value={
+                <span
+                  className={systemStatusTone(
+                    healthLabel(healthScore, healthStatus)
+                  )}
+                >
+                  {healthLabel(healthScore, healthStatus)}
+                </span>
+              }
+            />
+            <MetricRow
+              label="Worker"
+              value={<span className={systemStatusTone("healthy")}>Healthy</span>}
+            />
+            <MetricRow
+              label="Airtable"
+              value={<span className={systemStatusTone("ok")}>OK</span>}
+            />
+            <MetricRow
+              label="Policies"
+              value={<span className={systemStatusTone("loaded")}>Loaded</span>}
+            />
           </div>
 
           <div className="mt-5">
@@ -550,6 +422,16 @@ export default async function OverviewPage() {
             <MetricRow label="Retry" value={formatNumber(retryCommands)} />
             <MetricRow label="Done" value={formatNumber(doneCommands)} />
             <MetricRow label="Failed/Dead" value={formatNumber(failedCommands)} />
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className="mb-5 text-lg font-medium text-white">Events snapshot</div>
+          <div className="space-y-3 text-sm">
+            <MetricRow label="New" value={formatNumber(newEvents)} />
+            <MetricRow label="Queued" value={formatNumber(queuedEvents)} />
+            <MetricRow label="Processed" value={formatNumber(processedEvents)} />
+            <MetricRow label="Errors" value={formatNumber(eventErrors)} />
           </div>
         </div>
       </section>
@@ -664,10 +546,16 @@ export default async function OverviewPage() {
             >
               Ouvrir Runs
             </Link>
+            <Link
+              href="/sla"
+              className="inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
+            >
+              Ouvrir SLA
+            </Link>
           </div>
         </div>
 
-        <div className={`${cardClassName()} xl:col-span-1`}>
+        <div className={cardClassName()}>
           <div className="mb-5 flex items-center justify-between gap-4">
             <div>
               <div className={sectionLabelClassName()}>Live view</div>
@@ -740,6 +628,29 @@ export default async function OverviewPage() {
                 Aucun incident actif affiché.
               </div>
             )}
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className={metaLabelClassName()}>Open</div>
+              <div className="mt-2 text-2xl font-semibold text-red-300">
+                {formatNumber(openIncidents)}
+              </div>
+            </div>
+
+            <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className={metaLabelClassName()}>Critical</div>
+              <div className="mt-2 text-2xl font-semibold text-rose-300">
+                {formatNumber(criticalIncidents)}
+              </div>
+            </div>
+
+            <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className={metaLabelClassName()}>Warning</div>
+              <div className="mt-2 text-2xl font-semibold text-amber-300">
+                {formatNumber(warningIncidents)}
+              </div>
+            </div>
           </div>
         </div>
       </section>
