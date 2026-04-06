@@ -1,35 +1,10 @@
 import Link from "next/link";
 import {
-  fetchCommands,
-  fetchEvents,
   fetchHealthScore,
-  fetchIncidents,
   fetchRuns,
-  type IncidentItem,
-  type HealthScoreResponse,
-  type RunsResponse,
-  type CommandsResponse,
-  type EventsResponse,
-  type IncidentsResponse,
+  fetchCommands,
+  fetchSla,
 } from "@/lib/api";
-
-function formatNumber(value?: number) {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value.toString()
-    : "0";
-}
-
-function healthLabel(score: number) {
-  if (score >= 80) return "Stable";
-  if (score >= 50) return "À surveiller";
-  return "Critique";
-}
-
-function healthTone(score: number) {
-  if (score >= 80) return "text-emerald-400";
-  if (score >= 50) return "text-amber-400";
-  return "text-red-400";
-}
 
 function cardClassName() {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
@@ -39,224 +14,125 @@ function sectionLabelClassName() {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
 
-function metaLabelClassName() {
-  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
-}
-
-function rowCardClassName() {
-  return "rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 transition hover:border-white/15 hover:bg-white/[0.04]";
-}
-
-function badgeClassName(
-  variant: "default" | "success" | "warning" | "danger" | "info" | "violet" = "default"
+function actionLinkClassName(
+  variant: "default" | "primary" | "soft" = "default"
 ) {
-  if (variant === "success") {
-    return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
+  if (variant === "primary") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
-  if (variant === "warning") {
-    return "inline-flex rounded-full border border-amber-500/20 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300";
-  }
-
-  if (variant === "danger") {
-    return "inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-300";
-  }
-
-  if (variant === "info") {
-    return "inline-flex rounded-full border border-sky-500/20 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-300";
-  }
-
-  if (variant === "violet") {
-    return "inline-flex rounded-full border border-violet-500/20 bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300";
-  }
-
-  return "inline-flex rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
-type CommandStatsCompat = {
-  queue?: number;
-  queued?: number;
-  running?: number;
-  retry?: number;
-  dead?: number;
-};
-
-function getIncidentTitle(incident: IncidentItem) {
-  return (
-    incident.title ||
-    incident.name ||
-    incident.error_id ||
-    "Untitled incident"
-  );
+function statValue(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function getIncidentStatus(incident: IncidentItem) {
-  const direct = String(
-    incident.status || incident.statut_incident || ""
-  ).trim();
+function healthTone(status?: string) {
+  const normalized = (status || "").trim().toLowerCase();
 
-  if (direct) return direct;
-
-  const sla = String(incident.sla_status || "").trim().toLowerCase();
-  const remaining =
-    typeof incident.sla_remaining_minutes === "number"
-      ? incident.sla_remaining_minutes
-      : undefined;
-
-  if (sla === "breached") return "Open";
-  if (remaining !== undefined && remaining < 0) return "Open";
-
-  return "—";
-}
-
-function isOpenIncident(incident: IncidentItem) {
-  return getIncidentStatus(incident).toLowerCase() === "open";
-}
-
-function isEscalatedIncident(incident: IncidentItem) {
-  return getIncidentStatus(incident).toLowerCase() === "escalated";
-}
-
-function isCriticalIncident(incident: IncidentItem) {
-  const severity = String(incident.severity || "").toLowerCase();
-  return severity === "critical" || severity === "critique";
-}
-
-function isWarningIncident(incident: IncidentItem) {
-  const severity = String(incident.severity || "").toLowerCase();
-  return (
-    severity === "warning" ||
-    severity === "warn" ||
-    severity === "medium" ||
-    severity === "moyen"
-  );
-}
-
-function statusTone(status: string) {
-  const normalized = status.trim().toLowerCase();
-
-  if (normalized === "open") return badgeClassName("danger");
-  if (normalized === "escalated") return badgeClassName("warning");
-  if (normalized === "resolved" || normalized === "closed") {
-    return badgeClassName("success");
-  }
-  return badgeClassName("default");
-}
-
-function severityTone(severity: string) {
-  const normalized = severity.trim().toLowerCase();
-
-  if (normalized === "critical" || normalized === "critique") {
-    return badgeClassName("danger");
+  if (["ok", "healthy", "green", "good"].includes(normalized)) {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  if (normalized === "warning" || normalized === "warn") {
-    return badgeClassName("warning");
+  if (["warning", "degraded", "yellow"].includes(normalized)) {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
   }
 
-  if (normalized === "medium" || normalized === "moyen") {
-    return badgeClassName("warning");
+  if (["error", "down", "critical", "red"].includes(normalized)) {
+    return "bg-red-500/15 text-red-300 border border-red-500/20";
   }
 
-  if (normalized === "high" || normalized === "élevé" || normalized === "eleve") {
-    return badgeClassName("violet");
-  }
-
-  if (normalized === "low" || normalized === "faible") {
-    return badgeClassName("success");
-  }
-
-  return badgeClassName("default");
-}
-
-function systemStatusTone(value: string) {
-  const normalized = value.trim().toLowerCase();
-
-  if (normalized === "ok" || normalized === "loaded") {
-    return "text-emerald-400";
-  }
-
-  if (normalized.includes("warn")) {
-    return "text-amber-400";
-  }
-
-  return "text-zinc-300";
-}
-
-function MetricRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
-      <span className="text-zinc-400">{label}</span>
-      <span className="font-medium text-white">{value}</span>
-    </div>
-  );
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
 export default async function OverviewPage() {
-  let health: HealthScoreResponse | null = null;
-  let runs: RunsResponse | null = null;
-  let commands: CommandsResponse | null = null;
-  let events: EventsResponse | null = null;
-  let incidents: IncidentsResponse | null = null;
+  const [healthResult, runsResult, commandsResult, slaResult] =
+    await Promise.allSettled([
+      fetchHealthScore(),
+      fetchRuns(),
+      fetchCommands(300),
+      fetchSla(100),
+    ]);
 
-  try {
-    health = await fetchHealthScore();
-  } catch {}
+  const health =
+    healthResult.status === "fulfilled" ? healthResult.value : null;
+  const runs = runsResult.status === "fulfilled" ? runsResult.value : null;
+  const commands =
+    commandsResult.status === "fulfilled" ? commandsResult.value : null;
+  const sla = slaResult.status === "fulfilled" ? slaResult.value : null;
 
-  try {
-    runs = await fetchRuns();
-  } catch {}
+  const healthScore =
+    typeof health?.score === "number" && Number.isFinite(health.score)
+      ? health.score
+      : null;
 
-  try {
-    commands = await fetchCommands();
-  } catch {}
+  const healthStatus =
+    typeof health?.status === "string" && health.status.trim()
+      ? health.status.trim()
+      : "unknown";
 
-  try {
-    events = await fetchEvents();
-  } catch {}
+  const runStats =
+    runs && typeof runs === "object" && runs.stats && typeof runs.stats === "object"
+      ? runs.stats
+      : {};
 
-  try {
-    incidents = await fetchIncidents();
-  } catch {}
+  const commandStats =
+    commands &&
+    typeof commands === "object" &&
+    commands.stats &&
+    typeof commands.stats === "object"
+      ? commands.stats
+      : {};
 
-  const healthScore = health?.score ?? 0;
-  const totalRuns = runs?.count ?? 0;
-  const runningRuns = runs?.stats?.running ?? 0;
+  const slaStats =
+    sla && typeof sla === "object" && sla.stats && typeof sla.stats === "object"
+      ? sla.stats
+      : {};
 
-  const commandStats = commands?.stats as CommandStatsCompat | undefined;
-  const queuedCommands = commandStats?.queue ?? commandStats?.queued ?? 0;
-  const runningCommands = commandStats?.running ?? 0;
-  const retryCommands = commandStats?.retry ?? 0;
-  const deadCommands = commandStats?.dead ?? 0;
+  const totalRuns =
+    typeof runs?.count === "number" && Number.isFinite(runs.count)
+      ? runs.count
+      : Array.isArray(runs?.runs)
+      ? runs.runs.length
+      : 0;
 
-  const newEvents = events?.stats?.new ?? 0;
-  const queuedEvents = events?.stats?.queued ?? 0;
-  const processedEvents = events?.stats?.processed ?? 0;
-  const eventErrors = events?.stats?.error ?? 0;
+  const totalCommands =
+    typeof commands?.count === "number" && Number.isFinite(commands.count)
+      ? commands.count
+      : Array.isArray(commands?.commands)
+      ? commands.commands.length
+      : 0;
 
-  const incidentItems: IncidentItem[] = incidents?.incidents ?? [];
+  const totalSlaSignals = Array.isArray(sla?.incidents) ? sla.incidents.length : 0;
 
-  const openIncidents =
-    incidents?.stats?.open ??
-    incidentItems.filter((incident) => isOpenIncident(incident)).length;
-
-  const criticalIncidents =
-    incidents?.stats?.critical ??
-    incidentItems.filter((incident) => isCriticalIncident(incident)).length;
-
-  const warningIncidents =
-    incidents?.stats?.warning ??
-    incidentItems.filter((incident) => isWarningIncident(incident)).length;
-
-  const activeIncidentItems = incidentItems.filter(
-    (incident) => isOpenIncident(incident) || isEscalatedIncident(incident)
+  const queuedCommands = statValue(
+    (commandStats as Record<string, unknown>).queued ??
+      (commandStats as Record<string, unknown>).queue
   );
+  const runningCommands = statValue(
+    (commandStats as Record<string, unknown>).running
+  );
+  const retryCommands = statValue(
+    (commandStats as Record<string, unknown>).retry
+  );
+  const doneCommands = statValue((commandStats as Record<string, unknown>).done);
+  const failedCommands =
+    statValue((commandStats as Record<string, unknown>).error) +
+    statValue((commandStats as Record<string, unknown>).dead);
+
+  const runningRuns = statValue((runStats as Record<string, unknown>).running);
+  const doneRuns = statValue((runStats as Record<string, unknown>).done);
+  const errorRuns = statValue((runStats as Record<string, unknown>).error);
+
+  const okSla = statValue((slaStats as Record<string, unknown>).ok);
+  const warningSla = statValue((slaStats as Record<string, unknown>).warning);
+  const breachedSla = statValue((slaStats as Record<string, unknown>).breached);
+  const escalatedSla = statValue((slaStats as Record<string, unknown>).escalated);
+  const queuedSla = statValue(
+    (slaStats as Record<string, unknown>).escalation_queued
+  );
+  const unknownSla = statValue((slaStats as Record<string, unknown>).unknown);
 
   return (
     <div className="space-y-8">
@@ -268,207 +144,219 @@ export default async function OverviewPage() {
             Overview
           </h1>
           <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
-            Control tower du système BOSAI.
+            Vue d’ensemble du control plane BOSAI avec santé système, exécutions,
+            commands et signaux SLA.
           </p>
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Health Score</div>
-          <div className={`mt-3 text-4xl font-semibold tracking-tight ${healthTone(healthScore)}`}>
-            {formatNumber(healthScore)}
+          <div className="text-sm text-zinc-400">Health score</div>
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
+            {healthScore ?? "—"}
           </div>
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-4">
             <span
-              className={badgeClassName(
-                healthScore >= 80
-                  ? "success"
-                  : healthScore >= 50
-                    ? "warning"
-                    : "danger"
-              )}
+              className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${healthTone(
+                healthStatus
+              )}`}
             >
-              {healthLabel(healthScore)}
+              {healthStatus.toUpperCase()}
             </span>
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Total Runs</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
-            {formatNumber(totalRuns)}
+          <div className="text-sm text-zinc-400">Runs actifs</div>
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-sky-300">
+            {runningRuns}
           </div>
-          <div className="mt-3 text-sm text-zinc-300">
-            Running: {formatNumber(runningRuns)}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Queued Commands</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
-            {formatNumber(queuedCommands)}
-          </div>
-          <div className="mt-3 text-sm text-zinc-300">
-            Running: {formatNumber(runningCommands)}
+          <div className="mt-3 text-sm text-zinc-500">
+            Total runs: {totalRuns}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Open Incidents</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
-            {formatNumber(openIncidents)}
+          <div className="text-sm text-zinc-400">Commands actives</div>
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-violet-300">
+            {runningCommands + queuedCommands + retryCommands}
           </div>
-          <div className="mt-3 text-sm text-zinc-300">
-            Critical: {formatNumber(criticalIncidents)}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Event Throughput</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
-            {formatNumber(processedEvents)}
-          </div>
-          <div className="mt-3 text-sm text-zinc-300">
-            Errors: {formatNumber(eventErrors)}
-          </div>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">System Health</div>
-          <div className="space-y-3 text-sm">
-            <MetricRow
-              label="Airtable"
-              value={<span className={systemStatusTone("OK")}>OK</span>}
-            />
-            <MetricRow
-              label="Worker"
-              value={<span className={systemStatusTone("OK")}>OK</span>}
-            />
-            <MetricRow
-              label="Scheduler"
-              value={<span className={systemStatusTone("OK")}>OK</span>}
-            />
-            <MetricRow
-              label="Policies"
-              value={<span className={systemStatusTone("Loaded")}>Loaded</span>}
-            />
+          <div className="mt-3 text-sm text-zinc-500">
+            Total commands: {totalCommands}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">Command Queue</div>
-          <div className="space-y-3 text-sm">
-            <MetricRow label="Queued" value={formatNumber(queuedCommands)} />
-            <MetricRow label="Running" value={formatNumber(runningCommands)} />
-            <MetricRow label="Retry" value={formatNumber(retryCommands)} />
-            <MetricRow label="Dead" value={formatNumber(deadCommands)} />
+          <div className="text-sm text-zinc-400">SLA critiques</div>
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-red-300">
+            {breachedSla + escalatedSla}
           </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">Event Stream</div>
-          <div className="space-y-3 text-sm">
-            <MetricRow label="New" value={formatNumber(newEvents)} />
-            <MetricRow label="Queued" value={formatNumber(queuedEvents)} />
-            <MetricRow label="Processed" value={formatNumber(processedEvents)} />
-            <MetricRow label="Errors" value={formatNumber(eventErrors)} />
+          <div className="mt-3 text-sm text-zinc-500">
+            Total signaux SLA: {totalSlaSignals}
           </div>
         </div>
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-5 flex items-center justify-between gap-4">
+          <div className="mb-5 flex items-center justify-between gap-3">
             <div>
-              <div className={sectionLabelClassName()}>Live view</div>
-              <div className="mt-1 text-xl font-semibold tracking-tight text-white">
-                Incidents actifs
+              <div className={sectionLabelClassName()}>SLA Snapshot</div>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">
+                État SLA
+              </h2>
+            </div>
+
+            <div className="text-sm text-zinc-500">{totalSlaSignals} signal(s)</div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+            <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+              <div className="text-sm text-zinc-400">OK</div>
+              <div className="mt-3 text-3xl font-semibold text-emerald-300">
+                {okSla}
               </div>
             </div>
 
-            <Link
-              href="/incidents"
-              className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition hover:bg-white/[0.08]"
-            >
-              Voir tout
-            </Link>
+            <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+              <div className="text-sm text-zinc-400">Warning</div>
+              <div className="mt-3 text-3xl font-semibold text-amber-300">
+                {warningSla}
+              </div>
+            </div>
+
+            <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+              <div className="text-sm text-zinc-400">Breached</div>
+              <div className="mt-3 text-3xl font-semibold text-red-300">
+                {breachedSla}
+              </div>
+            </div>
+
+            <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+              <div className="text-sm text-zinc-400">Escalated</div>
+              <div className="mt-3 text-3xl font-semibold text-rose-300">
+                {escalatedSla}
+              </div>
+            </div>
+
+            <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+              <div className="text-sm text-zinc-400">Queued</div>
+              <div className="mt-3 text-3xl font-semibold text-violet-300">
+                {queuedSla}
+              </div>
+            </div>
+
+            <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+              <div className="text-sm text-zinc-400">Unknown</div>
+              <div className="mt-3 text-3xl font-semibold text-zinc-300">
+                {unknownSla}
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-3">
-            {activeIncidentItems.slice(0, 5).map((incident) => {
-              const incidentTitle = getIncidentTitle(incident);
-              const incidentSubline =
-                getIncidentStatus(incident) ||
-                incident.sla_status ||
-                "—";
-              const incidentSeverity = incident.severity || "—";
-              const incidentStatus = getIncidentStatus(incident);
-
-              return (
-                <Link
-                  key={incident.id}
-                  href={`/incidents/${encodeURIComponent(String(incident.id))}`}
-                  className={rowCardClassName()}
-                >
-                  <div className="flex flex-col gap-4">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div className="min-w-0">
-                        <div className={metaLabelClassName()}>BOSAI Incident</div>
-                        <div className="mt-2 break-words text-lg font-semibold tracking-tight text-white">
-                          {incidentTitle}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 md:justify-end">
-                        <span className={statusTone(incidentStatus)}>
-                          {incidentStatus || "—"}
-                        </span>
-                        <span className={severityTone(String(incidentSeverity))}>
-                          {incidentSeverity || "—"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 text-sm text-zinc-400 md:grid-cols-3">
-                      <div>
-                        <div className={metaLabelClassName()}>Status line</div>
-                        <div className="mt-1 text-zinc-200">{incidentSubline}</div>
-                      </div>
-
-                      <div>
-                        <div className={metaLabelClassName()}>Workspace</div>
-                        <div className="mt-1 text-zinc-200">
-                          {String(incident.workspace_id || incident.workspace || "—")}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className={metaLabelClassName()}>Severity</div>
-                        <div className="mt-1 text-zinc-200">{incidentSeverity || "—"}</div>
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
-
-            {activeIncidentItems.length === 0 && (
-              <div className="rounded-[24px] border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
-                Aucun incident actif affiché.
-              </div>
-            )}
+          <div className="mt-5">
+            <Link href="/sla" className={actionLinkClassName("primary")}>
+              Ouvrir la vue SLA
+            </Link>
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">Retry / Dead Zone</div>
-          <div className="space-y-3 text-sm">
-            <MetricRow label="Retry queue" value={formatNumber(retryCommands)} />
-            <MetricRow label="Dead commands" value={formatNumber(deadCommands)} />
-            <MetricRow label="Warnings" value={formatNumber(warningIncidents)} />
+          <div className={sectionLabelClassName()}>Quick navigation</div>
+          <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">
+            Vues principales
+          </h2>
+
+          <div className="mt-5 space-y-3">
+            <Link href="/flows" className={actionLinkClassName("soft")}>
+              Ouvrir Flows
+            </Link>
+
+            <Link href="/commands" className={actionLinkClassName("soft")}>
+              Ouvrir Commands
+            </Link>
+
+            <Link href="/events" className={actionLinkClassName("soft")}>
+              Ouvrir Events
+            </Link>
+
+            <Link href="/incidents" className={actionLinkClassName("soft")}>
+              Ouvrir Incidents
+            </Link>
+
+            <Link href="/runs" className={actionLinkClassName("soft")}>
+              Ouvrir Runs
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className={cardClassName()}>
+          <div className={sectionLabelClassName()}>Runs snapshot</div>
+          <div className="mt-4 space-y-3 text-sm text-zinc-300">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Running</span>
+              <span>{runningRuns}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Done</span>
+              <span>{doneRuns}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Error</span>
+              <span>{errorRuns}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className={sectionLabelClassName()}>Commands snapshot</div>
+          <div className="mt-4 space-y-3 text-sm text-zinc-300">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Queued</span>
+              <span>{queuedCommands}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Running</span>
+              <span>{runningCommands}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Retry</span>
+              <span>{retryCommands}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Done</span>
+              <span>{doneCommands}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Failed/Dead</span>
+              <span>{failedCommands}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className={cardClassName()}>
+          <div className={sectionLabelClassName()}>Health</div>
+          <div className="mt-4 space-y-4">
+            <div>
+              <div className="text-sm text-zinc-400">Status</div>
+              <div className="mt-1 text-xl font-semibold text-white">
+                {healthStatus.toUpperCase()}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-sm text-zinc-400">Score</div>
+              <div className="mt-1 text-xl font-semibold text-white">
+                {healthScore ?? "—"}
+              </div>
+            </div>
+
+            <Link href="/runs" className={actionLinkClassName("soft")}>
+              Aller aux runs
+            </Link>
           </div>
         </div>
       </section>
