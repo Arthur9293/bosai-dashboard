@@ -1,28 +1,43 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import {
   fetchIncidents,
   type IncidentItem,
   type IncidentsResponse,
 } from "@/lib/api";
 
+type SearchParams = {
+  flow_id?: string | string[];
+  root_event_id?: string | string[];
+  source_record_id?: string | string[];
+  from?: string | string[];
+};
+
 type PageProps = {
-  searchParams?: Promise<{
-    flow_id?: string | string[];
-    root_event_id?: string | string[];
-    source_record_id?: string | string[];
-    from?: string | string[];
-  }>;
+  searchParams?: Promise<SearchParams> | SearchParams;
 };
 
 function cardClassName() {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
+function statCardClassName() {
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function emptyStateClassName() {
+  return "rounded-[28px] border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500";
+}
+
 function actionLinkClassName(
-  variant: "default" | "primary" | "soft" = "default"
+  variant: "default" | "primary" | "soft" | "danger" = "default"
 ) {
   if (variant === "primary") {
     return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+  }
+
+  if (variant === "danger") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
   }
 
   if (variant === "soft") {
@@ -64,16 +79,22 @@ function toTextOrEmpty(value: unknown) {
 
 function toNumber(value: unknown, fallback = 0) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
+
   if (typeof value === "string" && value.trim() !== "") {
     const n = Number(value);
     if (Number.isFinite(n)) return n;
   }
+
   return fallback;
 }
 
 function firstParam(value?: string | string[]) {
   if (Array.isArray(value)) return value[0] || "";
   return value || "";
+}
+
+function safeUpper(text: string) {
+  return text.trim() ? text.trim().toUpperCase() : "—";
 }
 
 function getIncidentTitle(incident: IncidentItem) {
@@ -95,9 +116,7 @@ function getIncidentStatusNormalized(incident: IncidentItem) {
   const sla = (incident.sla_status || "").trim().toLowerCase();
   const hasResolvedAt = Boolean(incident.resolved_at);
 
-  if (hasResolvedAt) {
-    return "resolved";
-  }
+  if (hasResolvedAt) return "resolved";
 
   if (!raw) {
     if (sla === "breached") return "open";
@@ -134,8 +153,9 @@ function getIncidentSeverityNormalized(incident: IncidentItem) {
   const raw = getIncidentSeverityRaw(incident).toLowerCase();
 
   if (!raw) {
-    if ((incident.sla_status || "").toLowerCase() === "breached")
+    if ((incident.sla_status || "").toLowerCase() === "breached") {
       return "critical";
+    }
     return "unknown";
   }
 
@@ -242,9 +262,7 @@ function getSlaLabel(incident: IncidentItem) {
     Boolean(incident.resolved_at) ||
     getIncidentStatusNormalized(incident) === "resolved";
 
-  if (resolvedLike) {
-    return "RESOLVED";
-  }
+  if (resolvedLike) return "RESOLVED";
 
   const sla = (incident.sla_status || "").trim();
   if (sla) return sla.toUpperCase();
@@ -282,10 +300,6 @@ function getSlaTone(incident: IncidentItem) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  if (sla === "open") {
-    return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-  }
-
   if (
     typeof incident.sla_remaining_minutes === "number" &&
     incident.sla_remaining_minutes < 0
@@ -305,9 +319,7 @@ function getUpdatedAt(incident: IncidentItem) {
 }
 
 function getResolvedAt(incident: IncidentItem) {
-  if (incident.resolved_at) {
-    return incident.resolved_at;
-  }
+  if (incident.resolved_at) return incident.resolved_at;
 
   if (getIncidentStatusNormalized(incident) === "resolved") {
     return incident.updated_at || incident.created_at;
@@ -337,7 +349,9 @@ function getRootEventId(incident: IncidentItem) {
 }
 
 function getSourceRecordId(incident: IncidentItem) {
-  return toTextOrEmpty((incident as Record<string, unknown>).source_record_id);
+  return toTextOrEmpty(
+    (incident as Record<string, unknown>).source_record_id
+  );
 }
 
 function getCategory(incident: IncidentItem) {
@@ -357,11 +371,61 @@ function getSuggestedAction(incident: IncidentItem) {
 
   if (status === "escalated") return "Review escalated incident";
   if (severity === "critical") return "Prioritize immediate review";
-  if ((incident.sla_status || "").toLowerCase() === "breached")
+  if ((incident.sla_status || "").toLowerCase() === "breached") {
     return "Review SLA breach";
+  }
   if (status === "resolved") return "Verify final resolution state";
 
   return "Monitor flow and resolution";
+}
+
+function getSummaryLine(incident: IncidentItem) {
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+  const workspace = getWorkspace(incident);
+  const category = getCategory(incident);
+
+  return `${safeUpper(status)} · ${safeUpper(severity)} · ${workspace} · ${category}`;
+}
+
+function getActivePriority(incident: IncidentItem) {
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+
+  if (status === "escalated" && severity === "critical") return 0;
+  if (status === "escalated") return 1;
+  if (severity === "critical") return 2;
+  if (severity === "high") return 3;
+  if (status === "open") return 4;
+  return 5;
+}
+
+function getIncidentTimestampForSort(incident: IncidentItem) {
+  return new Date(
+    getUpdatedAt(incident) || getOpenedAt(incident) || getResolvedAt(incident) || 0
+  ).getTime();
+}
+
+function sortActiveIncidents(items: IncidentItem[]) {
+  return [...items].sort((a, b) => {
+    const priorityDiff = getActivePriority(a) - getActivePriority(b);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    return getIncidentTimestampForSort(b) - getIncidentTimestampForSort(a);
+  });
+}
+
+function sortResolvedIncidents(items: IncidentItem[]) {
+  return [...items].sort((a, b) => {
+    const aTs = new Date(
+      getResolvedAt(a) || getUpdatedAt(a) || getOpenedAt(a) || 0
+    ).getTime();
+    const bTs = new Date(
+      getResolvedAt(b) || getUpdatedAt(b) || getOpenedAt(b) || 0
+    ).getTime();
+
+    return bTs - aTs;
+  });
 }
 
 function isLegacyNoiseIncident(incident: IncidentItem) {
@@ -378,10 +442,8 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   const runRecord = getRunRecord(incident);
 
   const isGenericTitle = title === "incident" || title === "untitled incident";
-
   const isGenericCategory =
     category === "" || category === "—" || category === "unknown_incident";
-
   const isGenericReason =
     reason === "" || reason === "—" || reason === "incident_create";
 
@@ -418,26 +480,23 @@ function incidentMatchesFilters(
     sourceRecordId: string;
   }
 ) {
-  const incidentFlowId = getFlowId(incident);
-  const incidentRootEventId = getRootEventId(incident);
-  const incidentSourceRecordId = getSourceRecordId(incident);
+  const filterValues = [filters.flowId, filters.rootEventId, filters.sourceRecordId]
+    .map((value) => value.trim())
+    .filter(Boolean);
 
-  if (filters.flowId && incidentFlowId !== filters.flowId) {
-    return false;
-  }
+  if (filterValues.length === 0) return true;
 
-  if (filters.rootEventId && incidentRootEventId !== filters.rootEventId) {
-    return false;
-  }
+  const incidentValues = [
+    getFlowId(incident),
+    getRootEventId(incident),
+    getSourceRecordId(incident),
+    getCommandRecord(incident),
+    getRunRecord(incident),
+  ]
+    .map((value) => value.trim())
+    .filter(Boolean);
 
-  if (
-    filters.sourceRecordId &&
-    incidentSourceRecordId !== filters.sourceRecordId
-  ) {
-    return false;
-  }
-
-  return true;
+  return filterValues.some((filterValue) => incidentValues.includes(filterValue));
 }
 
 function getBestFlowTargetFromIncident(incident: IncidentItem) {
@@ -472,13 +531,32 @@ function MetaItem({
   breakAll = false,
 }: {
   label: string;
-  value: React.ReactNode;
+  value: ReactNode;
   breakAll?: boolean;
 }) {
   return (
     <div className={breakAll ? "break-all" : undefined}>
       <div className={metaLabelClassName()}>{label}</div>
       <div className="mt-1 text-zinc-200">{value}</div>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  tone = "text-white",
+}: {
+  label: string;
+  value: number;
+  tone?: string;
+}) {
+  return (
+    <div className={statCardClassName()}>
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className={`mt-3 text-4xl font-semibold tracking-tight ${tone}`}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -508,6 +586,8 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
             >
               {title}
             </Link>
+
+            <div className="text-sm text-zinc-400">{getSummaryLine(incident)}</div>
 
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -544,18 +624,6 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
                 </span>
               ) : null}
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
-            <span>
-              Category: <span className="text-zinc-300">{getCategory(incident)}</span>
-            </span>
-            <span>
-              Reason: <span className="text-zinc-300">{getReason(incident)}</span>
-            </span>
-            <span>
-              Workspace: <span className="text-zinc-300">{getWorkspace(incident)}</span>
-            </span>
           </div>
         </div>
 
@@ -614,7 +682,9 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
 
             <div>
               <span className={metaLabelClassName()}>Decision reason</span>
-              <div className="mt-1 text-zinc-300">{getDecisionReason(incident) || "—"}</div>
+              <div className="mt-1 text-zinc-300">
+                {getDecisionReason(incident) || "—"}
+              </div>
             </div>
 
             <div>
@@ -633,8 +703,37 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
   );
 }
 
+function SectionBlock({
+  title,
+  description,
+  count,
+  children,
+}: {
+  title: string;
+  description: string;
+  count: number;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-2">
+          <div className={sectionLabelClassName()}>{title}</div>
+          <p className="max-w-3xl text-base text-zinc-400">{description}</p>
+        </div>
+
+        <div className="text-sm text-zinc-500">{count}</div>
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
 export default async function IncidentsPage({ searchParams }: PageProps) {
-  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const resolvedSearchParams = searchParams
+    ? await Promise.resolve(searchParams)
+    : {};
 
   const flowId = firstParam(resolvedSearchParams.flow_id).trim();
   const rootEventId = firstParam(resolvedSearchParams.root_event_id).trim();
@@ -684,25 +783,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     (item) => getIncidentSeverityNormalized(item) === "critical"
   );
 
-  const activeIncidents = [...openIncidents, ...escalatedIncidents].sort((a, b) => {
-    const aTs = new Date(
-      getUpdatedAt(a) || getOpenedAt(a) || getResolvedAt(a) || 0
-    ).getTime();
-    const bTs = new Date(
-      getUpdatedAt(b) || getOpenedAt(b) || getResolvedAt(b) || 0
-    ).getTime();
-    return bTs - aTs;
-  });
+  const activeIncidents = sortActiveIncidents([
+    ...openIncidents,
+    ...escalatedIncidents,
+  ]);
 
-  const sortedResolvedIncidents = [...resolvedIncidents].sort((a, b) => {
-    const aTs = new Date(
-      getResolvedAt(a) || getUpdatedAt(a) || getOpenedAt(a) || 0
-    ).getTime();
-    const bTs = new Date(
-      getResolvedAt(b) || getUpdatedAt(b) || getOpenedAt(b) || 0
-    ).getTime();
-    return bTs - aTs;
-  });
+  const sortedResolvedIncidents = sortResolvedIncidents(resolvedIncidents);
 
   const backToFlowsHref =
     from === "flows" || from === "flow_detail"
@@ -719,8 +805,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
             Incidents
           </h1>
           <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
-            Vue orientée impact métier. Cette page permet de voir les incidents
-            ouverts, escaladés et résolus, ainsi que leur lien avec les flows BOSAI.
+            Vue orientée impact métier. Cette page regroupe les incidents ouverts,
+            escaladés et résolus, avec navigation vers les flows BOSAI associés.
           </p>
         </div>
       </section>
@@ -764,53 +850,25 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
       ) : null}
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Open incidents</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-sky-300">
-            {openIncidents.length}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Escalated</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-amber-300">
-            {escalatedIncidents.length}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Resolved</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-emerald-300">
-            {resolvedIncidents.length}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Critical</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-red-300">
-            {criticalIncidents.length}
-          </div>
-        </div>
+        <StatCard label="Open incidents" value={openIncidents.length} tone="text-sky-300" />
+        <StatCard label="Escalated" value={escalatedIncidents.length} tone="text-amber-300" />
+        <StatCard label="Resolved" value={resolvedIncidents.length} tone="text-emerald-300" />
+        <StatCard label="Critical" value={criticalIncidents.length} tone="text-red-300" />
       </section>
 
       {visibleIncidents.length === 0 ? (
-        <section className="rounded-[28px] border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500">
+        <section className={emptyStateClassName()}>
           Aucun incident visible pour le moment.
         </section>
       ) : (
         <div className="space-y-8">
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold tracking-tight text-white">
-                Active incidents
-              </h2>
-              <span className="text-sm text-zinc-400">{activeIncidents.length}</span>
-            </div>
-
+          <SectionBlock
+            title="Needs attention"
+            description="Incidents à surveiller en priorité : ouverts, escaladés, critiques ou encore non résolus."
+            count={activeIncidents.length}
+          >
             {activeIncidents.length === 0 ? (
-              <div className="rounded-[28px] border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500">
-                Aucun incident actif.
-              </div>
+              <div className={emptyStateClassName()}>Aucun incident actif.</div>
             ) : (
               <div className="space-y-4">
                 {activeIncidents.map((incident) => (
@@ -818,20 +876,15 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 ))}
               </div>
             )}
-          </section>
+          </SectionBlock>
 
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold tracking-tight text-white">
-                Resolved incidents
-              </h2>
-              <span className="text-sm text-zinc-400">
-                {sortedResolvedIncidents.length}
-              </span>
-            </div>
-
+          <SectionBlock
+            title="Resolved incidents"
+            description="Historique des incidents déjà résolus, triés du plus récent au plus ancien."
+            count={sortedResolvedIncidents.length}
+          >
             {sortedResolvedIncidents.length === 0 ? (
-              <div className="rounded-[28px] border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500">
+              <div className={emptyStateClassName()}>
                 Aucun incident résolu.
               </div>
             ) : (
@@ -841,7 +894,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 ))}
               </div>
             )}
-          </section>
+          </SectionBlock>
         </div>
       )}
     </div>
