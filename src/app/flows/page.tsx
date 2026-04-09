@@ -306,8 +306,8 @@ function computeFlowStatus(commands: NormalizedCommand[]): FlowStatus {
   const kinds = commands.map((cmd) => getStatusKind(cmd.status));
 
   if (kinds.includes("running")) return "running";
-  if (kinds.includes("failed")) return "failed";
   if (kinds.includes("retry")) return "retry";
+  if (kinds.includes("failed")) return "failed";
 
   if (
     kinds.length > 0 &&
@@ -361,8 +361,8 @@ function getIncidentStatusKind(
 function computeIncidentOnlyStatus(group: AnyRecord[]): FlowStatus {
   const kinds = group.map(getIncidentStatusKind);
 
-  if (kinds.includes("failed")) return "failed";
   if (kinds.includes("retry")) return "retry";
+  if (kinds.includes("failed")) return "failed";
   if (kinds.length > 0 && kinds.every((kind) => kind === "success")) {
     return "success";
   }
@@ -372,8 +372,8 @@ function computeIncidentOnlyStatus(group: AnyRecord[]): FlowStatus {
 
 function getFlowStatusPriority(status: FlowStatus): number {
   if (status === "running") return 0;
-  if (status === "failed") return 1;
-  if (status === "retry") return 2;
+  if (status === "retry") return 1;
+  if (status === "failed") return 2;
   if (status === "success") return 3;
   return 4;
 }
@@ -650,22 +650,113 @@ function computeRegistryStatus(flow: AnyRecord): FlowStatus {
       : {};
 
   const running = toNumber(stats.running, 0) + toNumber(stats.queued, 0) > 0;
-  const failed = toNumber(stats.error, 0) + toNumber(stats.dead, 0) > 0;
   const retry = toNumber(stats.retry, 0) > 0;
-  const success = toNumber(stats.done, 0) > 0 && !running && !failed && !retry;
+  const failed = toNumber(stats.error, 0) + toNumber(stats.dead, 0) > 0;
+  const success = toNumber(stats.done, 0) > 0 && !running && !retry && !failed;
 
   if (running) return "running";
-  if (failed) return "failed";
   if (retry) return "retry";
+  if (failed) return "failed";
   if (success) return "success";
 
   const rawStatus = toText(flow.status).toLowerCase();
   if (rawStatus === "running") return "running";
-  if (rawStatus === "failed") return "failed";
   if (rawStatus === "retry") return "retry";
+  if (rawStatus === "failed") return "failed";
   if (["success", "done", "completed"].includes(rawStatus)) return "success";
 
   return "unknown";
+}
+
+function getFlowCanonicalKey(flow: FlowCard): string {
+  const candidates = uniqueTexts([
+    flow.flowId,
+    flow.rootEventId !== "—" ? flow.rootEventId : "",
+    flow.sourceRecordId || "",
+    flow.detailId,
+    flow.key,
+  ]);
+
+  return candidates[0] || flow.key;
+}
+
+function flowCardsOverlap(a: FlowCard, b: FlowCard): boolean {
+  const aKeys = new Set(
+    uniqueTexts([
+      a.flowId,
+      a.rootEventId !== "—" ? a.rootEventId : "",
+      a.sourceRecordId || "",
+      a.detailId,
+    ])
+  );
+
+  const bKeys = uniqueTexts([
+    b.flowId,
+    b.rootEventId !== "—" ? b.rootEventId : "",
+    b.sourceRecordId || "",
+    b.detailId,
+  ]);
+
+  return bKeys.some((key) => aKeys.has(key));
+}
+
+function pickBetterFlowCard(current: FlowCard, candidate: FlowCard): FlowCard {
+  if (
+    current.readingMode !== candidate.readingMode &&
+    candidate.readingMode === "enriched"
+  ) {
+    return candidate;
+  }
+
+  if (
+    current.readingMode !== candidate.readingMode &&
+    current.readingMode === "enriched"
+  ) {
+    return current;
+  }
+
+  const currentPriority = getFlowStatusPriority(current.status);
+  const candidatePriority = getFlowStatusPriority(candidate.status);
+
+  if (candidatePriority < currentPriority) {
+    return candidate;
+  }
+
+  if (currentPriority < candidatePriority) {
+    return current;
+  }
+
+  if (candidate.lastActivityTs > current.lastActivityTs) {
+    return candidate;
+  }
+
+  if (current.lastActivityTs > candidate.lastActivityTs) {
+    return current;
+  }
+
+  if (candidate.steps > current.steps) {
+    return candidate;
+  }
+
+  return current;
+}
+
+function dedupeFlowCards(cards: FlowCard[]): FlowCard[] {
+  const map = new Map<string, FlowCard>();
+
+  for (const card of cards) {
+    const key = getFlowCanonicalKey(card);
+    const existing = map.get(key);
+
+    if (!existing) {
+      map.set(key, card);
+      continue;
+    }
+
+    map.set(key, pickBetterFlowCard(existing, card));
+  }
+
+  return Array.from(map.values());
 }
 
 function buildEnrichedFlowCards(
@@ -774,6 +865,15 @@ function buildRegistryOnlyFlowCards(
       sourceRecordId,
     });
 
+    const registryStatus = computeRegistryStatus(flow);
+    const derivedIncidentStatus =
+      linkedIncidents.length > 0
+        ? computeIncidentOnlyStatus(linkedIncidents)
+        : "unknown";
+
+    const finalStatus =
+      registryStatus !== "unknown" ? registryStatus : derivedIncidentStatus;
+
     const key = `registry:${sourceRecordId || flowId || rootEventId}`;
     const detailId = sourceRecordId || flowId || rootEventId || key;
 
@@ -783,7 +883,7 @@ function buildRegistryOnlyFlowCards(
       flowId: flowId || detailId,
       rootEventId: rootEventId || "—",
       workspaceId,
-      status: computeRegistryStatus(flow),
+      status: finalStatus,
       steps: 0,
       rootCapability: "Registre uniquement",
       terminalCapability: "Registre uniquement",
@@ -1171,27 +1271,38 @@ export default async function FlowsPage({ searchParams }: PageProps) {
 
   const normalizedCommands = rawCommands.map(normalizeCommand);
 
-  const enrichedFlows = sortFlowCards(
-    buildEnrichedFlowCards(normalizedCommands, rawIncidents)
+  const enrichedFlows = dedupeFlowCards(
+    sortFlowCards(buildEnrichedFlowCards(normalizedCommands, rawIncidents))
   );
 
-  const registryOnlyFlows = sortFlowCards(
-    buildRegistryOnlyFlowCards(rawFlows, rawIncidents)
+  const registryOnlyBase = dedupeFlowCards(
+    sortFlowCards(buildRegistryOnlyFlowCards(rawFlows, rawIncidents))
   );
 
-  const incidentOnlyFlows = sortFlowCards(
-    buildIncidentOnlyFlowCards(rawIncidents, [
-      ...enrichedFlows,
-      ...registryOnlyFlows,
-    ])
+  const registryOnlyFlows = dedupeFlowCards(
+    sortFlowCards(
+      registryOnlyBase.filter(
+        (flow) => !enrichedFlows.some((enriched) => flowCardsOverlap(flow, enriched))
+      )
+    )
   );
 
-  const registrySectionFlows = sortFlowCards([
-    ...registryOnlyFlows,
-    ...incidentOnlyFlows,
-  ]);
+  const incidentOnlyFlows = dedupeFlowCards(
+    sortFlowCards(
+      buildIncidentOnlyFlowCards(rawIncidents, [
+        ...enrichedFlows,
+        ...registryOnlyFlows,
+      ])
+    )
+  );
 
-  const allFlows = sortFlowCards([...enrichedFlows, ...registrySectionFlows]);
+  const registrySectionFlows = dedupeFlowCards(
+    sortFlowCards([...registryOnlyFlows, ...incidentOnlyFlows])
+  );
+
+  const allFlows = dedupeFlowCards(
+    sortFlowCards([...enrichedFlows, ...registrySectionFlows])
+  );
 
   const needsAttentionFlows = sortFlowCards(
     allFlows.filter((flow) => isNeedsAttention(flow))
@@ -1225,7 +1336,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
 
       <SectionBlock
         title="Needs attention"
-        description="Flows prioritaires à surveiller maintenant : incidents actifs, échecs, retries ou activité en cours."
+        description="Flows prioritaires à surveiller maintenant : incidents actifs, exécutions en cours, retries et échecs."
         flows={needsAttentionFlows}
         activeKey={activeKey}
       />
