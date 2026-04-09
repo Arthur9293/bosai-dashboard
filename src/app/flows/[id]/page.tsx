@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import FlowGraphClient from "../FlowGraphClient";
 import {
+  fetchCommands,
   fetchEvents,
   fetchFlowById,
   fetchIncidents,
@@ -369,6 +370,45 @@ function getCommandResult(command: CommandItem): Record<string, unknown> {
   return parseMaybeJson(command.result);
 }
 
+function getCommandFlowId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
+
+  return (
+    toText(command.flow_id) ||
+    toText(record.flow_id) ||
+    toText(record.Flow_ID) ||
+    toText(input.flow_id) ||
+    toText(input.flowId) ||
+    toText(input.flowid) ||
+    toText(result.flow_id) ||
+    toText(result.flowId) ||
+    toText(result.flowid) ||
+    ""
+  );
+}
+
+function getCommandRootEventId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
+
+  return (
+    toText(command.root_event_id) ||
+    toText(record.root_event_id) ||
+    toText(record.Root_Event_ID) ||
+    toText(input.root_event_id) ||
+    toText(input.rootEventId) ||
+    toText(input.rooteventid) ||
+    toText(result.root_event_id) ||
+    toText(result.rootEventId) ||
+    toText(result.rooteventid) ||
+    getCommandSourceEventId(command) ||
+    ""
+  );
+}
+
 function getCommandSourceEventId(command: CommandItem): string {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
@@ -380,14 +420,129 @@ function getCommandSourceEventId(command: CommandItem): string {
     toText(record.Source_Event_ID) ||
     toText(input.source_event_id) ||
     toText(input.sourceEventId) ||
+    toText(input.sourceeventid) ||
     toText(input.event_id) ||
     toText(input.eventId) ||
+    toText(input.eventid) ||
     toText(result.source_event_id) ||
     toText(result.sourceEventId) ||
+    toText(result.sourceeventid) ||
     toText(result.event_id) ||
     toText(result.eventId) ||
+    toText(result.eventid) ||
     ""
   );
+}
+
+function getCommandWorkspaceId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
+
+  return (
+    toText(command.workspace_id) ||
+    toText(record.workspace_id) ||
+    toText(record.Workspace_ID) ||
+    toText(input.workspace_id) ||
+    toText(input.workspaceId) ||
+    toText(input.workspaceid) ||
+    toText(input.workspace) ||
+    toText(result.workspace_id) ||
+    toText(result.workspaceId) ||
+    toText(result.workspaceid) ||
+    toText(result.workspace) ||
+    ""
+  );
+}
+
+function getCommandStepIndex(command: CommandItem): number {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  const candidates: unknown[] = [
+    command.step_index,
+    input.step_index,
+    input.stepIndex,
+    input.stepindex,
+    result.step_index,
+    result.stepIndex,
+    result.stepindex,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = toNumber(candidate, Number.NaN);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return 0;
+}
+
+function matchCommand(command: CommandItem, identifiers: string[]): boolean {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
+
+  const candidates = [
+    toText(command.id),
+    toText(command.flow_id),
+    toText(command.root_event_id),
+    toText(command.source_event_id),
+    toText(record.id),
+    toText(record.flow_id),
+    toText(record.Flow_ID),
+    toText(record.root_event_id),
+    toText(record.Root_Event_ID),
+    toText(record.source_event_id),
+    toText(record.Source_Event_ID),
+    toText(record.source_record_id),
+    toText(record.Source_Record_ID),
+    toText(input.flow_id),
+    toText(input.flowId),
+    toText(input.flowid),
+    toText(input.root_event_id),
+    toText(input.rootEventId),
+    toText(input.rooteventid),
+    toText(input.source_event_id),
+    toText(input.sourceEventId),
+    toText(input.sourceeventid),
+    toText(input.source_record_id),
+    toText(input.sourceRecordId),
+    toText(input.event_id),
+    toText(input.eventId),
+    toText(input.eventid),
+    toText(result.flow_id),
+    toText(result.flowId),
+    toText(result.flowid),
+    toText(result.root_event_id),
+    toText(result.rootEventId),
+    toText(result.rooteventid),
+    toText(result.source_event_id),
+    toText(result.sourceEventId),
+    toText(result.sourceeventid),
+    toText(result.source_record_id),
+    toText(result.sourceRecordId),
+    toText(result.event_id),
+    toText(result.eventId),
+    toText(result.eventid),
+  ].filter(Boolean);
+
+  return candidates.some((candidate) => identifiers.includes(candidate));
+}
+
+function dedupeCommands(items: CommandItem[]): CommandItem[] {
+  const seen = new Set<string>();
+  const output: CommandItem[] = [];
+
+  for (const item of items) {
+    const id = toText(item.id);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    output.push(item);
+  }
+
+  return output;
 }
 
 function normalizeTimelineItem(command: CommandItem): TimelineItem {
@@ -407,32 +562,12 @@ function normalizeTimelineItem(command: CommandItem): TimelineItem {
     toText(result.status_select) ||
     "unknown";
 
-  const flowId =
-    toText(command.flow_id) ||
-    toText(input.flow_id) ||
-    toText(input.flowId) ||
-    toText(result.flow_id) ||
-    toText(result.flowId) ||
-    "";
-
+  const flowId = getCommandFlowId(command);
   const sourceEventId = getCommandSourceEventId(command);
-
-  const rootEventId =
-    toText(command.root_event_id) ||
-    toText(input.root_event_id) ||
-    toText(input.rootEventId) ||
-    toText(result.root_event_id) ||
-    toText(result.rootEventId) ||
-    sourceEventId ||
-    "";
+  const rootEventId = getCommandRootEventId(command);
 
   const workspaceId =
-    toText(command.workspace_id) ||
-    toText(input.workspace_id) ||
-    toText(input.workspaceId) ||
-    toText(result.workspace_id) ||
-    toText(result.workspaceId) ||
-    "production";
+    getCommandWorkspaceId(command) || "production";
 
   const parentCommandId =
     toText(command.parent_command_id) ||
@@ -442,14 +577,6 @@ function normalizeTimelineItem(command: CommandItem): TimelineItem {
     toText(result.parentCommandId) ||
     "";
 
-  const parsedStepIndex =
-    toNumber(command.step_index, Number.NaN) ||
-    toNumber(input.step_index, Number.NaN) ||
-    toNumber(input.stepIndex, Number.NaN) ||
-    toNumber(result.step_index, Number.NaN) ||
-    toNumber(result.stepIndex, Number.NaN) ||
-    0;
-
   return {
     id,
     capability,
@@ -458,7 +585,7 @@ function normalizeTimelineItem(command: CommandItem): TimelineItem {
     createdAt: toText(command.created_at),
     startedAt: toText(command.started_at),
     finishedAt: toText(command.finished_at),
-    stepIndex: Number.isFinite(parsedStepIndex) ? parsedStepIndex : 0,
+    stepIndex: getCommandStepIndex(command),
     parentCommandId,
     flowId,
     rootEventId,
@@ -788,7 +915,28 @@ export default async function FlowDetailPage({ params }: PageProps) {
     toText(flow.source_record_id) || toText(flow.source_event_id) || rootEventId;
 
   const baseCommands = Array.isArray(flow.commands) ? flow.commands : [];
-  const timelineBase = baseCommands.map(normalizeTimelineItem);
+
+  let discoveredCommands: CommandItem[] = [];
+
+  try {
+    const commandsData = await fetchCommands(500);
+    const allCommands = Array.isArray((commandsData as { commands?: CommandItem[] })?.commands)
+      ? ((commandsData as { commands?: CommandItem[] }).commands as CommandItem[])
+      : Array.isArray(commandsData)
+      ? (commandsData as CommandItem[])
+      : [];
+
+    const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
+
+    discoveredCommands = dedupeCommands(
+      allCommands.filter((command) => matchCommand(command, identifiers))
+    );
+  } catch {
+    discoveredCommands = [];
+  }
+
+  const mergedCommands = dedupeCommands([...baseCommands, ...discoveredCommands]);
+  const timelineBase = mergedCommands.map(normalizeTimelineItem);
 
   let sourceEvent: EventItem | null = null;
 
@@ -797,7 +945,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
     const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
 
     const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
-    const linkedCommands = timelineBase.map((item) => item.id).filter(Boolean);
+    const linkedCommands = mergedCommands.map((item) => toText(item.id)).filter(Boolean);
 
     sourceEvent =
       events.find((event) => matchEvent(event, identifiers, linkedCommands)) || null;
@@ -818,6 +966,35 @@ export default async function FlowDetailPage({ params }: PageProps) {
     })
   );
 
+  const resolvedFlowId =
+    sortedTimeline[0]?.flowId ||
+    flowId ||
+    (sourceEvent ? getEventFlowId(sourceEvent) : "") ||
+    rootEventId ||
+    sourceRecordId ||
+    id;
+
+  const resolvedRootEventId =
+    sortedTimeline[0]?.rootEventId ||
+    rootEventId ||
+    (sourceEvent ? getEventRootEventId(sourceEvent) : "") ||
+    sourceRecordId ||
+    resolvedFlowId ||
+    id;
+
+  const resolvedSourceRecordId =
+    sourceRecordId ||
+    (sourceEvent ? getEventSourceRecordId(sourceEvent) : "") ||
+    resolvedRootEventId ||
+    resolvedFlowId ||
+    id;
+
+  const resolvedWorkspaceId =
+    sortedTimeline.find((item) => toText(item.workspaceId))?.workspaceId ||
+    (sourceEvent ? getEventWorkspaceId(sourceEvent) : "") ||
+    toText(flow.workspace_id) ||
+    "production";
+
   let incidents: IncidentItem[] = [];
 
   try {
@@ -828,10 +1005,11 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
     const identifiers = [
       id,
-      flowId,
-      rootEventId,
-      sourceRecordId,
+      resolvedFlowId,
+      resolvedRootEventId,
+      resolvedSourceRecordId,
       sourceEvent ? getEventLinkedCommand(sourceEvent) : "",
+      ...mergedCommands.map((command) => toText(command.id)),
     ].filter(Boolean);
 
     incidents = dedupeIncidents(
@@ -852,13 +1030,12 @@ export default async function FlowDetailPage({ params }: PageProps) {
     incidents = [];
   }
 
-  const readingMode: "registry-only" | "enriched" =
-    flow.reading_mode === "registry-only" || baseCommands.length === 0
-      ? "registry-only"
-      : "enriched";
+  const hasDetailedCommands = mergedCommands.length > 0;
+  const readingMode: "registry-only" | "enriched" = hasDetailedCommands
+    ? "enriched"
+    : "registry-only";
 
-  const isPartialObservability =
-    readingMode === "registry-only" || toBoolean(flow.is_partial, false);
+  const isPartialObservability = !hasDetailedCommands;
 
   const title = buildTitle(flow, sourceEvent, id);
   const resolvedStatus = resolveFlowStatus(flow, sortedTimeline, sourceEvent);
@@ -895,13 +1072,13 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const incidentCount = incidents.length;
 
   const graphCommands =
-    readingMode === "enriched"
+    hasDetailedCommands
       ? sortedTimeline.map((item) => ({
           id: item.id,
           capability: item.capability,
           status: item.status,
           parent_command_id: item.parentCommandId,
-          flow_id: item.flowId || flowId || rootEventId || sourceRecordId || id,
+          flow_id: item.flowId || resolvedFlowId,
         }))
       : [];
 
@@ -910,9 +1087,9 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const incidentsHref = (() => {
     const params = new URLSearchParams();
 
-    if (flowId) params.set("flow_id", flowId);
-    if (rootEventId) params.set("root_event_id", rootEventId);
-    if (sourceRecordId) params.set("source_record_id", sourceRecordId);
+    if (resolvedFlowId) params.set("flow_id", resolvedFlowId);
+    if (resolvedRootEventId) params.set("root_event_id", resolvedRootEventId);
+    if (resolvedSourceRecordId) params.set("source_record_id", resolvedSourceRecordId);
     params.set("from", "flow_detail");
 
     return `/incidents?${params.toString()}`;
@@ -1065,17 +1242,17 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
         <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
-            Flow key: <span className="break-all text-zinc-200">{title}</span>
+            Flow key: <span className="break-all text-zinc-200">{resolvedFlowId}</span>
           </div>
           <div>
             Root event:{" "}
-            <span className="break-all text-zinc-200">{rootEventId || "—"}</span>
+            <span className="break-all text-zinc-200">
+              {resolvedRootEventId || "—"}
+            </span>
           </div>
           <div>
             Workspace:{" "}
-            <span className="text-zinc-200">
-              {toText(flow.workspace_id) || "production"}
-            </span>
+            <span className="text-zinc-200">{resolvedWorkspaceId}</span>
           </div>
           <div>
             Dernière étape: <span className="text-zinc-200">{terminalCapability}</span>
@@ -1093,9 +1270,9 @@ export default async function FlowDetailPage({ params }: PageProps) {
             </span>
           </div>
 
-          {sourceRecordId ? (
+          {resolvedSourceRecordId ? (
             <div className="md:col-span-2 xl:col-span-3 break-all">
-              Source record: <span className="text-zinc-200">{sourceRecordId}</span>
+              Source record: <span className="text-zinc-200">{resolvedSourceRecordId}</span>
             </div>
           ) : null}
 
@@ -1248,7 +1425,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
                     <div>
                       Flow:{" "}
                       <span className="break-all text-zinc-200">
-                        {item.flowId || flowId || rootEventId || sourceRecordId || "—"}
+                        {item.flowId || resolvedFlowId || "—"}
                       </span>
                     </div>
                   </div>
