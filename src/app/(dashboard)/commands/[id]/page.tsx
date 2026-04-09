@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 import {
   fetchCommandById,
   fetchCommands,
@@ -21,7 +22,11 @@ type PageProps = {
 };
 
 function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function statCardClassName() {
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function actionLinkClassName(
@@ -32,7 +37,7 @@ function actionLinkClassName(
     "inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
 
   if (disabled) {
-    return `${base} cursor-not-allowed border border-white/10 bg-white/5 text-zinc-500 opacity-60`;
+    return `${base} cursor-not-allowed border border-white/10 bg-white/[0.04] text-zinc-500 opacity-60`;
   }
 
   if (variant === "primary") {
@@ -43,7 +48,15 @@ function actionLinkClassName(
     return `${base} border border-rose-500/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15`;
   }
 
-  return `${base} border border-white/10 bg-white/5 text-white hover:bg-white/10`;
+  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+}
+
+function sectionLabelClassName() {
+  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
+}
+
+function metaLabelClassName() {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
 function formatDate(value?: string | null): string {
@@ -142,6 +155,36 @@ function tone(status?: string): string {
   }
 
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
+
+function humanStatusLabel(status: string): string {
+  const normalized = status.trim().toLowerCase();
+
+  if (["done", "success", "completed", "processed", "resolved"].includes(normalized)) {
+    return "Succès";
+  }
+
+  if (["running", "processing"].includes(normalized)) {
+    return "En cours";
+  }
+
+  if (["queued", "pending", "new"].includes(normalized)) {
+    return "En file";
+  }
+
+  if (["retry", "retriable"].includes(normalized)) {
+    return "Retry";
+  }
+
+  if (["error", "failed", "dead", "blocked"].includes(normalized)) {
+    return "Échec";
+  }
+
+  if (normalized === "ignored") {
+    return "Ignorée";
+  }
+
+  return normalized ? normalized.toUpperCase() : "UNKNOWN";
 }
 
 /* ----------------------------- Command helpers ---------------------------- */
@@ -310,6 +353,14 @@ function getCommandTitle(command: CommandItem): string {
   );
 }
 
+function getCommandSummaryLine(command: CommandItem): string {
+  const status = humanStatusLabel(getCommandStatus(command));
+  const capability = getCommandCapability(command);
+  const workspace = getCommandWorkspace(command);
+
+  return `${status} · ${capability} · ${workspace}`;
+}
+
 /* ------------------------------ Event helpers ----------------------------- */
 
 function getEventPayload(event: EventItem): Record<string, unknown> {
@@ -416,6 +467,40 @@ function buildIncidentHref(matchedIncident: IncidentItem | null): string {
   return `/incidents/${encodeURIComponent(matchedIncident.id)}`;
 }
 
+function MetaItem({
+  label,
+  value,
+  breakAll = false,
+}: {
+  label: string;
+  value: ReactNode;
+  breakAll?: boolean;
+}) {
+  return (
+    <div className={breakAll ? "break-all" : undefined}>
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className="mt-1 text-zinc-200">{value}</div>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className={statCardClassName()}>
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className="mt-3 text-xl font-semibold tracking-tight text-white">
+        {value}
+      </div>
+    </div>
+  );
+}
+
 export default async function CommandDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
@@ -510,8 +595,8 @@ export default async function CommandDetailPage({ params }: PageProps) {
   const hasIncident = incidentHref !== "";
 
   return (
-    <div className="space-y-6">
-      <div className="border-b border-white/10 pb-4">
+    <div className="space-y-8">
+      <section className="space-y-4 border-b border-white/10 pb-6">
         <div className="text-sm text-zinc-400">
           <Link
             href="/commands"
@@ -522,130 +607,103 @@ export default async function CommandDetailPage({ params }: PageProps) {
           / {title}
         </div>
 
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
+
+        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
           {title}
         </h1>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="text-sm text-zinc-400">{getCommandSummaryLine(command)}</div>
+
+        <div className="flex flex-wrap items-center gap-2">
           <span
             className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${tone(
               status
             )}`}
           >
-            {status.toUpperCase()}
+            {humanStatusLabel(status).toUpperCase()}
           </span>
 
-          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
+          <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-300">
             {capability}
           </span>
 
           {toolKey ? (
-            <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
+            <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-300">
               TOOL {toolKey}
             </span>
           ) : null}
 
           {toolMode ? (
-            <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
+            <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-300">
               MODE {toolMode}
             </span>
           ) : null}
         </div>
-      </div>
+      </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Created</div>
-          <div className="mt-3 text-xl font-semibold text-white">
-            {formatDate(getCommandCreatedAt(command))}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Started</div>
-          <div className="mt-3 text-xl font-semibold text-white">
-            {formatDate(getCommandStartedAt(command))}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Finished</div>
-          <div className="mt-3 text-xl font-semibold text-white">
-            {formatDate(getCommandFinishedAt(command))}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Updated</div>
-          <div className="mt-3 text-xl font-semibold text-white">
-            {formatDate(getCommandUpdatedAt(command))}
-          </div>
-        </div>
+        <StatCard label="Created" value={formatDate(getCommandCreatedAt(command))} />
+        <StatCard label="Started" value={formatDate(getCommandStartedAt(command))} />
+        <StatCard label="Finished" value={formatDate(getCommandFinishedAt(command))} />
+        <StatCard label="Updated" value={formatDate(getCommandUpdatedAt(command))} />
       </section>
 
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Command identity</div>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className={`${cardClassName()} xl:col-span-2`}>
+          <div className="mb-5 text-lg font-medium text-white">Command identity</div>
 
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            ID: <span className="break-all text-zinc-200">{command.id}</span>
-          </div>
-          <div>
-            Status: <span className="text-zinc-200">{status}</span>
-          </div>
-          <div>
-            Capability: <span className="text-zinc-200">{capability}</span>
-          </div>
-          <div>
-            Workspace: <span className="text-zinc-200">{workspace}</span>
-          </div>
-          <div>
-            Run: <span className="break-all text-zinc-200">{runId}</span>
-          </div>
-          <div>
-            Parent: <span className="break-all text-zinc-200">{parentId || "—"}</span>
-          </div>
-          <div>
-            Flow: <span className="break-all text-zinc-200">{flowId || "—"}</span>
-          </div>
-          <div>
-            Root event:{" "}
-            <span className="break-all text-zinc-200">{rootEventId || "—"}</span>
-          </div>
-          <div>
-            Source event:{" "}
-            <span className="break-all text-zinc-200">{sourceEventId || "—"}</span>
+          <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+            <MetaItem label="ID" value={String(command.id)} breakAll />
+            <MetaItem label="Status" value={status} />
+            <MetaItem label="Capability" value={capability} />
+            <MetaItem label="Workspace" value={workspace} />
+            <MetaItem label="Run" value={runId} breakAll />
+            <MetaItem label="Parent" value={parentId || "—"} breakAll />
+            <MetaItem label="Flow" value={flowId || "—"} breakAll />
+            <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
+            <MetaItem label="Source event" value={sourceEventId || "—"} breakAll />
+
+            {errorText ? (
+              <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+                <div className={metaLabelClassName()}>Error</div>
+                <div className="mt-1 break-all text-zinc-200">{errorText}</div>
+              </div>
+            ) : null}
           </div>
         </div>
-      </section>
 
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Routing diagnostic</div>
+        <div className={cardClassName()}>
+          <div className="mb-5 text-lg font-medium text-white">Routing diagnostic</div>
 
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
-          <div>
-            Event match:{" "}
-            <span className="break-all text-zinc-200">
-              {matchedEvent?.id || "Aucun event lié trouvé"}
-            </span>
-          </div>
-          <div>
-            Incident match:{" "}
-            <span className="break-all text-zinc-200">
-              {matchedIncident?.id || "Aucun incident lié trouvé"}
-            </span>
-          </div>
-          <div>
-            Flow target:{" "}
-            <span className="break-all text-zinc-200">
-              {flowId || rootEventId || sourceEventId || command.id || "—"}
-            </span>
-          </div>
-          <div>
-            Error:{" "}
-            <span className="break-all text-zinc-200">
-              {errorText || "—"}
-            </span>
+          <div className="space-y-4 text-sm">
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-zinc-400">Event match</span>
+              <span className="break-all text-right text-zinc-200">
+                {matchedEvent?.id || "Aucun event lié trouvé"}
+              </span>
+            </div>
+
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-zinc-400">Incident match</span>
+              <span className="break-all text-right text-zinc-200">
+                {matchedIncident?.id || "Aucun incident lié trouvé"}
+              </span>
+            </div>
+
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-zinc-400">Flow target</span>
+              <span className="break-all text-right text-zinc-200">
+                {flowId || rootEventId || sourceEventId || String(command.id) || "—"}
+              </span>
+            </div>
+
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-zinc-400">Error</span>
+              <span className="break-all text-right text-zinc-200">
+                {errorText || "—"}
+              </span>
+            </div>
           </div>
         </div>
       </section>
