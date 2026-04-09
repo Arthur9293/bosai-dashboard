@@ -63,6 +63,10 @@ function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
+function statCardClassName(): string {
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
 function sectionLabelClassName(): string {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
@@ -597,7 +601,7 @@ export default async function OverviewPage() {
 
   const commandStats = commands?.stats as CommandStatsCompat | undefined;
   const commandItems: CommandItem[] = Array.isArray(commands?.commands)
-    ? commands!.commands
+    ? commands.commands
     : [];
   const queuedCommands = commandStats?.queue ?? commandStats?.queued ?? 0;
   const runningCommands = commandStats?.running ?? 0;
@@ -612,8 +616,7 @@ export default async function OverviewPage() {
   const queuedEvents = events?.stats?.queued ?? 0;
   const processedEvents = events?.stats?.processed ?? 0;
   const eventErrors = events?.stats?.error ?? 0;
-  const totalEvents =
-    newEvents + queuedEvents + processedEvents + eventErrors;
+  const totalEvents = newEvents + queuedEvents + processedEvents + eventErrors;
 
   const incidentItems: IncidentItem[] = incidents?.incidents ?? [];
   const openIncidents =
@@ -630,10 +633,14 @@ export default async function OverviewPage() {
     .filter((incident) => isOpenIncident(incident) || isEscalatedIncident(incident))
     .sort((a, b) => {
       const aTs = new Date(
-        toText(a.updated_at, "") || toText(a.created_at, "") || 0
+        toText((a as { updated_at?: string }).updated_at, "") ||
+          toText((a as { created_at?: string }).created_at, "") ||
+          0
       ).getTime();
       const bTs = new Date(
-        toText(b.updated_at, "") || toText(b.created_at, "") || 0
+        toText((b as { updated_at?: string }).updated_at, "") ||
+          toText((b as { created_at?: string }).created_at, "") ||
+          0
       ).getTime();
 
       const aPriority =
@@ -948,7 +955,11 @@ export default async function OverviewPage() {
       <SectionBlock
         title="SLA snapshot"
         description="Répartition actuelle des signaux SLA."
-        action={<Link href="/sla" className={ctaClassName("primary")}>Ouvrir la vue SLA</Link>}
+        action={
+          <Link href="/sla" className={ctaClassName("primary")}>
+            Ouvrir la vue SLA
+          </Link>
+        }
       >
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-6">
           <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
@@ -998,7 +1009,11 @@ export default async function OverviewPage() {
       <SectionBlock
         title="Recent activity"
         description="Dernières commands observées par BOSAI."
-        action={<Link href="/commands" className={ctaClassName("soft")}>Voir toutes les commands</Link>}
+        action={
+          <Link href="/commands" className={ctaClassName("soft")}>
+            Voir toutes les commands
+          </Link>
+        }
       >
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {recentCommands.slice(0, 5).map((command) => (
