@@ -15,7 +15,15 @@ type PageProps = {
 };
 
 function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function statCardClassName() {
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function emptyStateClassName() {
+  return "rounded-[28px] border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500";
 }
 
 function actionLinkClassName(
@@ -25,7 +33,7 @@ function actionLinkClassName(
     return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
 function sectionLabelClassName() {
@@ -123,6 +131,42 @@ function tone(status?: string): string {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function humanStatusLabel(status?: string): string {
+  const normalized = (status || "").trim().toLowerCase();
+
+  if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
+    return "Succès";
+  }
+
+  if (["queued", "pending", "new"].includes(normalized)) {
+    return "En file";
+  }
+
+  if (["running", "processing"].includes(normalized)) {
+    return "En cours";
+  }
+
+  if (["retry", "retriable"].includes(normalized)) {
+    return "Retry";
+  }
+
+  if (["ignored"].includes(normalized)) {
+    return "Ignorée";
+  }
+
+  if (["error", "failed", "dead", "blocked"].includes(normalized)) {
+    return "Échec";
+  }
+
+  return normalized ? normalized.toUpperCase() : "UNKNOWN";
+}
+
+function cleanCapabilityLabel(value: string): string {
+  const raw = toText(value, "");
+  if (!raw) return "unknown_capability";
+  return raw.replace(/_/g, " ");
+}
+
 function getCommandInput(command: CommandItem): Record<string, unknown> {
   return parseMaybeJson(command.input);
 }
@@ -159,7 +203,7 @@ function getCommandCapability(command: CommandItem): string {
 function getCommandTitle(command: CommandItem): string {
   return (
     toTextOrEmpty(command.name) ||
-    getCommandCapability(command) ||
+    cleanCapabilityLabel(getCommandCapability(command)) ||
     "Command detail"
   );
 }
@@ -283,6 +327,14 @@ function getCommandError(command: CommandItem): string {
   return toTextOrEmpty(command.error);
 }
 
+function getCommandSummaryLine(command: CommandItem): string {
+  return [
+    humanStatusLabel(getCommandStatus(command)),
+    cleanCapabilityLabel(getCommandCapability(command)),
+    getCommandWorkspace(command),
+  ].join(" · ");
+}
+
 function commandMatchesFilters(
   command: CommandItem,
   filters: {
@@ -291,23 +343,21 @@ function commandMatchesFilters(
     sourceEventId: string;
   }
 ) {
-  const flowId = getCommandFlowId(command);
-  const rootEventId = getCommandRootEventId(command);
-  const sourceEventId = getCommandSourceEventId(command);
+  const commandValues = [
+    getCommandFlowId(command),
+    getCommandRootEventId(command),
+    getCommandSourceEventId(command),
+  ]
+    .map((value) => value.trim())
+    .filter(Boolean);
 
-  if (filters.flowId && flowId !== filters.flowId) {
-    return false;
-  }
+  const filterValues = [filters.flowId, filters.rootEventId, filters.sourceEventId]
+    .map((value) => value.trim())
+    .filter(Boolean);
 
-  if (filters.rootEventId && rootEventId !== filters.rootEventId) {
-    return false;
-  }
+  if (filterValues.length === 0) return true;
 
-  if (filters.sourceEventId && sourceEventId !== filters.sourceEventId) {
-    return false;
-  }
-
-  return true;
+  return filterValues.some((filterValue) => commandValues.includes(filterValue));
 }
 
 function getBackToFlowsHref(filters: {
@@ -328,6 +378,99 @@ function getBackToFlowsHref(filters: {
   }
 
   return "/flows";
+}
+
+function getCommandStatusBucket(command: CommandItem) {
+  const normalized = getCommandStatus(command).toLowerCase();
+
+  if (["queued", "pending", "new"].includes(normalized)) return "queued";
+  if (["running", "processing"].includes(normalized)) return "running";
+  if (["retry", "retriable"].includes(normalized)) return "retry";
+  if (["error", "failed", "dead", "blocked"].includes(normalized)) return "failed";
+  if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
+    return "done";
+  }
+
+  return "other";
+}
+
+function getCommandPriority(command: CommandItem): number {
+  const bucket = getCommandStatusBucket(command);
+
+  if (bucket === "running") return 0;
+  if (bucket === "retry") return 1;
+  if (bucket === "failed") return 2;
+  if (bucket === "queued") return 3;
+  if (bucket === "done") return 4;
+  return 5;
+}
+
+function getCommandTimestamp(command: CommandItem): number {
+  return new Date(
+    getCommandFinishedAt(command) ||
+      getCommandStartedAt(command) ||
+      getCommandCreatedAt(command) ||
+      0
+  ).getTime();
+}
+
+function sortCommands(items: CommandItem[]) {
+  return [...items].sort((a, b) => {
+    const priorityDiff = getCommandPriority(a) - getCommandPriority(b);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    return getCommandTimestamp(b) - getCommandTimestamp(a);
+  });
+}
+
+function sortDoneCommands(items: CommandItem[]) {
+  return [...items].sort((a, b) => getCommandTimestamp(b) - getCommandTimestamp(a));
+}
+
+function StatCard({
+  label,
+  value,
+  toneClass,
+}: {
+  label: string;
+  value: number;
+  toneClass: string;
+}) {
+  return (
+    <div className={statCardClassName()}>
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className={`mt-3 text-4xl font-semibold tracking-tight ${toneClass}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function SectionBlock({
+  title,
+  description,
+  count,
+  children,
+}: {
+  title: string;
+  description: string;
+  count: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-2">
+          <div className={sectionLabelClassName()}>{title}</div>
+          <p className="max-w-3xl text-base text-zinc-400">{description}</p>
+        </div>
+
+        <div className="text-sm text-zinc-500">{count}</div>
+      </div>
+
+      {children}
+    </section>
+  );
 }
 
 function CommandCard({ command }: { command: CommandItem }) {
@@ -359,27 +502,29 @@ function CommandCard({ command }: { command: CommandItem }) {
               {title}
             </Link>
 
+            <div className="text-sm text-zinc-400">{getCommandSummaryLine(command)}</div>
+
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
                   status
                 )}`}
               >
-                {status.toUpperCase()}
+                {humanStatusLabel(status).toUpperCase()}
               </span>
 
-              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                {capability}
+              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
+                {cleanCapabilityLabel(capability)}
               </span>
 
               {toolKey ? (
-                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
                   TOOL {toolKey}
                 </span>
               ) : null}
 
               {toolMode ? (
-                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
                   MODE {toolMode}
                 </span>
               ) : null}
@@ -441,7 +586,7 @@ function CommandCard({ command }: { command: CommandItem }) {
             </div>
           </div>
 
-          <div className="md:col-span-2 xl:col-span-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+          <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>Error</div>
             <div className="mt-1 break-all text-zinc-200">{errorText || "—"}</div>
           </div>
@@ -492,47 +637,33 @@ export default async function CommandsPage({ searchParams }: PageProps) {
       )
     : commands;
 
-  const queuedCommands = visibleCommands.filter((item) =>
-    ["queued", "pending", "new"].includes(getCommandStatus(item).toLowerCase())
+  const queuedCommands = visibleCommands.filter(
+    (item) => getCommandStatusBucket(item) === "queued"
   );
 
-  const runningCommands = visibleCommands.filter((item) =>
-    ["running", "processing"].includes(getCommandStatus(item).toLowerCase())
+  const runningCommands = visibleCommands.filter(
+    (item) => getCommandStatusBucket(item) === "running"
   );
 
-  const retryCommands = visibleCommands.filter((item) =>
-    ["retry", "retriable"].includes(getCommandStatus(item).toLowerCase())
+  const retryCommands = visibleCommands.filter(
+    (item) => getCommandStatusBucket(item) === "retry"
   );
 
-  const failedCommands = visibleCommands.filter((item) =>
-    ["error", "failed", "dead", "blocked"].includes(
-      getCommandStatus(item).toLowerCase()
+  const failedCommands = visibleCommands.filter(
+    (item) => getCommandStatusBucket(item) === "failed"
+  );
+
+  const doneCommands = visibleCommands.filter(
+    (item) => getCommandStatusBucket(item) === "done"
+  );
+
+  const needsAttentionCommands = sortCommands(
+    visibleCommands.filter((item) =>
+      ["queued", "running", "retry", "failed"].includes(getCommandStatusBucket(item))
     )
   );
 
-  const doneCommands = visibleCommands.filter((item) =>
-    ["processed", "done", "success", "completed", "resolved"].includes(
-      getCommandStatus(item).toLowerCase()
-    )
-  );
-
-  const sortedCommands = [...visibleCommands].sort((a, b) => {
-    const aTs = new Date(
-      getCommandFinishedAt(a) ||
-        getCommandStartedAt(a) ||
-        getCommandCreatedAt(a) ||
-        0
-    ).getTime();
-
-    const bTs = new Date(
-      getCommandFinishedAt(b) ||
-        getCommandStartedAt(b) ||
-        getCommandCreatedAt(b) ||
-        0
-    ).getTime();
-
-    return bTs - aTs;
-  });
+  const completedCommands = sortDoneCommands(doneCommands);
 
   const backToFlowsHref =
     from === "flows" || from === "flow_detail"
@@ -556,26 +687,26 @@ export default async function CommandsPage({ searchParams }: PageProps) {
       </section>
 
       {hasFilters ? (
-        <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5">
+        <section className="rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-5 md:p-6">
           <div className="mb-4 text-lg font-medium text-emerald-200">
             Filtré depuis Flows
           </div>
 
           <div className="flex flex-wrap gap-3">
             {flowId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
                 flow_id: {flowId}
               </span>
             ) : null}
 
             {rootEventId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
                 root_event_id: {rootEventId}
               </span>
             ) : null}
 
             {sourceEventId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200">
+              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
                 source_event_id: {sourceEventId}
               </span>
             ) : null}
@@ -594,52 +725,53 @@ export default async function CommandsPage({ searchParams }: PageProps) {
       ) : null}
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Queued</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-amber-300">
-            {queuedCommands.length}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Running</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-sky-300">
-            {runningCommands.length}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Retry</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-violet-300">
-            {retryCommands.length}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Failed</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-red-300">
-            {failedCommands.length}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Done</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-emerald-300">
-            {doneCommands.length}
-          </div>
-        </div>
+        <StatCard label="Queued" value={queuedCommands.length} toneClass="text-amber-300" />
+        <StatCard label="Running" value={runningCommands.length} toneClass="text-sky-300" />
+        <StatCard label="Retry" value={retryCommands.length} toneClass="text-violet-300" />
+        <StatCard label="Failed" value={failedCommands.length} toneClass="text-red-300" />
+        <StatCard label="Done" value={doneCommands.length} toneClass="text-emerald-300" />
       </section>
 
-      {sortedCommands.length === 0 ? (
-        <section className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500">
+      {visibleCommands.length === 0 ? (
+        <section className={emptyStateClassName()}>
           Aucune command visible pour le moment.
         </section>
       ) : (
-        <section className="space-y-4">
-          {sortedCommands.map((command) => (
-            <CommandCard key={String(command.id)} command={command} />
-          ))}
-        </section>
+        <div className="space-y-8">
+          <SectionBlock
+            title="Needs attention"
+            description="Commands à surveiller en priorité : en file, en cours, en retry ou en échec."
+            count={needsAttentionCommands.length}
+          >
+            {needsAttentionCommands.length === 0 ? (
+              <div className={emptyStateClassName()}>Aucune command active.</div>
+            ) : (
+              <div className="space-y-4">
+                {needsAttentionCommands.map((command) => (
+                  <CommandCard key={String(command.id)} command={command} />
+                ))}
+              </div>
+            )}
+          </SectionBlock>
+
+          <SectionBlock
+            title="Completed commands"
+            description="Historique des commands terminées avec succès, triées de la plus récente à la plus ancienne."
+            count={completedCommands.length}
+          >
+            {completedCommands.length === 0 ? (
+              <div className={emptyStateClassName()}>
+                Aucune command terminée.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {completedCommands.map((command) => (
+                  <CommandCard key={String(command.id)} command={command} />
+                ))}
+              </div>
+            )}
+          </SectionBlock>
+        </div>
       )}
     </div>
   );
