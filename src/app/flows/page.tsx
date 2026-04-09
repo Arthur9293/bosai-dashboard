@@ -247,7 +247,52 @@ function compactTechnicalId(value: string, max = 32): string {
   return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
 }
 
+function humanStatusLabel(status: FlowStatus): string {
+  if (status === "running") return "En cours";
+  if (status === "failed") return "Échec";
+  if (status === "retry") return "Retry";
+  if (status === "success") return "Succès";
+  return "Inconnu";
+}
+
+function cleanCapabilityLabel(value: string): string {
+  const raw = toText(value);
+  if (!raw) return "Non disponible";
+
+  return raw.replace(/_/g, " ");
+}
+
 function getDisplayTitle(flow: FlowCard): string {
+  if (flow.readingMode === "enriched") {
+    const root = toText(flow.rootCapability);
+    const terminal = toText(flow.terminalCapability);
+
+    if (
+      root &&
+      terminal &&
+      root !== "Non disponible" &&
+      terminal !== "Non disponible"
+    ) {
+      if (root === terminal) {
+        return cleanCapabilityLabel(root);
+      }
+
+      return `${cleanCapabilityLabel(root)} → ${cleanCapabilityLabel(terminal)}`;
+    }
+
+    if (root && root !== "Non disponible") {
+      return cleanCapabilityLabel(root);
+    }
+  }
+
+  if (flow.readingMode === "registry-only") {
+    if (flow.hasIncident) {
+      return "Flow partiel avec incident";
+    }
+
+    return "Flow registre uniquement";
+  }
+
   return (
     toText(flow.flowId) ||
     toText(flow.sourceRecordId) ||
@@ -256,18 +301,36 @@ function getDisplayTitle(flow: FlowCard): string {
   );
 }
 
-function displayCardTitle(flow: FlowCard): string {
-  const raw = getDisplayTitle(flow);
-
-  if (isRecordIdLike(raw)) {
-    return compactTechnicalId(raw, 22);
+function getTechnicalSubtitle(flow: FlowCard): string {
+  if (flow.readingMode === "enriched") {
+    return toText(flow.flowId) || toText(flow.rootEventId) || "—";
   }
 
-  if (raw.length > 30) {
-    return compactTechnicalId(raw, 30);
+  return (
+    toText(flow.sourceRecordId) ||
+    toText(flow.rootEventId) ||
+    toText(flow.flowId) ||
+    "—"
+  );
+}
+
+function getFlowSummaryLine(flow: FlowCard): string {
+  if (flow.readingMode === "enriched") {
+    const parts = [
+      `${flow.steps} étape${flow.steps > 1 ? "s" : ""}`,
+      humanStatusLabel(flow.status),
+      flow.durationMs > 0 ? formatDuration(flow.durationMs) : "",
+    ].filter(Boolean);
+
+    return parts.join(" · ");
   }
 
-  return raw;
+  const parts = [
+    "Lecture partielle",
+    flow.hasIncident ? incidentLabel(flow) : "Sans incident actif",
+  ].filter(Boolean);
+
+  return parts.join(" · ");
 }
 
 function flowActivityLabel(flow: FlowCard): string {
@@ -306,8 +369,8 @@ function computeFlowStatus(commands: NormalizedCommand[]): FlowStatus {
   const kinds = commands.map((cmd) => getStatusKind(cmd.status));
 
   if (kinds.includes("running")) return "running";
-  if (kinds.includes("retry")) return "retry";
   if (kinds.includes("failed")) return "failed";
+  if (kinds.includes("retry")) return "retry";
 
   if (
     kinds.length > 0 &&
@@ -361,8 +424,8 @@ function getIncidentStatusKind(
 function computeIncidentOnlyStatus(group: AnyRecord[]): FlowStatus {
   const kinds = group.map(getIncidentStatusKind);
 
-  if (kinds.includes("retry")) return "retry";
   if (kinds.includes("failed")) return "failed";
+  if (kinds.includes("retry")) return "retry";
   if (kinds.length > 0 && kinds.every((kind) => kind === "success")) {
     return "success";
   }
@@ -372,8 +435,8 @@ function computeIncidentOnlyStatus(group: AnyRecord[]): FlowStatus {
 
 function getFlowStatusPriority(status: FlowStatus): number {
   if (status === "running") return 0;
-  if (status === "retry") return 1;
-  if (status === "failed") return 2;
+  if (status === "failed") return 1;
+  if (status === "retry") return 2;
   if (status === "success") return 3;
   return 4;
 }
@@ -650,113 +713,22 @@ function computeRegistryStatus(flow: AnyRecord): FlowStatus {
       : {};
 
   const running = toNumber(stats.running, 0) + toNumber(stats.queued, 0) > 0;
-  const retry = toNumber(stats.retry, 0) > 0;
   const failed = toNumber(stats.error, 0) + toNumber(stats.dead, 0) > 0;
-  const success = toNumber(stats.done, 0) > 0 && !running && !retry && !failed;
+  const retry = toNumber(stats.retry, 0) > 0;
+  const success = toNumber(stats.done, 0) > 0 && !running && !failed && !retry;
 
   if (running) return "running";
-  if (retry) return "retry";
   if (failed) return "failed";
+  if (retry) return "retry";
   if (success) return "success";
 
   const rawStatus = toText(flow.status).toLowerCase();
   if (rawStatus === "running") return "running";
-  if (rawStatus === "retry") return "retry";
   if (rawStatus === "failed") return "failed";
+  if (rawStatus === "retry") return "retry";
   if (["success", "done", "completed"].includes(rawStatus)) return "success";
 
   return "unknown";
-}
-
-function getFlowCanonicalKey(flow: FlowCard): string {
-  const candidates = uniqueTexts([
-    flow.flowId,
-    flow.rootEventId !== "—" ? flow.rootEventId : "",
-    flow.sourceRecordId || "",
-    flow.detailId,
-    flow.key,
-  ]);
-
-  return candidates[0] || flow.key;
-}
-
-function flowCardsOverlap(a: FlowCard, b: FlowCard): boolean {
-  const aKeys = new Set(
-    uniqueTexts([
-      a.flowId,
-      a.rootEventId !== "—" ? a.rootEventId : "",
-      a.sourceRecordId || "",
-      a.detailId,
-    ])
-  );
-
-  const bKeys = uniqueTexts([
-    b.flowId,
-    b.rootEventId !== "—" ? b.rootEventId : "",
-    b.sourceRecordId || "",
-    b.detailId,
-  ]);
-
-  return bKeys.some((key) => aKeys.has(key));
-}
-
-function pickBetterFlowCard(current: FlowCard, candidate: FlowCard): FlowCard {
-  if (
-    current.readingMode !== candidate.readingMode &&
-    candidate.readingMode === "enriched"
-  ) {
-    return candidate;
-  }
-
-  if (
-    current.readingMode !== candidate.readingMode &&
-    current.readingMode === "enriched"
-  ) {
-    return current;
-  }
-
-  const currentPriority = getFlowStatusPriority(current.status);
-  const candidatePriority = getFlowStatusPriority(candidate.status);
-
-  if (candidatePriority < currentPriority) {
-    return candidate;
-  }
-
-  if (currentPriority < candidatePriority) {
-    return current;
-  }
-
-  if (candidate.lastActivityTs > current.lastActivityTs) {
-    return candidate;
-  }
-
-  if (current.lastActivityTs > candidate.lastActivityTs) {
-    return current;
-  }
-
-  if (candidate.steps > current.steps) {
-    return candidate;
-  }
-
-  return current;
-}
-
-function dedupeFlowCards(cards: FlowCard[]): FlowCard[] {
-  const map = new Map<string, FlowCard>();
-
-  for (const card of cards) {
-    const key = getFlowCanonicalKey(card);
-    const existing = map.get(key);
-
-    if (!existing) {
-      map.set(key, card);
-      continue;
-    }
-
-    map.set(key, pickBetterFlowCard(existing, card));
-  }
-
-  return Array.from(map.values());
 }
 
 function buildEnrichedFlowCards(
@@ -865,15 +837,6 @@ function buildRegistryOnlyFlowCards(
       sourceRecordId,
     });
 
-    const registryStatus = computeRegistryStatus(flow);
-    const derivedIncidentStatus =
-      linkedIncidents.length > 0
-        ? computeIncidentOnlyStatus(linkedIncidents)
-        : "unknown";
-
-    const finalStatus =
-      registryStatus !== "unknown" ? registryStatus : derivedIncidentStatus;
-
     const key = `registry:${sourceRecordId || flowId || rootEventId}`;
     const detailId = sourceRecordId || flowId || rootEventId || key;
 
@@ -883,7 +846,7 @@ function buildRegistryOnlyFlowCards(
       flowId: flowId || detailId,
       rootEventId: rootEventId || "—",
       workspaceId,
-      status: finalStatus,
+      status: computeRegistryStatus(flow),
       steps: 0,
       rootCapability: "Registre uniquement",
       terminalCapability: "Registre uniquement",
@@ -1063,63 +1026,24 @@ function FlowListCard({
   activeKey: string;
 }) {
   const isActive = isFlowActive(flow, activeKey);
-  const displayTitle = displayCardTitle(flow);
-  const rawTitle = getDisplayTitle(flow);
-
-  const readingLabel =
-    flow.readingMode === "registry-only" ? "Registre uniquement" : "Enrichie";
-
-  const rootLabel =
-    flow.readingMode === "registry-only"
-      ? toText(flow.sourceRecordId) || toText(flow.rootEventId) || "—"
-      : toText(flow.rootEventId) || "—";
-
+  const title = getDisplayTitle(flow);
+  const technicalSubtitle = getTechnicalSubtitle(flow);
+  const summaryLine = getFlowSummaryLine(flow);
   const incidentHref = buildIncidentsHref(flow);
   const selectHref = buildSelectHref(flow);
   const detailHref = buildDetailHref(flow);
 
   return (
     <article className={cardClassName(isActive)}>
-      <div className="flex h-full flex-col gap-5 xl:gap-3.5">
-        <div className="space-y-4 xl:space-y-2.5">
-          <h3
-            title={rawTitle}
-            className="break-words text-[1.9rem] font-semibold leading-[1.03] tracking-tight text-white sm:text-[2.1rem] xl:text-[1.6rem] 2xl:text-[1.7rem] md:min-h-[4.5rem] xl:min-h-[3.1rem] xl:overflow-hidden xl:[display:-webkit-box] xl:[-webkit-box-orient:vertical] xl:[-webkit-line-clamp:2]"
-          >
-            {displayTitle}
-          </h3>
-
-          <div className="grid gap-2.5 text-[15px] leading-6 text-zinc-300 xl:grid-cols-2 xl:gap-x-5 xl:gap-y-1.5 xl:text-[14px] xl:leading-5">
-            <div>
-              Lecture: <span className="text-zinc-100">{readingLabel}</span>
-            </div>
-
-            {flow.readingMode === "registry-only" ? (
-              <div className="break-all xl:col-span-2">
-                Source / Root record: <span className="text-zinc-100">{rootLabel}</span>
-              </div>
-            ) : (
-              <div className="break-all xl:col-span-2">
-                Root: <span className="text-zinc-100">{rootLabel}</span>
-              </div>
-            )}
-
-            <div>
-              Activité: <span className="text-zinc-100">{flowActivityLabel(flow)}</span>
-            </div>
-
-            <div>
-              Incident: <span className="text-zinc-100">{incidentLabel(flow)}</span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2 pt-1 xl:pt-0.5">
+      <div className="flex h-full flex-col gap-5 xl:gap-4">
+        <div className="space-y-4 xl:space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
             <span
               className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
                 flow.status
               )}`}
             >
-              {flow.status.toUpperCase()}
+              {humanStatusLabel(flow.status).toUpperCase()}
             </span>
 
             {flow.isPartial ? (
@@ -1142,9 +1066,74 @@ function FlowListCard({
               {incidentLabel(flow)}
             </span>
           </div>
+
+          <div className="space-y-2">
+            <div className="text-xs uppercase tracking-[0.2em] text-white/35">
+              {flow.readingMode === "enriched"
+                ? "Flow enrichi"
+                : "Flow registre uniquement"}
+            </div>
+
+            <h3 className="break-words text-[1.7rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.9rem] xl:text-[1.45rem] 2xl:text-[1.55rem]">
+              {title}
+            </h3>
+
+            <div className="break-all text-sm text-zinc-400">
+              {flow.readingMode === "enriched" ? "Flow ID" : "Source / Root"} :{" "}
+              <span className="text-zinc-200">{technicalSubtitle}</span>
+            </div>
+
+            <p className="text-sm leading-6 text-zinc-300">{summaryLine}</p>
+          </div>
+
+          <div className="grid gap-2.5 text-[15px] leading-6 text-zinc-300 xl:grid-cols-2 xl:gap-x-5 xl:gap-y-2 xl:text-[14px] xl:leading-5">
+            <div>
+              Activité :{" "}
+              <span className="text-zinc-100">{flowActivityLabel(flow)}</span>
+            </div>
+
+            <div>
+              Incident :{" "}
+              <span className="text-zinc-100">{incidentLabel(flow)}</span>
+            </div>
+
+            <div>
+              Workspace :{" "}
+              <span className="text-zinc-100">{flow.workspaceId || "production"}</span>
+            </div>
+
+            {flow.readingMode === "enriched" ? (
+              <div>
+                Étapes : <span className="text-zinc-100">{flow.steps}</span>
+              </div>
+            ) : (
+              <div>
+                Lecture : <span className="text-zinc-100">Partielle</span>
+              </div>
+            )}
+
+            {flow.readingMode === "enriched" ? (
+              <>
+                <div className="xl:col-span-2">
+                  Chaîne :{" "}
+                  <span className="text-zinc-100">
+                    {cleanCapabilityLabel(flow.rootCapability)}
+                    {flow.rootCapability !== flow.terminalCapability
+                      ? ` → ${cleanCapabilityLabel(flow.terminalCapability)}`
+                      : ""}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="xl:col-span-2">
+                Dernier état :{" "}
+                <span className="text-zinc-100">{humanStatusLabel(flow.status)}</span>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="mt-auto flex flex-col gap-3 xl:gap-2 pt-2 xl:pt-0.5">
+        <div className="mt-auto flex flex-col gap-3 xl:gap-2 pt-2 xl:pt-1">
           <Link
             href={selectHref}
             className={actionLinkClassName(isActive ? "active" : "default")}
@@ -1271,38 +1260,27 @@ export default async function FlowsPage({ searchParams }: PageProps) {
 
   const normalizedCommands = rawCommands.map(normalizeCommand);
 
-  const enrichedFlows = dedupeFlowCards(
-    sortFlowCards(buildEnrichedFlowCards(normalizedCommands, rawIncidents))
+  const enrichedFlows = sortFlowCards(
+    buildEnrichedFlowCards(normalizedCommands, rawIncidents)
   );
 
-  const registryOnlyBase = dedupeFlowCards(
-    sortFlowCards(buildRegistryOnlyFlowCards(rawFlows, rawIncidents))
+  const registryOnlyFlows = sortFlowCards(
+    buildRegistryOnlyFlowCards(rawFlows, rawIncidents)
   );
 
-  const registryOnlyFlows = dedupeFlowCards(
-    sortFlowCards(
-      registryOnlyBase.filter(
-        (flow) => !enrichedFlows.some((enriched) => flowCardsOverlap(flow, enriched))
-      )
-    )
+  const incidentOnlyFlows = sortFlowCards(
+    buildIncidentOnlyFlowCards(rawIncidents, [
+      ...enrichedFlows,
+      ...registryOnlyFlows,
+    ])
   );
 
-  const incidentOnlyFlows = dedupeFlowCards(
-    sortFlowCards(
-      buildIncidentOnlyFlowCards(rawIncidents, [
-        ...enrichedFlows,
-        ...registryOnlyFlows,
-      ])
-    )
-  );
+  const registrySectionFlows = sortFlowCards([
+    ...registryOnlyFlows,
+    ...incidentOnlyFlows,
+  ]);
 
-  const registrySectionFlows = dedupeFlowCards(
-    sortFlowCards([...registryOnlyFlows, ...incidentOnlyFlows])
-  );
-
-  const allFlows = dedupeFlowCards(
-    sortFlowCards([...enrichedFlows, ...registrySectionFlows])
-  );
+  const allFlows = sortFlowCards([...enrichedFlows, ...registrySectionFlows]);
 
   const needsAttentionFlows = sortFlowCards(
     allFlows.filter((flow) => isNeedsAttention(flow))
