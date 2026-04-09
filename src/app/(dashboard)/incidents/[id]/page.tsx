@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 import {
   fetchIncidents,
   type IncidentItem,
@@ -21,10 +22,14 @@ function cardClassName() {
 }
 
 function actionLinkClassName(
-  variant: "default" | "primary" | "soft" = "default"
+  variant: "default" | "primary" | "soft" | "danger" = "default"
 ) {
   if (variant === "primary") {
     return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+  }
+
+  if (variant === "danger") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
   }
 
   if (variant === "soft") {
@@ -40,6 +45,10 @@ function sectionLabelClassName() {
 
 function metaLabelClassName() {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function statCardClassName() {
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function toText(value: unknown, fallback = ""): string {
@@ -79,6 +88,10 @@ function formatDate(value?: string | number | null): string {
   }).format(d);
 }
 
+function safeUpper(text: string) {
+  return text.trim() ? text.trim().toUpperCase() : "—";
+}
+
 function getIncidentTitle(incident: IncidentItem) {
   return firstText(
     [incident.title, incident.name, incident.error_id],
@@ -104,9 +117,7 @@ function getIncidentStatusNormalized(incident: IncidentItem) {
   }
 
   if (!raw) {
-    if (sla === "breached") {
-      return "open";
-    }
+    if (sla === "breached") return "open";
     return "open";
   }
 
@@ -249,9 +260,7 @@ function getSlaLabel(incident: IncidentItem) {
     Boolean(toText(incident.resolved_at, "")) ||
     getIncidentStatusNormalized(incident) === "resolved";
 
-  if (resolvedLike) {
-    return "RESOLVED";
-  }
+  if (resolvedLike) return "RESOLVED";
 
   const sla = toText(incident.sla_status, "");
   if (sla) return sla.toUpperCase();
@@ -287,10 +296,6 @@ function getSlaTone(incident: IncidentItem) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  if (sla === "open") {
-    return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-  }
-
   const remaining = toNumber(incident.sla_remaining_minutes, Number.NaN);
   if (Number.isFinite(remaining) && remaining < 0) {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
@@ -309,9 +314,7 @@ function getUpdatedAt(incident: IncidentItem) {
 
 function getResolvedAt(incident: IncidentItem) {
   const resolvedAt = toText(incident.resolved_at, "");
-  if (resolvedAt) {
-    return resolvedAt;
-  }
+  if (resolvedAt) return resolvedAt;
 
   if (getIncidentStatusNormalized(incident) === "resolved") {
     return firstText([incident.updated_at, incident.created_at], "");
@@ -405,6 +408,15 @@ function getLinkedCommandHref(incident: IncidentItem) {
   return `/commands/${encodeURIComponent(commandRecord)}`;
 }
 
+function getSummaryLine(incident: IncidentItem) {
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+  const workspace = getWorkspace(incident);
+  const category = getCategory(incident);
+
+  return `${safeUpper(status)} · ${safeUpper(severity)} · ${workspace} · ${category}`;
+}
+
 function isLegacyNoiseIncident(incident: IncidentItem) {
   const title = getIncidentTitle(incident).trim().toLowerCase();
   const category = getCategory(incident).trim().toLowerCase();
@@ -453,13 +465,30 @@ function MetaItem({
   breakAll = false,
 }: {
   label: string;
-  value: React.ReactNode;
+  value: ReactNode;
   breakAll?: boolean;
 }) {
   return (
     <div className={breakAll ? "break-all" : undefined}>
       <div className={metaLabelClassName()}>{label}</div>
       <div className="mt-1 text-zinc-200">{value}</div>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className={statCardClassName()}>
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className="mt-3 text-xl font-semibold tracking-tight text-white">
+        {value}
+      </div>
     </div>
   );
 }
@@ -481,7 +510,11 @@ export default async function IncidentDetailPage({ params }: PageProps) {
     : [];
 
   const cleanIncidents = incidents.filter((item) => !isLegacyNoiseIncident(item));
-  const incident = cleanIncidents.find((item) => String(item.id) === id);
+
+  const incident =
+    cleanIncidents.find((item) => String(item.id) === id) ||
+    cleanIncidents.find((item) => toText(item.error_id, "") === id) ||
+    null;
 
   if (!incident) {
     notFound();
@@ -536,6 +569,8 @@ export default async function IncidentDetailPage({ params }: PageProps) {
           {title}
         </h1>
 
+        <div className="text-sm text-zinc-400">{getSummaryLine(incident)}</div>
+
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${statusTone(
@@ -574,49 +609,24 @@ export default async function IncidentDetailPage({ params }: PageProps) {
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
-        <div className={cardClassName()}>
-          <div className={metaLabelClassName()}>Ouvert</div>
-          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
-            {formatDate(openedAt)}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className={metaLabelClassName()}>Mis à jour</div>
-          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
-            {formatDate(updatedAt)}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className={metaLabelClassName()}>Résolu</div>
-          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
-            {formatDate(resolvedAt)}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className={metaLabelClassName()}>SLA restant</div>
-          <div className="mt-3 text-xl font-semibold tracking-tight text-white">
-            {Number.isFinite(remainingMinutes) ? `${remainingMinutes} min` : "—"}
-          </div>
-        </div>
+        <StatCard label="Ouvert" value={formatDate(openedAt)} />
+        <StatCard label="Mis à jour" value={formatDate(updatedAt)} />
+        <StatCard label="Résolu" value={formatDate(resolvedAt)} />
+        <StatCard
+          label="SLA restant"
+          value={Number.isFinite(remainingMinutes) ? `${remainingMinutes} min` : "—"}
+        />
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-5 text-lg font-medium text-white">
-            Contexte incident
-          </div>
+          <div className="mb-5 text-lg font-medium text-white">Contexte incident</div>
 
           <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
             <MetaItem label="Catégorie" value={category} />
             <MetaItem label="Raison" value={reason} />
             <MetaItem label="Workspace" value={workspace} />
-            <MetaItem
-              label="Source"
-              value={toText(incident.source, "Incidents")}
-            />
+            <MetaItem label="Source" value={toText(incident.source, "Incidents")} />
             <MetaItem label="Worker" value={toText(incident.worker, "—")} />
             <MetaItem label="Error ID" value={errorId} />
             <MetaItem label="Dernière action" value={lastAction} />
@@ -627,7 +637,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             />
             <MetaItem label="Raison décision" value={decisionReason || "—"} />
             <MetaItem label="Next action" value={nextAction || "—"} />
-            <MetaItem label="Priorité" value={priorityScore} />
+            <MetaItem label="Priorité" value={String(priorityScore)} />
 
             <div className="md:col-span-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
               <div className={metaLabelClassName()}>Action suggérée</div>
@@ -637,9 +647,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">
-            Statistiques incident
-          </div>
+          <div className="mb-5 text-lg font-medium text-white">Résumé</div>
 
           <div className="space-y-4 text-sm">
             <div className="flex items-center justify-between gap-4">
@@ -674,7 +682,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-5 text-lg font-medium text-white">Liens flow</div>
+          <div className="mb-5 text-lg font-medium text-white">Liens BOSAI</div>
 
           <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
             <MetaItem
@@ -696,11 +704,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
 
             <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
 
-            <MetaItem
-              label="Source record"
-              value={sourceRecordId || "—"}
-              breakAll
-            />
+            <MetaItem label="Source record" value={sourceRecordId || "—"} breakAll />
 
             <MetaItem label="Run record" value={runRecord} breakAll />
 
