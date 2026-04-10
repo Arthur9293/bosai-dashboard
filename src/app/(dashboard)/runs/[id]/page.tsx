@@ -342,6 +342,11 @@ function getRunDurationMs(run: RunRecord): number {
 
 /* ------------------------------- Commands ------------------------------- */
 
+function getCommandId(command: CommandItem): string {
+  const record = command as Record<string, unknown>;
+  return toText(record.id);
+}
+
 function getCommandInput(command: CommandItem): Record<string, unknown> {
   return parseMaybeJson(command.input);
 }
@@ -353,9 +358,10 @@ function getCommandResult(command: CommandItem): Record<string, unknown> {
 function getCommandRunRecordId(command: CommandItem): string {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
 
   return (
-    toText(command.run_record_id) ||
+    toText(record.run_record_id) ||
     toText(input.run_record_id) ||
     toText(input.runRecordId) ||
     toText(result.run_record_id) ||
@@ -367,9 +373,10 @@ function getCommandRunRecordId(command: CommandItem): string {
 function getCommandRunId(command: CommandItem): string {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
 
   return (
-    toText(command.linked_run) ||
+    toText(record.linked_run) ||
     toText(input.run_id) ||
     toText(input.runId) ||
     toText(result.run_id) ||
@@ -381,9 +388,10 @@ function getCommandRunId(command: CommandItem): string {
 function getCommandFlowId(command: CommandItem): string {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
 
   return (
-    toText(command.flow_id) ||
+    toText(record.flow_id) ||
     toText(input.flow_id) ||
     toText(input.flowId) ||
     toText(result.flow_id) ||
@@ -395,9 +403,10 @@ function getCommandFlowId(command: CommandItem): string {
 function getCommandRootEventId(command: CommandItem): string {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
 
   return (
-    toText(command.root_event_id) ||
+    toText(record.root_event_id) ||
     toText(input.root_event_id) ||
     toText(input.rootEventId) ||
     toText(result.root_event_id) ||
@@ -412,7 +421,6 @@ function getCommandSourceEventId(command: CommandItem): string {
   const record = command as Record<string, unknown>;
 
   return (
-    toText(command.source_event_id) ||
     toText(record.source_event_id) ||
     toText(record.Source_Event_ID) ||
     toText(input.source_event_id) ||
@@ -430,9 +438,10 @@ function getCommandSourceEventId(command: CommandItem): string {
 function getCommandCapability(command: CommandItem): string {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
 
   return (
-    toText(command.capability) ||
+    toText(record.capability) ||
     toText(input.capability) ||
     toText(result.capability) ||
     "Unknown capability"
@@ -442,9 +451,10 @@ function getCommandCapability(command: CommandItem): string {
 function getCommandStatus(command: CommandItem): string {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
 
   return (
-    toText(command.status) ||
+    toText(record.status) ||
     toText(result.status) ||
     toText(result.status_select) ||
     toText(input.status) ||
@@ -453,6 +463,11 @@ function getCommandStatus(command: CommandItem): string {
 }
 
 /* -------------------------------- Events -------------------------------- */
+
+function getEventId(event: EventItem): string {
+  const record = event as Record<string, unknown>;
+  return toText(record.id);
+}
 
 function getEventPayload(event: EventItem): Record<string, unknown> {
   return parseMaybeJson(event.payload);
@@ -463,7 +478,6 @@ function getEventRunId(event: EventItem): string {
   const record = event as Record<string, unknown>;
 
   return (
-    toText(event.run_id) ||
     toText(record.run_id) ||
     toText(record.Run_ID) ||
     toText(payload.run_id) ||
@@ -479,7 +493,6 @@ function getEventLinkedCommand(event: EventItem): string {
   const record = event as Record<string, unknown>;
 
   return (
-    toText(event.command_id) ||
     toText(record.command_id) ||
     toText(record.Command_ID) ||
     toText(record.linked_command) ||
@@ -492,9 +505,10 @@ function getEventLinkedCommand(event: EventItem): string {
 
 function getEventFlowId(event: EventItem): string {
   const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
 
   return (
-    toText(event.flow_id) ||
+    toText(record.flow_id) ||
     toText(payload.flow_id) ||
     toText(payload.flowId) ||
     toText(payload.flowid) ||
@@ -504,9 +518,10 @@ function getEventFlowId(event: EventItem): string {
 
 function getEventRootEventId(event: EventItem): string {
   const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
 
   return (
-    toText(event.root_event_id) ||
+    toText(record.root_event_id) ||
     toText(payload.root_event_id) ||
     toText(payload.rootEventId) ||
     ""
@@ -518,8 +533,6 @@ function getEventSourceRecordId(event: EventItem): string {
   const record = event as Record<string, unknown>;
 
   return (
-    toText(event.source_record_id) ||
-    toText(event.source_event_id) ||
     toText(record.source_record_id) ||
     toText(record.Source_Record_ID) ||
     toText(record.source_event_id) ||
@@ -534,9 +547,10 @@ function getEventSourceRecordId(event: EventItem): string {
 
 function getEventCapability(event: EventItem): string {
   const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
 
   return (
-    toText(event.mapped_capability) ||
+    toText(record.mapped_capability) ||
     toText(payload.mapped_capability) ||
     toText(payload.capability) ||
     "—"
@@ -545,10 +559,11 @@ function getEventCapability(event: EventItem): string {
 
 function getEventType(event: EventItem): string {
   const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
 
   return (
-    toText(event.event_type) ||
-    toText(event.type) ||
+    toText(record.event_type) ||
+    toText(record.type) ||
     toText(payload.event_type) ||
     toText(payload.type) ||
     "Event detail"
@@ -556,19 +571,71 @@ function getEventType(event: EventItem): string {
 }
 
 function getEventStatus(event: EventItem): string {
-  return toText(event.status) || "unknown";
+  const record = event as Record<string, unknown>;
+  return toText(record.status) || "unknown";
 }
 
 /* ------------------------------- Incidents ------------------------------- */
 
+function getIncidentId(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+  return toText(record.id);
+}
+
+function getIncidentRunRecordId(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+  return toText(record.run_record_id);
+}
+
+function getIncidentLinkedRun(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+  return toText(record.linked_run);
+}
+
+function getIncidentRunId(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+  return toText(record.run_id);
+}
+
+function getIncidentCommandId(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+  return toText(record.command_id);
+}
+
+function getIncidentLinkedCommand(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+  return toText(record.linked_command);
+}
+
+function getIncidentFlowId(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+  return toText(record.flow_id);
+}
+
+function getIncidentRootEventId(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+  return toText(record.root_event_id);
+}
+
+function getIncidentSourceRecordId(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+  return toText(record.source_record_id);
+}
+
+function getIncidentSlaStatus(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+  return toText(record.sla_status, "—");
+}
+
 function getIncidentStatus(incident: IncidentItem): string {
-  const direct = String(incident.status || incident.statut_incident || "").trim();
+  const record = incident as Record<string, unknown>;
+  const direct = String(record.status || record.statut_incident || "").trim();
   if (direct) return direct;
 
-  const sla = String(incident.sla_status || "").trim().toLowerCase();
+  const sla = String(record.sla_status || "").trim().toLowerCase();
   const remaining =
-    typeof incident.sla_remaining_minutes === "number"
-      ? incident.sla_remaining_minutes
+    typeof record.sla_remaining_minutes === "number"
+      ? record.sla_remaining_minutes
       : undefined;
 
   if (sla === "breached") return "Open";
@@ -578,7 +645,13 @@ function getIncidentStatus(incident: IncidentItem): string {
 }
 
 function getIncidentTitle(incident: IncidentItem): string {
-  return incident.title || incident.name || incident.error_id || "Untitled incident";
+  const record = incident as Record<string, unknown>;
+  return (
+    toText(record.title) ||
+    toText(record.name) ||
+    toText(record.error_id) ||
+    "Untitled incident"
+  );
 }
 
 /* -------------------------------- Hrefs -------------------------------- */
@@ -589,49 +662,109 @@ function buildFlowHref(
   relatedIncidents: IncidentItem[]
 ): string {
   const fromCommand =
-    relatedCommands.find((item) => getCommandFlowId(item))?.flow_id ||
-    relatedCommands.find((item) => getCommandRootEventId(item))?.root_event_id ||
-    relatedCommands.find((item) => getCommandSourceEventId(item))?.source_event_id;
+    relatedCommands.find((item) => getCommandFlowId(item)) &&
+    getCommandFlowId(relatedCommands.find((item) => getCommandFlowId(item))!);
 
   if (fromCommand) {
-    return `/flows/${encodeURIComponent(String(fromCommand))}`;
+    return `/flows/${encodeURIComponent(fromCommand)}`;
+  }
+
+  const fromCommandRoot =
+    relatedCommands.find((item) => getCommandRootEventId(item)) &&
+    getCommandRootEventId(
+      relatedCommands.find((item) => getCommandRootEventId(item))!
+    );
+
+  if (fromCommandRoot) {
+    return `/flows/${encodeURIComponent(fromCommandRoot)}`;
+  }
+
+  const fromCommandSource =
+    relatedCommands.find((item) => getCommandSourceEventId(item)) &&
+    getCommandSourceEventId(
+      relatedCommands.find((item) => getCommandSourceEventId(item))!
+    );
+
+  if (fromCommandSource) {
+    return `/flows/${encodeURIComponent(fromCommandSource)}`;
   }
 
   const fromEvent =
-    relatedEvents.find((item) => getEventFlowId(item))?.flow_id ||
-    relatedEvents.find((item) => getEventRootEventId(item))?.root_event_id ||
-    relatedEvents.find((item) => getEventSourceRecordId(item))?.source_record_id ||
-    relatedEvents.find((item) => item.source_event_id)?.source_event_id;
+    relatedEvents.find((item) => getEventFlowId(item)) &&
+    getEventFlowId(relatedEvents.find((item) => getEventFlowId(item))!);
 
   if (fromEvent) {
-    return `/flows/${encodeURIComponent(String(fromEvent))}`;
+    return `/flows/${encodeURIComponent(fromEvent)}`;
+  }
+
+  const fromEventRoot =
+    relatedEvents.find((item) => getEventRootEventId(item)) &&
+    getEventRootEventId(
+      relatedEvents.find((item) => getEventRootEventId(item))!
+    );
+
+  if (fromEventRoot) {
+    return `/flows/${encodeURIComponent(fromEventRoot)}`;
+  }
+
+  const fromEventSource =
+    relatedEvents.find((item) => getEventSourceRecordId(item)) &&
+    getEventSourceRecordId(
+      relatedEvents.find((item) => getEventSourceRecordId(item))!
+    );
+
+  if (fromEventSource) {
+    return `/flows/${encodeURIComponent(fromEventSource)}`;
   }
 
   const fromIncident =
-    relatedIncidents.find((item) => item.flow_id)?.flow_id ||
-    relatedIncidents.find((item) => item.root_event_id)?.root_event_id ||
-    relatedIncidents.find((item) => item.source_record_id)?.source_record_id;
+    relatedIncidents.find((item) => getIncidentFlowId(item)) &&
+    getIncidentFlowId(
+      relatedIncidents.find((item) => getIncidentFlowId(item))!
+    );
 
   if (fromIncident) {
-    return `/flows/${encodeURIComponent(String(fromIncident))}`;
+    return `/flows/${encodeURIComponent(fromIncident)}`;
+  }
+
+  const fromIncidentRoot =
+    relatedIncidents.find((item) => getIncidentRootEventId(item)) &&
+    getIncidentRootEventId(
+      relatedIncidents.find((item) => getIncidentRootEventId(item))!
+    );
+
+  if (fromIncidentRoot) {
+    return `/flows/${encodeURIComponent(fromIncidentRoot)}`;
+  }
+
+  const fromIncidentSource =
+    relatedIncidents.find((item) => getIncidentSourceRecordId(item)) &&
+    getIncidentSourceRecordId(
+      relatedIncidents.find((item) => getIncidentSourceRecordId(item))!
+    );
+
+  if (fromIncidentSource) {
+    return `/flows/${encodeURIComponent(fromIncidentSource)}`;
   }
 
   return "";
 }
 
 function buildEventHref(relatedEvents: EventItem[]): string {
-  const eventId = relatedEvents[0]?.id;
-  return eventId ? `/events/${encodeURIComponent(String(eventId))}` : "";
+  const eventId = relatedEvents[0] ? getEventId(relatedEvents[0]) : "";
+  return eventId ? `/events/${encodeURIComponent(eventId)}` : "";
 }
 
 function buildCommandHref(relatedCommands: CommandItem[]): string {
-  const commandId = relatedCommands[0]?.id;
-  return commandId ? `/commands/${encodeURIComponent(String(commandId))}` : "";
+  const commandId = relatedCommands[0] ? getCommandId(relatedCommands[0]) : "";
+  return commandId ? `/commands/${encodeURIComponent(commandId)}` : "";
 }
 
 function buildIncidentHref(relatedIncidents: IncidentItem[]): string {
-  const incidentId = relatedIncidents[0]?.id;
-  return incidentId ? `/incidents/${encodeURIComponent(String(incidentId))}` : "";
+  const incidentId = relatedIncidents[0]
+    ? getIncidentId(relatedIncidents[0])
+    : "";
+  return incidentId ? `/incidents/${encodeURIComponent(incidentId)}` : "";
 }
 
 export default async function RunDetailPage({ params }: PageProps) {
@@ -647,10 +780,7 @@ export default async function RunDetailPage({ params }: PageProps) {
     run =
       runs.find((item) => {
         const record = item as RunRecord;
-        return (
-          getRunRecordId(record) === id ||
-          getRunId(record) === id
-        );
+        return getRunRecordId(record) === id || getRunId(record) === id;
       }) || null;
   } catch {
     run = null;
@@ -706,7 +836,7 @@ export default async function RunDetailPage({ params }: PageProps) {
   try {
     const eventsData = await fetchEvents(500);
     const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
-    const relatedCommandIds = relatedCommands.map((item) => String(item.id || ""));
+    const relatedCommandIds = relatedCommands.map((item) => getCommandId(item));
 
     relatedEvents = events.filter((event) => {
       const eventRunId = getEventRunId(event);
@@ -727,14 +857,14 @@ export default async function RunDetailPage({ params }: PageProps) {
     const incidents = Array.isArray(incidentsData?.incidents)
       ? incidentsData.incidents
       : [];
-    const relatedCommandIds = relatedCommands.map((item) => String(item.id || ""));
+    const relatedCommandIds = relatedCommands.map((item) => getCommandId(item));
 
     relatedIncidents = incidents.filter((incident) => {
-      const incidentRunRecordId = toText(incident.run_record_id);
-      const incidentLinkedRun = toText(incident.linked_run);
-      const incidentRunId = toText(incident.run_id);
-      const incidentCommandId = toText(incident.command_id);
-      const incidentLinkedCommand = toText(incident.linked_command);
+      const incidentRunRecordId = getIncidentRunRecordId(incident);
+      const incidentLinkedRun = getIncidentLinkedRun(incident);
+      const incidentRunId = getIncidentRunId(incident);
+      const incidentCommandId = getIncidentCommandId(incident);
+      const incidentLinkedCommand = getIncidentLinkedCommand(incident);
 
       return Boolean(
         (recordId && incidentRunRecordId === recordId) ||
@@ -742,14 +872,19 @@ export default async function RunDetailPage({ params }: PageProps) {
           (recordId && incidentLinkedRun === recordId) ||
           (runId && incidentRunId === runId) ||
           (incidentCommandId && relatedCommandIds.includes(incidentCommandId)) ||
-          (incidentLinkedCommand && relatedCommandIds.includes(incidentLinkedCommand))
+          (incidentLinkedCommand &&
+            relatedCommandIds.includes(incidentLinkedCommand))
       );
     });
   } catch {
     relatedIncidents = [];
   }
 
-  const flowHref = buildFlowHref(relatedCommands, relatedEvents, relatedIncidents);
+  const flowHref = buildFlowHref(
+    relatedCommands,
+    relatedEvents,
+    relatedIncidents
+  );
   const eventHref = buildEventHref(relatedEvents);
   const commandHref = buildCommandHref(relatedCommands);
   const incidentHref = buildIncidentHref(relatedIncidents);
@@ -830,10 +965,12 @@ export default async function RunDetailPage({ params }: PageProps) {
 
         <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
-            Record ID: <span className="break-all text-zinc-200">{recordId || "—"}</span>
+            Record ID:{" "}
+            <span className="break-all text-zinc-200">{recordId || "—"}</span>
           </div>
           <div>
-            Run ID: <span className="break-all text-zinc-200">{runId || "—"}</span>
+            Run ID:{" "}
+            <span className="break-all text-zinc-200">{runId || "—"}</span>
           </div>
           <div>
             Capability: <span className="text-zinc-200">{capability}</span>
@@ -865,7 +1002,9 @@ export default async function RunDetailPage({ params }: PageProps) {
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">Related commands</div>
+          <div className="mb-4 text-lg font-medium text-white">
+            Related commands
+          </div>
 
           {relatedCommands.length === 0 ? (
             <div className={emptyStateClassName()}>
@@ -875,8 +1014,8 @@ export default async function RunDetailPage({ params }: PageProps) {
             <div className="space-y-3">
               {relatedCommands.slice(0, 5).map((command) => (
                 <Link
-                  key={String(command.id)}
-                  href={`/commands/${encodeURIComponent(String(command.id))}`}
+                  key={getCommandId(command) || Math.random().toString()}
+                  href={`/commands/${encodeURIComponent(getCommandId(command))}`}
                   className="block rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:border-white/15 hover:bg-white/[0.04]"
                 >
                   <div className="flex flex-wrap items-center gap-2">
@@ -897,7 +1036,7 @@ export default async function RunDetailPage({ params }: PageProps) {
                     <div>
                       ID:{" "}
                       <span className="break-all text-zinc-200">
-                        {String(command.id || "—")}
+                        {getCommandId(command) || "—"}
                       </span>
                     </div>
                     <div>
@@ -914,7 +1053,9 @@ export default async function RunDetailPage({ params }: PageProps) {
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">Related incidents</div>
+          <div className="mb-4 text-lg font-medium text-white">
+            Related incidents
+          </div>
 
           {relatedIncidents.length === 0 ? (
             <div className={emptyStateClassName()}>
@@ -924,8 +1065,8 @@ export default async function RunDetailPage({ params }: PageProps) {
             <div className="space-y-3">
               {relatedIncidents.slice(0, 5).map((incident) => (
                 <Link
-                  key={String(incident.id)}
-                  href={`/incidents/${encodeURIComponent(String(incident.id))}`}
+                  key={getIncidentId(incident) || Math.random().toString()}
+                  href={`/incidents/${encodeURIComponent(getIncidentId(incident))}`}
                   className="block rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:border-white/15 hover:bg-white/[0.04]"
                 >
                   <div className="flex flex-wrap items-center gap-2">
@@ -946,13 +1087,13 @@ export default async function RunDetailPage({ params }: PageProps) {
                     <div>
                       ID:{" "}
                       <span className="break-all text-zinc-200">
-                        {String(incident.id || "—")}
+                        {getIncidentId(incident) || "—"}
                       </span>
                     </div>
                     <div>
                       SLA:{" "}
                       <span className="text-zinc-200">
-                        {toText(incident.sla_status, "—")}
+                        {getIncidentSlaStatus(incident)}
                       </span>
                     </div>
                   </div>
