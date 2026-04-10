@@ -49,17 +49,6 @@ function toBoolean(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-
-  return fallback;
-}
-
 function formatDate(value?: string): string {
   if (!value) return "—";
 
@@ -73,14 +62,20 @@ function formatDate(value?: string): string {
 }
 
 function formatNumber(value?: number): string {
-  return typeof value === "number" ? value.toString() : "0";
+  return typeof value === "number" && Number.isFinite(value)
+    ? value.toString()
+    : "0";
 }
 
-function formatDuration(startedAt?: string, finishedAt?: string): string {
-  if (!startedAt || !finishedAt) return "—";
+function formatDuration(
+  startedAt?: string,
+  finishedAt?: string,
+  updatedAt?: string
+): string {
+  if (!startedAt) return "—";
 
   const start = new Date(startedAt).getTime();
-  const end = new Date(finishedAt).getTime();
+  const end = new Date(finishedAt || updatedAt || startedAt).getTime();
 
   if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
     return "—";
@@ -181,12 +176,44 @@ function getRunFinishedAt(run: RunRecord): string {
   return toText(firstDefined(run, ["finished_at", "Finished_At"]), "");
 }
 
+function getRunUpdatedAt(run: RunRecord): string {
+  return toText(firstDefined(run, ["updated_at", "Updated_At"]), "");
+}
+
+function getRunCreatedAt(run: RunRecord): string {
+  return toText(firstDefined(run, ["created_at", "Created_At"]), "");
+}
+
 function getRunRunId(run: RunRecord): string {
   return toText(firstDefined(run, ["run_id", "Run_ID"]), "—");
 }
 
 function getRunDryRun(run: RunRecord): boolean {
   return toBoolean(firstDefined(run, ["dry_run", "Dry_Run"]), false);
+}
+
+function getRunLatestTs(run: RunRecord): number {
+  const finished = new Date(getRunFinishedAt(run) || 0).getTime();
+  const updated = new Date(getRunUpdatedAt(run) || 0).getTime();
+  const started = new Date(getRunStartedAt(run) || 0).getTime();
+  const created = new Date(getRunCreatedAt(run) || 0).getTime();
+
+  return Math.max(
+    Number.isFinite(finished) ? finished : 0,
+    Number.isFinite(updated) ? updated : 0,
+    Number.isFinite(started) ? started : 0,
+    Number.isFinite(created) ? created : 0
+  );
+}
+
+function getRunHref(run: RunRecord): string {
+  const id = getRunId(run);
+  if (id) return `/runs/${encodeURIComponent(id)}`;
+
+  const publicId = getRunPublicId(run);
+  if (publicId) return `/runs/${encodeURIComponent(publicId)}`;
+
+  return "";
 }
 
 export default async function RunsPage() {
@@ -209,11 +236,7 @@ export default async function RunsPage() {
   const otherCount = stats.other ?? 0;
 
   const visibleRuns = [...runs]
-    .sort((a, b) => {
-      const aTs = new Date(getRunStartedAt(a) || 0).getTime();
-      const bTs = new Date(getRunStartedAt(b) || 0).getTime();
-      return bTs - aTs;
-    })
+    .sort((a, b) => getRunLatestTs(b) - getRunLatestTs(a))
     .slice(0, 50);
 
   return (
@@ -293,110 +316,136 @@ export default async function RunsPage() {
           <div className="space-y-4">
             {visibleRuns.map((run) => {
               const id = getRunId(run);
+              const publicId = getRunPublicId(run);
               const capability = getRunCapability(run);
               const status = getRunStatus(run);
               const dryRun = getRunDryRun(run);
-              const duration = formatDuration(
-                getRunStartedAt(run),
-                getRunFinishedAt(run)
-              );
+              const startedAt = getRunStartedAt(run);
+              const finishedAt = getRunFinishedAt(run);
+              const updatedAt = getRunUpdatedAt(run);
+              const duration = formatDuration(startedAt, finishedAt, updatedAt);
+              const href = getRunHref(run);
 
-              return (
-                <Link
-                  key={id || `${capability}-${getRunStartedAt(run)}`}
-                  href={`/runs/${encodeURIComponent(id || getRunPublicId(run))}`}
-                  className="block rounded-[24px] border border-white/10 bg-black/20 p-4 transition hover:border-white/15 hover:bg-white/[0.04] md:p-5"
-                >
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="min-w-0 flex-1 space-y-4">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div className="min-w-0">
-                          <div className={metaLabelClassName()}>BOSAI Run</div>
+              const content = (
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0 flex-1 space-y-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0">
+                        <div className={metaLabelClassName()}>BOSAI Run</div>
 
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <div className="break-words text-lg font-semibold tracking-tight text-white">
-                              {capability}
-                            </div>
-
-                            <span
-                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
-                                status
-                              )}`}
-                            >
-                              {status.toUpperCase()}
-                            </span>
-
-                            <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                              {dryRun ? "DRY RUN" : "LIVE"}
-                            </span>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <div className="break-words text-lg font-semibold tracking-tight text-white">
+                            {capability}
                           </div>
-                        </div>
 
-                        <div className="xl:min-w-[140px] xl:text-right">
-                          <div className={metaLabelClassName()}>
-                            Execution signal
-                          </div>
-                          <div
-                            className={`mt-2 text-sm font-medium ${signalTone(
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
                               status
                             )}`}
                           >
                             {status.toUpperCase()}
-                          </div>
+                          </span>
+
+                          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                            {dryRun ? "DRY RUN" : "LIVE"}
+                          </span>
                         </div>
                       </div>
 
-                      <div className="break-all text-sm text-zinc-400">
-                        ID: <span className="text-zinc-300">{id || "—"}</span>
+                      <div className="xl:min-w-[140px] xl:text-right">
+                        <div className={metaLabelClassName()}>
+                          Execution signal
+                        </div>
+                        <div
+                          className={`mt-2 text-sm font-medium ${signalTone(
+                            status
+                          )}`}
+                        >
+                          {status.toUpperCase()}
+                        </div>
                       </div>
+                    </div>
 
-                      <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-                        <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
-                          <div className={metaLabelClassName()}>Run ID</div>
-                          <div className="mt-1 break-all text-zinc-200">
-                            {getRunRunId(run)}
-                          </div>
-                        </div>
+                    <div className="break-all text-sm text-zinc-400">
+                      ID:{" "}
+                      <span className="text-zinc-300">
+                        {id || publicId || "—"}
+                      </span>
+                    </div>
 
-                        <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
-                          <div className={metaLabelClassName()}>Worker</div>
-                          <div className="mt-1 text-zinc-200">
-                            {getRunWorker(run)}
-                          </div>
-                        </div>
-
-                        <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
-                          <div className={metaLabelClassName()}>Priority</div>
-                          <div className="mt-1 text-zinc-200">
-                            {getRunPriority(run)}
-                          </div>
-                        </div>
-
-                        <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
-                          <div className={metaLabelClassName()}>Started</div>
-                          <div className="mt-1 text-zinc-200">
-                            {formatDate(getRunStartedAt(run))}
-                          </div>
-                        </div>
-
-                        <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
-                          <div className={metaLabelClassName()}>Finished</div>
-                          <div className="mt-1 text-zinc-200">
-                            {formatDate(getRunFinishedAt(run))}
-                          </div>
-                        </div>
-
-                        <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
-                          <div className={metaLabelClassName()}>Duration</div>
-                          <div className="mt-1 text-zinc-200">{duration}</div>
+                    <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+                      <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                        <div className={metaLabelClassName()}>Run ID</div>
+                        <div className="mt-1 break-all text-zinc-200">
+                          {getRunRunId(run)}
                         </div>
                       </div>
 
+                      <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                        <div className={metaLabelClassName()}>Worker</div>
+                        <div className="mt-1 text-zinc-200">
+                          {getRunWorker(run)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                        <div className={metaLabelClassName()}>Priority</div>
+                        <div className="mt-1 text-zinc-200">
+                          {getRunPriority(run)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                        <div className={metaLabelClassName()}>Started</div>
+                        <div className="mt-1 text-zinc-200">
+                          {formatDate(startedAt)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                        <div className={metaLabelClassName()}>Finished</div>
+                        <div className="mt-1 text-zinc-200">
+                          {formatDate(finishedAt)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                        <div className={metaLabelClassName()}>Duration</div>
+                        <div className="mt-1 text-zinc-200">{duration}</div>
+                      </div>
+                    </div>
+
+                    {href ? (
                       <div className="pt-1 text-sm font-medium text-zinc-300">
                         Ouvrir le détail →
                       </div>
-                    </div>
+                    ) : (
+                      <div className="pt-1 text-sm font-medium text-zinc-500">
+                        Détail indisponible
+                      </div>
+                    )}
                   </div>
+                </div>
+              );
+
+              if (!href) {
+                return (
+                  <div
+                    key={id || publicId || `${capability}-${startedAt}`}
+                    className="block rounded-[24px] border border-white/10 bg-black/20 p-4 md:p-5"
+                  >
+                    {content}
+                  </div>
+                );
+              }
+
+              return (
+                <Link
+                  key={id || publicId || `${capability}-${startedAt}`}
+                  href={href}
+                  className="block rounded-[24px] border border-white/10 bg-black/20 p-4 transition hover:border-white/15 hover:bg-white/[0.04] md:p-5"
+                >
+                  {content}
                 </Link>
               );
             })}
