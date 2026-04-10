@@ -489,7 +489,7 @@ function MetaItem({
   label: string;
   value: ReactNode;
   breakAll?: boolean;
-}): JSX.Element {
+}) {
   return (
     <div className={breakAll ? "break-all" : undefined}>
       <div className={metaLabelClassName()}>{label}</div>
@@ -504,7 +504,7 @@ function StatCard({
 }: {
   label: string;
   value: string;
-}): JSX.Element {
+}) {
   return (
     <div className={statCardClassName()}>
       <div className={metaLabelClassName()}>{label}</div>
@@ -515,9 +515,7 @@ function StatCard({
   );
 }
 
-export default async function IncidentDetailPage({
-  params,
-}: PageProps): Promise<JSX.Element> {
+export default async function IncidentDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
 
