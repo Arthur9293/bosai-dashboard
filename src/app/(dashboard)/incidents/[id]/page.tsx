@@ -17,13 +17,13 @@ type PageProps = {
       };
 };
 
-function cardClassName() {
+function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function actionLinkClassName(
   variant: "default" | "primary" | "soft" | "danger" = "default"
-) {
+): string {
   if (variant === "primary") {
     return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
@@ -39,15 +39,15 @@ function actionLinkClassName(
   return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
-function sectionLabelClassName() {
+function sectionLabelClassName(): string {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
 
-function metaLabelClassName() {
+function metaLabelClassName(): string {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
-function statCardClassName() {
+function statCardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
@@ -97,26 +97,26 @@ function formatDate(value?: string | number | null): string {
   }).format(d);
 }
 
-function safeUpper(text: string) {
+function safeUpper(text: string): string {
   return text.trim() ? text.trim().toUpperCase() : "—";
 }
 
-function getIncidentTitle(incident: IncidentItem) {
+function getIncidentTitle(incident: IncidentItem): string {
   return firstText(
     [incident.title, incident.name, incident.error_id],
     "Untitled incident"
   );
 }
 
-function getIncidentStatusRaw(incident: IncidentItem) {
+function getIncidentStatusRaw(incident: IncidentItem): string {
   return firstText([incident.status, incident.statut_incident], "");
 }
 
-function getIncidentSeverityRaw(incident: IncidentItem) {
+function getIncidentSeverityRaw(incident: IncidentItem): string {
   return firstText([incident.severity], "");
 }
 
-function getIncidentStatusNormalized(incident: IncidentItem) {
+function getIncidentStatusNormalized(incident: IncidentItem): string {
   const raw = getIncidentStatusRaw(incident).toLowerCase();
   const sla = toText(incident.sla_status, "").toLowerCase();
   const hasResolvedAt = Boolean(toText(incident.resolved_at, ""));
@@ -145,7 +145,7 @@ function getIncidentStatusNormalized(incident: IncidentItem) {
   return raw;
 }
 
-function getIncidentStatusLabel(incident: IncidentItem) {
+function getIncidentStatusLabel(incident: IncidentItem): string {
   const normalized = getIncidentStatusNormalized(incident);
 
   if (normalized === "open") return "OPEN";
@@ -156,7 +156,7 @@ function getIncidentStatusLabel(incident: IncidentItem) {
   return raw ? raw.toUpperCase() : "OPEN";
 }
 
-function getIncidentSeverityNormalized(incident: IncidentItem) {
+function getIncidentSeverityNormalized(incident: IncidentItem): string {
   const raw = getIncidentSeverityRaw(incident).toLowerCase();
 
   if (!raw) {
@@ -174,7 +174,7 @@ function getIncidentSeverityNormalized(incident: IncidentItem) {
   return raw;
 }
 
-function getIncidentSeverityLabel(incident: IncidentItem) {
+function getIncidentSeverityLabel(incident: IncidentItem): string {
   const normalized = getIncidentSeverityNormalized(incident);
 
   if (normalized === "critical") return "CRITICAL";
@@ -186,7 +186,7 @@ function getIncidentSeverityLabel(incident: IncidentItem) {
   return raw ? raw.toUpperCase() : "UNKNOWN";
 }
 
-function statusTone(incident: IncidentItem) {
+function statusTone(incident: IncidentItem): string {
   const status = getIncidentStatusNormalized(incident);
 
   if (status === "resolved") {
@@ -204,7 +204,7 @@ function statusTone(incident: IncidentItem) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function severityTone(incident: IncidentItem) {
+function severityTone(incident: IncidentItem): string {
   const severity = getIncidentSeverityNormalized(incident);
 
   if (severity === "critical") {
@@ -226,23 +226,23 @@ function severityTone(incident: IncidentItem) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function getDecisionStatus(incident: IncidentItem) {
+function getDecisionStatus(incident: IncidentItem): string {
   return toText(incident.decision_status, "");
 }
 
-function getDecisionReason(incident: IncidentItem) {
+function getDecisionReason(incident: IncidentItem): string {
   return toText(incident.decision_reason, "");
 }
 
-function getNextAction(incident: IncidentItem) {
+function getNextAction(incident: IncidentItem): string {
   return toText(incident.next_action, "");
 }
 
-function getPriorityScore(incident: IncidentItem) {
+function getPriorityScore(incident: IncidentItem): number {
   return toNumber(incident.priority_score, 0);
 }
 
-function getDecisionTone(incident: IncidentItem) {
+function getDecisionTone(incident: IncidentItem): string {
   const decision = getDecisionStatus(incident).toLowerCase();
 
   if (["escalate", "escalated"].includes(decision)) {
@@ -264,7 +264,7 @@ function getDecisionTone(incident: IncidentItem) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function getSlaLabel(incident: IncidentItem) {
+function getSlaLabel(incident: IncidentItem): string {
   const resolvedLike =
     Boolean(toText(incident.resolved_at, "")) ||
     getIncidentStatusNormalized(incident) === "resolved";
@@ -282,7 +282,7 @@ function getSlaLabel(incident: IncidentItem) {
   return "—";
 }
 
-function getSlaTone(incident: IncidentItem) {
+function getSlaTone(incident: IncidentItem): string {
   const resolvedLike =
     Boolean(toText(incident.resolved_at, "")) ||
     getIncidentStatusNormalized(incident) === "resolved";
@@ -313,15 +313,15 @@ function getSlaTone(incident: IncidentItem) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function getOpenedAt(incident: IncidentItem) {
+function getOpenedAt(incident: IncidentItem): string {
   return firstText([incident.opened_at, incident.created_at], "");
 }
 
-function getUpdatedAt(incident: IncidentItem) {
+function getUpdatedAt(incident: IncidentItem): string {
   return firstText([incident.updated_at, incident.created_at], "");
 }
 
-function getResolvedAt(incident: IncidentItem) {
+function getResolvedAt(incident: IncidentItem): string {
   const resolvedAt = toText(incident.resolved_at, "");
   if (resolvedAt) return resolvedAt;
 
@@ -332,42 +332,42 @@ function getResolvedAt(incident: IncidentItem) {
   return "";
 }
 
-function getWorkspace(incident: IncidentItem) {
+function getWorkspace(incident: IncidentItem): string {
   return firstText([incident.workspace_id, incident.workspace], "—");
 }
 
-function getRunRecord(incident: IncidentItem) {
+function getRunRecord(incident: IncidentItem): string {
   return firstText(
     [incident.run_record_id, incident.linked_run, incident.run_id],
     "—"
   );
 }
 
-function getCommandRecord(incident: IncidentItem) {
+function getCommandRecord(incident: IncidentItem): string {
   return firstText([incident.command_id, incident.linked_command], "—");
 }
 
-function getFlowId(incident: IncidentItem) {
+function getFlowId(incident: IncidentItem): string {
   return toText(incident.flow_id, "");
 }
 
-function getRootEventId(incident: IncidentItem) {
+function getRootEventId(incident: IncidentItem): string {
   return toText(incident.root_event_id, "");
 }
 
-function getSourceRecordId(incident: IncidentItem) {
+function getSourceRecordId(incident: IncidentItem): string {
   return toText((incident as Record<string, unknown>).source_record_id, "");
 }
 
-function getCategory(incident: IncidentItem) {
+function getCategory(incident: IncidentItem): string {
   return firstText([incident.category], "—");
 }
 
-function getReason(incident: IncidentItem) {
+function getReason(incident: IncidentItem): string {
   return firstText([incident.reason], "—");
 }
 
-function getSuggestedAction(incident: IncidentItem) {
+function getSuggestedAction(incident: IncidentItem): string {
   const nextAction = getNextAction(incident);
   if (nextAction) return nextAction;
 
@@ -384,15 +384,15 @@ function getSuggestedAction(incident: IncidentItem) {
   return "Monitor flow and resolution";
 }
 
-function getResolutionNote(incident: IncidentItem) {
+function getResolutionNote(incident: IncidentItem): string {
   return toText(incident.resolution_note, "—");
 }
 
-function getLastAction(incident: IncidentItem) {
+function getLastAction(incident: IncidentItem): string {
   return toText(incident.last_action, "—");
 }
 
-function getBestFlowTargetFromIncident(incident: IncidentItem) {
+function getBestFlowTargetFromIncident(incident: IncidentItem): string {
   return (
     getFlowId(incident) ||
     getSourceRecordId(incident) ||
@@ -401,23 +401,23 @@ function getBestFlowTargetFromIncident(incident: IncidentItem) {
   );
 }
 
-function getSourceFlowHref(incident: IncidentItem) {
+function getSourceFlowHref(incident: IncidentItem): string {
   const target = getBestFlowTargetFromIncident(incident);
   return target ? `/flows/${encodeURIComponent(target)}` : "";
 }
 
-function getLinkedFlowHref(incident: IncidentItem) {
+function getLinkedFlowHref(incident: IncidentItem): string {
   const target = getBestFlowTargetFromIncident(incident);
   return target ? `/flows/${encodeURIComponent(target)}` : "";
 }
 
-function getLinkedCommandHref(incident: IncidentItem) {
+function getLinkedCommandHref(incident: IncidentItem): string {
   const commandRecord = getCommandRecord(incident);
   if (!commandRecord || commandRecord === "—") return "";
   return `/commands/${encodeURIComponent(commandRecord)}`;
 }
 
-function getLinkedEventHref(incident: IncidentItem) {
+function getLinkedEventHref(incident: IncidentItem): string {
   const target =
     getSourceRecordId(incident) ||
     getRootEventId(incident) ||
@@ -428,7 +428,7 @@ function getLinkedEventHref(incident: IncidentItem) {
   return `/events/${encodeURIComponent(target)}`;
 }
 
-function getSummaryLine(incident: IncidentItem) {
+function getSummaryLine(incident: IncidentItem): string {
   const status = getIncidentStatusNormalized(incident);
   const severity = getIncidentSeverityNormalized(incident);
   const workspace = getWorkspace(incident);
@@ -437,7 +437,7 @@ function getSummaryLine(incident: IncidentItem) {
   return `${safeUpper(status)} · ${safeUpper(severity)} · ${workspace} · ${category}`;
 }
 
-function isLegacyNoiseIncident(incident: IncidentItem) {
+function isLegacyNoiseIncident(incident: IncidentItem): boolean {
   const title = getIncidentTitle(incident).trim().toLowerCase();
   const category = getCategory(incident).trim().toLowerCase();
   const reason = getReason(incident).trim().toLowerCase();
@@ -489,7 +489,7 @@ function MetaItem({
   label: string;
   value: ReactNode;
   breakAll?: boolean;
-}) {
+}): JSX.Element {
   return (
     <div className={breakAll ? "break-all" : undefined}>
       <div className={metaLabelClassName()}>{label}</div>
@@ -504,7 +504,7 @@ function StatCard({
 }: {
   label: string;
   value: string;
-}) {
+}): JSX.Element {
   return (
     <div className={statCardClassName()}>
       <div className={metaLabelClassName()}>{label}</div>
@@ -515,7 +515,9 @@ function StatCard({
   );
 }
 
-export default async function IncidentDetailPage({ params }: PageProps) {
+export default async function IncidentDetailPage({
+  params,
+}: PageProps): Promise<JSX.Element> {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
 
@@ -531,7 +533,9 @@ export default async function IncidentDetailPage({ params }: PageProps) {
     ? data.incidents
     : [];
 
-  const cleanIncidents = incidents.filter((item) => !isLegacyNoiseIncident(item));
+  const cleanIncidents = incidents.filter(
+    (item) => !isLegacyNoiseIncident(item)
+  );
 
   const incident =
     cleanIncidents.find((item) => String(item.id) === id) ||
@@ -637,13 +641,17 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         <StatCard label="Résolu" value={formatDate(resolvedAt)} />
         <StatCard
           label="SLA restant"
-          value={Number.isFinite(remainingMinutes) ? `${remainingMinutes} min` : "—"}
+          value={
+            Number.isFinite(remainingMinutes) ? `${remainingMinutes} min` : "—"
+          }
         />
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-5 text-lg font-medium text-white">Contexte incident</div>
+          <div className="mb-5 text-lg font-medium text-white">
+            Contexte incident
+          </div>
 
           <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
             <MetaItem label="Catégorie" value={category} />
@@ -656,7 +664,9 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             <MetaItem label="Note de résolution" value={resolutionNote} />
             <MetaItem
               label="Statut décision"
-              value={<span className="text-purple-300">{decisionStatus || "—"}</span>}
+              value={
+                <span className="text-purple-300">{decisionStatus || "—"}</span>
+              }
             />
             <MetaItem label="Raison décision" value={decisionReason || "—"} />
             <MetaItem label="Next action" value={nextAction || "—"} />
@@ -811,7 +821,10 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             ) : null}
 
             {linkedCommandHref ? (
-              <Link href={linkedCommandHref} className={actionLinkClassName("soft")}>
+              <Link
+                href={linkedCommandHref}
+                className={actionLinkClassName("soft")}
+              >
                 Ouvrir la command liée
               </Link>
             ) : null}
