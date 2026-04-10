@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "../../../components/ui/page-header";
 import { DashboardCard } from "../../../components/ui/dashboard-card";
 import { fetchTools, type ToolItem } from "../../../lib/api";
@@ -10,7 +11,7 @@ const fallbackTools: ToolItem[] = [
     status: "active",
     category: "Execution",
     tool_key: "http_exec",
-    tool_mode: "live",
+    tool_mode: "Mode live",
     enabled: true,
   },
   {
@@ -20,7 +21,7 @@ const fallbackTools: ToolItem[] = [
     status: "active",
     category: "Decision",
     tool_key: "decision_router",
-    tool_mode: "live",
+    tool_mode: "Mode live",
     enabled: true,
   },
   {
@@ -30,7 +31,7 @@ const fallbackTools: ToolItem[] = [
     status: "active",
     category: "Incident",
     tool_key: "incident_router",
-    tool_mode: "live",
+    tool_mode: "Mode live",
     enabled: true,
   },
   {
@@ -40,7 +41,7 @@ const fallbackTools: ToolItem[] = [
     status: "active",
     category: "Recovery",
     tool_key: "retry_router",
-    tool_mode: "live",
+    tool_mode: "Mode live",
     enabled: true,
   },
   {
@@ -50,7 +51,7 @@ const fallbackTools: ToolItem[] = [
     status: "active",
     category: "Flow",
     tool_key: "complete_flow_demo",
-    tool_mode: "live",
+    tool_mode: "Mode live",
     enabled: true,
   },
   {
@@ -60,24 +61,12 @@ const fallbackTools: ToolItem[] = [
     status: "active",
     category: "Orchestration",
     tool_key: "event_engine",
-    tool_mode: "live",
+    tool_mode: "Mode live",
     enabled: true,
   },
 ];
 
-function statCardClassName(): string {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
-
-function metaLabelClassName(): string {
-  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
-}
-
-function sectionLabelClassName(): string {
-  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
-}
-
-function toText(value: unknown, fallback = "—"): string {
+function toText(value: unknown, fallback = ""): string {
   if (value === null || value === undefined) return fallback;
 
   if (Array.isArray(value)) {
@@ -92,58 +81,71 @@ function toText(value: unknown, fallback = "—"): string {
   return text || fallback;
 }
 
+function toBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+
+    if (["true", "1", "yes", "oui", "enabled", "active"].includes(normalized)) {
+      return true;
+    }
+
+    if (["false", "0", "no", "non", "disabled", "inactive"].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return fallback;
+}
+
+function getToolId(tool: ToolItem): string {
+  return (
+    toText(tool.id, "") ||
+    toText(tool.tool_key, "") ||
+    toText(tool.name, "").toLowerCase().replace(/\s+/g, "_")
+  );
+}
+
 function getToolName(tool: ToolItem): string {
-  return toText(tool.name, "") || toText(tool.id, "Unknown tool");
+  return toText(tool.name, "") || toText(tool.tool_key, "") || getToolId(tool) || "Unknown tool";
 }
 
 function getToolDescription(tool: ToolItem): string {
-  return toText(tool.description, "No description");
+  return toText(tool.description, "") || "No description";
+}
+
+function getToolStatus(tool: ToolItem): string {
+  return toText(tool.status, "unknown");
 }
 
 function getToolCategory(tool: ToolItem): string {
-  return toText(tool.category, "Uncategorized");
+  const direct = toText(tool.category, "");
+  if (direct) return direct;
+
+  const id = getToolId(tool).toLowerCase();
+
+  if (id.includes("incident")) return "Incident";
+  if (id.includes("decision")) return "Decision";
+  if (id.includes("retry")) return "Recovery";
+  if (id.includes("http")) return "Execution";
+  if (id.includes("event")) return "Orchestration";
+  if (id.includes("flow")) return "Flow";
+
+  return "General";
 }
 
 function getToolMode(tool: ToolItem): string {
-  return toText(tool.tool_mode, "—");
+  return toText(tool.tool_mode, "") || "Mode live";
 }
 
-function getToolKey(tool: ToolItem): string {
-  return toText(tool.tool_key, tool.id || "—");
-}
-
-function isEnabled(tool: ToolItem): boolean {
-  if (typeof tool.enabled === "boolean") return tool.enabled;
-
-  const status = toText(tool.status, "").toLowerCase();
-  if (["active", "enabled", "live"].includes(status)) return true;
-  if (["disabled", "inactive", "off"].includes(status)) return false;
-
-  return false;
-}
-
-function getToolStatusNormalized(tool: ToolItem): string {
-  const raw = toText(tool.status, "").toLowerCase();
-
-  if (raw === "active" || raw === "enabled" || raw === "live") return "active";
-  if (raw === "paused" || raw === "pause") return "paused";
-  if (raw === "disabled" || raw === "inactive" || raw === "off") return "disabled";
-
-  if (typeof tool.enabled === "boolean") {
-    return tool.enabled ? "active" : "disabled";
+function isToolEnabled(tool: ToolItem): boolean {
+  if (tool.enabled !== undefined) {
+    return toBoolean(tool.enabled, false);
   }
 
-  return raw || "unknown";
-}
-
-function getToolStatusLabel(tool: ToolItem): string {
-  const normalized = getToolStatusNormalized(tool);
-
-  if (normalized === "active") return "ACTIVE";
-  if (normalized === "paused") return "PAUSED";
-  if (normalized === "disabled") return "DISABLED";
-
-  return normalized ? normalized.toUpperCase() : "UNKNOWN";
+  return !["disabled", "inactive"].includes(getToolStatus(tool).toLowerCase());
 }
 
 function tone(status?: string): string {
@@ -164,64 +166,94 @@ function tone(status?: string): string {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function enabledTone(enabled: boolean): string {
-  return enabled
-    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
-    : "bg-zinc-800 text-zinc-300 border border-zinc-700";
+function categoryTone(category: string): string {
+  const c = category.trim().toLowerCase();
+
+  if (c === "incident") {
+    return "bg-rose-500/10 text-rose-200 border border-rose-500/20";
+  }
+
+  if (c === "decision") {
+    return "bg-violet-500/10 text-violet-200 border border-violet-500/20";
+  }
+
+  if (c === "recovery") {
+    return "bg-amber-500/10 text-amber-200 border border-amber-500/20";
+  }
+
+  if (c === "execution") {
+    return "bg-sky-500/10 text-sky-200 border border-sky-500/20";
+  }
+
+  if (c === "orchestration") {
+    return "bg-zinc-500/10 text-zinc-200 border border-zinc-500/20";
+  }
+
+  if (c === "flow") {
+    return "bg-emerald-500/10 text-emerald-200 border border-emerald-500/20";
+  }
+
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function sortTools(items: ToolItem[]): ToolItem[] {
-  return [...items].sort((a, b) => {
-    const statusPriority = (tool: ToolItem): number => {
-      const status = getToolStatusNormalized(tool);
-      if (status === "active") return 0;
-      if (status === "paused") return 1;
-      if (status === "disabled") return 2;
-      return 3;
-    };
+function enabledTone(enabled: boolean): string {
+  if (enabled) {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
 
-    const diff = statusPriority(a) - statusPriority(b);
-    if (diff !== 0) return diff;
+  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+}
 
-    return getToolName(a).localeCompare(getToolName(b), "fr", {
-      sensitivity: "base",
+function mergeTools(primary: ToolItem[], fallback: ToolItem[]): ToolItem[] {
+  const map = new Map<string, ToolItem>();
+
+  for (const item of fallback) {
+    const key = getToolId(item).toLowerCase();
+    if (key) map.set(key, item);
+  }
+
+  for (const item of primary) {
+    const key = getToolId(item).toLowerCase();
+    if (!key) continue;
+
+    const existing = map.get(key);
+    map.set(key, {
+      ...existing,
+      ...item,
     });
-  });
+  }
+
+  return Array.from(map.values());
 }
 
 export default async function ToolsPage() {
-  let tools: ToolItem[] = fallbackTools;
-  let usingFallback = true;
+  let fetchedTools: ToolItem[] = [];
+  let registrySource = "Fallback registry";
 
   try {
     const data = await fetchTools();
     if (data?.tools?.length) {
-      tools = data.tools;
-      usingFallback = false;
+      fetchedTools = data.tools;
+      registrySource = "Dynamic registry";
     }
-  } catch {
-    tools = fallbackTools;
-    usingFallback = true;
-  }
+  } catch {}
 
-  const visibleTools = sortTools(tools);
+  const tools = mergeTools(fetchedTools, fallbackTools);
 
-  const activeCount = visibleTools.filter(
-    (tool) => getToolStatusNormalized(tool) === "active"
+  const totalTools = tools.length;
+  const activeTools = tools.filter(
+    (tool) => getToolStatus(tool).toLowerCase() === "active"
   ).length;
-
-  const pausedCount = visibleTools.filter(
-    (tool) => getToolStatusNormalized(tool) === "paused"
+  const pausedTools = tools.filter(
+    (tool) => getToolStatus(tool).toLowerCase() === "paused"
   ).length;
-
-  const disabledCount = visibleTools.filter(
-    (tool) => getToolStatusNormalized(tool) === "disabled"
+  const disabledTools = tools.filter(
+    (tool) => getToolStatus(tool).toLowerCase() === "disabled"
   ).length;
-
-  const enabledCount = visibleTools.filter((tool) => isEnabled(tool)).length;
+  const enabledTools = tools.filter((tool) => isToolEnabled(tool)).length;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Capabilities"
         title="Tools"
@@ -229,133 +261,146 @@ export default async function ToolsPage() {
       />
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className={statCardClassName()}>
+        <DashboardCard>
           <div className="text-sm text-zinc-400">Total tools</div>
           <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
-            {visibleTools.length}
+            {totalTools}
           </div>
-        </div>
+        </DashboardCard>
 
-        <div className={statCardClassName()}>
+        <DashboardCard>
           <div className="text-sm text-zinc-400">Active</div>
           <div className="mt-3 text-4xl font-semibold tracking-tight text-emerald-300">
-            {activeCount}
+            {activeTools}
           </div>
-        </div>
+        </DashboardCard>
 
-        <div className={statCardClassName()}>
+        <DashboardCard>
           <div className="text-sm text-zinc-400">Paused</div>
           <div className="mt-3 text-4xl font-semibold tracking-tight text-amber-300">
-            {pausedCount}
+            {pausedTools}
           </div>
-        </div>
+        </DashboardCard>
 
-        <div className={statCardClassName()}>
+        <DashboardCard>
           <div className="text-sm text-zinc-400">Disabled</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-red-300">
-            {disabledCount}
+          <div className="mt-3 text-4xl font-semibold tracking-tight text-rose-300">
+            {disabledTools}
           </div>
-        </div>
+        </DashboardCard>
       </section>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {visibleTools.map((tool) => {
-          const normalizedStatus = getToolStatusNormalized(tool);
-          const enabled = isEnabled(tool);
+        {tools.map((tool) => {
+          const toolId = getToolId(tool);
+          const toolName = getToolName(tool);
+          const description = getToolDescription(tool);
+          const status = getToolStatus(tool);
+          const category = getToolCategory(tool);
+          const mode = getToolMode(tool);
+          const enabled = isToolEnabled(tool);
 
           return (
-            <DashboardCard
-              key={tool.id}
-              rightSlot={
-                <span
-                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
-                    normalizedStatus
-                  )}`}
-                >
-                  {getToolStatusLabel(tool)}
-                </span>
-              }
+            <Link
+              key={toolId}
+              href={`/tools/${encodeURIComponent(toolId)}`}
+              className="block"
             >
-              <div className="space-y-4">
-                <div>
-                  <div className="text-lg font-semibold text-white">
-                    {getToolName(tool)}
-                  </div>
-                  <p className="mt-2 text-sm text-zinc-400">
-                    {getToolDescription(tool)}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
-                    {getToolCategory(tool)}
-                  </span>
-
-                  <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
-                    Mode {getToolMode(tool)}
-                  </span>
-
+              <DashboardCard
+                rightSlot={
                   <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${enabledTone(
-                      enabled
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
+                      status
                     )}`}
                   >
-                    {enabled ? "ENABLED" : "DISABLED"}
+                    {status.toUpperCase()}
                   </span>
-                </div>
+                }
+              >
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-lg font-semibold text-white">
+                      {toolName}
+                    </div>
+                    <p className="mt-2 text-sm text-zinc-400">{description}</p>
+                  </div>
 
-                <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400">
-                  <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
-                    <div className={metaLabelClassName()}>Tool key</div>
-                    <div className="mt-1 break-all text-zinc-200">
-                      {getToolKey(tool)}
+                  <div className="flex flex-wrap gap-2">
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${categoryTone(
+                        category
+                      )}`}
+                    >
+                      {category}
+                    </span>
+
+                    <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
+                      {mode}
+                    </span>
+
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${enabledTone(
+                        enabled
+                      )}`}
+                    >
+                      {enabled ? "ENABLED" : "DISABLED"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                        Tool key
+                      </div>
+                      <div className="mt-1 break-all text-zinc-200">
+                        {toText(tool.tool_key, toolId)}
+                      </div>
+                    </div>
+
+                    <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                        ID
+                      </div>
+                      <div className="mt-1 break-all text-zinc-200">
+                        {toolId}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-3 py-3">
-                    <div className={metaLabelClassName()}>ID</div>
-                    <div className="mt-1 break-all text-zinc-200">
-                      {toText(tool.id)}
-                    </div>
+                  <div className="pt-1 text-sm font-medium text-zinc-300">
+                    Ouvrir le détail →
                   </div>
                 </div>
-              </div>
-            </DashboardCard>
+              </DashboardCard>
+            </Link>
           );
         })}
       </section>
 
-      <DashboardCard>
-        <div className="space-y-4">
-          <div>
-            <div className={sectionLabelClassName()}>Tool registry</div>
-            <div className="mt-2 text-xl font-semibold text-white">
-              Registry status
+      <DashboardCard
+        title="Registry status"
+        subtitle="Cette page lit le registre dynamique si l’API expose `/tools`. En absence de données, elle bascule sur un fallback statique pour ne pas casser le cockpit."
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-4 py-4">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+              Source
             </div>
-            <p className="mt-2 text-sm text-zinc-400">
-              Cette page lit le registre dynamique si l’API expose `/tools`. En
-              absence de données, elle bascule sur un fallback statique pour ne pas
-              casser le cockpit.
-            </p>
+            <div className="mt-1 text-zinc-200">{registrySource}</div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-4 py-4">
-              <div className={metaLabelClassName()}>Source</div>
-              <div className="mt-1 text-zinc-200">
-                {usingFallback ? "Fallback registry" : "Worker API"}
-              </div>
+          <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-4 py-4">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+              Enabled tools
             </div>
+            <div className="mt-1 text-zinc-200">{enabledTools}</div>
+          </div>
 
-            <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-4 py-4">
-              <div className={metaLabelClassName()}>Enabled tools</div>
-              <div className="mt-1 text-zinc-200">{enabledCount}</div>
+          <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-4 py-4">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+              Next step
             </div>
-
-            <div className="rounded-[18px] border border-white/10 bg-white/[0.02] px-4 py-4">
-              <div className={metaLabelClassName()}>Next step</div>
-              <div className="mt-1 text-zinc-200">Tools detail page</div>
-            </div>
+            <div className="mt-1 text-zinc-200">Tools detail page</div>
           </div>
         </div>
       </DashboardCard>
