@@ -213,11 +213,7 @@ function getSource(event: EventItem): string {
   const record = event as Record<string, unknown>;
   const payload = getEventPayload(event);
 
-  return (
-    toTextOrEmpty(record.source) ||
-    toTextOrEmpty(payload.source) ||
-    "—"
-  );
+  return toTextOrEmpty(record.source) || toTextOrEmpty(payload.source) || "—";
 }
 
 function hasCommandCreated(event: EventItem): boolean {
