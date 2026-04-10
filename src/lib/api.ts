@@ -362,14 +362,45 @@ export type HealthScoreResponse = {
   details?: Record<string, unknown>;
 };
 
+export type RunItem = {
+  id: string;
+  run_id?: string;
+  capability?: string;
+  status?: string;
+  worker?: string;
+  priority?: number | string;
+  workspace_id?: string;
+  app_name?: string;
+  app_version?: string;
+  idempotency_key?: string;
+  dry_run?: boolean;
+  created_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  duration_ms?: number;
+  input?: unknown;
+  result?: unknown;
+  flow_id?: string;
+  root_event_id?: string;
+  source_event_id?: string;
+  source_record_id?: string;
+  command_id?: string;
+  linked_command?: string;
+  linked_run?: string;
+  run_record_id?: string;
+  [key: string]: unknown;
+};
+
 export type RunsResponse = {
   count?: number;
-  runs?: Array<Record<string, unknown>>;
+  runs?: RunItem[];
   stats?: {
     running?: number;
     queued?: number;
     done?: number;
     error?: number;
+    unsupported?: number;
+    other?: number;
     [key: string]: number | undefined;
   };
 };
@@ -613,6 +644,191 @@ export type FlowsResponse = {
   count?: number;
   flows?: FlowDetail[];
 };
+
+function normalizeRunItem(raw: unknown): RunItem {
+  const record = unwrapRecord(raw);
+
+  const inputRaw = firstDefined(record, [
+    "input",
+    "Input",
+    "input_json",
+    "Input_JSON",
+    "payload",
+    "Payload",
+  ]);
+
+  const resultRaw = firstDefined(record, [
+    "result",
+    "Result",
+    "result_json",
+    "Result_JSON",
+    "output",
+    "Output",
+  ]);
+
+  const inputRecord = parseJsonRecord(inputRaw);
+  const resultRecord = parseJsonRecord(resultRaw);
+  const contextRecords = [record, inputRecord, resultRecord];
+
+  const recordId =
+    asString(firstDefined(record, ["id", "ID", "record_id", "Record_ID"])) ||
+    "";
+
+  const sourceEventId = asString(
+    firstDefinedMany(contextRecords, [
+      "source_event_id",
+      "Source_Event_ID",
+      "sourceEventId",
+      "event_id",
+      "Event_ID",
+      "eventId",
+      "source_record_id",
+      "Source_Record_ID",
+      "sourceRecordId",
+    ])
+  );
+
+  const rootEventId =
+    asString(
+      firstDefinedMany(contextRecords, [
+        "root_event_id",
+        "Root_Event_ID",
+        "rootEventId",
+        "RootEventId",
+        "rooteventid",
+      ])
+    ) || sourceEventId;
+
+  const priorityNumber = asNumber(
+    firstDefined(record, ["priority", "Priority", "priority_score", "Priority_Score"])
+  );
+  const priorityString = asString(
+    firstDefined(record, ["priority", "Priority", "priority_score", "Priority_Score"])
+  );
+
+  return {
+    ...record,
+    id: recordId,
+    run_id: asString(
+      firstDefinedMany(contextRecords, ["run_id", "Run_ID", "runId", "RunId"])
+    ),
+    capability: asString(
+      firstDefinedMany(contextRecords, ["capability", "Capability", "name", "Name"])
+    ),
+    status: asString(
+      firstDefined(record, [
+        "status",
+        "Status",
+        "status_select",
+        "Status_select",
+        "state",
+        "State",
+      ])
+    ),
+    worker: asString(firstDefinedMany(contextRecords, ["worker", "Worker"])),
+    priority: priorityNumber ?? priorityString,
+    workspace_id: asString(
+      firstDefinedMany(contextRecords, [
+        "workspace_id",
+        "Workspace_ID",
+        "workspace",
+        "Workspace",
+        "workspaceId",
+        "WorkspaceId",
+      ])
+    ),
+    app_name: asString(
+      firstDefined(record, ["app_name", "App_Name", "appName", "AppName"])
+    ),
+    app_version: asString(
+      firstDefined(record, ["app_version", "App_Version", "appVersion", "AppVersion"])
+    ),
+    idempotency_key: asString(
+      firstDefined(record, [
+        "idempotency_key",
+        "Idempotency_Key",
+        "idempotencyKey",
+      ])
+    ),
+    dry_run:
+      asBoolean(firstDefined(record, ["dry_run", "Dry_Run", "dryRun"])) ?? false,
+    created_at: asString(
+      firstDefined(record, [
+        "created_at",
+        "Created_At",
+        "createdAt",
+        "started_at",
+        "Started_At",
+      ])
+    ),
+    started_at: asString(
+      firstDefined(record, [
+        "started_at",
+        "Started_At",
+        "startedAt",
+        "created_at",
+        "Created_At",
+      ])
+    ),
+    finished_at: asString(
+      firstDefined(record, ["finished_at", "Finished_At", "finishedAt"])
+    ),
+    duration_ms: asNumber(
+      firstDefined(record, ["duration_ms", "Duration_ms", "durationMs"])
+    ),
+    input: normalizeJsonLike(inputRaw),
+    result: normalizeJsonLike(resultRaw),
+    flow_id: asString(
+      firstDefinedMany(contextRecords, [
+        "flow_id",
+        "Flow_ID",
+        "flowId",
+        "FlowId",
+        "flowid",
+      ])
+    ),
+    root_event_id: rootEventId,
+    source_event_id: sourceEventId,
+    source_record_id: sourceEventId,
+    command_id: asString(
+      firstDefinedMany(contextRecords, [
+        "command_id",
+        "Command_ID",
+        "linked_command",
+        "Linked_Command",
+        "commandId",
+        "CommandId",
+      ])
+    ),
+    linked_command: asString(
+      firstDefinedMany(contextRecords, [
+        "linked_command",
+        "Linked_Command",
+        "command_id",
+        "Command_ID",
+        "commandId",
+        "CommandId",
+      ])
+    ),
+    linked_run: asString(
+      firstDefinedMany(contextRecords, [
+        "linked_run",
+        "Linked_Run",
+        "run_record_id",
+        "Run_Record_ID",
+      ])
+    ),
+    run_record_id:
+      asString(
+        firstDefinedMany(contextRecords, [
+          "run_record_id",
+          "Run_Record_ID",
+          "linked_run",
+          "Linked_Run",
+        ])
+      ) || recordId,
+  };
+}
 
 function normalizeCommandItem(raw: unknown): CommandItem {
   const record = unwrapRecord(raw);
@@ -1433,8 +1649,8 @@ export async function fetchHealthScore(): Promise<HealthScoreResponse> {
 
 export async function fetchRuns(): Promise<RunsResponse> {
   const data = await safeFetch<JsonRecord>("/runs");
-  const runs = asArray<Record<string, unknown>>(
-    firstDefined(data, ["runs", "Runs"])
+  const runs = asArray(firstDefined(data, ["runs", "Runs"])).map((item) =>
+    normalizeRunItem(item)
   );
   const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
 
@@ -1442,7 +1658,15 @@ export async function fetchRuns(): Promise<RunsResponse> {
     ...data,
     count: asNumber(firstDefined(data, ["count", "Count"])) ?? runs.length,
     runs,
-    stats,
+    stats: {
+      running: stats.running,
+      queued: stats.queued,
+      done: stats.done,
+      error: stats.error,
+      unsupported: stats.unsupported,
+      other: stats.other,
+      ...stats,
+    },
   };
 }
 
