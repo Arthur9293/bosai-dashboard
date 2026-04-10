@@ -53,6 +53,15 @@ function statCardClassName() {
 
 function toText(value: unknown, fallback = ""): string {
   if (value === null || value === undefined) return fallback;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = toText(item, "");
+      if (candidate) return candidate;
+    }
+    return fallback;
+  }
+
   const text = String(value).trim();
   return text || fallback;
 }
@@ -408,6 +417,17 @@ function getLinkedCommandHref(incident: IncidentItem) {
   return `/commands/${encodeURIComponent(commandRecord)}`;
 }
 
+function getLinkedEventHref(incident: IncidentItem) {
+  const target =
+    getSourceRecordId(incident) ||
+    getRootEventId(incident) ||
+    getFlowId(incident) ||
+    "";
+
+  if (!target) return "";
+  return `/events/${encodeURIComponent(target)}`;
+}
+
 function getSummaryLine(incident: IncidentItem) {
   const status = getIncidentStatusNormalized(incident);
   const severity = getIncidentSeverityNormalized(incident);
@@ -426,6 +446,7 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   const lastAction = toText(incident.last_action, "");
   const flowId = getFlowId(incident);
   const rootEventId = getRootEventId(incident);
+  const sourceRecordId = getSourceRecordId(incident);
   const commandRecord = getCommandRecord(incident);
   const runRecord = getRunRecord(incident);
 
@@ -438,6 +459,7 @@ function isLegacyNoiseIncident(incident: IncidentItem) {
   const hasNoLinking =
     flowId === "" &&
     rootEventId === "" &&
+    sourceRecordId === "" &&
     (commandRecord === "" || commandRecord === "—") &&
     (runRecord === "" || runRecord === "—");
 
@@ -547,6 +569,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const sourceFlowHref = getSourceFlowHref(incident);
   const linkedFlowHref = getLinkedFlowHref(incident);
   const linkedCommandHref = getLinkedCommandHref(incident);
+  const linkedEventHref = getLinkedEventHref(incident);
 
   const remainingMinutes = toNumber(incident.sla_remaining_minutes, Number.NaN);
 
@@ -702,9 +725,39 @@ export default async function IncidentDetailPage({ params }: PageProps) {
               breakAll
             />
 
-            <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
+            <MetaItem
+              label="Root event"
+              value={
+                linkedEventHref && rootEventId ? (
+                  <Link
+                    href={linkedEventHref}
+                    className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                  >
+                    {rootEventId}
+                  </Link>
+                ) : (
+                  rootEventId || "—"
+                )
+              }
+              breakAll
+            />
 
-            <MetaItem label="Source record" value={sourceRecordId || "—"} breakAll />
+            <MetaItem
+              label="Source record"
+              value={
+                linkedEventHref && sourceRecordId ? (
+                  <Link
+                    href={linkedEventHref}
+                    className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                  >
+                    {sourceRecordId}
+                  </Link>
+                ) : (
+                  sourceRecordId || "—"
+                )
+              }
+              breakAll
+            />
 
             <MetaItem label="Run record" value={runRecord} breakAll />
 
@@ -748,6 +801,12 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             {linkedFlowHref && linkedFlowHref !== sourceFlowHref ? (
               <Link href={linkedFlowHref} className={actionLinkClassName("soft")}>
                 Ouvrir le flow lié
+              </Link>
+            ) : null}
+
+            {linkedEventHref ? (
+              <Link href={linkedEventHref} className={actionLinkClassName("soft")}>
+                Ouvrir l’event lié
               </Link>
             ) : null}
 
