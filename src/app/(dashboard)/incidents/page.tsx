@@ -17,21 +17,21 @@ type PageProps = {
   searchParams?: Promise<SearchParams> | SearchParams;
 };
 
-function cardClassName() {
+function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
-function statCardClassName() {
+function statCardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
-function emptyStateClassName() {
+function emptyStateClassName(): string {
   return "rounded-[28px] border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500";
 }
 
 function actionLinkClassName(
   variant: "default" | "primary" | "soft" | "danger" = "default"
-) {
+): string {
   if (variant === "primary") {
     return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
@@ -47,15 +47,15 @@ function actionLinkClassName(
   return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
-function sectionLabelClassName() {
+function sectionLabelClassName(): string {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
 
-function metaLabelClassName() {
+function metaLabelClassName(): string {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
-function formatDate(value?: string) {
+function formatDate(value?: string): string {
   if (!value) return "—";
 
   const d = new Date(value);
@@ -67,7 +67,7 @@ function formatDate(value?: string) {
   }).format(d);
 }
 
-function toText(value: unknown, fallback = "—") {
+function toText(value: unknown, fallback = "—"): string {
   if (value === null || value === undefined) return fallback;
 
   if (Array.isArray(value)) {
@@ -82,11 +82,11 @@ function toText(value: unknown, fallback = "—") {
   return text || fallback;
 }
 
-function toTextOrEmpty(value: unknown) {
+function toTextOrEmpty(value: unknown): string {
   return toText(value, "");
 }
 
-function toNumber(value: unknown, fallback = 0) {
+function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
 
   if (typeof value === "string" && value.trim() !== "") {
@@ -97,36 +97,33 @@ function toNumber(value: unknown, fallback = 0) {
   return fallback;
 }
 
-function firstParam(value?: string | string[]) {
+function firstParam(value?: string | string[]): string {
   if (Array.isArray(value)) return value[0] || "";
   return value || "";
 }
 
-function safeUpper(text: string) {
+function safeUpper(text: string): string {
   return text.trim() ? text.trim().toUpperCase() : "—";
 }
 
-function getIncidentTitle(incident: IncidentItem) {
+function getIncidentTitle(incident: IncidentItem): string {
   return (
-    toTextOrEmpty(incident.title) ||
-    toTextOrEmpty(incident.name) ||
-    toTextOrEmpty(incident.error_id) ||
-    "Untitled incident"
+    incident.title || incident.name || incident.error_id || "Untitled incident"
   );
 }
 
-function getIncidentStatusRaw(incident: IncidentItem) {
-  return toTextOrEmpty(incident.status) || toTextOrEmpty(incident.statut_incident);
+function getIncidentStatusRaw(incident: IncidentItem): string {
+  return (incident.status || incident.statut_incident || "").trim();
 }
 
-function getIncidentSeverityRaw(incident: IncidentItem) {
-  return toTextOrEmpty(incident.severity);
+function getIncidentSeverityRaw(incident: IncidentItem): string {
+  return (incident.severity || "").trim();
 }
 
-function getIncidentStatusNormalized(incident: IncidentItem) {
+function getIncidentStatusNormalized(incident: IncidentItem): string {
   const raw = getIncidentStatusRaw(incident).toLowerCase();
-  const sla = toTextOrEmpty(incident.sla_status).toLowerCase();
-  const hasResolvedAt = Boolean(toTextOrEmpty(incident.resolved_at));
+  const sla = (incident.sla_status || "").trim().toLowerCase();
+  const hasResolvedAt = Boolean(incident.resolved_at);
 
   if (hasResolvedAt) return "resolved";
 
@@ -150,7 +147,7 @@ function getIncidentStatusNormalized(incident: IncidentItem) {
   return raw;
 }
 
-function getIncidentStatusLabel(incident: IncidentItem) {
+function getIncidentStatusLabel(incident: IncidentItem): string {
   const normalized = getIncidentStatusNormalized(incident);
 
   if (normalized === "open") return "OPEN";
@@ -161,11 +158,11 @@ function getIncidentStatusLabel(incident: IncidentItem) {
   return raw ? raw.toUpperCase() : "OPEN";
 }
 
-function getIncidentSeverityNormalized(incident: IncidentItem) {
+function getIncidentSeverityNormalized(incident: IncidentItem): string {
   const raw = getIncidentSeverityRaw(incident).toLowerCase();
 
   if (!raw) {
-    if (toTextOrEmpty(incident.sla_status).toLowerCase() === "breached") {
+    if ((incident.sla_status || "").toLowerCase() === "breached") {
       return "critical";
     }
     return "unknown";
@@ -179,7 +176,7 @@ function getIncidentSeverityNormalized(incident: IncidentItem) {
   return raw;
 }
 
-function getIncidentSeverityLabel(incident: IncidentItem) {
+function getIncidentSeverityLabel(incident: IncidentItem): string {
   const normalized = getIncidentSeverityNormalized(incident);
 
   if (normalized === "critical") return "CRITICAL";
@@ -191,7 +188,7 @@ function getIncidentSeverityLabel(incident: IncidentItem) {
   return raw ? raw.toUpperCase() : "UNKNOWN";
 }
 
-function statusTone(incident: IncidentItem) {
+function statusTone(incident: IncidentItem): string {
   const status = getIncidentStatusNormalized(incident);
 
   if (status === "resolved") {
@@ -209,7 +206,7 @@ function statusTone(incident: IncidentItem) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function severityTone(incident: IncidentItem) {
+function severityTone(incident: IncidentItem): string {
   const severity = getIncidentSeverityNormalized(incident);
 
   if (severity === "critical") {
@@ -231,23 +228,23 @@ function severityTone(incident: IncidentItem) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function getDecisionStatus(incident: IncidentItem) {
-  return toTextOrEmpty(incident.decision_status);
+function getDecisionStatus(incident: IncidentItem): string {
+  return toText(incident.decision_status, "");
 }
 
-function getDecisionReason(incident: IncidentItem) {
-  return toTextOrEmpty(incident.decision_reason);
+function getDecisionReason(incident: IncidentItem): string {
+  return toText(incident.decision_reason, "");
 }
 
-function getNextAction(incident: IncidentItem) {
-  return toTextOrEmpty(incident.next_action);
+function getNextAction(incident: IncidentItem): string {
+  return toText(incident.next_action, "");
 }
 
-function getPriorityScore(incident: IncidentItem) {
+function getPriorityScore(incident: IncidentItem): number {
   return toNumber(incident.priority_score, 0);
 }
 
-function getDecisionTone(incident: IncidentItem) {
+function getDecisionTone(incident: IncidentItem): string {
   const decision = getDecisionStatus(incident).toLowerCase();
 
   if (["escalate", "escalated"].includes(decision)) {
@@ -269,34 +266,36 @@ function getDecisionTone(incident: IncidentItem) {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function getSlaLabel(incident: IncidentItem) {
+function getSlaLabel(incident: IncidentItem): string {
   const resolvedLike =
-    Boolean(toTextOrEmpty(incident.resolved_at)) ||
+    Boolean(incident.resolved_at) ||
     getIncidentStatusNormalized(incident) === "resolved";
 
   if (resolvedLike) return "RESOLVED";
 
-  const sla = toTextOrEmpty(incident.sla_status);
+  const sla = (incident.sla_status || "").trim();
   if (sla) return sla.toUpperCase();
 
-  const remaining = toNumber(incident.sla_remaining_minutes, Number.NaN);
-  if (Number.isFinite(remaining) && remaining < 0) {
+  if (
+    typeof incident.sla_remaining_minutes === "number" &&
+    incident.sla_remaining_minutes < 0
+  ) {
     return "BREACHED";
   }
 
   return "—";
 }
 
-function getSlaTone(incident: IncidentItem) {
+function getSlaTone(incident: IncidentItem): string {
   const resolvedLike =
-    Boolean(toTextOrEmpty(incident.resolved_at)) ||
+    Boolean(incident.resolved_at) ||
     getIncidentStatusNormalized(incident) === "resolved";
 
   if (resolvedLike) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  const sla = toTextOrEmpty(incident.sla_status).toLowerCase();
+  const sla = (incident.sla_status || "").toLowerCase();
 
   if (sla === "breached") {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
@@ -310,78 +309,69 @@ function getSlaTone(incident: IncidentItem) {
     return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
   }
 
-  const remaining = toNumber(incident.sla_remaining_minutes, Number.NaN);
-  if (Number.isFinite(remaining) && remaining < 0) {
+  if (
+    typeof incident.sla_remaining_minutes === "number" &&
+    incident.sla_remaining_minutes < 0
+  ) {
     return "bg-red-500/15 text-red-300 border border-red-500/20";
   }
 
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-function getOpenedAt(incident: IncidentItem) {
-  return toTextOrEmpty(incident.opened_at) || toTextOrEmpty(incident.created_at);
+function getOpenedAt(incident: IncidentItem): string | undefined {
+  return incident.opened_at || incident.created_at;
 }
 
-function getUpdatedAt(incident: IncidentItem) {
-  return toTextOrEmpty(incident.updated_at) || toTextOrEmpty(incident.created_at);
+function getUpdatedAt(incident: IncidentItem): string | undefined {
+  return incident.updated_at || incident.created_at;
 }
 
-function getResolvedAt(incident: IncidentItem) {
-  if (toTextOrEmpty(incident.resolved_at)) return toTextOrEmpty(incident.resolved_at);
+function getResolvedAt(incident: IncidentItem): string | undefined {
+  if (incident.resolved_at) return incident.resolved_at;
 
   if (getIncidentStatusNormalized(incident) === "resolved") {
-    return toTextOrEmpty(incident.updated_at) || toTextOrEmpty(incident.created_at);
+    return incident.updated_at || incident.created_at;
   }
 
   return undefined;
 }
 
-function getWorkspace(incident: IncidentItem) {
-  return (
-    toTextOrEmpty(incident.workspace_id) ||
-    toTextOrEmpty(incident.workspace) ||
-    "—"
-  );
+function getWorkspace(incident: IncidentItem): string {
+  return incident.workspace_id || incident.workspace || "—";
 }
 
-function getRunRecord(incident: IncidentItem) {
-  return (
-    toTextOrEmpty(incident.run_record_id) ||
-    toTextOrEmpty(incident.linked_run) ||
-    toTextOrEmpty(incident.run_id) ||
-    "—"
-  );
+function getRunRecord(incident: IncidentItem): string {
+  return incident.run_record_id || incident.linked_run || incident.run_id || "—";
 }
 
-function getCommandRecord(incident: IncidentItem) {
-  return (
-    toTextOrEmpty(incident.command_id) ||
-    toTextOrEmpty(incident.linked_command) ||
-    "—"
-  );
+function getCommandRecord(incident: IncidentItem): string {
+  return incident.command_id || incident.linked_command || "—";
 }
 
-function getFlowId(incident: IncidentItem) {
+function getFlowId(incident: IncidentItem): string {
   return toTextOrEmpty(incident.flow_id);
 }
 
-function getRootEventId(incident: IncidentItem) {
+function getRootEventId(incident: IncidentItem): string {
   return toTextOrEmpty(incident.root_event_id);
 }
 
-function getSourceRecordId(incident: IncidentItem) {
-  return toTextOrEmpty((incident as Record<string, unknown>).source_record_id);
+function getSourceRecordId(incident: IncidentItem): string {
+  return toTextOrEmpty(
+    (incident as Record<string, unknown>).source_record_id
+  );
 }
 
-function getCategory(incident: IncidentItem) {
-  return toTextOrEmpty(incident.category) || "—";
+function getCategory(incident: IncidentItem): string {
+  return incident.category || "—";
 }
 
-function getReason(incident: IncidentItem) {
-  return toTextOrEmpty(incident.reason) || "—";
+function getReason(incident: IncidentItem): string {
+  return incident.reason || "—";
 }
 
-function getSuggestedAction(incident: IncidentItem) {
+function getSuggestedAction(incident: IncidentItem): string {
   const nextAction = getNextAction(incident);
   if (nextAction) return nextAction;
 
@@ -390,7 +380,7 @@ function getSuggestedAction(incident: IncidentItem) {
 
   if (status === "escalated") return "Review escalated incident";
   if (severity === "critical") return "Prioritize immediate review";
-  if (toTextOrEmpty(incident.sla_status).toLowerCase() === "breached") {
+  if ((incident.sla_status || "").toLowerCase() === "breached") {
     return "Review SLA breach";
   }
   if (status === "resolved") return "Verify final resolution state";
@@ -398,7 +388,7 @@ function getSuggestedAction(incident: IncidentItem) {
   return "Monitor flow and resolution";
 }
 
-function getSummaryLine(incident: IncidentItem) {
+function getSummaryLine(incident: IncidentItem): string {
   const status = getIncidentStatusNormalized(incident);
   const severity = getIncidentSeverityNormalized(incident);
   const workspace = getWorkspace(incident);
@@ -407,7 +397,7 @@ function getSummaryLine(incident: IncidentItem) {
   return `${safeUpper(status)} · ${safeUpper(severity)} · ${workspace} · ${category}`;
 }
 
-function getActivePriority(incident: IncidentItem) {
+function getActivePriority(incident: IncidentItem): number {
   const status = getIncidentStatusNormalized(incident);
   const severity = getIncidentSeverityNormalized(incident);
 
@@ -419,13 +409,13 @@ function getActivePriority(incident: IncidentItem) {
   return 5;
 }
 
-function getIncidentTimestampForSort(incident: IncidentItem) {
+function getIncidentTimestampForSort(incident: IncidentItem): number {
   return new Date(
     getUpdatedAt(incident) || getOpenedAt(incident) || getResolvedAt(incident) || 0
   ).getTime();
 }
 
-function sortActiveIncidents(items: IncidentItem[]) {
+function sortActiveIncidents(items: IncidentItem[]): IncidentItem[] {
   return [...items].sort((a, b) => {
     const priorityDiff = getActivePriority(a) - getActivePriority(b);
     if (priorityDiff !== 0) return priorityDiff;
@@ -434,7 +424,7 @@ function sortActiveIncidents(items: IncidentItem[]) {
   });
 }
 
-function sortResolvedIncidents(items: IncidentItem[]) {
+function sortResolvedIncidents(items: IncidentItem[]): IncidentItem[] {
   return [...items].sort((a, b) => {
     const aTs = new Date(
       getResolvedAt(a) || getUpdatedAt(a) || getOpenedAt(a) || 0
@@ -447,13 +437,13 @@ function sortResolvedIncidents(items: IncidentItem[]) {
   });
 }
 
-function isLegacyNoiseIncident(incident: IncidentItem) {
+function isLegacyNoiseIncident(incident: IncidentItem): boolean {
   const title = getIncidentTitle(incident).trim().toLowerCase();
   const category = getCategory(incident).trim().toLowerCase();
   const reason = getReason(incident).trim().toLowerCase();
-  const errorId = toTextOrEmpty(incident.error_id);
-  const resolutionNote = toTextOrEmpty(incident.resolution_note);
-  const lastAction = toTextOrEmpty(incident.last_action);
+  const errorId = (incident.error_id || "").trim();
+  const resolutionNote = (incident.resolution_note || "").trim();
+  const lastAction = (incident.last_action || "").trim();
   const flowId = getFlowId(incident);
   const rootEventId = getRootEventId(incident);
   const sourceRecordId = getSourceRecordId(incident);
@@ -498,7 +488,7 @@ function incidentMatchesFilters(
     rootEventId: string;
     sourceRecordId: string;
   }
-) {
+): boolean {
   const filterValues = [filters.flowId, filters.rootEventId, filters.sourceRecordId]
     .map((value) => value.trim())
     .filter(Boolean);
@@ -518,7 +508,7 @@ function incidentMatchesFilters(
   return filterValues.some((filterValue) => incidentValues.includes(filterValue));
 }
 
-function getBestFlowTargetFromIncident(incident: IncidentItem) {
+function getBestFlowTargetFromIncident(incident: IncidentItem): string {
   return (
     getFlowId(incident) ||
     getSourceRecordId(incident) ||
@@ -531,7 +521,7 @@ function getBestFlowTargetFromFilters(filters: {
   flowId: string;
   rootEventId: string;
   sourceRecordId: string;
-}) {
+}): string {
   return filters.flowId || filters.sourceRecordId || filters.rootEventId || "";
 }
 
@@ -539,7 +529,7 @@ function getBackToFlowsHref(filters: {
   flowId: string;
   rootEventId: string;
   sourceRecordId: string;
-}) {
+}): string {
   const target = getBestFlowTargetFromFilters(filters);
   return target ? `/flows/${encodeURIComponent(target)}` : "/flows";
 }
@@ -600,7 +590,7 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
 
           <div className="space-y-3">
             <Link
-              href={`/incidents/${encodeURIComponent(String(incident.id))}`}
+              href={`/incidents/${encodeURIComponent(incident.id)}`}
               className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
             >
               {title}
@@ -693,7 +683,7 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
             <div className="mt-1 text-zinc-200">{suggestedAction}</div>
           </div>
 
-          <div className="md:col-span-2 xl:col-span-3 space-y-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4 space-y-2">
             <div>
               <span className={metaLabelClassName()}>Decision</span>
               <div className="mt-1 text-purple-300">{decisionStatus || "—"}</div>
@@ -891,7 +881,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
             ) : (
               <div className="space-y-4">
                 {activeIncidents.map((incident) => (
-                  <IncidentCard key={String(incident.id)} incident={incident} />
+                  <IncidentCard key={incident.id} incident={incident} />
                 ))}
               </div>
             )}
@@ -909,7 +899,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
             ) : (
               <div className="space-y-4">
                 {sortedResolvedIncidents.map((incident) => (
-                  <IncidentCard key={String(incident.id)} incident={incident} />
+                  <IncidentCard key={incident.id} incident={incident} />
                 ))}
               </div>
             )}
