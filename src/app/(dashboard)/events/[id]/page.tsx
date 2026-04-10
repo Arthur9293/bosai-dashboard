@@ -3,8 +3,10 @@ import { notFound } from "next/navigation";
 import {
   fetchCommands,
   fetchEvents,
+  fetchIncidents,
   type CommandItem,
   type EventItem,
+  type IncidentItem,
 } from "@/lib/api";
 
 type PageProps = {
@@ -22,7 +24,7 @@ function cardClassName() {
 }
 
 function actionLinkClassName(
-  variant: "default" | "primary" | "soft" = "default",
+  variant: "default" | "primary" | "soft" | "danger" = "default",
   disabled = false
 ) {
   const base =
@@ -34,6 +36,10 @@ function actionLinkClassName(
 
   if (variant === "primary") {
     return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
+  }
+
+  if (variant === "danger") {
+    return `${base} border border-rose-500/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15`;
   }
 
   return `${base} border border-white/10 bg-white/5 text-white hover:bg-white/10`;
@@ -121,6 +127,12 @@ function tone(status?: string): string {
   return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+function incidentTone(hasIncident: boolean) {
+  return hasIncident
+    ? "bg-rose-500/15 text-rose-300 border border-rose-500/20"
+    : "bg-zinc-800 text-zinc-300 border border-white/10";
+}
+
 function getEventPayload(event: EventItem): Record<string, unknown> {
   return parseMaybeJson(event.payload);
 }
@@ -143,9 +155,10 @@ function getEventStatus(event: EventItem): string {
 
 function getEventCapability(event: EventItem): string {
   const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
 
   return (
-    toTextOrEmpty(event.mapped_capability) ||
+    toTextOrEmpty(record.mapped_capability) ||
     toTextOrEmpty(payload.mapped_capability) ||
     toTextOrEmpty(payload.capability) ||
     "—"
@@ -167,11 +180,7 @@ function getEventSource(event: EventItem): string {
   const payload = getEventPayload(event);
   const record = event as Record<string, unknown>;
 
-  return (
-    toTextOrEmpty(record.source) ||
-    toTextOrEmpty(payload.source) ||
-    "—"
-  );
+  return toTextOrEmpty(record.source) || toTextOrEmpty(payload.source) || "—";
 }
 
 function getEventRunId(event: EventItem): string {
@@ -257,9 +266,6 @@ function getFlowNavigationTarget(event: EventItem): string {
   const realFlowId = getEventRealFlowId(event);
   if (realFlowId) return realFlowId;
 
-  const linkedCommand = getLinkedCommandValue(event);
-  if (linkedCommand) return linkedCommand;
-
   const rootEventId = getRootEventId(event);
   if (rootEventId) return rootEventId;
 
@@ -272,11 +278,7 @@ function getFlowNavigationTarget(event: EventItem): string {
 function getCreatedAt(event: EventItem): string {
   const record = event as Record<string, unknown>;
 
-  return (
-    toTextOrEmpty(event.created_at) ||
-    toTextOrEmpty(record.Created_At) ||
-    ""
-  );
+  return toTextOrEmpty(event.created_at) || toTextOrEmpty(record.Created_At) || "";
 }
 
 function getUpdatedAt(event: EventItem): string {
@@ -403,7 +405,6 @@ function buildSyntheticEventFromCommand(
     flow_id: getCommandFlowId(command),
     root_event_id: getCommandRootEventId(command),
     command_id: command.id,
-    mapped_capability: getCommandCapability(command),
     created_at: getCommandStartedAt(command) || getCommandFinishedAt(command),
     updated_at: getCommandStartedAt(command) || getCommandFinishedAt(command),
     processed_at: getCommandFinishedAt(command) || getCommandStartedAt(command),
@@ -411,8 +412,9 @@ function buildSyntheticEventFromCommand(
       source: "synthetic_from_command",
       command_id: command.id,
       reconstructed_from_command: true,
+      capability: getCommandCapability(command),
     },
-  };
+  } as EventItem;
 }
 
 function isSyntheticEvent(event: EventItem): boolean {
@@ -423,6 +425,26 @@ function getHeaderTitle(event: EventItem): string {
   return getEventCapability(event) !== "—"
     ? getEventCapability(event)
     : getEventType(event);
+}
+
+function getIncidentIdCandidates(incident: IncidentItem): string[] {
+  return Array.from(
+    new Set(
+      [
+        toTextOrEmpty(incident.id),
+        toTextOrEmpty(incident.flow_id),
+        toTextOrEmpty(incident.root_event_id),
+        toTextOrEmpty((incident as Record<string, unknown>).source_record_id),
+        toTextOrEmpty(incident.command_id),
+        toTextOrEmpty(incident.linked_command),
+      ].filter(Boolean)
+    )
+  );
+}
+
+function buildIncidentHref(matchedIncident: IncidentItem | null): string {
+  if (!matchedIncident?.id) return "";
+  return `/incidents/${encodeURIComponent(String(matchedIncident.id))}`;
 }
 
 export default async function EventDetailPage({ params }: PageProps) {
@@ -471,8 +493,36 @@ export default async function EventDetailPage({ params }: PageProps) {
   const rootEventId = getRootEventId(event);
   const synthetic = isSyntheticEvent(event);
 
+  let matchedIncident: IncidentItem | null = null;
+  try {
+    const incidentsData = await fetchIncidents(300);
+    const incidents = Array.isArray(incidentsData?.incidents)
+      ? incidentsData.incidents
+      : [];
+
+    const identifiers = [
+      String(event.id || ""),
+      linkedCommand,
+      flowDisplayTarget,
+      flowNavigationTarget,
+      rootEventId,
+      getSourceRecordId(event),
+    ].filter(Boolean);
+
+    matchedIncident =
+      incidents.find((incident) =>
+        getIncidentIdCandidates(incident).some((candidate) =>
+          identifiers.includes(candidate)
+        )
+      ) || null;
+  } catch {
+    matchedIncident = null;
+  }
+
   const hasCommand = linkedCommand !== "";
   const hasFlow = flowNavigationTarget !== "";
+  const incidentHref = buildIncidentHref(matchedIncident);
+  const hasIncident = incidentHref !== "";
 
   return (
     <div className="space-y-6">
@@ -502,6 +552,14 @@ export default async function EventDetailPage({ params }: PageProps) {
 
           <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
             {hasCommand ? "COMMAND CREATED" : "COMMAND MISSING"}
+          </span>
+
+          <span
+            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${incidentTone(
+              hasIncident
+            )}`}
+          >
+            {hasIncident ? "INCIDENT LINKED" : "NO INCIDENT"}
           </span>
 
           {synthetic ? (
@@ -681,6 +739,16 @@ export default async function EventDetailPage({ params }: PageProps) {
           ) : (
             <span className={actionLinkClassName("soft", true)}>
               Ouvrir le flow lié
+            </span>
+          )}
+
+          {hasIncident ? (
+            <Link href={incidentHref} className={actionLinkClassName("danger")}>
+              Ouvrir l’incident lié
+            </Link>
+          ) : (
+            <span className={actionLinkClassName("danger", true)}>
+              Ouvrir l’incident lié
             </span>
           )}
         </div>
