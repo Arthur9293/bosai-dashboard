@@ -37,8 +37,39 @@ function formatDate(value?: string | null): string {
 
 function toText(value: unknown, fallback = ""): string {
   if (value === null || value === undefined) return fallback;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = toText(item, "");
+      if (candidate) return candidate;
+    }
+    return fallback;
+  }
+
   const text = String(value).trim();
   return text || fallback;
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return fallback;
+}
+
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function toTs(value?: string | number | null): number {
+  if (value === null || value === undefined || value === "") return 0;
+
+  const ts = new Date(value).getTime();
+  return Number.isNaN(ts) ? 0 : ts;
 }
 
 function healthLabel(score: number, rawStatus?: string): string {
@@ -125,57 +156,251 @@ function ctaClassName(
   return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
-type CommandStatsCompat = {
-  queue?: number;
-  queued?: number;
-  running?: number;
-  retry?: number;
-  dead?: number;
-  error?: number;
-  done?: number;
-};
+function systemStatusTone(value: string): string {
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized === "ok" || normalized === "loaded" || normalized === "healthy") {
+    return "text-emerald-400";
+  }
+
+  if (normalized.includes("warn")) {
+    return "text-amber-400";
+  }
+
+  if (normalized === "error" || normalized === "critical") {
+    return "text-red-400";
+  }
+
+  return "text-zinc-300";
+}
+
+function parseMaybeJson(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
+/* ---------------- Incident helpers ---------------- */
 
 function getIncidentTitle(incident: IncidentItem): string {
-  return incident.title || incident.name || incident.error_id || "Untitled incident";
+  return (
+    toText((incident as Record<string, unknown>).title) ||
+    toText((incident as Record<string, unknown>).name) ||
+    toText((incident as Record<string, unknown>).error_id) ||
+    "Untitled incident"
+  );
 }
 
 function getIncidentStatus(incident: IncidentItem): string {
-  const direct = String(incident.status || incident.statut_incident || "").trim();
-  if (direct) return direct;
+  const raw =
+    toText((incident as Record<string, unknown>).status) ||
+    toText((incident as Record<string, unknown>).statut_incident);
 
-  const sla = String(incident.sla_status || "").trim().toLowerCase();
-  const remaining =
-    typeof incident.sla_remaining_minutes === "number"
-      ? incident.sla_remaining_minutes
-      : undefined;
+  const normalized = raw.toLowerCase();
+  const sla = toText((incident as Record<string, unknown>).sla_status).toLowerCase();
+  const resolvedAt = toText((incident as Record<string, unknown>).resolved_at);
 
-  if (sla === "breached") return "Open";
-  if (remaining !== undefined && remaining < 0) return "Open";
+  if (resolvedAt) return "resolved";
+  if (["open", "opened", "new", "active", "en cours"].includes(normalized)) {
+    return "open";
+  }
+  if (["escalated", "escalade", "escaladé"].includes(normalized)) {
+    return "escalated";
+  }
+  if (["resolved", "closed", "done", "résolu", "resolve"].includes(normalized)) {
+    return "resolved";
+  }
 
-  return "—";
+  if (!normalized) {
+    if (sla === "breached") return "open";
+    return "open";
+  }
+
+  return normalized;
+}
+
+function getIncidentSeverity(incident: IncidentItem): string {
+  const raw = toText((incident as Record<string, unknown>).severity).toLowerCase();
+  const sla = toText((incident as Record<string, unknown>).sla_status).toLowerCase();
+
+  if (!raw) {
+    if (sla === "breached") return "critical";
+    return "unknown";
+  }
+
+  if (["critical", "critique"].includes(raw)) return "critical";
+  if (["high", "élevé", "eleve"].includes(raw)) return "high";
+  if (["warning", "warn", "medium", "moyen"].includes(raw)) return "medium";
+  if (["low", "faible"].includes(raw)) return "low";
+
+  return raw;
+}
+
+function getIncidentWorkspace(incident: IncidentItem): string {
+  return (
+    toText((incident as Record<string, unknown>).workspace_id) ||
+    toText((incident as Record<string, unknown>).workspace) ||
+    "production"
+  );
+}
+
+function getIncidentFlowId(incident: IncidentItem): string {
+  return toText((incident as Record<string, unknown>).flow_id);
+}
+
+function getIncidentRootEventId(incident: IncidentItem): string {
+  return toText((incident as Record<string, unknown>).root_event_id);
+}
+
+function getIncidentSourceRecordId(incident: IncidentItem): string {
+  return toText((incident as Record<string, unknown>).source_record_id);
+}
+
+function getIncidentCommandId(incident: IncidentItem): string {
+  return (
+    toText((incident as Record<string, unknown>).command_id) ||
+    toText((incident as Record<string, unknown>).linked_command)
+  );
+}
+
+function getIncidentUpdatedTs(incident: IncidentItem): number {
+  const record = incident as Record<string, unknown>;
+
+  return Math.max(
+    toTs(record.resolved_at as string | number | null | undefined),
+    toTs(record.updated_at as string | number | null | undefined),
+    toTs(record.opened_at as string | number | null | undefined),
+    toTs(record.created_at as string | number | null | undefined)
+  );
+}
+
+function getIncidentBusinessKey(incident: IncidentItem): string {
+  const workspace = getIncidentWorkspace(incident);
+  const title = getIncidentTitle(incident).toLowerCase();
+  const flowId = getIncidentFlowId(incident);
+  const rootEventId = getIncidentRootEventId(incident);
+  const sourceRecordId = getIncidentSourceRecordId(incident);
+  const commandId = getIncidentCommandId(incident);
+  const category = toText((incident as Record<string, unknown>).category).toLowerCase();
+  const reason = toText((incident as Record<string, unknown>).reason).toLowerCase();
+  const errorId = toText((incident as Record<string, unknown>).error_id).toLowerCase();
+
+  if (flowId) return `flow|${workspace}|${flowId}|${category}|${reason}|${title}`;
+  if (rootEventId) {
+    return `root|${workspace}|${rootEventId}|${category}|${reason}|${title}`;
+  }
+  if (sourceRecordId) {
+    return `source|${workspace}|${sourceRecordId}|${category}|${reason}|${title}`;
+  }
+  if (commandId) {
+    return `command|${workspace}|${commandId}|${category}|${reason}|${title}`;
+  }
+  if (errorId) return `error|${workspace}|${errorId}|${category}|${reason}|${title}`;
+
+  return `id|${workspace}|${toText((incident as Record<string, unknown>).id)}`;
+}
+
+function getIncidentFlowKey(incident: IncidentItem): string {
+  return (
+    getIncidentFlowId(incident) ||
+    getIncidentRootEventId(incident) ||
+    getIncidentSourceRecordId(incident)
+  );
+}
+
+function isLegacyNoiseIncident(incident: IncidentItem): boolean {
+  const title = getIncidentTitle(incident).trim().toLowerCase();
+  const category = toText((incident as Record<string, unknown>).category).trim().toLowerCase();
+  const reason = toText((incident as Record<string, unknown>).reason).trim().toLowerCase();
+  const errorId = toText((incident as Record<string, unknown>).error_id);
+  const resolutionNote = toText((incident as Record<string, unknown>).resolution_note);
+  const lastAction = toText((incident as Record<string, unknown>).last_action);
+
+  const flowId = getIncidentFlowId(incident);
+  const rootEventId = getIncidentRootEventId(incident);
+  const sourceRecordId = getIncidentSourceRecordId(incident);
+  const commandId = getIncidentCommandId(incident);
+
+  const isGenericTitle = title === "incident" || title === "untitled incident";
+  const isGenericCategory =
+    category === "" || category === "—" || category === "unknown_incident";
+  const isGenericReason =
+    reason === "" || reason === "—" || reason === "incident_create";
+
+  const hasNoLinking =
+    flowId === "" &&
+    rootEventId === "" &&
+    sourceRecordId === "" &&
+    commandId === "";
+
+  const hasStrongSignal =
+    errorId !== "" ||
+    resolutionNote !== "" ||
+    lastAction !== "" ||
+    category === "http_failure" ||
+    reason === "http_5xx_exhausted" ||
+    reason === "http_status_error" ||
+    reason === "forbidden_host" ||
+    !hasNoLinking;
+
+  return (
+    isGenericTitle &&
+    isGenericCategory &&
+    isGenericReason &&
+    !hasStrongSignal
+  );
+}
+
+function dedupeIncidents(items: IncidentItem[]): IncidentItem[] {
+  const map = new Map<string, IncidentItem>();
+
+  for (const item of items) {
+    const key = getIncidentBusinessKey(item);
+    const existing = map.get(key);
+
+    if (!existing) {
+      map.set(key, item);
+      continue;
+    }
+
+    if (getIncidentUpdatedTs(item) >= getIncidentUpdatedTs(existing)) {
+      map.set(key, item);
+    }
+  }
+
+  return Array.from(map.values());
 }
 
 function isOpenIncident(incident: IncidentItem): boolean {
-  return getIncidentStatus(incident).toLowerCase() === "open";
+  return getIncidentStatus(incident) === "open";
 }
 
 function isEscalatedIncident(incident: IncidentItem): boolean {
-  return getIncidentStatus(incident).toLowerCase() === "escalated";
+  return getIncidentStatus(incident) === "escalated";
 }
 
 function isCriticalIncident(incident: IncidentItem): boolean {
-  const severity = String(incident.severity || "").toLowerCase();
-  return severity === "critical" || severity === "critique";
+  return getIncidentSeverity(incident) === "critical";
 }
 
 function isWarningIncident(incident: IncidentItem): boolean {
-  const severity = String(incident.severity || "").toLowerCase();
-  return (
-    severity === "warning" ||
-    severity === "warn" ||
-    severity === "medium" ||
-    severity === "moyen"
-  );
+  const severity = getIncidentSeverity(incident);
+  return severity === "warning" || severity === "medium";
 }
 
 function statusTone(status: string): string {
@@ -216,6 +441,172 @@ function severityTone(severity: string): string {
   return badgeClassName("default");
 }
 
+/* ---------------- Command helpers ---------------- */
+
+function getCommandInput(command: CommandItem): Record<string, unknown> {
+  return parseMaybeJson((command as Record<string, unknown>).input);
+}
+
+function getCommandResult(command: CommandItem): Record<string, unknown> {
+  return parseMaybeJson((command as Record<string, unknown>).result);
+}
+
+function getCommandStatus(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toText((command as Record<string, unknown>).status) ||
+    toText(result.status) ||
+    toText(result.status_select) ||
+    toText(input.status) ||
+    "unknown"
+  ).toLowerCase();
+}
+
+function getCommandCapability(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toText((command as Record<string, unknown>).capability) ||
+    toText(input.capability) ||
+    toText(result.capability) ||
+    "unknown_capability"
+  );
+}
+
+function getCommandWorkspace(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toText((command as Record<string, unknown>).workspace_id) ||
+    toText(input.workspace_id) ||
+    toText(input.workspaceId) ||
+    toText(result.workspace_id) ||
+    toText(result.workspaceId) ||
+    "—"
+  );
+}
+
+function getCommandTitle(command: CommandItem): string {
+  return (
+    toText((command as Record<string, unknown>).name) ||
+    getCommandCapability(command) ||
+    "Command detail"
+  );
+}
+
+function getCommandFlowId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toText((command as Record<string, unknown>).flow_id) ||
+    toText(input.flow_id) ||
+    toText(input.flowId) ||
+    toText(result.flow_id) ||
+    toText(result.flowId) ||
+    ""
+  );
+}
+
+function getCommandRootEventId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return (
+    toText((command as Record<string, unknown>).root_event_id) ||
+    toText(input.root_event_id) ||
+    toText(input.rootEventId) ||
+    toText(result.root_event_id) ||
+    toText(result.rootEventId) ||
+    ""
+  );
+}
+
+function getCommandSourceEventId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
+
+  return (
+    toText(record.source_event_id) ||
+    toText(record.Source_Event_ID) ||
+    toText(input.source_event_id) ||
+    toText(input.sourceEventId) ||
+    toText(input.event_id) ||
+    toText(input.eventId) ||
+    toText(result.source_event_id) ||
+    toText(result.sourceEventId) ||
+    toText(result.event_id) ||
+    toText(result.eventId) ||
+    ""
+  );
+}
+
+function getCommandActivityTs(command: CommandItem): number {
+  const record = command as Record<string, unknown>;
+
+  return Math.max(
+    toTs(record.finished_at as string | number | null | undefined),
+    toTs(record.updated_at as string | number | null | undefined),
+    toTs(record.started_at as string | number | null | undefined),
+    toTs(record.created_at as string | number | null | undefined)
+  );
+}
+
+function getCommandFlowKey(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
+
+  return (
+    toText(record.flow_id) ||
+    toText(input.flow_id) ||
+    toText(input.flowId) ||
+    toText(result.flow_id) ||
+    toText(result.flowId) ||
+    toText(record.root_event_id) ||
+    toText(input.root_event_id) ||
+    toText(input.rootEventId) ||
+    toText(result.root_event_id) ||
+    toText(result.rootEventId) ||
+    toText(record.source_event_id) ||
+    toText(record.Source_Event_ID) ||
+    toText(input.source_event_id) ||
+    toText(input.sourceEventId) ||
+    toText(input.event_id) ||
+    toText(input.eventId) ||
+    toText(result.source_event_id) ||
+    toText(result.sourceEventId) ||
+    toText(result.event_id) ||
+    toText(result.eventId)
+  );
+}
+
+function dedupeCommands(items: CommandItem[]): CommandItem[] {
+  const map = new Map<string, CommandItem>();
+
+  for (const item of items) {
+    const id = toText((item as Record<string, unknown>).id);
+    if (!id) continue;
+
+    const existing = map.get(id);
+    if (!existing) {
+      map.set(id, item);
+      continue;
+    }
+
+    if (getCommandActivityTs(item) >= getCommandActivityTs(existing)) {
+      map.set(id, item);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
 function commandTone(status: string): string {
   const normalized = status.trim().toLowerCase();
 
@@ -242,122 +633,6 @@ function commandTone(status: string): string {
   return badgeClassName("default");
 }
 
-function systemStatusTone(value: string): string {
-  const normalized = value.trim().toLowerCase();
-
-  if (normalized === "ok" || normalized === "loaded" || normalized === "healthy") {
-    return "text-emerald-400";
-  }
-
-  if (normalized.includes("warn")) {
-    return "text-amber-400";
-  }
-
-  if (normalized === "error" || normalized === "critical") {
-    return "text-red-400";
-  }
-
-  return "text-zinc-300";
-}
-
-function parseMaybeJson(value: unknown): Record<string, unknown> {
-  if (!value) return {};
-
-  if (typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch {
-      return {};
-    }
-  }
-
-  return {};
-}
-
-function getCommandInput(command: CommandItem): Record<string, unknown> {
-  return parseMaybeJson(command.input);
-}
-
-function getCommandResult(command: CommandItem): Record<string, unknown> {
-  return parseMaybeJson(command.result);
-}
-
-function getCommandStatus(command: CommandItem): string {
-  const input = getCommandInput(command);
-  const result = getCommandResult(command);
-
-  return (
-    toText(command.status, "") ||
-    toText(result.status, "") ||
-    toText(result.status_select, "") ||
-    toText(input.status, "") ||
-    "unknown"
-  );
-}
-
-function getCommandCapability(command: CommandItem): string {
-  const input = getCommandInput(command);
-  const result = getCommandResult(command);
-
-  return (
-    toText(command.capability, "") ||
-    toText(input.capability, "") ||
-    toText(result.capability, "") ||
-    "unknown_capability"
-  );
-}
-
-function getCommandWorkspace(command: CommandItem): string {
-  const input = getCommandInput(command);
-  const result = getCommandResult(command);
-
-  return (
-    toText(command.workspace_id, "") ||
-    toText(input.workspace_id, "") ||
-    toText(input.workspaceId, "") ||
-    toText(result.workspace_id, "") ||
-    toText(result.workspaceId, "") ||
-    "—"
-  );
-}
-
-function getCommandTitle(command: CommandItem): string {
-  return (
-    toText(command.name, "") ||
-    getCommandCapability(command) ||
-    "Command detail"
-  );
-}
-
-function getCommandFlowId(command: CommandItem): string {
-  const input = getCommandInput(command);
-  const result = getCommandResult(command);
-
-  return (
-    toText(command.flow_id, "") ||
-    toText(input.flow_id, "") ||
-    toText(input.flowId, "") ||
-    toText(result.flow_id, "") ||
-    toText(result.flowId, "") ||
-    ""
-  );
-}
-
-function getCommandUpdatedTs(command: CommandItem): number {
-  const created = new Date(toText(command.created_at, "") || 0).getTime();
-  const started = new Date(toText(command.started_at, "") || 0).getTime();
-  const finished = new Date(toText(command.finished_at, "") || 0).getTime();
-
-  return Math.max(created || 0, started || 0, finished || 0);
-}
-
 function commandSummaryLine(command: CommandItem): string {
   return [
     getCommandStatus(command).toUpperCase(),
@@ -367,6 +642,8 @@ function commandSummaryLine(command: CommandItem): string {
     .filter(Boolean)
     .join(" · ");
 }
+
+/* ---------------- UI blocks ---------------- */
 
 function MetricRow({
   label,
@@ -459,14 +736,15 @@ function QuickLinkCard({
 
 function AttentionIncidentCard({ incident }: { incident: IncidentItem }) {
   const incidentTitle = getIncidentTitle(incident);
-  const incidentSeverity = incident.severity || "—";
+  const incidentSeverity = getIncidentSeverity(incident);
   const incidentStatus = getIncidentStatus(incident);
-  const incidentWorkspace = String(incident.workspace_id || incident.workspace || "—");
-  const incidentFlow = String(incident.flow_id || incident.root_event_id || "—");
+  const incidentWorkspace = getIncidentWorkspace(incident);
+  const incidentFlow =
+    getIncidentFlowId(incident) || getIncidentRootEventId(incident) || "—";
 
   return (
     <Link
-      href={`/incidents/${encodeURIComponent(String(incident.id))}`}
+      href={`/incidents/${encodeURIComponent(String((incident as Record<string, unknown>).id || ""))}`}
       className={rowCardClassName()}
     >
       <div className="flex flex-col gap-4">
@@ -482,7 +760,9 @@ function AttentionIncidentCard({ incident }: { incident: IncidentItem }) {
           </div>
 
           <div className="flex flex-wrap gap-2 md:justify-end">
-            <span className={statusTone(incidentStatus)}>{incidentStatus || "—"}</span>
+            <span className={statusTone(incidentStatus)}>
+              {incidentStatus.toUpperCase() || "—"}
+            </span>
             <span className={severityTone(String(incidentSeverity))}>
               {incidentSeverity || "—"}
             </span>
@@ -500,7 +780,7 @@ function AttentionCommandCard({ command }: { command: CommandItem }) {
 
   return (
     <Link
-      href={`/commands/${encodeURIComponent(String(command.id || ""))}`}
+      href={`/commands/${encodeURIComponent(String((command as Record<string, unknown>).id || ""))}`}
       className={rowCardClassName()}
     >
       <div className="flex flex-col gap-4">
@@ -599,18 +879,45 @@ export default async function OverviewPage() {
   const doneRuns = runs?.stats?.done ?? 0;
   const errorRuns = runs?.stats?.error ?? 0;
 
-  const commandStats = commands?.stats as CommandStatsCompat | undefined;
-  const commandItems: CommandItem[] = Array.isArray(commands?.commands)
+  const rawCommandItems: CommandItem[] = Array.isArray(commands?.commands)
     ? commands.commands
     : [];
-  const queuedCommands = commandStats?.queue ?? commandStats?.queued ?? 0;
-  const runningCommands = commandStats?.running ?? 0;
-  const retryCommands = commandStats?.retry ?? 0;
-  const deadCommands = commandStats?.dead ?? 0;
-  const failedCommands = (commandStats?.error ?? 0) + deadCommands;
-  const doneCommands = commandStats?.done ?? 0;
-  const totalCommands = commands?.count ?? 0;
+
+  const commandItems = dedupeCommands(rawCommandItems);
+
+  const queuedCommandItems = commandItems.filter((item) =>
+    ["queued", "pending", "new"].includes(getCommandStatus(item))
+  );
+
+  const runningCommandItems = commandItems.filter((item) =>
+    ["running", "processing"].includes(getCommandStatus(item))
+  );
+
+  const retryCommandItems = commandItems.filter((item) =>
+    ["retry", "retriable"].includes(getCommandStatus(item))
+  );
+
+  const failedCommandItems = commandItems.filter((item) =>
+    ["error", "failed", "dead", "blocked"].includes(getCommandStatus(item))
+  );
+
+  const doneCommandItems = commandItems.filter((item) =>
+    ["processed", "done", "success", "completed", "resolved"].includes(
+      getCommandStatus(item)
+    )
+  );
+
+  const queuedCommands = queuedCommandItems.length;
+  const runningCommands = runningCommandItems.length;
+  const retryCommands = retryCommandItems.length;
+  const failedCommands = failedCommandItems.length;
+  const doneCommands = doneCommandItems.length;
+  const totalCommands = commandItems.length;
   const activeCommands = queuedCommands + runningCommands + retryCommands;
+
+  const recentCommands = [...commandItems]
+    .sort((a, b) => getCommandActivityTs(b) - getCommandActivityTs(a))
+    .slice(0, 5);
 
   const newEvents = events?.stats?.new ?? 0;
   const queuedEvents = events?.stats?.queued ?? 0;
@@ -618,31 +925,34 @@ export default async function OverviewPage() {
   const eventErrors = events?.stats?.error ?? 0;
   const totalEvents = newEvents + queuedEvents + processedEvents + eventErrors;
 
-  const incidentItems: IncidentItem[] = incidents?.incidents ?? [];
-  const openIncidents =
-    incidents?.stats?.open ??
-    incidentItems.filter((incident) => isOpenIncident(incident)).length;
-  const criticalIncidents =
-    incidents?.stats?.critical ??
-    incidentItems.filter((incident) => isCriticalIncident(incident)).length;
-  const warningIncidents =
-    incidents?.stats?.warning ??
-    incidentItems.filter((incident) => isWarningIncident(incident)).length;
+  const rawIncidentItems: IncidentItem[] = Array.isArray(incidents?.incidents)
+    ? incidents.incidents
+    : [];
 
-  const activeIncidentItems = incidentItems
-    .filter((incident) => isOpenIncident(incident) || isEscalatedIncident(incident))
-    .sort((a, b) => {
-      const aTs = new Date(
-        toText((a as { updated_at?: string }).updated_at, "") ||
-          toText((a as { created_at?: string }).created_at, "") ||
-          0
-      ).getTime();
-      const bTs = new Date(
-        toText((b as { updated_at?: string }).updated_at, "") ||
-          toText((b as { created_at?: string }).created_at, "") ||
-          0
-      ).getTime();
+  const incidentItems = dedupeIncidents(
+    rawIncidentItems.filter((item) => !isLegacyNoiseIncident(item))
+  );
 
+  const openIncidentItems = incidentItems.filter((item) => isOpenIncident(item));
+  const escalatedIncidentItems = incidentItems.filter((item) =>
+    isEscalatedIncident(item)
+  );
+  const resolvedIncidentItems = incidentItems.filter(
+    (item) => getIncidentStatus(item) === "resolved"
+  );
+  const criticalIncidentItems = incidentItems.filter((item) =>
+    isCriticalIncident(item)
+  );
+  const warningIncidentItems = incidentItems.filter((item) =>
+    isWarningIncident(item)
+  );
+
+  const openIncidents = openIncidentItems.length;
+  const criticalIncidents = criticalIncidentItems.length;
+  const warningIncidents = warningIncidentItems.length;
+
+  const activeIncidentItems = [...openIncidentItems, ...escalatedIncidentItems].sort(
+    (a, b) => {
       const aPriority =
         isEscalatedIncident(a) && isCriticalIncident(a)
           ? 0
@@ -662,17 +972,29 @@ export default async function OverviewPage() {
               : 3;
 
       if (aPriority !== bPriority) return aPriority - bPriority;
-      return bTs - aTs;
-    });
+      return getIncidentUpdatedTs(b) - getIncidentUpdatedTs(a);
+    }
+  );
 
   const attentionCommands = [...commandItems]
     .filter((command) => {
-      const status = getCommandStatus(command).toLowerCase();
+      const status = getCommandStatus(command);
       return ["running", "retry", "error", "failed", "dead", "blocked"].includes(
         status
       );
     })
-    .sort((a, b) => getCommandUpdatedTs(b) - getCommandUpdatedTs(a));
+    .sort((a, b) => getCommandActivityTs(b) - getCommandActivityTs(a));
+
+  const activeFlowIds = new Set<string>(
+    uniq([
+      ...activeIncidentItems.map(getIncidentFlowKey),
+      ...runningCommandItems.map(getCommandFlowKey),
+      ...retryCommandItems.map(getCommandFlowKey),
+      ...failedCommandItems.map(getCommandFlowKey),
+    ])
+  );
+
+  const flowsUnderAttention = activeFlowIds.size;
 
   const slaStats = sla?.stats ?? {};
   const slaItems = Array.isArray(sla?.incidents) ? sla.incidents : [];
@@ -684,21 +1006,6 @@ export default async function OverviewPage() {
   const slaUnknown = slaStats.unknown ?? 0;
   const totalSlaSignals = slaItems.length;
   const criticalSlaSignals = slaBreached + slaEscalated;
-
-  const activeFlowIds = new Set<string>();
-  activeIncidentItems.forEach((incident) => {
-    const value = toText(incident.flow_id, "") || toText(incident.root_event_id, "");
-    if (value) activeFlowIds.add(value);
-  });
-  attentionCommands.forEach((command) => {
-    const value = getCommandFlowId(command);
-    if (value) activeFlowIds.add(value);
-  });
-  const flowsUnderAttention = activeFlowIds.size;
-
-  const recentCommands = [...commandItems]
-    .sort((a, b) => getCommandUpdatedTs(b) - getCommandUpdatedTs(a))
-    .slice(0, 5);
 
   return (
     <div className="space-y-8">
@@ -789,7 +1096,10 @@ export default async function OverviewPage() {
 
             <div className="space-y-3">
               {activeIncidentItems.slice(0, 4).map((incident) => (
-                <AttentionIncidentCard key={incident.id} incident={incident} />
+                <AttentionIncidentCard
+                  key={String((incident as Record<string, unknown>).id)}
+                  incident={incident}
+                />
               ))}
 
               {activeIncidentItems.length === 0 && (
@@ -816,7 +1126,10 @@ export default async function OverviewPage() {
 
             <div className="space-y-3">
               {attentionCommands.slice(0, 4).map((command) => (
-                <AttentionCommandCard key={String(command.id)} command={command} />
+                <AttentionCommandCard
+                  key={String((command as Record<string, unknown>).id)}
+                  command={command}
+                />
               ))}
 
               {attentionCommands.length === 0 && (
@@ -1016,12 +1329,12 @@ export default async function OverviewPage() {
         }
       >
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          {recentCommands.slice(0, 5).map((command) => (
+          {recentCommands.map((command) => (
             <RecentRunCard
-              key={String(command.id)}
+              key={String((command as Record<string, unknown>).id)}
               title="Command récente"
               value={getCommandTitle(command)}
-              href={`/commands/${encodeURIComponent(String(command.id || ""))}`}
+              href={`/commands/${encodeURIComponent(String((command as Record<string, unknown>).id || ""))}`}
               badge={
                 <span className={commandTone(getCommandStatus(command))}>
                   {getCommandStatus(command).toUpperCase()}
