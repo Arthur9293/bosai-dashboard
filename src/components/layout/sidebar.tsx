@@ -10,6 +10,7 @@ const navItems = [
   { href: "/sla", label: "SLA" },
   { href: "/policies", label: "Policies" },
   { href: "/tools", label: "Tools" },
+  { href: "/workspaces", label: "Workspaces" },
   { href: "/settings", label: "Settings" },
 ];
 
