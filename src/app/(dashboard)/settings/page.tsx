@@ -70,6 +70,11 @@ type WorkspaceUsageResponse = {
   error?: string;
 };
 
+type PreviewBlockSummary = {
+  primaryReason: string;
+  extraReasons: string[];
+};
+
 function formatNumber(value?: number | null): string {
   return typeof value === "number" && Number.isFinite(value)
     ? value.toString()
@@ -195,8 +200,10 @@ function humanizeQuotaSignal(code?: string): string {
     hard_limit_runs_month_reached: "Limite mensuelle runs atteinte",
     soft_limit_tokens_month_exceeded: "Seuil mensuel tokens dépassé",
     hard_limit_tokens_month_reached: "Limite mensuelle tokens atteinte",
-    soft_limit_http_calls_month_exceeded: "Seuil mensuel appels HTTP dépassé",
-    hard_limit_http_calls_month_reached: "Limite mensuelle appels HTTP atteinte",
+    soft_limit_http_calls_month_exceeded:
+      "Seuil mensuel appels HTTP dépassé",
+    hard_limit_http_calls_month_reached:
+      "Limite mensuelle appels HTTP atteinte",
     workspace_not_found: "Workspace introuvable",
     workspace_inactive: "Workspace inactif",
     workspace_limit_blocked: "Exécution bloquée par les quotas",
@@ -207,6 +214,51 @@ function humanizeQuotaSignal(code?: string): string {
   return value
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function collectPreviewHardBlockReasons(
+  meters?: Record<string, MeterValues>
+): string[] {
+  const reasons: string[] = [];
+
+  if (meters?.runs_month?.hard_reached_on_projection) {
+    reasons.push("hard_limit_runs_month_reached");
+  }
+
+  if (meters?.tokens_month?.hard_reached_on_projection) {
+    reasons.push("hard_limit_tokens_month_reached");
+  }
+
+  if (meters?.http_calls_month?.hard_reached_on_projection) {
+    reasons.push("hard_limit_http_calls_month_reached");
+  }
+
+  return reasons;
+}
+
+function buildPreviewBlockSummary(
+  previewUsage?: WorkspaceUsageResponse | null
+): PreviewBlockSummary {
+  const ordered: string[] = [];
+
+  const pushUnique = (value?: string) => {
+    const normalized = String(value || "").trim();
+    if (!normalized) return;
+    if (!ordered.includes(normalized)) {
+      ordered.push(normalized);
+    }
+  };
+
+  pushUnique(previewUsage?.block_reason);
+
+  for (const reason of collectPreviewHardBlockReasons(previewUsage?.meters)) {
+    pushUnique(reason);
+  }
+
+  return {
+    primaryReason: ordered[0] || "",
+    extraReasons: ordered.slice(1),
+  };
 }
 
 async function fetchWorkspaceUsage(params?: {
@@ -358,12 +410,16 @@ function MeterCard({
 
         <div>
           <div className={metaLabelClassName()}>Hard limit</div>
-          <div className="mt-1 text-zinc-200">{formatOptionalNumber(hardLimit)}</div>
+          <div className="mt-1 text-zinc-200">
+            {formatOptionalNumber(hardLimit)}
+          </div>
         </div>
 
         <div>
           <div className={metaLabelClassName()}>Soft limit</div>
-          <div className="mt-1 text-zinc-200">{formatOptionalNumber(softLimit)}</div>
+          <div className="mt-1 text-zinc-200">
+            {formatOptionalNumber(softLimit)}
+          </div>
         </div>
 
         <div>
@@ -394,9 +450,7 @@ function SignalList({
       <div className="space-y-3">
         {blocked ? (
           <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            <div className="font-medium">
-              {humanizeQuotaSignal(blockReason)}
-            </div>
+            <div className="font-medium">{humanizeQuotaSignal(blockReason)}</div>
             {blockReason ? (
               <div className="mt-1 text-xs text-red-300/80">{blockReason}</div>
             ) : null}
@@ -443,7 +497,9 @@ export default async function SettingsPage() {
 
   const previewWarnings = previewUsage?.warnings ?? [];
   const previewBlocked = previewUsage?.blocked ?? false;
-  const previewBlockReason = previewUsage?.block_reason ?? "";
+  const previewSummary = buildPreviewBlockSummary(previewUsage);
+  const previewPrimaryReason = previewSummary.primaryReason;
+  const previewExtraReasons = previewSummary.extraReasons;
 
   const envReady =
     Boolean(
@@ -502,7 +558,11 @@ export default async function SettingsPage() {
                     statusBadgeVariant(workspace?.is_active, blocked)
                   )}
                 >
-                  {blocked ? "BLOCKED" : workspace?.is_active ? "ACTIVE" : "INACTIVE"}
+                  {blocked
+                    ? "BLOCKED"
+                    : workspace?.is_active
+                      ? "ACTIVE"
+                      : "INACTIVE"}
                 </span>
 
                 {workspace?.type ? (
@@ -511,7 +571,9 @@ export default async function SettingsPage() {
                   </span>
                 ) : null}
 
-                {workspace?.plan_label || workspace?.plan_code || workspace?.plan_id ? (
+                {workspace?.plan_label ||
+                workspace?.plan_code ||
+                workspace?.plan_id ? (
                   <span className={badgeClassName("violet")}>
                     {humanizePlanLabel(workspace)}
                   </span>
@@ -524,17 +586,23 @@ export default async function SettingsPage() {
             <StatCard
               label="Runs / month"
               value={formatNumber(usage?.runs_month)}
-              helper={`Hard: ${formatOptionalNumber(limits?.hard_runs_month ?? null)}`}
+              helper={`Hard: ${formatOptionalNumber(
+                limits?.hard_runs_month ?? null
+              )}`}
             />
             <StatCard
               label="Tokens / month"
               value={formatNumber(usage?.tokens_month)}
-              helper={`Hard: ${formatOptionalNumber(limits?.hard_tokens_month ?? null)}`}
+              helper={`Hard: ${formatOptionalNumber(
+                limits?.hard_tokens_month ?? null
+              )}`}
             />
             <StatCard
               label="HTTP calls / month"
               value={formatNumber(usage?.http_calls_month)}
-              helper={`Hard: ${formatOptionalNumber(limits?.hard_http_calls_month ?? null)}`}
+              helper={`Hard: ${formatOptionalNumber(
+                limits?.hard_http_calls_month ?? null
+              )}`}
             />
             <StatCard
               label="Last usage reset"
@@ -544,9 +612,21 @@ export default async function SettingsPage() {
           </section>
 
           <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <MeterCard label="Runs meter" meter={meters?.runs_month} blocked={blocked} />
-            <MeterCard label="Tokens meter" meter={meters?.tokens_month} blocked={blocked} />
-            <MeterCard label="HTTP meter" meter={meters?.http_calls_month} blocked={blocked} />
+            <MeterCard
+              label="Runs meter"
+              meter={meters?.runs_month}
+              blocked={blocked}
+            />
+            <MeterCard
+              label="Tokens meter"
+              meter={meters?.tokens_month}
+              blocked={blocked}
+            />
+            <MeterCard
+              label="HTTP meter"
+              meter={meters?.http_calls_month}
+              blocked={blocked}
+            />
           </section>
 
           <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -563,17 +643,23 @@ export default async function SettingsPage() {
               <div className="space-y-3 text-sm text-zinc-400">
                 <div className="flex items-center justify-between gap-4">
                   <span>Projected runs</span>
-                  <span className="text-zinc-200">{formatNumber(projected?.runs_month)}</span>
+                  <span className="text-zinc-200">
+                    {formatNumber(projected?.runs_month)}
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
                   <span>Projected tokens</span>
-                  <span className="text-zinc-200">{formatNumber(projected?.tokens_month)}</span>
+                  <span className="text-zinc-200">
+                    {formatNumber(projected?.tokens_month)}
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
                   <span>Projected HTTP</span>
-                  <span className="text-zinc-200">{formatNumber(projected?.http_calls_month)}</span>
+                  <span className="text-zinc-200">
+                    {formatNumber(projected?.http_calls_month)}
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
@@ -585,7 +671,9 @@ export default async function SettingsPage() {
 
                 <div className="flex items-center justify-between gap-4">
                   <span>Estimation source</span>
-                  <span className="text-zinc-200">{estimation?.source || "—"}</span>
+                  <span className="text-zinc-200">
+                    {estimation?.source || "—"}
+                  </span>
                 </div>
               </div>
             </DashboardCard>
@@ -614,7 +702,9 @@ export default async function SettingsPage() {
 
                 <div className="flex items-center justify-between gap-4">
                   <span>Plan</span>
-                  <span className="text-zinc-200">{humanizePlanLabel(workspace)}</span>
+                  <span className="text-zinc-200">
+                    {humanizePlanLabel(workspace)}
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
@@ -633,7 +723,9 @@ export default async function SettingsPage() {
 
                 <div className="flex items-center justify-between gap-4">
                   <span>Status</span>
-                  <span className="text-zinc-200">{workspace?.status || "—"}</span>
+                  <span className="text-zinc-200">
+                    {workspace?.status || "—"}
+                  </span>
                 </div>
               </div>
             </DashboardCard>
@@ -732,15 +824,36 @@ export default async function SettingsPage() {
                   <div className={metaLabelClassName()}>Preview reason</div>
                   <div className="mt-2 text-sm text-white">
                     {previewBlocked
-                      ? humanizeQuotaSignal(previewBlockReason)
+                      ? humanizeQuotaSignal(previewPrimaryReason)
                       : "Aucun blocage prévisionnel"}
                   </div>
-                  {previewBlockReason ? (
+                  {previewPrimaryReason ? (
                     <div className="mt-1 text-xs text-zinc-500">
-                      {previewBlockReason}
+                      {previewPrimaryReason}
                     </div>
                   ) : null}
                 </div>
+
+                {previewExtraReasons.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className={metaLabelClassName()}>
+                      Autres bloqueurs détectés
+                    </div>
+                    {previewExtraReasons.map((reason) => (
+                      <div
+                        key={reason}
+                        className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-red-200"
+                      >
+                        <div className="font-medium">
+                          {humanizeQuotaSignal(reason)}
+                        </div>
+                        <div className="mt-1 text-xs text-red-300/80">
+                          {reason}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
 
                 <div className="pt-2">
                   {previewWarnings.length > 0 ? (
