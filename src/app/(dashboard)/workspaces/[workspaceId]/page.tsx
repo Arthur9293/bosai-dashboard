@@ -128,6 +128,13 @@ type UsageLedgerResponse = {
   error?: string;
 };
 
+type LedgerFilters = {
+  status: string;
+  capability: string;
+  period_key: string;
+  limit: number;
+};
+
 function formatNumber(value?: number | null): string {
   return typeof value === "number" && Number.isFinite(value)
     ? value.toString()
@@ -271,6 +278,40 @@ function ledgerStatusVariant(
   return "default";
 }
 
+function parseLedgerFilters(
+  searchParams?: Record<string, string | string[] | undefined>
+): LedgerFilters {
+  const getSingle = (value?: string | string[]) =>
+    Array.isArray(value) ? value[0] || "" : value || "";
+
+  const rawStatus = getSingle(searchParams?.status).trim();
+  const rawCapability = getSingle(searchParams?.capability).trim();
+  const rawPeriodKey = getSingle(searchParams?.period_key).trim();
+  const rawLimit = Number.parseInt(getSingle(searchParams?.limit), 10);
+
+  const safeLimit = Number.isFinite(rawLimit)
+    ? Math.max(1, Math.min(rawLimit, 100))
+    : 20;
+
+  return {
+    status: rawStatus,
+    capability: rawCapability,
+    period_key: rawPeriodKey,
+    limit: safeLimit,
+  };
+}
+
+function buildLedgerQuery(filters: LedgerFilters): string {
+  const params = new URLSearchParams();
+
+  if (filters.status) params.set("status", filters.status);
+  if (filters.capability) params.set("capability", filters.capability);
+  if (filters.period_key) params.set("period_key", filters.period_key);
+  if (filters.limit) params.set("limit", String(filters.limit));
+
+  return params.toString();
+}
+
 async function fetchWorkspaceDetail(
   workspaceId: string
 ): Promise<WorkspaceDetailResponse | null> {
@@ -317,7 +358,8 @@ async function fetchWorkspaceDetail(
 }
 
 async function fetchWorkspaceUsageLedger(
-  workspaceId: string
+  workspaceId: string,
+  filters: LedgerFilters
 ): Promise<UsageLedgerResponse | null> {
   const baseUrl =
     process.env.BOSAI_WORKER_URL ||
@@ -331,9 +373,11 @@ async function fetchWorkspaceUsageLedger(
     return null;
   }
 
-  const url = `${baseUrl.replace(/\/+$/, "")}/workspaces/${encodeURIComponent(
+  const query = buildLedgerQuery(filters);
+  const urlBase = `${baseUrl.replace(/\/+$/, "")}/workspaces/${encodeURIComponent(
     workspaceId
-  )}/usage-ledger?limit=20`;
+  )}/usage-ledger`;
+  const url = query ? `${urlBase}?${query}` : urlBase;
 
   try {
     const response = await fetch(url, {
@@ -452,13 +496,18 @@ function MeterCard({
 
 export default async function WorkspaceDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { workspaceId } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const ledgerFilters = parseLedgerFilters(resolvedSearchParams);
+
   const [data, ledger] = await Promise.all([
     fetchWorkspaceDetail(workspaceId),
-    fetchWorkspaceUsageLedger(workspaceId),
+    fetchWorkspaceUsageLedger(workspaceId, ledgerFilters),
   ]);
 
   const workspace = data?.workspace;
@@ -794,6 +843,103 @@ export default async function WorkspaceDetailPage({
               Usage history
             </div>
 
+            <DashboardCard
+              title="Ledger filters"
+              subtitle="Filtres simples du ledger pour ce workspace."
+            >
+              <form method="GET" className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <label className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                    Status
+                  </div>
+                  <select
+                    name="status"
+                    defaultValue={ledgerFilters.status}
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
+                  >
+                    <option value="">Tous</option>
+                    <option value="success">success</option>
+                    <option value="blocked">blocked</option>
+                    <option value="error">error</option>
+                    <option value="unsupported">unsupported</option>
+                  </select>
+                </label>
+
+                <label className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                    Capability
+                  </div>
+                  <input
+                    type="text"
+                    name="capability"
+                    defaultValue={ledgerFilters.capability}
+                    placeholder="health_tick"
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-zinc-500 outline-none"
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                    Period key
+                  </div>
+                  <input
+                    type="text"
+                    name="period_key"
+                    defaultValue={ledgerFilters.period_key}
+                    placeholder="2026-04"
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-zinc-500 outline-none"
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                    Limit
+                  </div>
+                  <select
+                    name="limit"
+                    defaultValue={String(ledgerFilters.limit)}
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
+                  >
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </label>
+
+                <div className="md:col-span-2 xl:col-span-4 flex flex-wrap gap-3">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center justify-center rounded-full border border-sky-500/30 bg-sky-500/15 px-5 py-3 text-sm font-medium text-sky-300 transition hover:bg-sky-500/20"
+                  >
+                    Appliquer les filtres
+                  </button>
+
+                  <Link
+                    href={`/workspaces/${encodeURIComponent(workspaceId)}`}
+                    className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:bg-white/10 hover:text-white"
+                  >
+                    Réinitialiser
+                  </Link>
+                </div>
+              </form>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className={badgeClassName("default")}>
+                  Limit: {formatNumber(ledger?.filters?.limit ?? ledgerFilters.limit)}
+                </span>
+                <span className={badgeClassName("default")}>
+                  Status: {formatOptional(ledger?.filters?.status || ledgerFilters.status || "Tous")}
+                </span>
+                <span className={badgeClassName("default")}>
+                  Capability: {formatOptional(ledger?.filters?.capability || ledgerFilters.capability || "Toutes")}
+                </span>
+                <span className={badgeClassName("default")}>
+                  Period: {formatOptional(ledger?.filters?.period_key || ledgerFilters.period_key || "Toutes")}
+                </span>
+              </div>
+            </DashboardCard>
+
             {!ledger?.ok ? (
               <DashboardCard
                 title="Usage ledger response"
@@ -806,7 +952,9 @@ export default async function WorkspaceDetailPage({
             ) : (
               <DashboardCard
                 title="Usage history"
-                subtitle="Dernières écritures réelles du ledger pour ce workspace."
+                subtitle={`Dernières écritures réelles du ledger pour ce workspace. ${formatNumber(
+                  ledger?.count
+                )} résultat(s).`}
               >
                 {ledgerItems.length === 0 ? (
                   <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300">
