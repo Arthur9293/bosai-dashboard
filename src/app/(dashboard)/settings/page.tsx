@@ -75,6 +75,16 @@ type PreviewBlockSummary = {
   extraReasons: string[];
 };
 
+type QuotaSignalContext = {
+  runs?: number | null;
+  hardRuns?: number | null;
+  tokens?: number | null;
+  hardTokens?: number | null;
+  http?: number | null;
+  hardHttp?: number | null;
+  nextRun?: boolean;
+};
+
 function formatNumber(value?: number | null): string {
   return typeof value === "number" && Number.isFinite(value)
     ? value.toString()
@@ -192,24 +202,80 @@ function humanizePlanLabel(workspace?: WorkspaceInfo): string {
     .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
-function humanizeQuotaSignal(code?: string): string {
+function isOverLimit(
+  value?: number | null,
+  limit?: number | null
+): boolean {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    typeof limit === "number" &&
+    Number.isFinite(limit) &&
+    limit > 0 &&
+    value > limit
+  );
+}
+
+function hardReasonLabel(
+  resourceLabel: string,
+  overLimit: boolean,
+  nextRun?: boolean
+): string {
+  if (nextRun) {
+    return overLimit
+      ? `La prochaine exécution dépasserait la limite mensuelle ${resourceLabel}`
+      : `La prochaine exécution atteindrait la limite mensuelle ${resourceLabel}`;
+  }
+
+  return overLimit
+    ? `Limite mensuelle ${resourceLabel} dépassée`
+    : `Limite mensuelle ${resourceLabel} atteinte`;
+}
+
+function humanizeQuotaSignal(
+  code?: string,
+  context?: QuotaSignalContext
+): string {
   const value = String(code || "").trim();
 
-  const map: Record<string, string> = {
+  if (!value) return "—";
+
+  const staticMap: Record<string, string> = {
     soft_limit_runs_month_exceeded: "Seuil mensuel runs dépassé",
-    hard_limit_runs_month_reached: "Limite mensuelle runs atteinte",
     soft_limit_tokens_month_exceeded: "Seuil mensuel tokens dépassé",
-    hard_limit_tokens_month_reached: "Limite mensuelle tokens atteinte",
-    soft_limit_http_calls_month_exceeded:
-      "Seuil mensuel appels HTTP dépassé",
-    hard_limit_http_calls_month_reached:
-      "Limite mensuelle appels HTTP atteinte",
+    soft_limit_http_calls_month_exceeded: "Seuil mensuel appels HTTP dépassé",
     workspace_not_found: "Workspace introuvable",
     workspace_inactive: "Workspace inactif",
     workspace_limit_blocked: "Exécution bloquée par les quotas",
   };
 
-  if (map[value]) return map[value];
+  if (staticMap[value]) {
+    return staticMap[value];
+  }
+
+  if (value === "hard_limit_runs_month_reached") {
+    return hardReasonLabel(
+      "runs",
+      isOverLimit(context?.runs, context?.hardRuns),
+      context?.nextRun
+    );
+  }
+
+  if (value === "hard_limit_tokens_month_reached") {
+    return hardReasonLabel(
+      "tokens",
+      isOverLimit(context?.tokens, context?.hardTokens),
+      context?.nextRun
+    );
+  }
+
+  if (value === "hard_limit_http_calls_month_reached") {
+    return hardReasonLabel(
+      "appels HTTP",
+      isOverLimit(context?.http, context?.hardHttp),
+      context?.nextRun
+    );
+  }
 
   return value
     .replace(/[_-]+/g, " ")
@@ -437,10 +503,12 @@ function SignalList({
   warnings,
   blocked,
   blockReason,
+  blockReasonLabel,
 }: {
   warnings: string[];
   blocked?: boolean;
   blockReason?: string;
+  blockReasonLabel?: string;
 }) {
   return (
     <DashboardCard
@@ -450,7 +518,7 @@ function SignalList({
       <div className="space-y-3">
         {blocked ? (
           <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            <div className="font-medium">{humanizeQuotaSignal(blockReason)}</div>
+            <div className="font-medium">{blockReasonLabel || "Blocage quota"}</div>
             {blockReason ? (
               <div className="mt-1 text-xs text-red-300/80">{blockReason}</div>
             ) : null}
@@ -495,11 +563,36 @@ export default async function SettingsPage() {
   const blocked = currentUsage?.blocked ?? false;
   const blockReason = currentUsage?.block_reason ?? "";
 
+  const currentBlockReasonLabel = humanizeQuotaSignal(blockReason, {
+    runs: usage?.runs_month ?? null,
+    hardRuns: limits?.hard_runs_month ?? null,
+    tokens: usage?.tokens_month ?? null,
+    hardTokens: limits?.hard_tokens_month ?? null,
+    http: usage?.http_calls_month ?? null,
+    hardHttp: limits?.hard_http_calls_month ?? null,
+    nextRun: false,
+  });
+
   const previewWarnings = previewUsage?.warnings ?? [];
   const previewBlocked = previewUsage?.blocked ?? false;
   const previewSummary = buildPreviewBlockSummary(previewUsage);
   const previewPrimaryReason = previewSummary.primaryReason;
   const previewExtraReasons = previewSummary.extraReasons;
+
+  const previewReasonContext: QuotaSignalContext = {
+    runs: previewUsage?.projected?.runs_month ?? null,
+    hardRuns: previewUsage?.limits?.hard_runs_month ?? null,
+    tokens: previewUsage?.projected?.tokens_month ?? null,
+    hardTokens: previewUsage?.limits?.hard_tokens_month ?? null,
+    http: previewUsage?.projected?.http_calls_month ?? null,
+    hardHttp: previewUsage?.limits?.hard_http_calls_month ?? null,
+    nextRun: true,
+  };
+
+  const previewPrimaryReasonLabel = humanizeQuotaSignal(
+    previewPrimaryReason,
+    previewReasonContext
+  );
 
   const envReady =
     Boolean(
@@ -584,28 +677,28 @@ export default async function SettingsPage() {
 
           <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
-              label="Runs / month"
+              label="Runs / mois"
               value={formatNumber(usage?.runs_month)}
               helper={`Hard: ${formatOptionalNumber(
                 limits?.hard_runs_month ?? null
               )}`}
             />
             <StatCard
-              label="Tokens / month"
+              label="Tokens / mois"
               value={formatNumber(usage?.tokens_month)}
               helper={`Hard: ${formatOptionalNumber(
                 limits?.hard_tokens_month ?? null
               )}`}
             />
             <StatCard
-              label="HTTP calls / month"
+              label="Appels HTTP / mois"
               value={formatNumber(usage?.http_calls_month)}
               helper={`Hard: ${formatOptionalNumber(
                 limits?.hard_http_calls_month ?? null
               )}`}
             />
             <StatCard
-              label="Last usage reset"
+              label="Dernière remise à zéro"
               value={formatDate(workspace?.last_usage_reset_at)}
               helper={workspace?.workspace_id || "—"}
             />
@@ -613,17 +706,17 @@ export default async function SettingsPage() {
 
           <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
             <MeterCard
-              label="Runs meter"
+              label="Jauge runs"
               meter={meters?.runs_month}
               blocked={blocked}
             />
             <MeterCard
-              label="Tokens meter"
+              label="Jauge tokens"
               meter={meters?.tokens_month}
               blocked={blocked}
             />
             <MeterCard
-              label="HTTP meter"
+              label="Jauge HTTP"
               meter={meters?.http_calls_month}
               blocked={blocked}
             />
@@ -634,10 +727,11 @@ export default async function SettingsPage() {
               warnings={warnings}
               blocked={blocked}
               blockReason={blockReason}
+              blockReasonLabel={currentBlockReasonLabel}
             />
 
             <DashboardCard
-              title="Current projection"
+              title="Projection actuelle"
               subtitle="Projection renvoyée par le worker pour l’état courant."
             >
               <div className="space-y-3 text-sm text-zinc-400">
@@ -783,7 +877,7 @@ export default async function SettingsPage() {
 
             <DashboardCard
               title="Preview next run"
-              subtitle="Simulation dashboard via /workspace/usage avec capability=http_exec et estimated_tokens=700."
+              subtitle="Simulation avant exécution via /workspace/usage avec capability=http_exec et estimated_tokens=700."
             >
               <div className="space-y-3 text-sm text-zinc-400">
                 <div className="flex items-center justify-between gap-4">
@@ -808,7 +902,7 @@ export default async function SettingsPage() {
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
-                  <span>Preview blocked</span>
+                  <span>Blocage prévu</span>
                   <span
                     className={
                       previewBlocked
@@ -816,15 +910,15 @@ export default async function SettingsPage() {
                         : "font-medium text-emerald-300"
                     }
                   >
-                    {previewBlocked ? "YES" : "NO"}
+                    {previewBlocked ? "OUI" : "NON"}
                   </span>
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                  <div className={metaLabelClassName()}>Preview reason</div>
+                  <div className={metaLabelClassName()}>Blocage principal prévu</div>
                   <div className="mt-2 text-sm text-white">
                     {previewBlocked
-                      ? humanizeQuotaSignal(previewPrimaryReason)
+                      ? previewPrimaryReasonLabel
                       : "Aucun blocage prévisionnel"}
                   </div>
                   {previewPrimaryReason ? (
@@ -837,7 +931,7 @@ export default async function SettingsPage() {
                 {previewExtraReasons.length > 0 ? (
                   <div className="space-y-2">
                     <div className={metaLabelClassName()}>
-                      Autres bloqueurs détectés
+                      Autres blocages prévus
                     </div>
                     {previewExtraReasons.map((reason) => (
                       <div
@@ -845,7 +939,7 @@ export default async function SettingsPage() {
                         className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-red-200"
                       >
                         <div className="font-medium">
-                          {humanizeQuotaSignal(reason)}
+                          {humanizeQuotaSignal(reason, previewReasonContext)}
                         </div>
                         <div className="mt-1 text-xs text-red-300/80">
                           {reason}
