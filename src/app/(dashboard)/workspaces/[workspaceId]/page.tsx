@@ -90,6 +90,44 @@ type WorkspaceDetailResponse = {
   error?: string;
 };
 
+type UsageLedgerItem = {
+  record_id: string;
+  usage_id?: string;
+  name?: string;
+  workspace_id?: string;
+  run_record_id?: string;
+  run_id?: string;
+  capability?: string;
+  usage_type?: string;
+  status?: string;
+  worker?: string;
+  idempotency_key?: string;
+  quantity?: number;
+  unit?: string;
+  billable?: boolean;
+  period_key?: string;
+  runs_delta?: number;
+  tokens_delta?: number;
+  http_calls_delta?: number;
+  created_at?: string;
+  metadata_json?: string;
+};
+
+type UsageLedgerResponse = {
+  ok: boolean;
+  workspace_id?: string;
+  count?: number;
+  filters?: {
+    limit?: number;
+    status?: string;
+    capability?: string;
+    period_key?: string;
+  };
+  items?: UsageLedgerItem[];
+  ts?: string;
+  error?: string;
+};
+
 function formatNumber(value?: number | null): string {
   return typeof value === "number" && Number.isFinite(value)
     ? value.toString()
@@ -142,6 +180,11 @@ function humanizeSignal(code?: string): string {
     workspace_inactive: "Workspace inactif",
     capability_not_allowed_for_plan: "Capability non autorisée pour ce plan",
     snapshot_lookup_failed_but_record_listed: "Snapshot détaillé indisponible",
+    success: "Succès",
+    error: "Erreur",
+    blocked: "Bloqué",
+    unsupported: "Non supporté",
+    run: "Run",
   };
 
   if (map[value]) return map[value];
@@ -217,6 +260,17 @@ function meterVariant(
   return "success";
 }
 
+function ledgerStatusVariant(
+  status?: string
+): "success" | "warning" | "danger" | "default" {
+  const normalized = String(status || "").toLowerCase();
+
+  if (normalized === "success") return "success";
+  if (normalized === "blocked" || normalized === "unsupported") return "warning";
+  if (normalized === "error") return "danger";
+  return "default";
+}
+
 async function fetchWorkspaceDetail(
   workspaceId: string
 ): Promise<WorkspaceDetailResponse | null> {
@@ -258,6 +312,51 @@ async function fetchWorkspaceDetail(
       ok: false,
       error:
         error instanceof Error ? error.message : "workspace_detail_fetch_failed",
+    };
+  }
+}
+
+async function fetchWorkspaceUsageLedger(
+  workspaceId: string
+): Promise<UsageLedgerResponse | null> {
+  const baseUrl =
+    process.env.BOSAI_WORKER_URL ||
+    process.env.NEXT_PUBLIC_BOSAI_WORKER_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "";
+
+  const workspaceApiKey = process.env.BOSAI_WORKSPACE_API_KEY || "";
+
+  if (!baseUrl || !workspaceApiKey) {
+    return null;
+  }
+
+  const url = `${baseUrl.replace(/\/+$/, "")}/workspaces/${encodeURIComponent(
+    workspaceId
+  )}/usage-ledger?limit=20`;
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "x-bosai-key": workspaceApiKey,
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: await response.text(),
+      };
+    }
+
+    return (await response.json()) as UsageLedgerResponse;
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error ? error.message : "workspace_usage_ledger_fetch_failed",
     };
   }
 }
@@ -357,7 +456,10 @@ export default async function WorkspaceDetailPage({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
-  const data = await fetchWorkspaceDetail(workspaceId);
+  const [data, ledger] = await Promise.all([
+    fetchWorkspaceDetail(workspaceId),
+    fetchWorkspaceUsageLedger(workspaceId),
+  ]);
 
   const workspace = data?.workspace;
   const usage = data?.usage ?? {};
@@ -368,6 +470,7 @@ export default async function WorkspaceDetailPage({
   const capabilities = data?.capabilities?.allowed_capabilities ?? [];
   const blocked = data?.blocked ?? false;
   const resetInfo = data?.usage_period_reset ?? {};
+  const ledgerItems = ledger?.items ?? [];
 
   const envReady =
     Boolean(
@@ -684,6 +787,135 @@ export default async function WorkspaceDetailPage({
                 </div>
               </div>
             </DashboardCard>
+          </section>
+
+          <section className="space-y-4">
+            <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
+              Usage history
+            </div>
+
+            {!ledger?.ok ? (
+              <DashboardCard
+                title="Usage ledger response"
+                subtitle="Le worker a répondu avec une erreur ou un payload partiel."
+              >
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  {ledger?.error || "workspace_usage_ledger_fetch_failed"}
+                </div>
+              </DashboardCard>
+            ) : (
+              <DashboardCard
+                title="Usage history"
+                subtitle="Dernières écritures réelles du ledger pour ce workspace."
+              >
+                {ledgerItems.length === 0 ? (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300">
+                    Aucun événement de consommation trouvé.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {ledgerItems.map((item) => (
+                      <div
+                        key={item.record_id}
+                        className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-medium text-white">
+                              {item.name || item.capability || item.usage_id || item.record_id}
+                            </div>
+                            <div className="mt-1 text-xs text-zinc-500">
+                              {formatDate(item.created_at)}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <span className={badgeClassName(ledgerStatusVariant(item.status))}>
+                              {humanizeSignal(item.status)}
+                            </span>
+                            <span className={badgeClassName("default")}>
+                              {formatOptional(item.capability)}
+                            </span>
+                            {item.period_key ? (
+                              <span className={badgeClassName("violet")}>
+                                {item.period_key}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-3">
+                          <div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                              Runs delta
+                            </div>
+                            <div className="mt-1 text-zinc-200">
+                              {formatNumber(item.runs_delta)}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                              Tokens delta
+                            </div>
+                            <div className="mt-1 text-zinc-200">
+                              {formatNumber(item.tokens_delta)}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                              HTTP delta
+                            </div>
+                            <div className="mt-1 text-zinc-200">
+                              {formatNumber(item.http_calls_delta)}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-1 gap-4 border-t border-white/10 pt-4 text-sm text-zinc-400 md:grid-cols-2">
+                          <div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                              Worker
+                            </div>
+                            <div className="mt-1 break-all text-zinc-200">
+                              {formatOptional(item.worker)}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                              Idempotency key
+                            </div>
+                            <div className="mt-1 break-all text-zinc-200">
+                              {formatOptional(item.idempotency_key)}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                              Run record
+                            </div>
+                            <div className="mt-1 break-all text-zinc-200">
+                              {formatOptional(item.run_record_id)}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                              Run ID
+                            </div>
+                            <div className="mt-1 break-all text-zinc-200">
+                              {formatOptional(item.run_id)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </DashboardCard>
+            )}
           </section>
         </>
       ) : null}
