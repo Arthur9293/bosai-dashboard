@@ -847,7 +847,11 @@ export default async function WorkspaceDetailPage({
               title="Ledger filters"
               subtitle="Filtres simples du ledger pour ce workspace."
             >
-              <form method="GET" className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <form
+                method="GET"
+                action={`/workspaces/${encodeURIComponent(workspaceId)}`}
+                className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4"
+              >
                 <label className="space-y-2">
                   <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
                     Status
@@ -926,16 +930,16 @@ export default async function WorkspaceDetailPage({
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <span className={badgeClassName("default")}>
-                  Limit: {formatNumber(ledger?.filters?.limit ?? ledgerFilters.limit)}
+                  Limit: {formatNumber(ledgerFilters.limit)}
                 </span>
                 <span className={badgeClassName("default")}>
-                  Status: {formatOptional(ledger?.filters?.status || ledgerFilters.status || "Tous")}
+                  Status: {ledgerFilters.status ? ledgerFilters.status : "Tous"}
                 </span>
                 <span className={badgeClassName("default")}>
-                  Capability: {formatOptional(ledger?.filters?.capability || ledgerFilters.capability || "Toutes")}
+                  Capability: {ledgerFilters.capability ? ledgerFilters.capability : "Toutes"}
                 </span>
                 <span className={badgeClassName("default")}>
-                  Period: {formatOptional(ledger?.filters?.period_key || ledgerFilters.period_key || "Toutes")}
+                  Period: {ledgerFilters.period_key ? ledgerFilters.period_key : "Toutes"}
                 </span>
               </div>
             </DashboardCard>
