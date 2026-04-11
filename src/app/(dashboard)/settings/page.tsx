@@ -467,9 +467,15 @@ export default async function SettingsPage() {
           subtitle="Cette page est prête, mais les variables serveur ne sont pas encore configurées."
         >
           <div className="space-y-3 text-sm text-zinc-400">
-            <div><span className="text-zinc-200">BOSAI_WORKER_URL</span></div>
-            <div><span className="text-zinc-200">BOSAI_WORKSPACE_ID</span></div>
-            <div><span className="text-zinc-200">BOSAI_WORKSPACE_API_KEY</span></div>
+            <div>
+              <span className="text-zinc-200">BOSAI_WORKER_URL</span>
+            </div>
+            <div>
+              <span className="text-zinc-200">BOSAI_WORKSPACE_ID</span>
+            </div>
+            <div>
+              <span className="text-zinc-200">BOSAI_WORKSPACE_API_KEY</span>
+            </div>
           </div>
         </DashboardCard>
       ) : null}
