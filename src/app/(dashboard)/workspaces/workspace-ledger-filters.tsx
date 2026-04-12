@@ -52,6 +52,10 @@ function quickChipClass(active: boolean): string {
     : "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300";
 }
 
+function getCurrentPeriodKey(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
 export function WorkspaceLedgerFilters({
   initialFilters,
 }: {
@@ -64,6 +68,18 @@ export function WorkspaceLedgerFilters({
   const [capability, setCapability] = useState(initialFilters.capability);
   const [periodKey, setPeriodKey] = useState(initialFilters.period_key);
   const [limit, setLimit] = useState(String(initialFilters.limit || 20));
+
+  const quickPeriodOptions = useMemo(() => {
+    const values = new Set<string>();
+
+    const fromInitial = String(initialFilters.period_key || "").trim();
+    const current = getCurrentPeriodKey();
+
+    if (fromInitial) values.add(fromInitial);
+    if (current) values.add(current);
+
+    return Array.from(values);
+  }, [initialFilters.period_key]);
 
   const summary = useMemo(
     () => ({
@@ -184,6 +200,27 @@ export function WorkspaceLedgerFilters({
             placeholder="2026-04"
             className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-zinc-500 outline-none"
           />
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setPeriodKey("")}
+              className={quickChipClass(periodKey === "")}
+            >
+              Toutes
+            </button>
+
+            {quickPeriodOptions.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setPeriodKey(item)}
+                className={quickChipClass(periodKey === item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
         </label>
 
         <label className="space-y-2">
