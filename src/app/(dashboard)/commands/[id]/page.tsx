@@ -26,7 +26,7 @@ function cardClassName() {
 }
 
 function statCardClassName() {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function actionLinkClassName(
@@ -120,11 +120,34 @@ function toTextOrEmpty(value: unknown): string {
 }
 
 function uniq(values: string[]): string[] {
-  return Array.from(new Set(values.filter(Boolean)));
+  return Array.from(
+    new Set(values.map((value) => value.trim()).filter(Boolean))
+  );
 }
 
 function isRecordIdLike(value: string): boolean {
   return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
+}
+
+function intersects(a: string[], b: string[]): boolean {
+  if (a.length === 0 || b.length === 0) return false;
+  const set = new Set(a);
+  return b.some((value) => set.has(value));
+}
+
+function pickBestMatch<T>(items: T[], scorer: (item: T) => number): T | null {
+  let bestItem: T | null = null;
+  let bestScore = 0;
+
+  for (const item of items) {
+    const score = scorer(item);
+    if (score > bestScore) {
+      bestScore = score;
+      bestItem = item;
+    }
+  }
+
+  return bestItem;
 }
 
 function tone(status?: string): string {
@@ -187,12 +210,6 @@ function humanStatusLabel(status: string): string {
   return normalized ? normalized.toUpperCase() : "UNKNOWN";
 }
 
-function cleanCapabilityLabel(value: string): string {
-  const raw = toText(value, "");
-  if (!raw) return "unknown_capability";
-  return raw.replace(/_/g, " ");
-}
-
 /* ----------------------------- Command helpers ---------------------------- */
 
 function getCommandInput(command: CommandItem): Record<string, unknown> {
@@ -236,8 +253,10 @@ function getCommandWorkspace(command: CommandItem): string {
     toTextOrEmpty(command.workspace_id) ||
     toTextOrEmpty(input.workspace_id) ||
     toTextOrEmpty(input.workspaceId) ||
+    toTextOrEmpty(input.workspace) ||
     toTextOrEmpty(result.workspace_id) ||
     toTextOrEmpty(result.workspaceId) ||
+    toTextOrEmpty(result.workspace) ||
     "—"
   );
 }
@@ -301,10 +320,12 @@ function getCommandRunId(command: CommandItem): string {
     toTextOrEmpty(input.runRecordId) ||
     toTextOrEmpty(input.run_id) ||
     toTextOrEmpty(input.runId) ||
+    toTextOrEmpty(input.linked_run) ||
     toTextOrEmpty(result.run_record_id) ||
     toTextOrEmpty(result.runRecordId) ||
     toTextOrEmpty(result.run_id) ||
     toTextOrEmpty(result.runId) ||
+    toTextOrEmpty(result.linked_run) ||
     "—"
   );
 }
@@ -361,10 +382,63 @@ function getCommandTitle(command: CommandItem): string {
 
 function getCommandSummaryLine(command: CommandItem): string {
   const status = humanStatusLabel(getCommandStatus(command));
-  const capability = cleanCapabilityLabel(getCommandCapability(command));
+  const capability = getCommandCapability(command);
   const workspace = getCommandWorkspace(command);
 
   return `${status} · ${capability} · ${workspace}`;
+}
+
+function getCommandCommandCandidates(command: CommandItem): string[] {
+  return uniq([
+    String(command.id || ""),
+    getCommandParentId(command),
+  ]);
+}
+
+function getCommandRunCandidates(command: CommandItem): string[] {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return uniq([
+    getCommandRunId(command),
+    toTextOrEmpty(input.run_record_id),
+    toTextOrEmpty(input.runRecordId),
+    toTextOrEmpty(input.run_id),
+    toTextOrEmpty(input.runId),
+    toTextOrEmpty(input.linked_run),
+    toTextOrEmpty(result.run_record_id),
+    toTextOrEmpty(result.runRecordId),
+    toTextOrEmpty(result.run_id),
+    toTextOrEmpty(result.runId),
+    toTextOrEmpty(result.linked_run),
+  ]).filter((value) => value !== "—");
+}
+
+function getCommandFlowCandidates(command: CommandItem): string[] {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+
+  return uniq([
+    getCommandFlowId(command),
+    getCommandRootEventId(command),
+    getCommandSourceEventId(command),
+    toTextOrEmpty(input.flow_id),
+    toTextOrEmpty(input.flowId),
+    toTextOrEmpty(input.root_event_id),
+    toTextOrEmpty(input.rootEventId),
+    toTextOrEmpty(input.source_event_id),
+    toTextOrEmpty(input.sourceEventId),
+    toTextOrEmpty(input.event_id),
+    toTextOrEmpty(input.eventId),
+    toTextOrEmpty(result.flow_id),
+    toTextOrEmpty(result.flowId),
+    toTextOrEmpty(result.root_event_id),
+    toTextOrEmpty(result.rootEventId),
+    toTextOrEmpty(result.source_event_id),
+    toTextOrEmpty(result.sourceEventId),
+    toTextOrEmpty(result.event_id),
+    toTextOrEmpty(result.eventId),
+  ]);
 }
 
 /* ------------------------------ Event helpers ----------------------------- */
@@ -373,23 +447,59 @@ function getEventPayload(event: EventItem): Record<string, unknown> {
   return parseMaybeJson(event.payload);
 }
 
-function getEventLinkedCommand(event: EventItem): string {
+function getEventWorkspace(event: EventItem): string {
   const payload = getEventPayload(event);
   const record = event as Record<string, unknown>;
 
   return (
-    toTextOrEmpty(event.command_id) ||
-    toTextOrEmpty(record.command_id) ||
-    toTextOrEmpty(record.Command_ID) ||
-    toTextOrEmpty(record.linked_command) ||
-    toTextOrEmpty(record.Linked_Command) ||
-    toTextOrEmpty(payload.command_id) ||
-    toTextOrEmpty(payload.commandId) ||
+    toTextOrEmpty(record.workspace_id) ||
+    toTextOrEmpty(record.Workspace_ID) ||
+    toTextOrEmpty(record.workspace) ||
+    toTextOrEmpty(payload.workspace_id) ||
+    toTextOrEmpty(payload.workspaceId) ||
+    toTextOrEmpty(payload.workspace) ||
     ""
   );
 }
 
-function getEventIdCandidates(event: EventItem): string[] {
+function getEventCommandCandidates(event: EventItem): string[] {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
+  return uniq([
+    toTextOrEmpty(event.command_id),
+    toTextOrEmpty(record.command_id),
+    toTextOrEmpty(record.Command_ID),
+    toTextOrEmpty(record.linked_command),
+    toTextOrEmpty(record.Linked_Command),
+    toTextOrEmpty(payload.command_id),
+    toTextOrEmpty(payload.commandId),
+    toTextOrEmpty(payload.linked_command),
+    toTextOrEmpty(payload.linkedCommand),
+    toTextOrEmpty(payload.parent_command_id),
+    toTextOrEmpty(payload.parentCommandId),
+  ]);
+}
+
+function getEventRunCandidates(event: EventItem): string[] {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
+  return uniq([
+    toTextOrEmpty(record.run_record_id),
+    toTextOrEmpty(record.Run_Record_ID),
+    toTextOrEmpty(record.linked_run),
+    toTextOrEmpty(record.Linked_Run),
+    toTextOrEmpty(payload.run_record_id),
+    toTextOrEmpty(payload.runRecordId),
+    toTextOrEmpty(payload.run_id),
+    toTextOrEmpty(payload.runId),
+    toTextOrEmpty(payload.linked_run),
+    toTextOrEmpty(payload.linkedRun),
+  ]);
+}
+
+function getEventFlowCandidates(event: EventItem): string[] {
   const payload = getEventPayload(event);
 
   return uniq([
@@ -404,22 +514,167 @@ function getEventIdCandidates(event: EventItem): string[] {
     toTextOrEmpty(payload.sourceRecordId),
     toTextOrEmpty(payload.source_event_id),
     toTextOrEmpty(payload.sourceEventId),
+    toTextOrEmpty(payload.event_id),
+    toTextOrEmpty(payload.eventId),
     toTextOrEmpty(payload.flow_id),
     toTextOrEmpty(payload.flowId),
   ]);
 }
 
+function scoreEventMatch(event: EventItem, command: CommandItem): number {
+  let score = 0;
+
+  const commandCommandCandidates = getCommandCommandCandidates(command);
+  const commandRunCandidates = getCommandRunCandidates(command);
+  const commandFlowCandidates = getCommandFlowCandidates(command);
+  const commandWorkspace = getCommandWorkspace(command);
+
+  const eventCommandCandidates = getEventCommandCandidates(event);
+  const eventRunCandidates = getEventRunCandidates(event);
+  const eventFlowCandidates = getEventFlowCandidates(event);
+  const eventWorkspace = getEventWorkspace(event);
+
+  if (
+    commandCommandCandidates.length > 0 &&
+    eventCommandCandidates.length > 0 &&
+    intersects(commandCommandCandidates, eventCommandCandidates)
+  ) {
+    score += 100;
+  }
+
+  if (
+    commandRunCandidates.length > 0 &&
+    eventRunCandidates.length > 0 &&
+    intersects(commandRunCandidates, eventRunCandidates)
+  ) {
+    score += 70;
+  }
+
+  if (
+    commandFlowCandidates.length > 0 &&
+    eventFlowCandidates.length > 0 &&
+    intersects(commandFlowCandidates, eventFlowCandidates)
+  ) {
+    score += 50;
+  }
+
+  if (
+    commandWorkspace &&
+    commandWorkspace !== "—" &&
+    eventWorkspace &&
+    eventWorkspace === commandWorkspace
+  ) {
+    score += 10;
+  }
+
+  return score;
+}
+
 /* ----------------------------- Incident helpers --------------------------- */
 
-function getIncidentIdCandidates(incident: IncidentItem): string[] {
+function getIncidentWorkspace(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+
+  return (
+    toTextOrEmpty(record.workspace_id) ||
+    toTextOrEmpty(record.Workspace_ID) ||
+    toTextOrEmpty(record.workspace) ||
+    toTextOrEmpty(incident.workspace_id) ||
+    ""
+  );
+}
+
+function getIncidentCommandCandidates(incident: IncidentItem): string[] {
+  const record = incident as Record<string, unknown>;
+
+  return uniq([
+    toTextOrEmpty(incident.command_id),
+    toTextOrEmpty(incident.linked_command),
+    toTextOrEmpty(record.command_id),
+    toTextOrEmpty(record.Command_ID),
+    toTextOrEmpty(record.linked_command),
+    toTextOrEmpty(record.Linked_Command),
+    toTextOrEmpty(record.parent_command_id),
+    toTextOrEmpty(record.Parent_Command_ID),
+  ]);
+}
+
+function getIncidentRunCandidates(incident: IncidentItem): string[] {
+  const record = incident as Record<string, unknown>;
+
+  return uniq([
+    toTextOrEmpty(incident.run_record_id),
+    toTextOrEmpty(incident.linked_run),
+    toTextOrEmpty(record.run_record_id),
+    toTextOrEmpty(record.Run_Record_ID),
+    toTextOrEmpty(record.linked_run),
+    toTextOrEmpty(record.Linked_Run),
+  ]);
+}
+
+function getIncidentFlowCandidates(incident: IncidentItem): string[] {
+  const record = incident as Record<string, unknown>;
+
   return uniq([
     toTextOrEmpty(incident.id),
     toTextOrEmpty(incident.flow_id),
     toTextOrEmpty(incident.root_event_id),
-    toTextOrEmpty((incident as Record<string, unknown>).source_record_id),
-    toTextOrEmpty(incident.command_id),
-    toTextOrEmpty(incident.linked_command),
+    toTextOrEmpty(record.source_record_id),
+    toTextOrEmpty(record.Source_Record_ID),
+    toTextOrEmpty(record.source_event_id),
+    toTextOrEmpty(record.Source_Event_ID),
+    toTextOrEmpty(record.event_id),
+    toTextOrEmpty(record.Event_ID),
   ]);
+}
+
+function scoreIncidentMatch(incident: IncidentItem, command: CommandItem): number {
+  let score = 0;
+
+  const commandCommandCandidates = getCommandCommandCandidates(command);
+  const commandRunCandidates = getCommandRunCandidates(command);
+  const commandFlowCandidates = getCommandFlowCandidates(command);
+  const commandWorkspace = getCommandWorkspace(command);
+
+  const incidentCommandCandidates = getIncidentCommandCandidates(incident);
+  const incidentRunCandidates = getIncidentRunCandidates(incident);
+  const incidentFlowCandidates = getIncidentFlowCandidates(incident);
+  const incidentWorkspace = getIncidentWorkspace(incident);
+
+  if (
+    commandCommandCandidates.length > 0 &&
+    incidentCommandCandidates.length > 0 &&
+    intersects(commandCommandCandidates, incidentCommandCandidates)
+  ) {
+    score += 100;
+  }
+
+  if (
+    commandRunCandidates.length > 0 &&
+    incidentRunCandidates.length > 0 &&
+    intersects(commandRunCandidates, incidentRunCandidates)
+  ) {
+    score += 70;
+  }
+
+  if (
+    commandFlowCandidates.length > 0 &&
+    incidentFlowCandidates.length > 0 &&
+    intersects(commandFlowCandidates, incidentFlowCandidates)
+  ) {
+    score += 50;
+  }
+
+  if (
+    commandWorkspace &&
+    commandWorkspace !== "—" &&
+    incidentWorkspace &&
+    incidentWorkspace === commandWorkspace
+  ) {
+    score += 10;
+  }
+
+  return score;
 }
 
 /* ------------------------------- Href helpers ----------------------------- */
@@ -441,7 +696,7 @@ function buildFlowHref(command: CommandItem): string {
   }
 
   if (command.id) {
-    return `/flows/${encodeURIComponent(command.id)}`;
+    return `/flows/${encodeURIComponent(String(command.id))}`;
   }
 
   return "";
@@ -500,7 +755,7 @@ function StatCard({
   return (
     <div className={statCardClassName()}>
       <div className={metaLabelClassName()}>{label}</div>
-      <div className="mt-2 text-lg font-semibold tracking-tight text-white md:mt-3 md:text-xl">
+      <div className="mt-3 text-xl font-semibold tracking-tight text-white">
         {value}
       </div>
     </div>
@@ -549,29 +804,11 @@ export default async function CommandDetailPage({ params }: PageProps) {
   const toolKey = getCommandToolKey(command);
   const toolMode = getCommandToolMode(command);
 
-  const identifiers = uniq([
-    String(command.id || ""),
-    flowId,
-    rootEventId,
-    sourceEventId,
-    runId === "—" ? "" : runId,
-  ]);
-
   let matchedEvent: EventItem | null = null;
   try {
     const eventsData = await fetchEvents(500);
     const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
-
-    matchedEvent =
-      events.find((event) => {
-        const linkedCommand = getEventLinkedCommand(event);
-        if (linkedCommand && linkedCommand === String(command?.id || "")) {
-          return true;
-        }
-
-        const candidates = getEventIdCandidates(event);
-        return candidates.some((candidate) => identifiers.includes(candidate));
-      }) || null;
+    matchedEvent = pickBestMatch(events, (event) => scoreEventMatch(event, command!));
   } catch {
     matchedEvent = null;
   }
@@ -582,12 +819,10 @@ export default async function CommandDetailPage({ params }: PageProps) {
     const incidents = Array.isArray(incidentsData?.incidents)
       ? incidentsData.incidents
       : [];
-
-    matchedIncident =
-      incidents.find((incident) => {
-        const candidates = getIncidentIdCandidates(incident);
-        return candidates.some((candidate) => identifiers.includes(candidate));
-      }) || null;
+    matchedIncident = pickBestMatch(
+      incidents,
+      (incident) => scoreIncidentMatch(incident, command!)
+    );
   } catch {
     matchedIncident = null;
   }
@@ -615,13 +850,11 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
         <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
 
-        <div className="space-y-3">
-          <h1 className="break-words text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-            {title}
-          </h1>
+        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+          {title}
+        </h1>
 
-          <div className="text-sm text-zinc-400">{getCommandSummaryLine(command)}</div>
-        </div>
+        <div className="text-sm text-zinc-400">{getCommandSummaryLine(command)}</div>
 
         <div className="flex flex-wrap items-center gap-2">
           <span
@@ -633,7 +866,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
           </span>
 
           <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-300">
-            {cleanCapabilityLabel(capability)}
+            {capability}
           </span>
 
           {toolKey ? (
@@ -649,23 +882,15 @@ export default async function CommandDetailPage({ params }: PageProps) {
           ) : null}
         </div>
 
-        <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 sm:grid-cols-2 xl:grid-cols-4">
-          <div>
-            Workspace: <span className="text-zinc-300">{workspace}</span>
-          </div>
-          <div>
-            Run: <span className="break-all text-zinc-300">{runId}</span>
-          </div>
-          <div>
-            Parent: <span className="break-all text-zinc-300">{parentId || "—"}</span>
-          </div>
-          <div>
-            Flow: <span className="break-all text-zinc-300">{flowId || "—"}</span>
-          </div>
+        <div className="space-y-2 text-base text-zinc-300">
+          <div>Workspace: {workspace}</div>
+          <div>Run: {runId}</div>
+          <div>Parent: {parentId || "—"}</div>
+          <div>Flow: {flowId || rootEventId || sourceEventId || "—"}</div>
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <StatCard label="Created" value={formatDate(getCommandCreatedAt(command))} />
         <StatCard label="Started" value={formatDate(getCommandStartedAt(command))} />
         <StatCard label="Finished" value={formatDate(getCommandFinishedAt(command))} />
@@ -679,20 +904,13 @@ export default async function CommandDetailPage({ params }: PageProps) {
           <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
             <MetaItem label="ID" value={String(command.id)} breakAll />
             <MetaItem label="Status" value={status} />
-            <MetaItem label="Capability" value={cleanCapabilityLabel(capability)} />
+            <MetaItem label="Capability" value={capability} />
             <MetaItem label="Workspace" value={workspace} />
             <MetaItem label="Run" value={runId} breakAll />
             <MetaItem label="Parent" value={parentId || "—"} breakAll />
-
-            <div className="hidden md:block">
-              <MetaItem label="Flow" value={flowId || "—"} breakAll />
-            </div>
-            <div className="hidden md:block">
-              <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
-            </div>
-            <div className="hidden md:block">
-              <MetaItem label="Source event" value={sourceEventId || "—"} breakAll />
-            </div>
+            <MetaItem label="Flow" value={flowId || "—"} breakAll />
+            <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
+            <MetaItem label="Source event" value={sourceEventId || "—"} breakAll />
 
             {errorText ? (
               <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-rose-500/20 bg-rose-500/10 px-4 py-4">
@@ -727,9 +945,16 @@ export default async function CommandDetailPage({ params }: PageProps) {
                 {flowId || rootEventId || sourceEventId || String(command.id) || "—"}
               </span>
             </div>
+
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-zinc-400">Error</span>
+              <span className="break-all text-right text-zinc-200">
+                {errorText || "—"}
+              </span>
+            </div>
           </div>
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-6 space-y-3">
             <Link href="/commands" className={actionLinkClassName("soft")}>
               Retour à la liste commands
             </Link>
@@ -774,14 +999,14 @@ export default async function CommandDetailPage({ params }: PageProps) {
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className={cardClassName()}>
           <div className="mb-4 text-lg font-medium text-white">Input preview</div>
-          <pre className="max-h-[420px] overflow-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+          <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
 {stringifyPretty(command.input ?? {})}
           </pre>
         </div>
 
         <div className={cardClassName()}>
           <div className="mb-4 text-lg font-medium text-white">Result preview</div>
-          <pre className="max-h-[420px] overflow-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+          <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
 {stringifyPretty(command.result ?? {})}
           </pre>
         </div>
