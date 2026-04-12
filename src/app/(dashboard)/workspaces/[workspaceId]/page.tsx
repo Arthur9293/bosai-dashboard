@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PageHeader } from "../../../../components/ui/page-header";
 import { DashboardCard } from "../../../../components/ui/dashboard-card";
+import { WorkspaceLedgerFilters } from "../../../../components/workspaces/workspace-ledger-filters";
 
 type WorkspaceInfo = {
   record_id?: string;
@@ -843,106 +844,7 @@ export default async function WorkspaceDetailPage({
               Usage history
             </div>
 
-            <DashboardCard
-              title="Ledger filters"
-              subtitle="Filtres simples du ledger pour ce workspace."
-            >
-              <form
-                method="GET"
-                action={`/workspaces/${encodeURIComponent(workspaceId)}`}
-                className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4"
-              >
-                <label className="space-y-2">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                    Status
-                  </div>
-                  <select
-                    name="status"
-                    defaultValue={ledgerFilters.status}
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
-                  >
-                    <option value="">Tous</option>
-                    <option value="success">success</option>
-                    <option value="blocked">blocked</option>
-                    <option value="error">error</option>
-                    <option value="unsupported">unsupported</option>
-                  </select>
-                </label>
-
-                <label className="space-y-2">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                    Capability
-                  </div>
-                  <input
-                    type="text"
-                    name="capability"
-                    defaultValue={ledgerFilters.capability}
-                    placeholder="health_tick"
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-zinc-500 outline-none"
-                  />
-                </label>
-
-                <label className="space-y-2">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                    Period key
-                  </div>
-                  <input
-                    type="text"
-                    name="period_key"
-                    defaultValue={ledgerFilters.period_key}
-                    placeholder="2026-04"
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-zinc-500 outline-none"
-                  />
-                </label>
-
-                <label className="space-y-2">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                    Limit
-                  </div>
-                  <select
-                    name="limit"
-                    defaultValue={String(ledgerFilters.limit)}
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
-                  >
-                    <option value="10">10</option>
-                    <option value="20">20</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                  </select>
-                </label>
-
-                <div className="md:col-span-2 xl:col-span-4 flex flex-wrap gap-3">
-                  <button
-                    type="submit"
-                    className="inline-flex items-center justify-center rounded-full border border-sky-500/30 bg-sky-500/15 px-5 py-3 text-sm font-medium text-sky-300 transition hover:bg-sky-500/20"
-                  >
-                    Appliquer les filtres
-                  </button>
-
-                  <Link
-                    href={`/workspaces/${encodeURIComponent(workspaceId)}`}
-                    className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:bg-white/10 hover:text-white"
-                  >
-                    Réinitialiser
-                  </Link>
-                </div>
-              </form>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className={badgeClassName("default")}>
-                  Limit: {formatNumber(ledgerFilters.limit)}
-                </span>
-                <span className={badgeClassName("default")}>
-                  Status: {ledgerFilters.status ? ledgerFilters.status : "Tous"}
-                </span>
-                <span className={badgeClassName("default")}>
-                  Capability: {ledgerFilters.capability ? ledgerFilters.capability : "Toutes"}
-                </span>
-                <span className={badgeClassName("default")}>
-                  Period: {ledgerFilters.period_key ? ledgerFilters.period_key : "Toutes"}
-                </span>
-              </div>
-            </DashboardCard>
+            <WorkspaceLedgerFilters initialFilters={ledgerFilters} />
 
             {!ledger?.ok ? (
               <DashboardCard
