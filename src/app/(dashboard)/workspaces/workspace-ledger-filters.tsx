@@ -4,15 +4,15 @@ import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { DashboardCard } from "../../../components/ui/dashboard-card";
 
-type LedgerFilters = {
+type WorkspaceFilters = {
   status: string;
-  capability: string;
+  plan: string;
   period_key: string;
   limit: number;
 };
 
-const QUICK_STATUS_OPTIONS = ["success", "error", "blocked", "unsupported"] as const;
-const QUICK_CAPABILITY_OPTIONS = ["health_tick"] as const;
+const QUICK_STATUS_OPTIONS = ["active", "blocked", "warnings", "fallback"] as const;
+const QUICK_PLAN_OPTIONS = ["plan_free"] as const;
 
 function badgeClassName(
   variant:
@@ -59,33 +59,33 @@ function getCurrentPeriodKey(): string {
 function applyPreset(
   preset: {
     status?: string;
-    capability?: string;
+    plan?: string;
     periodKey?: string;
     limit?: string;
   },
   setters: {
     setStatus: (value: string) => void;
-    setCapability: (value: string) => void;
+    setPlan: (value: string) => void;
     setPeriodKey: (value: string) => void;
     setLimit: (value: string) => void;
   }
 ) {
   setters.setStatus(preset.status ?? "");
-  setters.setCapability(preset.capability ?? "");
+  setters.setPlan(preset.plan ?? "");
   setters.setPeriodKey(preset.periodKey ?? "");
   setters.setLimit(preset.limit ?? "20");
 }
 
-export function WorkspaceLedgerFilters({
+export function WorkspacesFilters({
   initialFilters,
 }: {
-  initialFilters: LedgerFilters;
+  initialFilters: WorkspaceFilters;
 }) {
   const router = useRouter();
   const pathname = usePathname();
 
   const [status, setStatus] = useState(initialFilters.status);
-  const [capability, setCapability] = useState(initialFilters.capability);
+  const [plan, setPlan] = useState(initialFilters.plan);
   const [periodKey, setPeriodKey] = useState(initialFilters.period_key);
   const [limit, setLimit] = useState(String(initialFilters.limit || 20));
 
@@ -104,18 +104,18 @@ export function WorkspaceLedgerFilters({
   const summary = useMemo(
     () => ({
       status: status.trim() ? status.trim() : "Tous",
-      capability: capability.trim() ? capability.trim() : "Toutes",
+      plan: plan.trim() ? plan.trim() : "Tous",
       period: periodKey.trim() ? periodKey.trim() : "Toutes",
       limit: limit.trim() || "20",
     }),
-    [status, capability, periodKey, limit]
+    [status, plan, periodKey, limit]
   );
 
   const applyFilters = () => {
     const params = new URLSearchParams();
 
     if (status.trim()) params.set("status", status.trim());
-    if (capability.trim()) params.set("capability", capability.trim());
+    if (plan.trim()) params.set("plan", plan.trim());
     if (periodKey.trim()) params.set("period_key", periodKey.trim());
     if (limit.trim()) params.set("limit", limit.trim());
 
@@ -125,7 +125,7 @@ export function WorkspaceLedgerFilters({
 
   const resetFilters = () => {
     setStatus("");
-    setCapability("");
+    setPlan("");
     setPeriodKey("");
     setLimit("20");
     router.push(pathname);
@@ -133,8 +133,8 @@ export function WorkspaceLedgerFilters({
 
   return (
     <DashboardCard
-      title="Ledger filters"
-      subtitle="Filtres simples du ledger pour ce workspace."
+      title="Workspaces filters"
+      subtitle="Filtres simples et presets rapides pour la liste des workspaces."
     >
       <div className="mb-5">
         <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-zinc-500">
@@ -147,68 +147,22 @@ export function WorkspaceLedgerFilters({
             onClick={() =>
               applyPreset(
                 {
-                  status: "success",
-                  capability: "health_tick",
+                  status: "active",
+                  plan: "",
                   periodKey: currentPeriodKey,
                   limit: "20",
                 },
-                { setStatus, setCapability, setPeriodKey, setLimit }
+                { setStatus, setPlan, setPeriodKey, setLimit }
               )
             }
             className={`${quickChipClass(
-              status === "success" &&
-                capability === "health_tick" &&
+              status === "active" &&
+                plan === "" &&
                 periodKey === currentPeriodKey &&
                 limit === "20"
             )} max-w-full whitespace-normal text-left leading-snug`}
           >
-            success + health_tick + période courante
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              applyPreset(
-                {
-                  status: "",
-                  capability: "health_tick",
-                  periodKey: currentPeriodKey,
-                  limit: "20",
-                },
-                { setStatus, setCapability, setPeriodKey, setLimit }
-              )
-            }
-            className={`${quickChipClass(
-              status === "" &&
-                capability === "health_tick" &&
-                periodKey === currentPeriodKey &&
-                limit === "20"
-            )} max-w-full whitespace-normal text-left leading-snug`}
-          >
-            tous + health_tick + période courante
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              applyPreset(
-                {
-                  status: "error",
-                  capability: "",
-                  periodKey: currentPeriodKey,
-                  limit: "20",
-                },
-                { setStatus, setCapability, setPeriodKey, setLimit }
-              )
-            }
-            className={`${quickChipClass(
-              status === "error" &&
-                capability === "" &&
-                periodKey === currentPeriodKey &&
-                limit === "20"
-            )} max-w-full whitespace-normal text-left leading-snug`}
-          >
-            error + période courante
+            active + période courante
           </button>
 
           <button
@@ -217,21 +171,67 @@ export function WorkspaceLedgerFilters({
               applyPreset(
                 {
                   status: "blocked",
-                  capability: "",
+                  plan: "",
                   periodKey: currentPeriodKey,
                   limit: "20",
                 },
-                { setStatus, setCapability, setPeriodKey, setLimit }
+                { setStatus, setPlan, setPeriodKey, setLimit }
               )
             }
             className={`${quickChipClass(
               status === "blocked" &&
-                capability === "" &&
+                plan === "" &&
                 periodKey === currentPeriodKey &&
                 limit === "20"
             )} max-w-full whitespace-normal text-left leading-snug`}
           >
             blocked + période courante
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              applyPreset(
+                {
+                  status: "warnings",
+                  plan: "",
+                  periodKey: currentPeriodKey,
+                  limit: "20",
+                },
+                { setStatus, setPlan, setPeriodKey, setLimit }
+              )
+            }
+            className={`${quickChipClass(
+              status === "warnings" &&
+                plan === "" &&
+                periodKey === currentPeriodKey &&
+                limit === "20"
+            )} max-w-full whitespace-normal text-left leading-snug`}
+          >
+            warnings + période courante
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              applyPreset(
+                {
+                  status: "",
+                  plan: "plan_free",
+                  periodKey: currentPeriodKey,
+                  limit: "20",
+                },
+                { setStatus, setPlan, setPeriodKey, setLimit }
+              )
+            }
+            className={`${quickChipClass(
+              status === "" &&
+                plan === "plan_free" &&
+                periodKey === currentPeriodKey &&
+                limit === "20"
+            )} max-w-full whitespace-normal text-left leading-snug`}
+          >
+            plan_free + période courante
           </button>
         </div>
       </div>
@@ -247,10 +247,10 @@ export function WorkspaceLedgerFilters({
             className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
           >
             <option value="">Tous</option>
-            <option value="success">success</option>
+            <option value="active">active</option>
             <option value="blocked">blocked</option>
-            <option value="error">error</option>
-            <option value="unsupported">unsupported</option>
+            <option value="warnings">warnings</option>
+            <option value="fallback">fallback</option>
           </select>
 
           <div className="flex flex-wrap gap-2">
@@ -277,31 +277,31 @@ export function WorkspaceLedgerFilters({
 
         <label className="space-y-2">
           <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-            Capability
+            Plan
           </div>
           <input
             type="text"
-            value={capability}
-            onChange={(e) => setCapability(e.target.value)}
-            placeholder="health_tick"
+            value={plan}
+            onChange={(e) => setPlan(e.target.value)}
+            placeholder="plan_free"
             className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-zinc-500 outline-none"
           />
 
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setCapability("")}
-              className={quickChipClass(capability === "")}
+              onClick={() => setPlan("")}
+              className={quickChipClass(plan === "")}
             >
-              Toutes
+              Tous
             </button>
 
-            {QUICK_CAPABILITY_OPTIONS.map((item) => (
+            {QUICK_PLAN_OPTIONS.map((item) => (
               <button
                 key={item}
                 type="button"
-                onClick={() => setCapability(item)}
-                className={quickChipClass(capability === item)}
+                onClick={() => setPlan(item)}
+                className={quickChipClass(plan === item)}
               >
                 {item}
               </button>
@@ -381,9 +381,7 @@ export function WorkspaceLedgerFilters({
       <div className="mt-4 flex flex-wrap gap-2 md:gap-3">
         <span className={badgeClassName("default")}>Limit: {summary.limit}</span>
         <span className={badgeClassName("default")}>Status: {summary.status}</span>
-        <span className={badgeClassName("default")}>
-          Capability: {summary.capability}
-        </span>
+        <span className={badgeClassName("default")}>Plan: {summary.plan}</span>
         <span className={badgeClassName("default")}>Period: {summary.period}</span>
       </div>
     </DashboardCard>
