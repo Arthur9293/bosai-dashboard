@@ -11,6 +11,9 @@ type LedgerFilters = {
   limit: number;
 };
 
+const QUICK_STATUS_OPTIONS = ["success", "error", "blocked", "unsupported"] as const;
+const QUICK_CAPABILITY_OPTIONS = ["health_tick"] as const;
+
 function badgeClassName(
   variant:
     | "default"
@@ -41,6 +44,12 @@ function badgeClassName(
   }
 
   return "inline-flex rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300";
+}
+
+function quickChipClass(active: boolean): string {
+  return active
+    ? "inline-flex rounded-full border border-sky-500/30 bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-300"
+    : "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300";
 }
 
 export function WorkspaceLedgerFilters({
@@ -107,6 +116,27 @@ export function WorkspaceLedgerFilters({
             <option value="error">error</option>
             <option value="unsupported">unsupported</option>
           </select>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setStatus("")}
+              className={quickChipClass(status === "")}
+            >
+              Tous
+            </button>
+
+            {QUICK_STATUS_OPTIONS.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setStatus(item)}
+                className={quickChipClass(status === item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
         </label>
 
         <label className="space-y-2">
@@ -120,6 +150,27 @@ export function WorkspaceLedgerFilters({
             placeholder="health_tick"
             className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-zinc-500 outline-none"
           />
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setCapability("")}
+              className={quickChipClass(capability === "")}
+            >
+              Toutes
+            </button>
+
+            {QUICK_CAPABILITY_OPTIONS.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setCapability(item)}
+                className={quickChipClass(capability === item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
         </label>
 
         <label className="space-y-2">
