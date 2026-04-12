@@ -4,6 +4,7 @@ import {
   type CommandItem,
   type CommandsResponse,
 } from "@/lib/api";
+import { CommandsFilters } from "./commands-filters";
 
 type PageProps = {
   searchParams?: Promise<{
@@ -11,7 +12,20 @@ type PageProps = {
     root_event_id?: string | string[];
     source_event_id?: string | string[];
     from?: string | string[];
+    bucket?: string | string[];
+    capability?: string | string[];
+    workspace_id?: string | string[];
+    period_key?: string | string[];
+    limit?: string | string[];
   }>;
+};
+
+type CommandFilters = {
+  bucket: string;
+  capability: string;
+  workspace_id: string;
+  period_key: string;
+  limit: number;
 };
 
 function cardClassName() {
@@ -335,7 +349,7 @@ function getCommandSummaryLine(command: CommandItem): string {
   ].join(" · ");
 }
 
-function commandMatchesFilters(
+function commandMatchesFlowFilters(
   command: CommandItem,
   filters: {
     flowId: string;
@@ -412,6 +426,73 @@ function getCommandTimestamp(command: CommandItem): number {
       getCommandCreatedAt(command) ||
       0
   ).getTime();
+}
+
+function getCommandPeriodKey(command: CommandItem): string {
+  const raw =
+    getCommandFinishedAt(command) ||
+    getCommandStartedAt(command) ||
+    getCommandCreatedAt(command);
+
+  if (!raw) return "";
+
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toISOString().slice(0, 7);
+}
+
+function parseCommandFilters(
+  searchParams?: Record<string, string | string[] | undefined>
+): CommandFilters {
+  const bucket = firstParam(searchParams?.bucket).trim().toLowerCase();
+  const capability = firstParam(searchParams?.capability).trim().toLowerCase();
+  const workspaceId = firstParam(searchParams?.workspace_id).trim().toLowerCase();
+  const periodKey = firstParam(searchParams?.period_key).trim();
+  const rawLimit = Number.parseInt(firstParam(searchParams?.limit), 10);
+
+  const allowedBuckets = new Set([
+    "",
+    "queued",
+    "running",
+    "retry",
+    "failed",
+    "done",
+    "other",
+  ]);
+
+  return {
+    bucket: allowedBuckets.has(bucket) ? bucket : "",
+    capability,
+    workspace_id: workspaceId,
+    period_key: periodKey,
+    limit: Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 100)) : 20,
+  };
+}
+
+function commandMatchesCommandFilters(
+  command: CommandItem,
+  filters: CommandFilters
+) {
+  if (filters.bucket && getCommandStatusBucket(command) !== filters.bucket) {
+    return false;
+  }
+
+  if (filters.capability) {
+    const capability = getCommandCapability(command).toLowerCase();
+    if (!capability.includes(filters.capability)) return false;
+  }
+
+  if (filters.workspace_id) {
+    const workspace = getCommandWorkspace(command).toLowerCase();
+    if (!workspace.includes(filters.workspace_id)) return false;
+  }
+
+  if (filters.period_key) {
+    if (getCommandPeriodKey(command) !== filters.period_key) return false;
+  }
+
+  return true;
 }
 
 function sortCommands(items: CommandItem[]) {
@@ -613,6 +694,8 @@ export default async function CommandsPage({ searchParams }: PageProps) {
   const sourceEventId = firstParam(resolvedSearchParams.source_event_id).trim();
   const from = firstParam(resolvedSearchParams.from).trim();
 
+  const commandFilters = parseCommandFilters(resolvedSearchParams);
+
   let data: CommandsResponse | null = null;
 
   try {
@@ -625,17 +708,21 @@ export default async function CommandsPage({ searchParams }: PageProps) {
     ? data.commands
     : [];
 
-  const hasFilters = Boolean(flowId || rootEventId || sourceEventId);
+  const hasFlowFilters = Boolean(flowId || rootEventId || sourceEventId);
 
-  const visibleCommands = hasFilters
+  const flowVisibleCommands = hasFlowFilters
     ? commands.filter((command) =>
-        commandMatchesFilters(command, {
+        commandMatchesFlowFilters(command, {
           flowId,
           rootEventId,
           sourceEventId,
         })
       )
     : commands;
+
+  const visibleCommands = flowVisibleCommands
+    .filter((command) => commandMatchesCommandFilters(command, commandFilters))
+    .slice(0, commandFilters.limit);
 
   const queuedCommands = visibleCommands.filter(
     (item) => getCommandStatusBucket(item) === "queued"
@@ -675,104 +762,4 @@ export default async function CommandsPage({ searchParams }: PageProps) {
       <section className="space-y-3 border-b border-white/10 pb-6">
         <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
 
-        <div>
-          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-            Commands
-          </h1>
-          <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
-            Vue de la file d’exécution BOSAI. Cette page permet de suivre les
-            commands, leur statut, leur liaison au flow, et leur détail.
-          </p>
-        </div>
-      </section>
-
-      {hasFilters ? (
-        <section className="rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-5 md:p-6">
-          <div className="mb-4 text-lg font-medium text-emerald-200">
-            Filtré depuis Flows
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            {flowId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
-                flow_id: {flowId}
-              </span>
-            ) : null}
-
-            {rootEventId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
-                root_event_id: {rootEventId}
-              </span>
-            ) : null}
-
-            {sourceEventId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
-                source_event_id: {sourceEventId}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-5 space-y-3">
-            <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
-              Retour aux flows
-            </Link>
-
-            <Link href="/commands" className={actionLinkClassName("primary")}>
-              Voir toutes les commands
-            </Link>
-          </div>
-        </section>
-      ) : null}
-
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Queued" value={queuedCommands.length} toneClass="text-amber-300" />
-        <StatCard label="Running" value={runningCommands.length} toneClass="text-sky-300" />
-        <StatCard label="Retry" value={retryCommands.length} toneClass="text-violet-300" />
-        <StatCard label="Failed" value={failedCommands.length} toneClass="text-red-300" />
-        <StatCard label="Done" value={doneCommands.length} toneClass="text-emerald-300" />
-      </section>
-
-      {visibleCommands.length === 0 ? (
-        <section className={emptyStateClassName()}>
-          Aucune command visible pour le moment.
-        </section>
-      ) : (
-        <div className="space-y-8">
-          <SectionBlock
-            title="Needs attention"
-            description="Commands à surveiller en priorité : en file, en cours, en retry ou en échec."
-            count={needsAttentionCommands.length}
-          >
-            {needsAttentionCommands.length === 0 ? (
-              <div className={emptyStateClassName()}>Aucune command active.</div>
-            ) : (
-              <div className="space-y-4">
-                {needsAttentionCommands.map((command) => (
-                  <CommandCard key={String(command.id)} command={command} />
-                ))}
-              </div>
-            )}
-          </SectionBlock>
-
-          <SectionBlock
-            title="Completed commands"
-            description="Historique des commands terminées avec succès, triées de la plus récente à la plus ancienne."
-            count={completedCommands.length}
-          >
-            {completedCommands.length === 0 ? (
-              <div className={emptyStateClassName()}>
-                Aucune command terminée.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {completedCommands.map((command) => (
-                  <CommandCard key={String(command.id)} command={command} />
-                ))}
-              </div>
-            )}
-          </SectionBlock>
-        </div>
-      )}
-    </div>
-  );
-}
+        <
