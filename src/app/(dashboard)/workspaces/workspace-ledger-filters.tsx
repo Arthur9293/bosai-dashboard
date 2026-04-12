@@ -185,7 +185,7 @@ export function WorkspaceLedgerFilters({
                 limit === "20"
             )}
           >
-            health_tick + période courante
+            tous + health_tick + période courante
           </button>
 
           <button
@@ -209,6 +209,29 @@ export function WorkspaceLedgerFilters({
             )}
           >
             error + période courante
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              applyPreset(
+                {
+                  status: "blocked",
+                  capability: "",
+                  periodKey: currentPeriodKey,
+                  limit: "20",
+                },
+                { setStatus, setCapability, setPeriodKey, setLimit }
+              )
+            }
+            className={quickChipClass(
+              status === "blocked" &&
+                capability === "" &&
+                periodKey === currentPeriodKey &&
+                limit === "20"
+            )}
+          >
+            blocked + période courante
           </button>
         </div>
       </div>
