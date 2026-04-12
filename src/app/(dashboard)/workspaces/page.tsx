@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PageHeader } from "../../../components/ui/page-header";
 import { DashboardCard } from "../../../components/ui/dashboard-card";
+import { WorkspacesFilters } from "./workspaces-filters";
 
 type WorkspaceUsage = {
   runs_month?: number;
@@ -60,6 +61,13 @@ type WorkspacesResponse = {
   };
   ts?: string;
   error?: string;
+};
+
+type WorkspaceFilters = {
+  status: string;
+  plan: string;
+  period_key: string;
+  limit: number;
 };
 
 function formatNumber(value?: number | null): string {
@@ -162,6 +170,69 @@ function sectionLabelClassName(): string {
 
 function metaLabelClassName(): string {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function parseWorkspaceFilters(
+  searchParams?: Record<string, string | string[] | undefined>
+): WorkspaceFilters {
+  const getSingle = (value?: string | string[]) =>
+    Array.isArray(value) ? value[0] || "" : value || "";
+
+  const rawStatus = getSingle(searchParams?.status).trim().toLowerCase();
+  const rawPlan = getSingle(searchParams?.plan).trim().toLowerCase();
+  const rawPeriodKey = getSingle(searchParams?.period_key).trim();
+  const rawLimit = Number.parseInt(getSingle(searchParams?.limit), 10);
+
+  const allowedStatuses = new Set(["active", "blocked", "warnings", "fallback"]);
+  const safeStatus = allowedStatuses.has(rawStatus) ? rawStatus : "";
+
+  const safeLimit = Number.isFinite(rawLimit)
+    ? Math.max(1, Math.min(rawLimit, 100))
+    : 20;
+
+  return {
+    status: safeStatus,
+    plan: rawPlan,
+    period_key: rawPeriodKey,
+    limit: safeLimit,
+  };
+}
+
+function filterWorkspaces(
+  items: WorkspaceListItem[],
+  filters: WorkspaceFilters
+): WorkspaceListItem[] {
+  return items
+    .filter((item) => {
+      if (filters.status === "active" && !item.is_active) return false;
+      if (filters.status === "blocked" && !item.blocked) return false;
+      if (filters.status === "warnings" && (item.warnings ?? []).length === 0) {
+        return false;
+      }
+      if (filters.status === "fallback" && !item.usage_period_reset?.fallback) {
+        return false;
+      }
+
+      if (filters.plan) {
+        const planRaw = [
+          item.plan_code || "",
+          item.plan_label || "",
+          item.plan_id || "",
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        if (!planRaw.includes(filters.plan)) return false;
+      }
+
+      if (filters.period_key) {
+        const periodValue = String(item.current_usage_period_key || "").trim();
+        if (periodValue !== filters.period_key) return false;
+      }
+
+      return true;
+    })
+    .slice(0, filters.limit);
 }
 
 async function fetchWorkspaces(): Promise<WorkspacesResponse | null> {
@@ -362,9 +433,17 @@ function WorkspaceCard({ item }: { item: WorkspaceListItem }) {
   );
 }
 
-export default async function WorkspacesPage() {
+export default async function WorkspacesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const filters = parseWorkspaceFilters(resolvedSearchParams);
+
   const data = await fetchWorkspaces();
   const items = data?.items ?? [];
+  const filteredItems = filterWorkspaces(items, filters);
 
   const envReady =
     Boolean(
@@ -373,11 +452,15 @@ export default async function WorkspacesPage() {
         process.env.NEXT_PUBLIC_API_BASE_URL
     ) && Boolean(process.env.BOSAI_WORKSPACE_API_KEY);
 
-  const activeCount = items.filter((item) => item.is_active).length;
-  const blockedCount = items.filter((item) => item.blocked).length;
-  const warningCount = items.filter(
+  const activeCount = filteredItems.filter((item) => item.is_active).length;
+  const blockedCount = filteredItems.filter((item) => item.blocked).length;
+  const warningCount = filteredItems.filter(
     (item) => (item.warnings ?? []).length > 0
   ).length;
+
+  const hasActiveFilters = Boolean(
+    filters.status || filters.plan || filters.period_key
+  );
 
   return (
     <div className="space-y-8">
@@ -405,26 +488,32 @@ export default async function WorkspacesPage() {
 
       {envReady ? (
         <>
+          <WorkspacesFilters initialFilters={filters} />
+
           <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile
-              label="Total workspaces"
-              value={formatNumber(items.length)}
-              helper={`Source: ${data?.source?.table || "Workspaces"}`}
+              label="Visible workspaces"
+              value={formatNumber(filteredItems.length)}
+              helper={
+                hasActiveFilters
+                  ? `Filtrés sur ${formatNumber(items.length)}`
+                  : `Source: ${data?.source?.table || "Workspaces"}`
+              }
             />
             <StatTile
               label="Active"
               value={formatNumber(activeCount)}
-              helper="Workspaces actifs"
+              helper="Workspaces actifs visibles"
             />
             <StatTile
               label="Blocked"
               value={formatNumber(blockedCount)}
-              helper="Blocages quota / état"
+              helper="Blocages quota / état visibles"
             />
             <StatTile
               label="Warnings"
               value={formatNumber(warningCount)}
-              helper="Signaux soft limits"
+              helper="Signaux soft limits visibles"
             />
           </section>
 
@@ -474,14 +563,25 @@ export default async function WorkspacesPage() {
             <section className="space-y-4">
               <div className={sectionLabelClassName()}>Workspace cards</div>
 
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                {items.map((item) => (
-                  <WorkspaceCard
-                    key={item.record_id || item.workspace_id}
-                    item={item}
-                  />
-                ))}
-              </div>
+              {filteredItems.length === 0 ? (
+                <DashboardCard
+                  title="Aucun workspace visible"
+                  subtitle="Aucun workspace ne correspond aux filtres actuels."
+                >
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300">
+                    Essaie un autre status, plan ou period key.
+                  </div>
+                </DashboardCard>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  {filteredItems.map((item) => (
+                    <WorkspaceCard
+                      key={item.record_id || item.workspace_id}
+                      item={item}
+                    />
+                  ))}
+                </div>
+              )}
             </section>
           ) : null}
         </>
