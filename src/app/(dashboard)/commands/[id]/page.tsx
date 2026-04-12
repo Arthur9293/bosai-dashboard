@@ -26,7 +26,7 @@ function cardClassName() {
 }
 
 function statCardClassName() {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function actionLinkClassName(
@@ -185,6 +185,12 @@ function humanStatusLabel(status: string): string {
   }
 
   return normalized ? normalized.toUpperCase() : "UNKNOWN";
+}
+
+function cleanCapabilityLabel(value: string): string {
+  const raw = toText(value, "");
+  if (!raw) return "unknown_capability";
+  return raw.replace(/_/g, " ");
 }
 
 /* ----------------------------- Command helpers ---------------------------- */
@@ -355,7 +361,7 @@ function getCommandTitle(command: CommandItem): string {
 
 function getCommandSummaryLine(command: CommandItem): string {
   const status = humanStatusLabel(getCommandStatus(command));
-  const capability = getCommandCapability(command);
+  const capability = cleanCapabilityLabel(getCommandCapability(command));
   const workspace = getCommandWorkspace(command);
 
   return `${status} · ${capability} · ${workspace}`;
@@ -494,7 +500,7 @@ function StatCard({
   return (
     <div className={statCardClassName()}>
       <div className={metaLabelClassName()}>{label}</div>
-      <div className="mt-3 text-xl font-semibold tracking-tight text-white">
+      <div className="mt-2 text-lg font-semibold tracking-tight text-white md:mt-3 md:text-xl">
         {value}
       </div>
     </div>
@@ -609,11 +615,13 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
         <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
 
-        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          {title}
-        </h1>
+        <div className="space-y-3">
+          <h1 className="break-words text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+            {title}
+          </h1>
 
-        <div className="text-sm text-zinc-400">{getCommandSummaryLine(command)}</div>
+          <div className="text-sm text-zinc-400">{getCommandSummaryLine(command)}</div>
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <span
@@ -625,7 +633,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
           </span>
 
           <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-300">
-            {capability}
+            {cleanCapabilityLabel(capability)}
           </span>
 
           {toolKey ? (
@@ -640,9 +648,24 @@ export default async function CommandDetailPage({ params }: PageProps) {
             </span>
           ) : null}
         </div>
+
+        <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 sm:grid-cols-2 xl:grid-cols-4">
+          <div>
+            Workspace: <span className="text-zinc-300">{workspace}</span>
+          </div>
+          <div>
+            Run: <span className="break-all text-zinc-300">{runId}</span>
+          </div>
+          <div>
+            Parent: <span className="break-all text-zinc-300">{parentId || "—"}</span>
+          </div>
+          <div>
+            Flow: <span className="break-all text-zinc-300">{flowId || "—"}</span>
+          </div>
+        </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         <StatCard label="Created" value={formatDate(getCommandCreatedAt(command))} />
         <StatCard label="Started" value={formatDate(getCommandStartedAt(command))} />
         <StatCard label="Finished" value={formatDate(getCommandFinishedAt(command))} />
@@ -651,30 +674,37 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-5 text-lg font-medium text-white">Command identity</div>
+          <div className="mb-5 text-lg font-medium text-white">Overview</div>
 
           <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
             <MetaItem label="ID" value={String(command.id)} breakAll />
             <MetaItem label="Status" value={status} />
-            <MetaItem label="Capability" value={capability} />
+            <MetaItem label="Capability" value={cleanCapabilityLabel(capability)} />
             <MetaItem label="Workspace" value={workspace} />
             <MetaItem label="Run" value={runId} breakAll />
             <MetaItem label="Parent" value={parentId || "—"} breakAll />
-            <MetaItem label="Flow" value={flowId || "—"} breakAll />
-            <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
-            <MetaItem label="Source event" value={sourceEventId || "—"} breakAll />
+
+            <div className="hidden md:block">
+              <MetaItem label="Flow" value={flowId || "—"} breakAll />
+            </div>
+            <div className="hidden md:block">
+              <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
+            </div>
+            <div className="hidden md:block">
+              <MetaItem label="Source event" value={sourceEventId || "—"} breakAll />
+            </div>
 
             {errorText ? (
-              <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-rose-500/20 bg-rose-500/10 px-4 py-4">
                 <div className={metaLabelClassName()}>Error</div>
-                <div className="mt-1 break-all text-zinc-200">{errorText}</div>
+                <div className="mt-1 break-all text-rose-100">{errorText}</div>
               </div>
             ) : null}
           </div>
         </div>
 
         <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">Routing diagnostic</div>
+          <div className="mb-5 text-lg font-medium text-white">Routing / links</div>
 
           <div className="space-y-4 text-sm">
             <div className="flex items-start justify-between gap-4">
@@ -697,13 +727,46 @@ export default async function CommandDetailPage({ params }: PageProps) {
                 {flowId || rootEventId || sourceEventId || String(command.id) || "—"}
               </span>
             </div>
+          </div>
 
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-zinc-400">Error</span>
-              <span className="break-all text-right text-zinc-200">
-                {errorText || "—"}
+          <div className="mt-5 space-y-3">
+            <Link href="/commands" className={actionLinkClassName("soft")}>
+              Retour à la liste commands
+            </Link>
+
+            <Link href="/commands" className={actionLinkClassName("primary")}>
+              Voir toutes les commands
+            </Link>
+
+            {hasFlow ? (
+              <Link href={flowHref} className={actionLinkClassName("soft")}>
+                Ouvrir le flow lié
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir le flow lié
               </span>
-            </div>
+            )}
+
+            {hasEvent ? (
+              <Link href={eventHref} className={actionLinkClassName("soft")}>
+                Ouvrir l’event source
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir l’event source
+              </span>
+            )}
+
+            {hasIncident ? (
+              <Link href={incidentHref} className={actionLinkClassName("danger")}>
+                Ouvrir l’incident lié
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("danger", true)}>
+                Ouvrir l’incident lié
+              </span>
+            )}
           </div>
         </div>
       </section>
@@ -711,60 +774,16 @@ export default async function CommandDetailPage({ params }: PageProps) {
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className={cardClassName()}>
           <div className="mb-4 text-lg font-medium text-white">Input preview</div>
-          <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+          <pre className="max-h-[420px] overflow-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
 {stringifyPretty(command.input ?? {})}
           </pre>
         </div>
 
         <div className={cardClassName()}>
           <div className="mb-4 text-lg font-medium text-white">Result preview</div>
-          <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+          <pre className="max-h-[420px] overflow-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
 {stringifyPretty(command.result ?? {})}
           </pre>
-        </div>
-      </section>
-
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Navigation</div>
-
-        <div className="space-y-3">
-          <Link href="/commands" className={actionLinkClassName("soft")}>
-            Retour à la liste commands
-          </Link>
-
-          <Link href="/commands" className={actionLinkClassName("primary")}>
-            Voir toutes les commands
-          </Link>
-
-          {hasFlow ? (
-            <Link href={flowHref} className={actionLinkClassName("soft")}>
-              Ouvrir le flow lié
-            </Link>
-          ) : (
-            <span className={actionLinkClassName("soft", true)}>
-              Ouvrir le flow lié
-            </span>
-          )}
-
-          {hasEvent ? (
-            <Link href={eventHref} className={actionLinkClassName("soft")}>
-              Ouvrir l’event source
-            </Link>
-          ) : (
-            <span className={actionLinkClassName("soft", true)}>
-              Ouvrir l’event source
-            </span>
-          )}
-
-          {hasIncident ? (
-            <Link href={incidentHref} className={actionLinkClassName("danger")}>
-              Ouvrir l’incident lié
-            </Link>
-          ) : (
-            <span className={actionLinkClassName("danger", true)}>
-              Ouvrir l’incident lié
-            </span>
-          )}
         </div>
       </section>
     </div>
