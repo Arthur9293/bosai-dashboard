@@ -4,15 +4,15 @@ import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { DashboardCard } from "../../../components/ui/dashboard-card";
 
-type WorkspaceFilters = {
+type LedgerFilters = {
   status: string;
-  plan: string;
+  capability: string;
   period_key: string;
   limit: number;
 };
 
-const QUICK_STATUS_OPTIONS = ["active", "blocked", "warnings", "fallback"] as const;
-const QUICK_PLAN_OPTIONS = ["plan_free"] as const;
+const QUICK_STATUS_OPTIONS = ["success", "error", "blocked", "unsupported"] as const;
+const QUICK_CAPABILITY_OPTIONS = ["health_tick"] as const;
 
 function badgeClassName(
   variant:
@@ -48,8 +48,8 @@ function badgeClassName(
 
 function quickChipClass(active: boolean): string {
   return active
-    ? "inline-flex rounded-full border border-sky-500/30 bg-sky-500/15 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-sky-300"
-    : "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-zinc-300";
+    ? "inline-flex rounded-full border border-sky-500/30 bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-300"
+    : "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300";
 }
 
 function getCurrentPeriodKey(): string {
@@ -59,33 +59,33 @@ function getCurrentPeriodKey(): string {
 function applyPreset(
   preset: {
     status?: string;
-    plan?: string;
+    capability?: string;
     periodKey?: string;
     limit?: string;
   },
   setters: {
     setStatus: (value: string) => void;
-    setPlan: (value: string) => void;
+    setCapability: (value: string) => void;
     setPeriodKey: (value: string) => void;
     setLimit: (value: string) => void;
   }
 ) {
   setters.setStatus(preset.status ?? "");
-  setters.setPlan(preset.plan ?? "");
+  setters.setCapability(preset.capability ?? "");
   setters.setPeriodKey(preset.periodKey ?? "");
   setters.setLimit(preset.limit ?? "20");
 }
 
-export function WorkspacesFilters({
+export function WorkspaceLedgerFilters({
   initialFilters,
 }: {
-  initialFilters: WorkspaceFilters;
+  initialFilters: LedgerFilters;
 }) {
   const router = useRouter();
   const pathname = usePathname();
 
   const [status, setStatus] = useState(initialFilters.status);
-  const [plan, setPlan] = useState(initialFilters.plan);
+  const [capability, setCapability] = useState(initialFilters.capability);
   const [periodKey, setPeriodKey] = useState(initialFilters.period_key);
   const [limit, setLimit] = useState(String(initialFilters.limit || 20));
 
@@ -104,18 +104,18 @@ export function WorkspacesFilters({
   const summary = useMemo(
     () => ({
       status: status.trim() ? status.trim() : "Tous",
-      plan: plan.trim() ? plan.trim() : "Tous",
+      capability: capability.trim() ? capability.trim() : "Toutes",
       period: periodKey.trim() ? periodKey.trim() : "Toutes",
       limit: limit.trim() || "20",
     }),
-    [status, plan, periodKey, limit]
+    [status, capability, periodKey, limit]
   );
 
   const applyFilters = () => {
     const params = new URLSearchParams();
 
     if (status.trim()) params.set("status", status.trim());
-    if (plan.trim()) params.set("plan", plan.trim());
+    if (capability.trim()) params.set("capability", capability.trim());
     if (periodKey.trim()) params.set("period_key", periodKey.trim());
     if (limit.trim()) params.set("limit", limit.trim());
 
@@ -125,7 +125,7 @@ export function WorkspacesFilters({
 
   const resetFilters = () => {
     setStatus("");
-    setPlan("");
+    setCapability("");
     setPeriodKey("");
     setLimit("20");
     router.push(pathname);
@@ -133,82 +133,36 @@ export function WorkspacesFilters({
 
   return (
     <DashboardCard
-      title="Workspaces filters"
-      subtitle="Filtres simples et presets rapides pour la liste des workspaces."
+      title="Ledger filters"
+      subtitle="Filtres simples du ledger pour ce workspace."
     >
       <div className="mb-5">
         <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-zinc-500">
           Presets
         </div>
 
-        <div className="flex flex-wrap gap-2 md:gap-3">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() =>
               applyPreset(
                 {
-                  status: "active",
-                  plan: "",
+                  status: "success",
+                  capability: "health_tick",
                   periodKey: currentPeriodKey,
                   limit: "20",
                 },
-                { setStatus, setPlan, setPeriodKey, setLimit }
+                { setStatus, setCapability, setPeriodKey, setLimit }
               )
             }
-            className={`${quickChipClass(
-              status === "active" &&
-                plan === "" &&
+            className={quickChipClass(
+              status === "success" &&
+                capability === "health_tick" &&
                 periodKey === currentPeriodKey &&
                 limit === "20"
-            )} max-w-full whitespace-normal text-left leading-snug`}
+            )}
           >
-            active + période courante
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              applyPreset(
-                {
-                  status: "blocked",
-                  plan: "",
-                  periodKey: currentPeriodKey,
-                  limit: "20",
-                },
-                { setStatus, setPlan, setPeriodKey, setLimit }
-              )
-            }
-            className={`${quickChipClass(
-              status === "blocked" &&
-                plan === "" &&
-                periodKey === currentPeriodKey &&
-                limit === "20"
-            )} max-w-full whitespace-normal text-left leading-snug`}
-          >
-            blocked + période courante
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              applyPreset(
-                {
-                  status: "warnings",
-                  plan: "",
-                  periodKey: currentPeriodKey,
-                  limit: "20",
-                },
-                { setStatus, setPlan, setPeriodKey, setLimit }
-              )
-            }
-            className={`${quickChipClass(
-              status === "warnings" &&
-                plan === "" &&
-                periodKey === currentPeriodKey &&
-                limit === "20"
-            )} max-w-full whitespace-normal text-left leading-snug`}
-          >
-            warnings + période courante
+            success + health_tick + période courante
           </button>
 
           <button
@@ -217,21 +171,44 @@ export function WorkspacesFilters({
               applyPreset(
                 {
                   status: "",
-                  plan: "plan_free",
+                  capability: "health_tick",
                   periodKey: currentPeriodKey,
                   limit: "20",
                 },
-                { setStatus, setPlan, setPeriodKey, setLimit }
+                { setStatus, setCapability, setPeriodKey, setLimit }
               )
             }
-            className={`${quickChipClass(
+            className={quickChipClass(
               status === "" &&
-                plan === "plan_free" &&
+                capability === "health_tick" &&
                 periodKey === currentPeriodKey &&
                 limit === "20"
-            )} max-w-full whitespace-normal text-left leading-snug`}
+            )}
           >
-            plan_free + période courante
+            health_tick + période courante
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              applyPreset(
+                {
+                  status: "error",
+                  capability: "",
+                  periodKey: currentPeriodKey,
+                  limit: "20",
+                },
+                { setStatus, setCapability, setPeriodKey, setLimit }
+              )
+            }
+            className={quickChipClass(
+              status === "error" &&
+                capability === "" &&
+                periodKey === currentPeriodKey &&
+                limit === "20"
+            )}
+          >
+            error + période courante
           </button>
         </div>
       </div>
@@ -247,10 +224,10 @@ export function WorkspacesFilters({
             className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
           >
             <option value="">Tous</option>
-            <option value="active">active</option>
+            <option value="success">success</option>
             <option value="blocked">blocked</option>
-            <option value="warnings">warnings</option>
-            <option value="fallback">fallback</option>
+            <option value="error">error</option>
+            <option value="unsupported">unsupported</option>
           </select>
 
           <div className="flex flex-wrap gap-2">
@@ -277,31 +254,31 @@ export function WorkspacesFilters({
 
         <label className="space-y-2">
           <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-            Plan
+            Capability
           </div>
           <input
             type="text"
-            value={plan}
-            onChange={(e) => setPlan(e.target.value)}
-            placeholder="plan_free"
+            value={capability}
+            onChange={(e) => setCapability(e.target.value)}
+            placeholder="health_tick"
             className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-zinc-500 outline-none"
           />
 
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setPlan("")}
-              className={quickChipClass(plan === "")}
+              onClick={() => setCapability("")}
+              className={quickChipClass(capability === "")}
             >
-              Tous
+              Toutes
             </button>
 
-            {QUICK_PLAN_OPTIONS.map((item) => (
+            {QUICK_CAPABILITY_OPTIONS.map((item) => (
               <button
                 key={item}
                 type="button"
-                onClick={() => setPlan(item)}
-                className={quickChipClass(plan === item)}
+                onClick={() => setCapability(item)}
+                className={quickChipClass(capability === item)}
               >
                 {item}
               </button>
@@ -378,10 +355,12 @@ export function WorkspacesFilters({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2 md:gap-3">
+      <div className="mt-4 flex flex-wrap gap-2">
         <span className={badgeClassName("default")}>Limit: {summary.limit}</span>
         <span className={badgeClassName("default")}>Status: {summary.status}</span>
-        <span className={badgeClassName("default")}>Plan: {summary.plan}</span>
+        <span className={badgeClassName("default")}>
+          Capability: {summary.capability}
+        </span>
         <span className={badgeClassName("default")}>Period: {summary.period}</span>
       </div>
     </DashboardCard>
