@@ -48,8 +48,8 @@ function badgeClassName(
 
 function quickChipClass(active: boolean): string {
   return active
-    ? "inline-flex rounded-full border border-sky-500/30 bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-300"
-    : "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300";
+    ? "inline-flex rounded-full border border-sky-500/30 bg-sky-500/15 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-sky-300"
+    : "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-zinc-300";
 }
 
 function getCurrentPeriodKey(): string {
@@ -141,7 +141,7 @@ export function WorkspaceLedgerFilters({
           Presets
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 md:gap-3">
           <button
             type="button"
             onClick={() =>
@@ -155,12 +155,12 @@ export function WorkspaceLedgerFilters({
                 { setStatus, setCapability, setPeriodKey, setLimit }
               )
             }
-            className={quickChipClass(
+            className={`${quickChipClass(
               status === "success" &&
                 capability === "health_tick" &&
                 periodKey === currentPeriodKey &&
                 limit === "20"
-            )}
+            )} max-w-full whitespace-normal text-left leading-snug`}
           >
             success + health_tick + période courante
           </button>
@@ -178,12 +178,12 @@ export function WorkspaceLedgerFilters({
                 { setStatus, setCapability, setPeriodKey, setLimit }
               )
             }
-            className={quickChipClass(
+            className={`${quickChipClass(
               status === "" &&
                 capability === "health_tick" &&
                 periodKey === currentPeriodKey &&
                 limit === "20"
-            )}
+            )} max-w-full whitespace-normal text-left leading-snug`}
           >
             tous + health_tick + période courante
           </button>
@@ -201,12 +201,12 @@ export function WorkspaceLedgerFilters({
                 { setStatus, setCapability, setPeriodKey, setLimit }
               )
             }
-            className={quickChipClass(
+            className={`${quickChipClass(
               status === "error" &&
                 capability === "" &&
                 periodKey === currentPeriodKey &&
                 limit === "20"
-            )}
+            )} max-w-full whitespace-normal text-left leading-snug`}
           >
             error + période courante
           </button>
@@ -224,12 +224,12 @@ export function WorkspaceLedgerFilters({
                 { setStatus, setCapability, setPeriodKey, setLimit }
               )
             }
-            className={quickChipClass(
+            className={`${quickChipClass(
               status === "blocked" &&
                 capability === "" &&
                 periodKey === currentPeriodKey &&
                 limit === "20"
-            )}
+            )} max-w-full whitespace-normal text-left leading-snug`}
           >
             blocked + période courante
           </button>
@@ -378,7 +378,7 @@ export function WorkspaceLedgerFilters({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2 md:gap-3">
         <span className={badgeClassName("default")}>Limit: {summary.limit}</span>
         <span className={badgeClassName("default")}>Status: {summary.status}</span>
         <span className={badgeClassName("default")}>
