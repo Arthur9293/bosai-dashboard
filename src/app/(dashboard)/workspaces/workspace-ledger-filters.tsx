@@ -56,6 +56,26 @@ function getCurrentPeriodKey(): string {
   return new Date().toISOString().slice(0, 7);
 }
 
+function applyPreset(
+  preset: {
+    status?: string;
+    capability?: string;
+    periodKey?: string;
+    limit?: string;
+  },
+  setters: {
+    setStatus: (value: string) => void;
+    setCapability: (value: string) => void;
+    setPeriodKey: (value: string) => void;
+    setLimit: (value: string) => void;
+  }
+) {
+  setters.setStatus(preset.status ?? "");
+  setters.setCapability(preset.capability ?? "");
+  setters.setPeriodKey(preset.periodKey ?? "");
+  setters.setLimit(preset.limit ?? "20");
+}
+
 export function WorkspaceLedgerFilters({
   initialFilters,
 }: {
@@ -69,17 +89,17 @@ export function WorkspaceLedgerFilters({
   const [periodKey, setPeriodKey] = useState(initialFilters.period_key);
   const [limit, setLimit] = useState(String(initialFilters.limit || 20));
 
+  const currentPeriodKey = useMemo(() => getCurrentPeriodKey(), []);
+
   const quickPeriodOptions = useMemo(() => {
     const values = new Set<string>();
 
     const fromInitial = String(initialFilters.period_key || "").trim();
-    const current = getCurrentPeriodKey();
-
     if (fromInitial) values.add(fromInitial);
-    if (current) values.add(current);
+    if (currentPeriodKey) values.add(currentPeriodKey);
 
     return Array.from(values);
-  }, [initialFilters.period_key]);
+  }, [initialFilters.period_key, currentPeriodKey]);
 
   const summary = useMemo(
     () => ({
@@ -116,6 +136,83 @@ export function WorkspaceLedgerFilters({
       title="Ledger filters"
       subtitle="Filtres simples du ledger pour ce workspace."
     >
+      <div className="mb-5">
+        <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+          Presets
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              applyPreset(
+                {
+                  status: "success",
+                  capability: "health_tick",
+                  periodKey: currentPeriodKey,
+                  limit: "20",
+                },
+                { setStatus, setCapability, setPeriodKey, setLimit }
+              )
+            }
+            className={quickChipClass(
+              status === "success" &&
+                capability === "health_tick" &&
+                periodKey === currentPeriodKey &&
+                limit === "20"
+            )}
+          >
+            success + health_tick + période courante
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              applyPreset(
+                {
+                  status: "",
+                  capability: "health_tick",
+                  periodKey: currentPeriodKey,
+                  limit: "20",
+                },
+                { setStatus, setCapability, setPeriodKey, setLimit }
+              )
+            }
+            className={quickChipClass(
+              status === "" &&
+                capability === "health_tick" &&
+                periodKey === currentPeriodKey &&
+                limit === "20"
+            )}
+          >
+            health_tick + période courante
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              applyPreset(
+                {
+                  status: "error",
+                  capability: "",
+                  periodKey: currentPeriodKey,
+                  limit: "20",
+                },
+                { setStatus, setCapability, setPeriodKey, setLimit }
+              )
+            }
+            className={quickChipClass(
+              status === "error" &&
+                capability === "" &&
+                periodKey === currentPeriodKey &&
+                limit === "20"
+            )}
+          >
+            error + période courante
+          </button>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <label className="space-y-2">
           <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
