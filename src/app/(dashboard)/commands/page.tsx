@@ -33,7 +33,7 @@ function cardClassName() {
 }
 
 function statCardClassName() {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function emptyStateClassName() {
@@ -520,7 +520,7 @@ function StatCard({
   return (
     <div className={statCardClassName()}>
       <div className="text-sm text-zinc-400">{label}</div>
-      <div className={`mt-3 text-4xl font-semibold tracking-tight ${toneClass}`}>
+      <div className={`mt-2 text-3xl font-semibold tracking-tight md:mt-3 md:text-4xl ${toneClass}`}>
         {value}
       </div>
     </div>
@@ -540,13 +540,14 @@ function SectionBlock({
 }) {
   return (
     <section className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-2">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
           <div className={sectionLabelClassName()}>{title}</div>
-          <p className="max-w-3xl text-base text-zinc-400">{description}</p>
+          <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
+            {count}
+          </span>
         </div>
-
-        <div className="text-sm text-zinc-500">{count}</div>
+        <p className="max-w-3xl text-base text-zinc-400">{description}</p>
       </div>
 
       {children}
@@ -821,7 +822,7 @@ export default async function CommandsPage({ searchParams }: PageProps) {
         }}
       />
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-5">
         <StatCard label="Queued" value={queuedCommands.length} toneClass="text-amber-300" />
         <StatCard label="Running" value={runningCommands.length} toneClass="text-sky-300" />
         <StatCard label="Retry" value={retryCommands.length} toneClass="text-violet-300" />
