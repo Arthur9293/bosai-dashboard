@@ -22,21 +22,29 @@ function cardClassName(): string {
 }
 
 function actionLinkClassName(
-  variant: "default" | "primary" | "soft" | "danger" = "default"
+  variant: "default" | "primary" | "soft" | "danger" = "default",
+  disabled = false
 ): string {
+  const base =
+    "inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
+
+  if (disabled) {
+    return `${base} cursor-not-allowed border border-white/10 bg-white/[0.04] text-zinc-500 opacity-60`;
+  }
+
   if (variant === "primary") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+    return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
   }
 
   if (variant === "danger") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
+    return `${base} border border-rose-500/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15`;
   }
 
   if (variant === "soft") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+    return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
 }
 
 function sectionLabelClassName(): string {
@@ -99,6 +107,10 @@ function formatDate(value?: string | number | null): string {
 
 function safeUpper(text: string): string {
   return text.trim() ? text.trim().toUpperCase() : "—";
+}
+
+function isRecordIdLike(value: string): boolean {
+  return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
 }
 
 function getIncidentTitle(incident: IncidentItem): string {
@@ -417,15 +429,28 @@ function getLinkedCommandHref(incident: IncidentItem): string {
   return `/commands/${encodeURIComponent(commandRecord)}`;
 }
 
-function getLinkedEventHref(incident: IncidentItem): string {
-  const target =
-    getSourceRecordId(incident) ||
-    getRootEventId(incident) ||
-    getFlowId(incident) ||
-    "";
+function getLinkedEventRecordId(incident: IncidentItem): string {
+  const sourceRecordId = getSourceRecordId(incident);
+  if (sourceRecordId && isRecordIdLike(sourceRecordId)) {
+    return sourceRecordId;
+  }
 
-  if (!target) return "";
-  return `/events/${encodeURIComponent(target)}`;
+  const rootEventId = getRootEventId(incident);
+  if (rootEventId && isRecordIdLike(rootEventId)) {
+    return rootEventId;
+  }
+
+  const flowId = getFlowId(incident);
+  if (flowId && isRecordIdLike(flowId)) {
+    return flowId;
+  }
+
+  return "";
+}
+
+function getLinkedEventHref(incident: IncidentItem): string {
+  const recordId = getLinkedEventRecordId(incident);
+  return recordId ? `/events/${encodeURIComponent(recordId)}` : "";
 }
 
 function getSummaryLine(incident: IncidentItem): string {
@@ -572,6 +597,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const linkedFlowHref = getLinkedFlowHref(incident);
   const linkedCommandHref = getLinkedCommandHref(incident);
   const linkedEventHref = getLinkedEventHref(incident);
+  const linkedEventRecordId = getLinkedEventRecordId(incident);
 
   const remainingMinutes = toNumber(incident.sla_remaining_minutes, Number.NaN);
 
@@ -735,35 +761,19 @@ export default async function IncidentDetailPage({ params }: PageProps) {
 
             <MetaItem
               label="Root event"
-              value={
-                linkedEventHref && rootEventId ? (
-                  <Link
-                    href={linkedEventHref}
-                    className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                  >
-                    {rootEventId}
-                  </Link>
-                ) : (
-                  rootEventId || "—"
-                )
-              }
+              value={rootEventId || "—"}
               breakAll
             />
 
             <MetaItem
               label="Source record"
-              value={
-                linkedEventHref && sourceRecordId ? (
-                  <Link
-                    href={linkedEventHref}
-                    className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                  >
-                    {sourceRecordId}
-                  </Link>
-                ) : (
-                  sourceRecordId || "—"
-                )
-              }
+              value={sourceRecordId || "—"}
+              breakAll
+            />
+
+            <MetaItem
+              label="Event record safe"
+              value={linkedEventRecordId || "—"}
               breakAll
             />
 
@@ -804,19 +814,31 @@ export default async function IncidentDetailPage({ params }: PageProps) {
               <Link href={sourceFlowHref} className={actionLinkClassName("soft")}>
                 Retour au flow source
               </Link>
-            ) : null}
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Retour au flow source
+              </span>
+            )}
 
             {linkedFlowHref && linkedFlowHref !== sourceFlowHref ? (
               <Link href={linkedFlowHref} className={actionLinkClassName("soft")}>
                 Ouvrir le flow lié
               </Link>
-            ) : null}
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir le flow lié
+              </span>
+            )}
 
             {linkedEventHref ? (
               <Link href={linkedEventHref} className={actionLinkClassName("soft")}>
                 Ouvrir l’event lié
               </Link>
-            ) : null}
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir l’event lié
+              </span>
+            )}
 
             {linkedCommandHref ? (
               <Link
@@ -825,7 +847,11 @@ export default async function IncidentDetailPage({ params }: PageProps) {
               >
                 Ouvrir la command liée
               </Link>
-            ) : null}
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir la command liée
+              </span>
+            )}
           </div>
         </div>
       </section>
