@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import {
   fetchCommands,
   type CommandItem,
@@ -520,7 +521,9 @@ function StatCard({
   return (
     <div className={statCardClassName()}>
       <div className="text-sm text-zinc-400">{label}</div>
-      <div className={`mt-2 text-3xl font-semibold tracking-tight md:mt-3 md:text-4xl ${toneClass}`}>
+      <div
+        className={`mt-2 text-3xl font-semibold tracking-tight md:mt-3 md:text-4xl ${toneClass}`}
+      >
         {value}
       </div>
     </div>
@@ -536,7 +539,7 @@ function SectionBlock({
   title: string;
   description: string;
   count: number;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section className="space-y-4">
@@ -613,38 +616,23 @@ function CommandCard({ command }: { command: CommandItem }) {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
-            <span>
+          <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2">
+            <div>
               Workspace: <span className="text-zinc-300">{workspace}</span>
-            </span>
-            <span>
+            </div>
+            <div>
               Run: <span className="text-zinc-300">{runId}</span>
-            </span>
-            <span>
+            </div>
+            <div className="hidden md:block">
               Parent: <span className="text-zinc-300">{parentId || "—"}</span>
-            </span>
+            </div>
           </div>
         </div>
 
-        <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
             <div className={metaLabelClassName()}>ID</div>
             <div className="mt-1 break-all text-zinc-200">{id}</div>
-          </div>
-
-          <div>
-            <div className={metaLabelClassName()}>Flow</div>
-            <div className="mt-1 break-all text-zinc-200">{flowId || "—"}</div>
-          </div>
-
-          <div>
-            <div className={metaLabelClassName()}>Root event</div>
-            <div className="mt-1 break-all text-zinc-200">{rootEventId || "—"}</div>
-          </div>
-
-          <div>
-            <div className={metaLabelClassName()}>Source event</div>
-            <div className="mt-1 break-all text-zinc-200">{sourceEventId || "—"}</div>
           </div>
 
           <div>
@@ -655,17 +643,25 @@ function CommandCard({ command }: { command: CommandItem }) {
           </div>
 
           <div>
-            <div className={metaLabelClassName()}>Started</div>
-            <div className="mt-1 text-zinc-200">
-              {formatDate(getCommandStartedAt(command))}
-            </div>
-          </div>
-
-          <div>
             <div className={metaLabelClassName()}>Finished</div>
             <div className="mt-1 text-zinc-200">
               {formatDate(getCommandFinishedAt(command))}
             </div>
+          </div>
+
+          <div className="hidden md:block">
+            <div className={metaLabelClassName()}>Flow</div>
+            <div className="mt-1 break-all text-zinc-200">{flowId || "—"}</div>
+          </div>
+
+          <div className="hidden md:block">
+            <div className={metaLabelClassName()}>Root event</div>
+            <div className="mt-1 break-all text-zinc-200">{rootEventId || "—"}</div>
+          </div>
+
+          <div className="hidden md:block">
+            <div className={metaLabelClassName()}>Source event</div>
+            <div className="mt-1 break-all text-zinc-200">{sourceEventId || "—"}</div>
           </div>
 
           <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
@@ -823,11 +819,31 @@ export default async function CommandsPage({ searchParams }: PageProps) {
       />
 
       <section className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-5">
-        <StatCard label="Queued" value={queuedCommands.length} toneClass="text-amber-300" />
-        <StatCard label="Running" value={runningCommands.length} toneClass="text-sky-300" />
-        <StatCard label="Retry" value={retryCommands.length} toneClass="text-violet-300" />
-        <StatCard label="Failed" value={failedCommands.length} toneClass="text-red-300" />
-        <StatCard label="Done" value={doneCommands.length} toneClass="text-emerald-300" />
+        <StatCard
+          label="Queued"
+          value={queuedCommands.length}
+          toneClass="text-amber-300"
+        />
+        <StatCard
+          label="Running"
+          value={runningCommands.length}
+          toneClass="text-sky-300"
+        />
+        <StatCard
+          label="Retry"
+          value={retryCommands.length}
+          toneClass="text-violet-300"
+        />
+        <StatCard
+          label="Failed"
+          value={failedCommands.length}
+          toneClass="text-red-300"
+        />
+        <StatCard
+          label="Done"
+          value={doneCommands.length}
+          toneClass="text-emerald-300"
+        />
       </section>
 
       {visibleCommands.length === 0 ? (
