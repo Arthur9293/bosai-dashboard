@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PageHeader } from "../../../../components/ui/page-header";
 import { DashboardCard } from "../../../../components/ui/dashboard-card";
-import { WorkspaceLedgerFilters } from "../../../../components/workspaces/workspace-ledger-filters";
+import { WorkspaceLedgerFilters } from "../workspace-ledger-filters";
 
 type WorkspaceInfo = {
   record_id?: string;
