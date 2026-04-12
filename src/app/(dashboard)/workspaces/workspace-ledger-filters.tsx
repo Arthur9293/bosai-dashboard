@@ -1,9 +1,8 @@
-// src/components/workspaces/workspace-ledger-filters.tsx
 "use client";
 
 import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { DashboardCard } from "../ui/dashboard-card";
+import { DashboardCard } from "../../../components/ui/dashboard-card";
 
 type LedgerFilters = {
   status: string;
