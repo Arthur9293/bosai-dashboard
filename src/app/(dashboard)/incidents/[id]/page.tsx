@@ -6,6 +6,15 @@ import {
   type IncidentItem,
   type IncidentsResponse,
 } from "@/lib/api";
+import {
+  ControlPlaneShell,
+  SectionCard,
+  SidePanelCard,
+} from "@/components/dashboard/ControlPlaneShell";
+import {
+  DashboardStatusBadge,
+  type DashboardStatusKind,
+} from "@/components/dashboard/StatusBadge";
 
 type PageProps = {
   params:
@@ -17,16 +26,12 @@ type PageProps = {
       };
 };
 
-function cardClassName(): string {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
-
 function actionLinkClassName(
   variant: "default" | "primary" | "soft" | "danger" = "default",
   disabled = false
 ): string {
   const base =
-    "inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
+    "inline-flex w-full items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition";
 
   if (disabled) {
     return `${base} cursor-not-allowed border border-white/10 bg-white/[0.04] text-zinc-500 opacity-60`;
@@ -47,16 +52,23 @@ function actionLinkClassName(
   return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
 }
 
-function sectionLabelClassName(): string {
-  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
-}
-
 function metaLabelClassName(): string {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
-function statCardClassName(): string {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+function metaBoxClassName(): string {
+  return "rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+}
+
+function compactTechnicalId(value: string, max = 34): string {
+  const clean = value.trim();
+  if (!clean) return "—";
+  if (clean.length <= max) return clean;
+
+  const keepStart = Math.max(12, Math.floor((max - 3) / 2));
+  const keepEnd = Math.max(8, max - keepStart - 3);
+
+  return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
 }
 
 function toText(value: unknown, fallback = ""): string {
@@ -76,10 +88,12 @@ function toText(value: unknown, fallback = ""): string {
 
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
+
   if (typeof value === "string" && value.trim() !== "") {
     const n = Number(value);
     if (Number.isFinite(n)) return n;
   }
+
   return fallback;
 }
 
@@ -109,10 +123,6 @@ function safeUpper(text: string): string {
   return text.trim() ? text.trim().toUpperCase() : "—";
 }
 
-function isRecordIdLike(value: string): boolean {
-  return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
-}
-
 function getIncidentTitle(incident: IncidentItem): string {
   return firstText(
     [incident.title, incident.name, incident.error_id],
@@ -133,9 +143,7 @@ function getIncidentStatusNormalized(incident: IncidentItem): string {
   const sla = toText(incident.sla_status, "").toLowerCase();
   const hasResolvedAt = Boolean(toText(incident.resolved_at, ""));
 
-  if (hasResolvedAt) {
-    return "resolved";
-  }
+  if (hasResolvedAt) return "resolved";
 
   if (!raw) {
     if (sla === "breached") return "open";
@@ -198,44 +206,27 @@ function getIncidentSeverityLabel(incident: IncidentItem): string {
   return raw ? raw.toUpperCase() : "UNKNOWN";
 }
 
-function statusTone(incident: IncidentItem): string {
+function getIncidentStatusBadgeKind(
+  incident: IncidentItem
+): DashboardStatusKind {
   const status = getIncidentStatusNormalized(incident);
 
-  if (status === "resolved") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (status === "escalated") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (status === "open") {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+  if (status === "resolved") return "success";
+  if (status === "escalated") return "retry";
+  if (status === "open") return "running";
+  return "unknown";
 }
 
-function severityTone(incident: IncidentItem): string {
+function getIncidentSeverityBadgeKind(
+  incident: IncidentItem
+): DashboardStatusKind {
   const severity = getIncidentSeverityNormalized(incident);
 
-  if (severity === "critical") {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  if (severity === "high") {
-    return "bg-orange-500/15 text-orange-300 border border-orange-500/20";
-  }
-
-  if (severity === "medium") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (severity === "low") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+  if (severity === "critical") return "failed";
+  if (severity === "high") return "failed";
+  if (severity === "medium") return "retry";
+  if (severity === "low") return "success";
+  return "unknown";
 }
 
 function getDecisionStatus(incident: IncidentItem): string {
@@ -254,26 +245,16 @@ function getPriorityScore(incident: IncidentItem): number {
   return toNumber(incident.priority_score, 0);
 }
 
-function getDecisionTone(incident: IncidentItem): string {
+function getDecisionBadgeKind(
+  incident: IncidentItem
+): DashboardStatusKind {
   const decision = getDecisionStatus(incident).toLowerCase();
 
-  if (["escalate", "escalated"].includes(decision)) {
-    return "bg-orange-500/15 text-orange-300 border border-orange-500/20";
-  }
-
-  if (["resolve", "resolved"].includes(decision)) {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (["retry", "retriable"].includes(decision)) {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  if (decision) {
-    return "bg-purple-500/15 text-purple-300 border border-purple-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+  if (["escalate", "escalated"].includes(decision)) return "incident";
+  if (["resolve", "resolved"].includes(decision)) return "success";
+  if (["retry", "retriable"].includes(decision)) return "retry";
+  if (decision) return "queued";
+  return "unknown";
 }
 
 function getSlaLabel(incident: IncidentItem): string {
@@ -294,35 +275,25 @@ function getSlaLabel(incident: IncidentItem): string {
   return "—";
 }
 
-function getSlaTone(incident: IncidentItem): string {
+function getIncidentSlaBadgeKind(
+  incident: IncidentItem
+): DashboardStatusKind {
   const resolvedLike =
     Boolean(toText(incident.resolved_at, "")) ||
     getIncidentStatusNormalized(incident) === "resolved";
 
-  if (resolvedLike) {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
+  if (resolvedLike) return "success";
 
   const sla = toText(incident.sla_status, "").toLowerCase();
 
-  if (sla === "breached") {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  if (sla === "warning") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (sla === "ok") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
+  if (sla === "breached") return "failed";
+  if (sla === "warning") return "retry";
+  if (sla === "ok") return "success";
 
   const remaining = toNumber(incident.sla_remaining_minutes, Number.NaN);
-  if (Number.isFinite(remaining) && remaining < 0) {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
+  if (Number.isFinite(remaining) && remaining < 0) return "failed";
 
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+  return "unknown";
 }
 
 function getOpenedAt(incident: IncidentItem): string {
@@ -413,44 +384,19 @@ function getBestFlowTargetFromIncident(incident: IncidentItem): string {
   );
 }
 
-function getSourceFlowHref(incident: IncidentItem): string {
+function getFlowHref(incident: IncidentItem): string {
   const target = getBestFlowTargetFromIncident(incident);
   return target ? `/flows/${encodeURIComponent(target)}` : "";
 }
 
-function getLinkedFlowHref(incident: IncidentItem): string {
-  const target = getBestFlowTargetFromIncident(incident);
-  return target ? `/flows/${encodeURIComponent(target)}` : "";
-}
-
-function getLinkedCommandHref(incident: IncidentItem): string {
+function getCommandHref(incident: IncidentItem): string {
   const commandRecord = getCommandRecord(incident);
   if (!commandRecord || commandRecord === "—") return "";
   return `/commands/${encodeURIComponent(commandRecord)}`;
 }
 
-function getLinkedEventRecordId(incident: IncidentItem): string {
-  const sourceRecordId = getSourceRecordId(incident);
-  if (sourceRecordId && isRecordIdLike(sourceRecordId)) {
-    return sourceRecordId;
-  }
-
-  const rootEventId = getRootEventId(incident);
-  if (rootEventId && isRecordIdLike(rootEventId)) {
-    return rootEventId;
-  }
-
-  const flowId = getFlowId(incident);
-  if (flowId && isRecordIdLike(flowId)) {
-    return flowId;
-  }
-
-  return "";
-}
-
-function getLinkedEventHref(incident: IncidentItem): string {
-  const recordId = getLinkedEventRecordId(incident);
-  return recordId ? `/events/${encodeURIComponent(recordId)}` : "";
+function getIncidentHref(incident: IncidentItem): string {
+  return `/incidents/${encodeURIComponent(String(incident.id))}`;
 }
 
 function getSummaryLine(incident: IncidentItem): string {
@@ -506,6 +452,51 @@ function isLegacyNoiseIncident(incident: IncidentItem): boolean {
   );
 }
 
+function getShellBadgeToneFromStatus(incident: IncidentItem): string {
+  const status = getIncidentStatusNormalized(incident);
+  if (status === "resolved") return "success";
+  if (status === "escalated") return "warning";
+  if (status === "open") return "info";
+  return "muted";
+}
+
+function getShellBadgeToneFromSeverity(incident: IncidentItem): string {
+  const severity = getIncidentSeverityNormalized(incident);
+  if (severity === "critical" || severity === "high") return "danger";
+  if (severity === "medium") return "warning";
+  if (severity === "low") return "success";
+  return "muted";
+}
+
+function getShellBadgeToneFromSla(incident: IncidentItem): string {
+  const sla = getSlaLabel(incident).toLowerCase();
+  if (sla === "resolved" || sla === "ok") return "success";
+  if (sla === "warning") return "warning";
+  if (sla === "breached") return "danger";
+  return "muted";
+}
+
+function MetaValueLink({
+  href,
+  value,
+}: {
+  href: string;
+  value: string;
+}) {
+  if (!href || !value || value === "—") {
+    return <span className="text-zinc-200">{value || "—"}</span>;
+  }
+
+  return (
+    <Link
+      href={href}
+      className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+    >
+      {value}
+    </Link>
+  );
+}
+
 function MetaItem({
   label,
   value,
@@ -531,7 +522,7 @@ function StatCard({
   value: string;
 }) {
   return (
-    <div className={statCardClassName()}>
+    <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
       <div className={metaLabelClassName()}>{label}</div>
       <div className="mt-3 text-xl font-semibold tracking-tight text-white">
         {value}
@@ -593,268 +584,279 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const nextAction = getNextAction(incident);
   const priorityScore = getPriorityScore(incident);
 
-  const sourceFlowHref = getSourceFlowHref(incident);
-  const linkedFlowHref = getLinkedFlowHref(incident);
-  const linkedCommandHref = getLinkedCommandHref(incident);
-  const linkedEventHref = getLinkedEventHref(incident);
-  const linkedEventRecordId = getLinkedEventRecordId(incident);
-
+  const flowHref = getFlowHref(incident);
+  const commandHref = getCommandHref(incident);
   const remainingMinutes = toNumber(incident.sla_remaining_minutes, Number.NaN);
 
+  const shellBadges: { label: string; tone?: string }[] = [
+    { label: statusLabel, tone: getShellBadgeToneFromStatus(incident) },
+    { label: severityLabel, tone: getShellBadgeToneFromSeverity(incident) },
+    { label: `SLA ${slaLabel}`, tone: getShellBadgeToneFromSla(incident) },
+  ];
+
+  if (decisionStatus) {
+    shellBadges.push({
+      label: `DECISION ${decisionStatus.toUpperCase()}`,
+      tone: "muted",
+    });
+  }
+
   return (
-    <div className="space-y-8">
-      <section className="space-y-4 border-b border-white/10 pb-6">
-        <div className="text-sm text-zinc-400">
-          <Link
-            href="/incidents"
-            className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
-          >
-            Incidents
-          </Link>{" "}
-          / {title}
-        </div>
+    <ControlPlaneShell
+      eyebrow="BOSAI Control Plane"
+      title={title}
+      description="Lecture détaillée d’un incident BOSAI avec contexte, orchestration et navigation croisée vers les objets liés."
+      badges={shellBadges}
+      metrics={[
+        { label: "Opened", value: formatDate(openedAt) },
+        { label: "Updated", value: formatDate(updatedAt) },
+        { label: "Resolved", value: formatDate(resolvedAt) },
+        {
+          label: "Priority",
+          value: String(priorityScore),
+          toneClass: "text-white",
+          helper: Number.isFinite(remainingMinutes)
+            ? `${remainingMinutes} min SLA`
+            : undefined,
+        },
+      ]}
+      actions={
+        <>
+          <Link href="/incidents" className={actionLinkClassName("soft")}>
+            Retour aux incidents
+          </Link>
 
-        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
-
-        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          {title}
-        </h1>
-
-        <div className="text-sm text-zinc-400">{getSummaryLine(incident)}</div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${statusTone(
-              incident
-            )}`}
-          >
-            {statusLabel}
-          </span>
-
-          <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${severityTone(
-              incident
-            )}`}
-          >
-            {severityLabel}
-          </span>
-
-          <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${getSlaTone(
-              incident
-            )}`}
-          >
-            SLA {slaLabel}
-          </span>
-
-          {decisionStatus ? (
-            <span
-              className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${getDecisionTone(
-                incident
-              )}`}
-            >
-              DECISION {decisionStatus.toUpperCase()}
-            </span>
+          {flowHref ? (
+            <Link href={flowHref} className={actionLinkClassName("soft")}>
+              Ouvrir le flow lié
+            </Link>
           ) : null}
-        </div>
-      </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
-        <StatCard label="Ouvert" value={formatDate(openedAt)} />
-        <StatCard label="Mis à jour" value={formatDate(updatedAt)} />
-        <StatCard label="Résolu" value={formatDate(resolvedAt)} />
-        <StatCard
-          label="SLA restant"
-          value={
-            Number.isFinite(remainingMinutes) ? `${remainingMinutes} min` : "—"
-          }
-        />
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-5 text-lg font-medium text-white">
-            Contexte incident
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
-            <MetaItem label="Catégorie" value={category} />
-            <MetaItem label="Raison" value={reason} />
-            <MetaItem label="Workspace" value={workspace} />
-            <MetaItem label="Source" value={toText(incident.source, "Incidents")} />
-            <MetaItem label="Worker" value={toText(incident.worker, "—")} />
-            <MetaItem label="Error ID" value={errorId} />
-            <MetaItem label="Dernière action" value={lastAction} />
-            <MetaItem label="Note de résolution" value={resolutionNote} />
-            <MetaItem
-              label="Statut décision"
-              value={
-                <span className="text-purple-300">{decisionStatus || "—"}</span>
-              }
-            />
-            <MetaItem label="Raison décision" value={decisionReason || "—"} />
-            <MetaItem label="Next action" value={nextAction || "—"} />
-            <MetaItem label="Priorité" value={String(priorityScore)} />
-
-            <div className="md:col-span-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
-              <div className={metaLabelClassName()}>Action suggérée</div>
-              <div className="mt-1 text-zinc-200">{suggestedAction}</div>
-            </div>
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">Résumé</div>
-
-          <div className="space-y-4 text-sm">
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-zinc-400">Statut</span>
-              <span className="text-zinc-200">{statusLabel}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-zinc-400">Sévérité</span>
-              <span className="text-zinc-200">{severityLabel}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-zinc-400">SLA</span>
-              <span className="text-zinc-200">{slaLabel}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-zinc-400">Priorité</span>
-              <span className="text-zinc-200">{priorityScore}</span>
-            </div>
-
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-zinc-400">Record ID</span>
-              <span className="break-all text-right text-zinc-200">
-                {String(incident.id)}
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-5 text-lg font-medium text-white">Liens BOSAI</div>
-
-          <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
-            <MetaItem
-              label="Flow"
-              value={
-                linkedFlowHref ? (
-                  <Link
-                    href={linkedFlowHref}
-                    className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                  >
-                    {flowId || sourceRecordId || rootEventId}
-                  </Link>
-                ) : (
-                  "—"
-                )
-              }
-              breakAll
-            />
-
-            <MetaItem
-              label="Root event"
-              value={rootEventId || "—"}
-              breakAll
-            />
-
-            <MetaItem
-              label="Source record"
-              value={sourceRecordId || "—"}
-              breakAll
-            />
-
-            <MetaItem
-              label="Event record safe"
-              value={linkedEventRecordId || "—"}
-              breakAll
-            />
-
-            <MetaItem label="Run record" value={runRecord} breakAll />
-
-            <MetaItem
-              label="Command"
-              value={
-                linkedCommandHref ? (
-                  <Link
-                    href={linkedCommandHref}
-                    className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                  >
-                    {commandRecord}
-                  </Link>
-                ) : (
-                  "—"
-                )
-              }
-              breakAll
-            />
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">Navigation</div>
-
-          <div className="space-y-3">
-            <Link href="/incidents" className={actionLinkClassName("soft")}>
-              Retour à la liste incidents
+          {commandHref ? (
+            <Link href={commandHref} className={actionLinkClassName("primary")}>
+              Ouvrir la command liée
             </Link>
+          ) : null}
+        </>
+      }
+      aside={
+        <>
+          <SidePanelCard title="Résumé incident">
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={getIncidentStatusBadgeKind(incident)}
+                  label={statusLabel}
+                />
+                <DashboardStatusBadge
+                  kind={getIncidentSeverityBadgeKind(incident)}
+                  label={severityLabel}
+                />
+                <DashboardStatusBadge
+                  kind={getIncidentSlaBadgeKind(incident)}
+                  label={`SLA ${slaLabel}`}
+                />
+                {decisionStatus ? (
+                  <DashboardStatusBadge
+                    kind={getDecisionBadgeKind(incident)}
+                    label={`DECISION ${decisionStatus.toUpperCase()}`}
+                  />
+                ) : null}
+              </div>
 
-            <Link href="/incidents" className={actionLinkClassName("primary")}>
-              Voir tous les incidents
-            </Link>
+              <div className="space-y-2 text-sm leading-6 text-white/65">
+                <div>
+                  Workspace : <span className="text-white/90">{workspace}</span>
+                </div>
+                <div>
+                  Flow :{" "}
+                  <span className="break-all text-white/90">
+                    {compactTechnicalId(
+                      flowId || sourceRecordId || rootEventId || "—"
+                    )}
+                  </span>
+                </div>
+                <div>
+                  Command :{" "}
+                  <span className="break-all text-white/90">
+                    {compactTechnicalId(commandRecord)}
+                  </span>
+                </div>
+                <div>
+                  Activité :{" "}
+                  <span className="text-white/90">
+                    {formatDate(updatedAt || openedAt)}
+                  </span>
+                </div>
+              </div>
 
-            {sourceFlowHref ? (
-              <Link href={sourceFlowHref} className={actionLinkClassName("soft")}>
-                Retour au flow source
+              <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+                <div className={metaLabelClassName()}>Action suggérée</div>
+                <div className="mt-1 text-zinc-200">{suggestedAction}</div>
+              </div>
+            </div>
+          </SidePanelCard>
+
+          <SidePanelCard title="Navigation">
+            <div className="space-y-3">
+              <Link href="/incidents" className={actionLinkClassName("soft")}>
+                Retour à la liste incidents
               </Link>
-            ) : (
-              <span className={actionLinkClassName("soft", true)}>
-                Retour au flow source
-              </span>
-            )}
 
-            {linkedFlowHref && linkedFlowHref !== sourceFlowHref ? (
-              <Link href={linkedFlowHref} className={actionLinkClassName("soft")}>
-                Ouvrir le flow lié
+              <Link href="/incidents" className={actionLinkClassName("primary")}>
+                Voir tous les incidents
               </Link>
-            ) : (
-              <span className={actionLinkClassName("soft", true)}>
-                Ouvrir le flow lié
-              </span>
-            )}
 
-            {linkedEventHref ? (
-              <Link href={linkedEventHref} className={actionLinkClassName("soft")}>
-                Ouvrir l’event lié
-              </Link>
-            ) : (
-              <span className={actionLinkClassName("soft", true)}>
-                Ouvrir l’event lié
-              </span>
-            )}
+              {flowHref ? (
+                <Link href={flowHref} className={actionLinkClassName("soft")}>
+                  Ouvrir le flow lié
+                </Link>
+              ) : (
+                <span className={actionLinkClassName("soft", true)}>
+                  Ouvrir le flow lié
+                </span>
+              )}
 
-            {linkedCommandHref ? (
-              <Link
-                href={linkedCommandHref}
-                className={actionLinkClassName("soft")}
-              >
-                Ouvrir la command liée
-              </Link>
-            ) : (
-              <span className={actionLinkClassName("soft", true)}>
-                Ouvrir la command liée
-              </span>
-            )}
+              {commandHref ? (
+                <Link href={commandHref} className={actionLinkClassName("soft")}>
+                  Ouvrir la command liée
+                </Link>
+              ) : (
+                <span className={actionLinkClassName("soft", true)}>
+                  Ouvrir la command liée
+                </span>
+              )}
+            </div>
+          </SidePanelCard>
+        </>
+      }
+    >
+      <SectionCard
+        title="Contexte incident"
+        description="Contexte opérationnel, source et informations utiles pour comprendre l’incident."
+      >
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-3">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Catégorie</div>
+            <div className="mt-2 text-zinc-100">{category}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Raison</div>
+            <div className="mt-2 text-zinc-100">{reason}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Workspace</div>
+            <div className="mt-2 text-zinc-100">{workspace}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Source</div>
+            <div className="mt-2 text-zinc-100">
+              {toText(incident.source, "Incidents")}
+            </div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Worker</div>
+            <div className="mt-2 text-zinc-100">{toText(incident.worker, "—")}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Error ID</div>
+            <div className="mt-2 break-all text-zinc-100">{errorId}</div>
+          </div>
+
+          <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Action suggérée</div>
+            <div className="mt-1 text-zinc-200">{suggestedAction}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Dernière action</div>
+            <div className="mt-2 text-zinc-100">{lastAction}</div>
+          </div>
+
+          <div className="md:col-span-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Note de résolution</div>
+            <div className="mt-1 text-zinc-200">{resolutionNote}</div>
           </div>
         </div>
-      </section>
-    </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Décision & orchestration"
+        description="Éléments de pilotage utilisés pour l’escalade, la résolution ou l’action suivante."
+        tone="neutral"
+      >
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-4">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Décision</div>
+            <div className="mt-2 text-zinc-100">{decisionStatus || "—"}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Priority score</div>
+            <div className="mt-2 text-zinc-100">{priorityScore}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>SLA</div>
+            <div className="mt-2 text-zinc-100">{slaLabel}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>SLA restant</div>
+            <div className="mt-2 text-zinc-100">
+              {Number.isFinite(remainingMinutes) ? `${remainingMinutes} min` : "—"}
+            </div>
+          </div>
+
+          <div className="md:col-span-2 xl:col-span-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Raison décision</div>
+            <div className="mt-1 text-zinc-200">{decisionReason || "—"}</div>
+          </div>
+
+          <div className="md:col-span-2 xl:col-span-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Next action</div>
+            <div className="mt-1 text-zinc-200">{nextAction || "—"}</div>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Liens BOSAI"
+        description="Objets liés pour naviguer entre l’incident, le flow, la command et les identifiants techniques."
+        tone="neutral"
+      >
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-3">
+          <MetaItem
+            label="Flow"
+            value={
+              <MetaValueLink
+                href={flowHref}
+                value={flowId || sourceRecordId || rootEventId || "—"}
+              />
+            }
+            breakAll
+          />
+
+          <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
+
+          <MetaItem label="Source record" value={sourceRecordId || "—"} breakAll />
+
+          <MetaItem label="Run record" value={runRecord} breakAll />
+
+          <MetaItem
+            label="Command"
+            value={<MetaValueLink href={commandHref} value={commandRecord} />}
+            breakAll
+          />
+
+          <MetaItem label="Record ID" value={String(incident.id)} breakAll />
+        </div>
+      </SectionCard>
+    </ControlPlaneShell>
   );
 }
