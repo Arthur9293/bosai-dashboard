@@ -1,5 +1,19 @@
 import Link from "next/link";
-import { fetchEvents, type EventItem } from "@/lib/api";
+import {
+  fetchEvents,
+  type EventItem,
+} from "@/lib/api";
+import {
+  ControlPlaneShell,
+  SectionCard,
+  SidePanelCard,
+  SectionCountPill,
+  EmptyStatePanel,
+} from "@/components/dashboard/ControlPlaneShell";
+import {
+  DashboardStatusBadge,
+  type DashboardStatusKind,
+} from "@/components/dashboard/StatusBadge";
 
 type EventStats = {
   new?: number;
@@ -12,10 +26,6 @@ type EventStats = {
 
 function cardClassName() {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
-
-function emptyStateClassName() {
-  return "rounded-[28px] border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500";
 }
 
 function actionLinkClassName(
@@ -40,12 +50,27 @@ function actionLinkClassName(
   return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
 }
 
-function sectionLabelClassName() {
-  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
+function chipClassName() {
+  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200";
 }
 
 function metaLabelClassName() {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function metaBoxClassName() {
+  return "rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+}
+
+function compactTechnicalId(value: string, max = 34): string {
+  const clean = value.trim();
+  if (!clean) return "—";
+  if (clean.length <= max) return clean;
+
+  const keepStart = Math.max(12, Math.floor((max - 3) / 2));
+  const keepEnd = Math.max(8, max - keepStart - 3);
+
+  return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
 }
 
 function formatDate(value?: string | null): string {
@@ -224,35 +249,43 @@ function hasCommandCreated(event: EventItem): boolean {
   return Boolean(getLinkedCommand(event));
 }
 
-function badgeTone(status?: string): string {
-  const s = (status || "").trim().toLowerCase();
+function getEventStatusBucket(event: EventItem): string {
+  const s = getEventStatus(event).trim().toLowerCase();
 
-  if (["processed", "done", "success", "completed"].includes(s)) {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (["queued", "pending", "new"].includes(s)) {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (["running", "processing"].includes(s)) {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  if (["error", "failed", "dead", "blocked"].includes(s)) {
-    return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
-  }
-
-  if (["ignored"].includes(s)) {
-    return "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+  if (["new"].includes(s)) return "new";
+  if (["queued", "pending"].includes(s)) return "queued";
+  if (["processed", "done", "success", "completed"].includes(s)) return "processed";
+  if (["ignored"].includes(s)) return "ignored";
+  if (["error", "failed", "dead", "blocked"].includes(s)) return "error";
+  return "other";
 }
 
-function latestByStatus(events: EventItem[], status: string): EventItem | null {
+function getEventStatusBadgeKind(event: EventItem): DashboardStatusKind {
+  const bucket = getEventStatusBucket(event);
+
+  if (bucket === "new" || bucket === "queued") return "queued";
+  if (bucket === "processed") return "success";
+  if (bucket === "error") return "failed";
+  if (bucket === "ignored") return "unknown";
+  return "unknown";
+}
+
+function getEventStatusLabel(event: EventItem): string {
+  const bucket = getEventStatusBucket(event);
+
+  if (bucket === "new") return "NEW";
+  if (bucket === "queued") return "QUEUED";
+  if (bucket === "processed") return "PROCESSED";
+  if (bucket === "ignored") return "IGNORED";
+  if (bucket === "error") return "ERROR";
+
+  const raw = getEventStatus(event);
+  return raw ? raw.toUpperCase() : "UNKNOWN";
+}
+
+function latestByBucket(events: EventItem[], bucket: string): EventItem | null {
   const filtered = events
-    .filter((event) => getEventStatus(event).toLowerCase() === status.toLowerCase())
+    .filter((event) => getEventStatusBucket(event) === bucket)
     .sort(
       (a, b) =>
         new Date(getEventDate(b) || 0).getTime() -
@@ -262,17 +295,27 @@ function latestByStatus(events: EventItem[], status: string): EventItem | null {
   return filtered[0] || null;
 }
 
-function EventCard({ event }: { event: EventItem }) {
-  const status = getEventStatus(event);
+function sortEvents(events: EventItem[]): EventItem[] {
+  return [...events].sort(
+    (a, b) =>
+      new Date(getEventDate(b) || 0).getTime() -
+      new Date(getEventDate(a) || 0).getTime()
+  );
+}
+
+function EventListCard({ event }: { event: EventItem }) {
+  const statusLabel = getEventStatusLabel(event);
+  const capability = getEventCapability(event);
   const linkedCommand = getLinkedCommand(event);
   const flowTarget = getFlowTarget(event);
-  const capability = getEventCapability(event);
 
   return (
     <article className={cardClassName()}>
       <div className="flex h-full flex-col gap-5">
         <div className="space-y-4 border-b border-white/10 pb-4">
-          <div className={sectionLabelClassName()}>BOSAI Event</div>
+          <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
+            BOSAI Event
+          </div>
 
           <div className="space-y-3">
             <Link
@@ -283,42 +326,52 @@ function EventCard({ event }: { event: EventItem }) {
             </Link>
 
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${badgeTone(
-                  status
-                )}`}
-              >
-                {status.toUpperCase()}
-              </span>
+              <DashboardStatusBadge
+                kind={getEventStatusBadgeKind(event)}
+                label={statusLabel}
+              />
 
               {capability !== "—" ? (
-                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
-                  {capability}
-                </span>
+                <span className={chipClassName()}>{capability}</span>
               ) : null}
 
               {hasCommandCreated(event) ? (
-                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
-                  COMMAND CREATED
-                </span>
+                <DashboardStatusBadge kind="success" label="COMMAND CREATED" />
               ) : null}
             </div>
-          </div>
 
-          <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
-            <span>
-              Workspace: <span className="text-zinc-300">{getWorkspace(event)}</span>
-            </span>
-            <span>
-              Source: <span className="text-zinc-300">{getSource(event)}</span>
-            </span>
+            <div className="text-sm text-zinc-400">
+              {getWorkspace(event)} · {getSource(event)}
+            </div>
           </div>
         </div>
 
-        <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-4">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Updated</div>
+            <div className="mt-2 text-zinc-100">{formatDate(event.updated_at)}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Processed</div>
+            <div className="mt-2 text-zinc-100">{formatDate(event.processed_at)}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Created</div>
+            <div className="mt-2 text-zinc-100">{formatDate(event.created_at)}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Workspace</div>
+            <div className="mt-2 text-zinc-100">{getWorkspace(event)}</div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <div>
             <div className={metaLabelClassName()}>Event ID</div>
-            <div className="mt-1 break-all text-zinc-200">{event.id}</div>
+            <div className="mt-1 break-all text-zinc-200">{String(event.id)}</div>
           </div>
 
           <div>
@@ -336,6 +389,13 @@ function EventCard({ event }: { event: EventItem }) {
           </div>
 
           <div>
+            <div className={metaLabelClassName()}>Source record</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {getSourceRecordId(event) || "—"}
+            </div>
+          </div>
+
+          <div>
             <div className={metaLabelClassName()}>Linked command</div>
             <div className="mt-1 break-all text-zinc-200">
               {linkedCommand || "—"}
@@ -343,28 +403,12 @@ function EventCard({ event }: { event: EventItem }) {
           </div>
 
           <div>
-            <div className={metaLabelClassName()}>Updated</div>
-            <div className="mt-1 text-zinc-200">
-              {formatDate(event.updated_at)}
-            </div>
-          </div>
-
-          <div>
-            <div className={metaLabelClassName()}>Processed</div>
-            <div className="mt-1 text-zinc-200">
-              {formatDate(event.processed_at)}
-            </div>
-          </div>
-
-          <div>
-            <div className={metaLabelClassName()}>Created</div>
-            <div className="mt-1 text-zinc-200">
-              {formatDate(event.created_at)}
-            </div>
+            <div className={metaLabelClassName()}>Source</div>
+            <div className="mt-1 text-zinc-200">{getSource(event)}</div>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="mt-auto flex flex-col gap-2.5 pt-1">
           <Link
             href={`/events/${encodeURIComponent(String(event.id))}`}
             className={actionLinkClassName("primary")}
@@ -403,6 +447,33 @@ function EventCard({ event }: { event: EventItem }) {
   );
 }
 
+function SectionBlock({
+  title,
+  description,
+  count,
+  countTone = "default",
+  tone = "default",
+  children,
+}: {
+  title: string;
+  description: string;
+  count: number;
+  countTone?: "default" | "info" | "success" | "warning" | "danger" | "muted";
+  tone?: "default" | "attention" | "neutral";
+  children: React.ReactNode;
+}) {
+  return (
+    <SectionCard
+      title={title}
+      description={description}
+      tone={tone}
+      action={<SectionCountPill value={count} tone={countTone} />}
+    >
+      {children}
+    </SectionCard>
+  );
+}
+
 export default async function EventsPage() {
   let events: EventItem[] = [];
   let stats: EventStats = {};
@@ -426,130 +497,268 @@ export default async function EventsPage() {
     sourceConnected = false;
   }
 
-  const newCount = stats.new ?? 0;
-  const queuedCount = stats.queued ?? 0;
-  const processedCount = stats.processed ?? 0;
-  const ignoredCount = stats.ignored ?? 0;
-  const errorCount = stats.error ?? 0;
-  const otherCount = stats.other ?? 0;
+  const sortedEvents = sortEvents(events);
 
-  const list = [...events]
-    .sort(
-      (a, b) =>
-        new Date(getEventDate(b) || 0).getTime() -
-        new Date(getEventDate(a) || 0).getTime()
-    )
-    .slice(0, 30);
+  const newEvents = sortedEvents.filter((event) => getEventStatusBucket(event) === "new");
+  const queuedEvents = sortedEvents.filter(
+    (event) => getEventStatusBucket(event) === "queued"
+  );
+  const processedEvents = sortedEvents.filter(
+    (event) => getEventStatusBucket(event) === "processed"
+  );
+  const ignoredEvents = sortedEvents.filter(
+    (event) => getEventStatusBucket(event) === "ignored"
+  );
+  const errorEvents = sortedEvents.filter(
+    (event) => getEventStatusBucket(event) === "error"
+  );
+  const otherEvents = sortedEvents.filter((event) => getEventStatusBucket(event) === "other");
 
-  const latestProcessed = latestByStatus(events, "processed");
-  const latestQueued = latestByStatus(events, "queued");
-  const latestError = latestByStatus(events, "error");
-  const commandsCreatedCount = events.filter((event) => hasCommandCreated(event)).length;
+  const attentionEvents = sortEvents([...newEvents, ...queuedEvents, ...errorEvents]);
+  const stableEvents = sortEvents([...processedEvents, ...ignoredEvents, ...otherEvents]);
+
+  const newCount = stats.new ?? newEvents.length;
+  const queuedCount = stats.queued ?? queuedEvents.length;
+  const processedCount = stats.processed ?? processedEvents.length;
+  const ignoredCount = stats.ignored ?? ignoredEvents.length;
+  const errorCount = stats.error ?? errorEvents.length;
+  const otherCount = stats.other ?? otherEvents.length;
+
+  const latestProcessed = latestByBucket(sortedEvents, "processed");
+  const latestQueued = latestByBucket(sortedEvents, "queued");
+  const latestError = latestByBucket(sortedEvents, "error");
+  const commandsCreatedCount = sortedEvents.filter((event) => hasCommandCreated(event)).length;
+
+  const focusEvent =
+    attentionEvents[0] ??
+    processedEvents[0] ??
+    sortedEvents[0] ??
+    null;
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-3 border-b border-white/10 pb-6">
-        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
+    <ControlPlaneShell
+      eyebrow="BOSAI Control Plane"
+      title="Events"
+      description="Flux des événements BOSAI avec lecture pipeline, statut de traitement et navigation directe vers les commands et flows associés."
+      badges={[
+        { label: "Pipeline source", tone: "info" },
+        { label: "Flow-linked", tone: "warning" },
+        { label: "Command-aware", tone: "muted" },
+      ]}
+      metrics={[
+        { label: "New", value: newCount, toneClass: "text-amber-300" },
+        { label: "Queued", value: queuedCount, toneClass: "text-sky-300" },
+        { label: "Processed", value: processedCount, toneClass: "text-emerald-300" },
+        { label: "Errors", value: errorCount, toneClass: "text-red-300" },
+      ]}
+      actions={
+        <>
+          <Link href="/flows" className={actionLinkClassName("soft")}>
+            Ouvrir Flows
+          </Link>
 
-        <div>
-          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-            Events
-          </h1>
-          <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
-            Flux des événements BOSAI. Cette vue affiche les events, leur statut,
-            leur rattachement pipeline et les liens vers les commands et flows.
-          </p>
-        </div>
-      </section>
+          <Link href="/commands" className={actionLinkClassName("primary")}>
+            Voir Commands
+          </Link>
+        </>
+      }
+      aside={
+        <>
+          <SidePanelCard title="Source status">
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={sourceConnected ? "success" : "unknown"}
+                  label={sourceConnected ? "LIVE SOURCE" : "NO SOURCE"}
+                />
+                <DashboardStatusBadge kind="success" label={`${commandsCreatedCount} COMMANDS`} />
+              </div>
 
-      <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-        {[
-          ["New", newCount],
-          ["Queued", queuedCount],
-          ["Processed", processedCount],
-          ["Ignored", ignoredCount],
-          ["Errors", errorCount],
-          ["Other", otherCount],
-        ].map(([label, value]) => (
-          <div key={label} className={cardClassName()}>
-            <div className="text-sm text-zinc-400">{label}</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
-              {value}
-            </div>
-          </div>
-        ))}
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Source status</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
-            {sourceConnected ? "Connected" : "Unavailable"}
-          </div>
-          <div className="mt-4">
-            <span
-              className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${
-                sourceConnected
-                  ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-                  : "border border-white/10 bg-white/[0.04] text-zinc-300"
-              }`}
-            >
-              {sourceConnected ? "LIVE SOURCE" : "NO SOURCE"}
-            </span>
-          </div>
-        </div>
-
-        <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <div className={sectionLabelClassName()}>Event stream</div>
-              <div className="mt-2 text-2xl font-semibold tracking-tight text-white">
-                Historique récent
+              <div className="space-y-2 text-sm leading-6 text-white/65">
+                <div>
+                  Source :{" "}
+                  <span className="text-white/90">
+                    {sourceConnected ? "Connected" : "Unavailable"}
+                  </span>
+                </div>
+                <div>
+                  Latest processed :{" "}
+                  <span className="text-white/90">
+                    {formatDate(latestProcessed ? getEventDate(latestProcessed) : "")}
+                  </span>
+                </div>
+                <div>
+                  Latest queued :{" "}
+                  <span className="text-white/90">
+                    {formatDate(latestQueued ? getEventDate(latestQueued) : "")}
+                  </span>
+                </div>
+                <div>
+                  Latest error :{" "}
+                  <span className="text-white/90">
+                    {formatDate(latestError ? getEventDate(latestError) : "")}
+                  </span>
+                </div>
               </div>
             </div>
+          </SidePanelCard>
 
-            <div className="text-sm text-zinc-500">{list.length} visible(s)</div>
-          </div>
+          <SidePanelCard title="Event actif">
+            {focusEvent ? (
+              <div className="space-y-4">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/35">
+                    Type
+                  </div>
+                  <div className="mt-2 text-sm font-medium leading-6 text-white">
+                    {getEventType(focusEvent)}
+                  </div>
+                </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
-              <div className={metaLabelClassName()}>Latest processed</div>
-              <div className="mt-3 text-xl font-semibold text-white">
-                {formatDate(latestProcessed ? getEventDate(latestProcessed) : "")}
+                <div className="flex flex-wrap gap-2">
+                  <DashboardStatusBadge
+                    kind={getEventStatusBadgeKind(focusEvent)}
+                    label={getEventStatusLabel(focusEvent)}
+                  />
+                  {getEventCapability(focusEvent) !== "—" ? (
+                    <DashboardStatusBadge
+                      kind="queued"
+                      label={getEventCapability(focusEvent)}
+                    />
+                  ) : null}
+                  {hasCommandCreated(focusEvent) ? (
+                    <DashboardStatusBadge kind="success" label="COMMAND CREATED" />
+                  ) : null}
+                </div>
+
+                <div className="space-y-2 text-sm leading-6 text-white/65">
+                  <div>
+                    Workspace :{" "}
+                    <span className="text-white/90">{getWorkspace(focusEvent)}</span>
+                  </div>
+                  <div>
+                    Flow :{" "}
+                    <span className="break-all text-white/90">
+                      {compactTechnicalId(getFlowTarget(focusEvent) || "—")}
+                    </span>
+                  </div>
+                  <div>
+                    Activité :{" "}
+                    <span className="text-white/90">
+                      {formatDate(getEventDate(focusEvent))}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Link
+                    href={`/events/${encodeURIComponent(String(focusEvent.id))}`}
+                    className={actionLinkClassName("primary")}
+                  >
+                    Ouvrir l’event
+                  </Link>
+
+                  {getLinkedCommand(focusEvent) ? (
+                    <Link
+                      href={`/commands/${encodeURIComponent(getLinkedCommand(focusEvent))}`}
+                      className={actionLinkClassName("soft")}
+                    >
+                      Ouvrir la command liée
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-white/55">Aucun event sélectionné.</div>
+            )}
+          </SidePanelCard>
+        </>
+      }
+    >
+      {sortedEvents.length === 0 ? (
+        <EmptyStatePanel
+          title="Aucun événement visible"
+          description="Le Dashboard n’a remonté aucun event sur la source actuelle."
+        />
+      ) : (
+        <>
+          <SectionCard
+            title="Event stream"
+            description="Lecture rapide de l’activité récente du pipeline Events."
+            action={<SectionCountPill value={sortedEvents.length} tone="info" />}
+          >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Latest processed</div>
+                <div className="mt-2 text-zinc-100">
+                  {formatDate(latestProcessed ? getEventDate(latestProcessed) : "")}
+                </div>
+              </div>
+
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Latest queued</div>
+                <div className="mt-2 text-zinc-100">
+                  {formatDate(latestQueued ? getEventDate(latestQueued) : "")}
+                </div>
+              </div>
+
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Latest error</div>
+                <div className="mt-2 text-zinc-100">
+                  {formatDate(latestError ? getEventDate(latestError) : "")}
+                </div>
+              </div>
+
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Commands created</div>
+                <div className="mt-2 text-zinc-100">{commandsCreatedCount}</div>
               </div>
             </div>
+          </SectionCard>
 
-            <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
-              <div className={metaLabelClassName()}>Latest queued</div>
-              <div className="mt-3 text-xl font-semibold text-white">
-                {formatDate(latestQueued ? getEventDate(latestQueued) : "")}
+          <SectionBlock
+            title="Needs Attention"
+            description="Events à surveiller en priorité : nouveaux, en file ou en erreur."
+            count={attentionEvents.length}
+            countTone="warning"
+            tone="attention"
+          >
+            {attentionEvents.length === 0 ? (
+              <EmptyStatePanel
+                title="Aucun event prioritaire"
+                description="Aucun event new, queued ou error n’est visible pour le moment."
+              />
+            ) : (
+              <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
+                {attentionEvents.slice(0, 20).map((event) => (
+                  <EventListCard key={String(event.id)} event={event} />
+                ))}
               </div>
-            </div>
+            )}
+          </SectionBlock>
 
-            <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
-              <div className={metaLabelClassName()}>Latest error</div>
-              <div className="mt-3 text-xl font-semibold text-white">
-                {formatDate(latestError ? getEventDate(latestError) : "")}
+          <SectionBlock
+            title="Processed & stable"
+            description="Events traités, ignorés ou autres états stables, triés du plus récent au plus ancien."
+            count={stableEvents.length}
+            countTone="success"
+            tone="neutral"
+          >
+            {stableEvents.length === 0 ? (
+              <EmptyStatePanel
+                title="Aucun event stable"
+                description="Aucun event processed, ignored ou other n’est visible sur cette vue."
+              />
+            ) : (
+              <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
+                {stableEvents.slice(0, 20).map((event) => (
+                  <EventListCard key={String(event.id)} event={event} />
+                ))}
               </div>
-            </div>
-
-            <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
-              <div className={metaLabelClassName()}>Commands created</div>
-              <div className="mt-3 text-xl font-semibold text-white">
-                {commandsCreatedCount}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4">
-        {list.length === 0 ? (
-          <div className={emptyStateClassName()}>Aucun événement affiché.</div>
-        ) : (
-          list.map((event) => <EventCard key={String(event.id)} event={event} />)
-        )}
-      </section>
-    </div>
+            )}
+          </SectionBlock>
+        </>
+      )}
+    </ControlPlaneShell>
   );
 }
