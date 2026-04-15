@@ -5,6 +5,7 @@ import {
   type IncidentItem,
   type IncidentsResponse,
 } from "@/lib/api";
+import { DashboardStatusBadge } from "@/components/dashboard/StatusBadge";
 
 type SearchParams = {
   flow_id?: string | string[];
@@ -188,46 +189,6 @@ function getIncidentSeverityLabel(incident: IncidentItem): string {
   return raw ? raw.toUpperCase() : "UNKNOWN";
 }
 
-function statusTone(incident: IncidentItem): string {
-  const status = getIncidentStatusNormalized(incident);
-
-  if (status === "resolved") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (status === "escalated") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (status === "open") {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-}
-
-function severityTone(incident: IncidentItem): string {
-  const severity = getIncidentSeverityNormalized(incident);
-
-  if (severity === "critical") {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  if (severity === "high") {
-    return "bg-orange-500/15 text-orange-300 border border-orange-500/20";
-  }
-
-  if (severity === "medium") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (severity === "low") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-}
-
 function getDecisionStatus(incident: IncidentItem): string {
   return toText(incident.decision_status, "");
 }
@@ -242,28 +203,6 @@ function getNextAction(incident: IncidentItem): string {
 
 function getPriorityScore(incident: IncidentItem): number {
   return toNumber(incident.priority_score, 0);
-}
-
-function getDecisionTone(incident: IncidentItem): string {
-  const decision = getDecisionStatus(incident).toLowerCase();
-
-  if (["escalate", "escalated"].includes(decision)) {
-    return "bg-orange-500/15 text-orange-300 border border-orange-500/20";
-  }
-
-  if (["resolve", "resolved"].includes(decision)) {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (["retry", "retriable"].includes(decision)) {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  if (decision) {
-    return "bg-purple-500/15 text-purple-300 border border-purple-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
 function getSlaLabel(incident: IncidentItem): string {
@@ -284,39 +223,6 @@ function getSlaLabel(incident: IncidentItem): string {
   }
 
   return "—";
-}
-
-function getSlaTone(incident: IncidentItem): string {
-  const resolvedLike =
-    Boolean(incident.resolved_at) ||
-    getIncidentStatusNormalized(incident) === "resolved";
-
-  if (resolvedLike) {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  const sla = (incident.sla_status || "").toLowerCase();
-
-  if (sla === "breached") {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  if (sla === "warning") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (sla === "ok") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (
-    typeof incident.sla_remaining_minutes === "number" &&
-    incident.sla_remaining_minutes < 0
-  ) {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
 function getOpenedAt(incident: IncidentItem): string | undefined {
@@ -534,6 +440,58 @@ function getBackToFlowsHref(filters: {
   return target ? `/flows/${encodeURIComponent(target)}` : "/flows";
 }
 
+function getIncidentStatusBadgeKind(incident: IncidentItem) {
+  const status = getIncidentStatusNormalized(incident);
+
+  if (status === "resolved") return "success";
+  if (status === "escalated") return "retry";
+  if (status === "open") return "running";
+  return "unknown";
+}
+
+function getIncidentSeverityBadgeKind(incident: IncidentItem) {
+  const severity = getIncidentSeverityNormalized(incident);
+
+  if (severity === "critical") return "failed";
+  if (severity === "high") return "failed";
+  if (severity === "medium") return "retry";
+  if (severity === "low") return "success";
+  return "unknown";
+}
+
+function getIncidentSlaBadgeKind(incident: IncidentItem) {
+  const resolvedLike =
+    Boolean(incident.resolved_at) ||
+    getIncidentStatusNormalized(incident) === "resolved";
+
+  if (resolvedLike) return "success";
+
+  const sla = (incident.sla_status || "").toLowerCase();
+
+  if (sla === "breached") return "failed";
+  if (sla === "warning") return "retry";
+  if (sla === "ok") return "success";
+
+  if (
+    typeof incident.sla_remaining_minutes === "number" &&
+    incident.sla_remaining_minutes < 0
+  ) {
+    return "failed";
+  }
+
+  return "unknown";
+}
+
+function getDecisionBadgeKind(incident: IncidentItem) {
+  const decision = getDecisionStatus(incident).toLowerCase();
+
+  if (["escalate", "escalated"].includes(decision)) return "incident";
+  if (["resolve", "resolved"].includes(decision)) return "success";
+  if (["retry", "retriable"].includes(decision)) return "retry";
+  if (decision) return "queued";
+  return "unknown";
+}
+
 function MetaItem({
   label,
   value,
@@ -599,38 +557,26 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
             <div className="text-sm text-zinc-400">{getSummaryLine(incident)}</div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
-                  incident
-                )}`}
-              >
-                {statusLabel}
-              </span>
+              <DashboardStatusBadge
+                kind={getIncidentStatusBadgeKind(incident)}
+                label={statusLabel}
+              />
 
-              <span
-                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${severityTone(
-                  incident
-                )}`}
-              >
-                {severityLabel}
-              </span>
+              <DashboardStatusBadge
+                kind={getIncidentSeverityBadgeKind(incident)}
+                label={severityLabel}
+              />
 
-              <span
-                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getSlaTone(
-                  incident
-                )}`}
-              >
-                SLA {slaLabel}
-              </span>
+              <DashboardStatusBadge
+                kind={getIncidentSlaBadgeKind(incident)}
+                label={`SLA ${slaLabel}`}
+              />
 
               {decisionStatus ? (
-                <span
-                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getDecisionTone(
-                    incident
-                  )}`}
-                >
-                  DECISION {decisionStatus.toUpperCase()}
-                </span>
+                <DashboardStatusBadge
+                  kind={getDecisionBadgeKind(incident)}
+                  label={`DECISION ${decisionStatus.toUpperCase()}`}
+                />
               ) : null}
             </div>
           </div>
@@ -683,7 +629,7 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
             <div className="mt-1 text-zinc-200">{suggestedAction}</div>
           </div>
 
-          <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4 space-y-2">
+          <div className="md:col-span-2 xl:col-span-3 space-y-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
             <div>
               <span className={metaLabelClassName()}>Decision</span>
               <div className="mt-1 text-purple-300">{decisionStatus || "—"}</div>
