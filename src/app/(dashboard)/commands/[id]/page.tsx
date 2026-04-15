@@ -71,6 +71,14 @@ function technicalValueClassName() {
   return "break-all [overflow-wrap:anywhere] font-mono text-zinc-200";
 }
 
+function metaBoxClassName() {
+  return "rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+}
+
+function payloadPreviewClassName() {
+  return "mt-3 max-h-[320px] overflow-auto rounded-[20px] border border-white/10 bg-black/30 p-4 text-xs text-zinc-300";
+}
+
 function formatDate(value?: string | null): string {
   if (!value) return "—";
 
@@ -871,6 +879,8 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
   const commandIdText = String(command.id || "");
   const compactCommandId = compactTechnicalId(commandIdText, 30);
+  const flowTarget =
+    flowId || rootEventId || sourceEventId || commandIdText || "—";
 
   return (
     <div className="space-y-8">
@@ -944,20 +954,37 @@ export default async function CommandDetailPage({ params }: PageProps) {
               Overview
             </div>
             <p className="max-w-3xl text-base text-zinc-400">
-              Contexte principal, identifiants et liaisons de cette command.
+              Contexte principal, identifiants prioritaires et liaisons utiles de
+              cette command.
             </p>
           </div>
 
           <div className="border-t border-white/10 pt-5">
-            <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-              <MetaItem
-                label="ID"
-                value={<span className={technicalValueClassName()}>{commandIdText}</span>}
-                breakAll
-              />
-              <MetaItem label="Status" value={status} />
-              <MetaItem label="Capability" value={capability} />
-              <MetaItem label="Workspace" value={workspace} />
+            <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-4">
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Status</div>
+                <div className="mt-2 text-zinc-100">{status}</div>
+              </div>
+
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Capability</div>
+                <div className="mt-2 text-zinc-100">{capability}</div>
+              </div>
+
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Workspace</div>
+                <div className="mt-2 text-zinc-100">{workspace}</div>
+              </div>
+
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Flow</div>
+                <div className={`mt-2 ${technicalValueClassName()}`}>
+                  {flowId || "—"}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
               <MetaItem
                 label="Run"
                 value={<span className={technicalValueClassName()}>{runId}</span>}
@@ -971,8 +998,8 @@ export default async function CommandDetailPage({ params }: PageProps) {
                 breakAll
               />
               <MetaItem
-                label="Flow"
-                value={<span className={technicalValueClassName()}>{flowId || "—"}</span>}
+                label="ID"
+                value={<span className={technicalValueClassName()}>{commandIdText}</span>}
                 breakAll
               />
               <MetaItem
@@ -991,6 +1018,17 @@ export default async function CommandDetailPage({ params }: PageProps) {
                 }
                 breakAll
               />
+
+              {(toolKey || toolMode) ? (
+                <MetaItem
+                  label="Tooling"
+                  value={
+                    [toolKey ? `key: ${toolKey}` : "", toolMode ? `mode: ${toolMode}` : ""]
+                      .filter(Boolean)
+                      .join(" · ") || "—"
+                  }
+                />
+              ) : null}
 
               {errorText ? (
                 <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-rose-500/20 bg-rose-500/10 px-4 py-4">
@@ -1067,7 +1105,8 @@ export default async function CommandDetailPage({ params }: PageProps) {
               Routing diagnostic
             </div>
             <p className="max-w-3xl text-base text-zinc-400">
-              Lecture rapide du matching autour de cette command.
+              Résumé court du matching autour du flow, de l’event et de
+              l’incident.
             </p>
           </div>
 
@@ -1089,13 +1128,10 @@ export default async function CommandDetailPage({ params }: PageProps) {
                 />
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <DiagnosticMeta label="Workspace" value={workspace} />
                 <DiagnosticMeta label="Run" value={runId} />
-                <DiagnosticMeta
-                  label="Flow target"
-                  value={flowId || rootEventId || sourceEventId || commandIdText || "—"}
-                />
+                <DiagnosticMeta label="Flow target" value={flowTarget} />
                 <DiagnosticMeta
                   label="Matched event"
                   value={matchedEvent?.id || "Aucun event lié trouvé"}
@@ -1104,6 +1140,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
                   label="Matched incident"
                   value={matchedIncident?.id || "Aucun incident lié trouvé"}
                 />
+                <DiagnosticMeta label="Flow href" value={flowHref || "—"} />
               </div>
             </div>
           </div>
@@ -1114,17 +1151,16 @@ export default async function CommandDetailPage({ params }: PageProps) {
         <div className="space-y-5">
           <div className="space-y-2">
             <div className="text-2xl font-semibold tracking-tight text-white">
-              Linking context
+              Technical links
             </div>
             <p className="max-w-3xl text-base text-zinc-400">
-              Diagnostic détaillé des correspondances autour du flow, de l’event et
-              de l’incident.
+              Contexte technique compact pour vérifier les correspondances et les
+              liens calculés.
             </p>
           </div>
 
           <div className="border-t border-white/10 pt-5">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <DiagnosticMeta label="Flow href" value={flowHref || "—"} />
               <DiagnosticMeta label="Event href" value={eventHref || "—"} />
               <DiagnosticMeta label="Incident href" value={incidentHref || "—"} />
               <DiagnosticMeta
@@ -1134,10 +1170,6 @@ export default async function CommandDetailPage({ params }: PageProps) {
               <DiagnosticMeta
                 label="Matched incident ID"
                 value={matchedIncident?.id || "Aucun incident lié trouvé"}
-              />
-              <DiagnosticMeta
-                label="Flow target"
-                value={flowId || rootEventId || sourceEventId || "—"}
               />
             </div>
           </div>
@@ -1159,14 +1191,14 @@ export default async function CommandDetailPage({ params }: PageProps) {
           <div className="border-t border-white/10 pt-5 space-y-6">
             <div>
               <div className={sectionLabelClassName()}>Input preview</div>
-              <pre className="mt-3 overflow-x-auto rounded-[20px] border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+              <pre className={payloadPreviewClassName()}>
 {stringifyPretty(command.input ?? {})}
               </pre>
             </div>
 
             <div>
               <div className={sectionLabelClassName()}>Result preview</div>
-              <pre className="mt-3 overflow-x-auto rounded-[20px] border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+              <pre className={payloadPreviewClassName()}>
 {stringifyPretty(command.result ?? {})}
               </pre>
             </div>
