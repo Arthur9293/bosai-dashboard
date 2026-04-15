@@ -1,9 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import {
-  fetchEvents,
-  type EventItem,
-} from "@/lib/api";
+import { fetchEvents, type EventItem } from "@/lib/api";
 import {
   ControlPlaneShell,
   SectionCard,
@@ -304,11 +301,42 @@ function sortEvents(events: EventItem[]): EventItem[] {
   );
 }
 
+function buildEventFlowHref(event: EventItem): string {
+  const target = getFlowTarget(event);
+  if (!target) return "";
+  return `/flows?selected=${encodeURIComponent(target)}`;
+}
+
+function buildEventCommandsHref(event: EventItem): string {
+  const params = new URLSearchParams();
+
+  const flowId = getFlowId(event);
+  const rootEventId = getRootEventId(event) || String(event.id);
+  const sourceEventId = getSourceRecordId(event) || String(event.id);
+
+  if (flowId) {
+    params.set("flow_id", flowId);
+  }
+
+  if (rootEventId) {
+    params.set("root_event_id", rootEventId);
+  }
+
+  if (sourceEventId) {
+    params.set("source_event_id", sourceEventId);
+  }
+
+  params.set("from", "events");
+
+  return `/commands?${params.toString()}`;
+}
+
 function EventListCard({ event }: { event: EventItem }) {
   const statusLabel = getEventStatusLabel(event);
   const capability = getEventCapability(event);
   const linkedCommand = getLinkedCommand(event);
-  const flowTarget = getFlowTarget(event);
+  const flowHref = buildEventFlowHref(event);
+  const commandsHref = buildEventCommandsHref(event);
 
   return (
     <article className={cardClassName()}>
@@ -418,23 +446,17 @@ function EventListCard({ event }: { event: EventItem }) {
           </Link>
 
           {linkedCommand ? (
-            <Link
-              href={`/commands/${encodeURIComponent(linkedCommand)}`}
-              className={actionLinkClassName("soft")}
-            >
-              Ouvrir la command liée
+            <Link href={commandsHref} className={actionLinkClassName("soft")}>
+              Voir les commands liées
             </Link>
           ) : (
             <span className={actionLinkClassName("soft", true)}>
-              Ouvrir la command liée
+              Voir les commands liées
             </span>
           )}
 
-          {flowTarget ? (
-            <Link
-              href={`/flows/${encodeURIComponent(flowTarget)}`}
-              className={actionLinkClassName("soft")}
-            >
+          {flowHref ? (
+            <Link href={flowHref} className={actionLinkClassName("soft")}>
               Ouvrir le flow lié
             </Link>
           ) : (
@@ -546,6 +568,9 @@ export default async function EventsPage() {
     processedEvents[0] ??
     sortedEvents[0] ??
     null;
+
+  const focusEventCommandsHref = focusEvent ? buildEventCommandsHref(focusEvent) : "";
+  const focusEventFlowHref = focusEvent ? buildEventFlowHref(focusEvent) : "";
 
   return (
     <ControlPlaneShell
@@ -690,10 +715,19 @@ export default async function EventsPage() {
 
                   {getLinkedCommand(focusEvent) ? (
                     <Link
-                      href={`/commands/${encodeURIComponent(getLinkedCommand(focusEvent))}`}
+                      href={focusEventCommandsHref}
                       className={actionLinkClassName("soft")}
                     >
-                      Ouvrir la command liée
+                      Voir les commands liées
+                    </Link>
+                  ) : null}
+
+                  {focusEventFlowHref ? (
+                    <Link
+                      href={focusEventFlowHref}
+                      className={actionLinkClassName("soft")}
+                    >
+                      Ouvrir le flow lié
                     </Link>
                   ) : null}
                 </div>
