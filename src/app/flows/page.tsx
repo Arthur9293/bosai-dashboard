@@ -740,7 +740,8 @@ function buildEnrichedFlowCards(
     const terminalCommand = getTerminalCommand(ordered);
 
     const flowId = ordered.map((cmd) => cmd.flowId).find(Boolean) || "";
-    const rootEventId = ordered.map((cmd) => cmd.rootEventId).find(Boolean) || "";
+    const rootEventId =
+      ordered.map((cmd) => cmd.rootEventId).find(Boolean) || "";
     const workspaceId =
       ordered.map((cmd) => cmd.workspaceId).find(Boolean) || "production";
 
@@ -877,7 +878,8 @@ function buildIncidentOnlyFlowCards(
   for (const incident of incidents) {
     const flowId = toText(incident.flow_id);
     const rootEventId = toText(incident.root_event_id);
-    const sourceRecordId = toText(incident.source_record_id) || toText(incident.id);
+    const sourceRecordId =
+      toText(incident.source_record_id) || toText(incident.id);
 
     if (!flowId && !rootEventId && !sourceRecordId) continue;
 
@@ -909,7 +911,8 @@ function buildIncidentOnlyFlowCards(
       `incident-${toText(latest.id)}`;
 
     const rootEventId = toText(latest.root_event_id) || flowId;
-    const sourceRecordId = toText(latest.source_record_id) || toText(latest.id);
+    const sourceRecordId =
+      toText(latest.source_record_id) || toText(latest.id);
 
     cards.push({
       key,
@@ -1035,7 +1038,9 @@ function FlowListCard({
           isRegistryOnly ? "gap-4 xl:gap-3" : "gap-5 xl:gap-4"
         }`}
       >
-        <div className={isRegistryOnly ? "space-y-3 xl:space-y-3" : "space-y-4 xl:space-y-3"}>
+        <div
+          className={isRegistryOnly ? "space-y-3 xl:space-y-3" : "space-y-4 xl:space-y-3"}
+        >
           <div className="flex flex-wrap items-center gap-2">
             <DashboardStatusBadge
               label={humanStatusLabel(flow.status).toUpperCase()}
