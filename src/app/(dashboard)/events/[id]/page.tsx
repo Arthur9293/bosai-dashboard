@@ -8,6 +8,15 @@ import {
   type EventItem,
   type IncidentItem,
 } from "@/lib/api";
+import {
+  ControlPlaneShell,
+  SectionCard,
+  SidePanelCard,
+} from "@/components/dashboard/ControlPlaneShell";
+import {
+  DashboardStatusBadge,
+  type DashboardStatusKind,
+} from "@/components/dashboard/StatusBadge";
 
 type PageProps = {
   params:
@@ -20,7 +29,19 @@ type PageProps = {
 };
 
 function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function metaLabelClassName() {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function metaBoxClassName() {
+  return "rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+}
+
+function technicalValueClassName() {
+  return "break-all [overflow-wrap:anywhere] font-mono text-zinc-200";
 }
 
 function actionLinkClassName(
@@ -28,10 +49,10 @@ function actionLinkClassName(
   disabled = false
 ) {
   const base =
-    "inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
+    "inline-flex w-full items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition";
 
   if (disabled) {
-    return `${base} cursor-not-allowed border border-white/10 bg-white/5 text-zinc-500 opacity-60`;
+    return `${base} cursor-not-allowed border border-white/10 bg-white/[0.04] text-zinc-500 opacity-60`;
   }
 
   if (variant === "primary") {
@@ -42,7 +63,11 @@ function actionLinkClassName(
     return `${base} border border-rose-500/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15`;
   }
 
-  return `${base} border border-white/10 bg-white/5 text-white hover:bg-white/10`;
+  if (variant === "soft") {
+    return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+  }
+
+  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
 }
 
 function formatDate(value?: string | null): string {
@@ -105,33 +130,47 @@ function toTextOrEmpty(value: unknown): string {
   return toText(value, "");
 }
 
-function tone(status?: string): string {
-  const normalized = (status || "").trim().toLowerCase();
-
-  if (["processed", "done", "success", "completed"].includes(normalized)) {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (["queued", "pending", "new"].includes(normalized)) {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (["ignored"].includes(normalized)) {
-    return "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20";
-  }
-
-  if (["error", "failed", "dead", "blocked"].includes(normalized)) {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
-function incidentTone(hasIncident: boolean) {
-  return hasIncident
-    ? "bg-rose-500/15 text-rose-300 border border-rose-500/20"
-    : "bg-zinc-800 text-zinc-300 border border-white/10";
+function intersects(a: string[], b: string[]): boolean {
+  if (a.length === 0 || b.length === 0) return false;
+  const set = new Set(a);
+  return b.some((value) => set.has(value));
 }
+
+function pickBestMatch<T>(items: T[], scorer: (item: T) => number): T | null {
+  let bestItem: T | null = null;
+  let bestScore = 0;
+
+  for (const item of items) {
+    const score = scorer(item);
+    if (score > bestScore) {
+      bestScore = score;
+      bestItem = item;
+    }
+  }
+
+  return bestItem;
+}
+
+function compactTechnicalId(value: string, max = 34): string {
+  const clean = value.trim();
+  if (!clean) return "—";
+  if (clean.length <= max) return clean;
+
+  const keepStart = Math.max(12, Math.floor((max - 3) / 2));
+  const keepEnd = Math.max(8, max - keepStart - 3);
+
+  return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
+}
+
+function isRecordIdLike(value: string): boolean {
+  return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
+}
+
+/* --------------------------------- Event --------------------------------- */
 
 function getEventPayload(event: EventItem): Record<string, unknown> {
   return parseMaybeJson(event.payload);
@@ -139,18 +178,16 @@ function getEventPayload(event: EventItem): Record<string, unknown> {
 
 function getEventType(event: EventItem): string {
   const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
 
   return (
+    toTextOrEmpty(record.mapped_capability) ||
     toTextOrEmpty(event.event_type) ||
     toTextOrEmpty(event.type) ||
     toTextOrEmpty(payload.event_type) ||
     toTextOrEmpty(payload.type) ||
-    "Event detail"
+    "event_detail"
   );
-}
-
-function getEventStatus(event: EventItem): string {
-  return toTextOrEmpty(event.status) || "unknown";
 }
 
 function getEventCapability(event: EventItem): string {
@@ -165,13 +202,72 @@ function getEventCapability(event: EventItem): string {
   );
 }
 
+function getEventStatus(event: EventItem): string {
+  return toTextOrEmpty(event.status) || "unknown";
+}
+
+function getEventStatusBucket(event: EventItem): string {
+  const normalized = getEventStatus(event).trim().toLowerCase();
+
+  if (["new"].includes(normalized)) return "new";
+  if (["queued", "pending"].includes(normalized)) return "queued";
+  if (["processed", "done", "success", "completed"].includes(normalized)) {
+    return "processed";
+  }
+  if (["ignored"].includes(normalized)) return "ignored";
+  if (["error", "failed", "dead", "blocked"].includes(normalized)) return "error";
+
+  return "other";
+}
+
+function getEventStatusLabel(event: EventItem): string {
+  const bucket = getEventStatusBucket(event);
+
+  if (bucket === "new") return "NEW";
+  if (bucket === "queued") return "QUEUED";
+  if (bucket === "processed") return "PROCESSED";
+  if (bucket === "ignored") return "IGNORED";
+  if (bucket === "error") return "ERROR";
+
+  const raw = getEventStatus(event);
+  return raw ? raw.toUpperCase() : "UNKNOWN";
+}
+
+function getEventStatusBadgeKind(event: EventItem): DashboardStatusKind {
+  const bucket = getEventStatusBucket(event);
+
+  if (bucket === "new" || bucket === "queued") return "queued";
+  if (bucket === "processed") return "success";
+  if (bucket === "error") return "failed";
+  if (bucket === "ignored") return "unknown";
+
+  return "unknown";
+}
+
+function getShellToneFromEventStatus(
+  event: EventItem
+): "default" | "info" | "success" | "warning" | "danger" | "muted" {
+  const bucket = getEventStatusBucket(event);
+
+  if (bucket === "new" || bucket === "queued") return "warning";
+  if (bucket === "processed") return "success";
+  if (bucket === "error") return "danger";
+  if (bucket === "ignored") return "muted";
+
+  return "muted";
+}
+
 function getEventWorkspace(event: EventItem): string {
   const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
 
   return (
     toTextOrEmpty(event.workspace_id) ||
+    toTextOrEmpty(record.workspace_id) ||
+    toTextOrEmpty(record.Workspace_ID) ||
     toTextOrEmpty(payload.workspace_id) ||
     toTextOrEmpty(payload.workspaceId) ||
+    toTextOrEmpty(payload.Workspace_ID) ||
     "—"
   );
 }
@@ -179,8 +275,16 @@ function getEventWorkspace(event: EventItem): string {
 function getEventSource(event: EventItem): string {
   const payload = getEventPayload(event);
   const record = event as Record<string, unknown>;
+  const raw =
+    toTextOrEmpty(record.source) ||
+    toTextOrEmpty(payload.source) ||
+    (isSyntheticEvent(event) ? "synthetic_from_command" : "");
 
-  return toTextOrEmpty(record.source) || toTextOrEmpty(payload.source) || "—";
+  if (raw === "synthetic_from_command") {
+    return "Synthétique depuis command";
+  }
+
+  return raw || "—";
 }
 
 function getEventRunId(event: EventItem): string {
@@ -189,18 +293,28 @@ function getEventRunId(event: EventItem): string {
 
   return (
     toTextOrEmpty(record.run_id) ||
+    toTextOrEmpty(record.run_record_id) ||
+    toTextOrEmpty(record.Run_Record_ID) ||
     toTextOrEmpty(payload.run_id) ||
+    toTextOrEmpty(payload.runId) ||
+    toTextOrEmpty(payload.run_record_id) ||
     toTextOrEmpty(payload.runRecordId) ||
     "—"
   );
 }
 
 function getLinkedCommandValue(event: EventItem): string {
+  if (toTextOrEmpty(event.command_id)) return toTextOrEmpty(event.command_id);
+
   const payload = getEventPayload(event);
   const record = event as Record<string, unknown>;
+  const raw = record.linked_command;
+
+  if (Array.isArray(raw) && raw.length > 0) {
+    return toTextOrEmpty(raw[0]);
+  }
 
   return (
-    toTextOrEmpty(event.command_id) ||
     toTextOrEmpty(record.command_id) ||
     toTextOrEmpty(record.Command_ID) ||
     toTextOrEmpty(record.linked_command) ||
@@ -278,7 +392,11 @@ function getFlowNavigationTarget(event: EventItem): string {
 function getCreatedAt(event: EventItem): string {
   const record = event as Record<string, unknown>;
 
-  return toTextOrEmpty(event.created_at) || toTextOrEmpty(record.Created_At) || "";
+  return (
+    toTextOrEmpty(event.created_at) ||
+    toTextOrEmpty(record.Created_At) ||
+    ""
+  );
 }
 
 function getUpdatedAt(event: EventItem): string {
@@ -295,6 +413,19 @@ function getUpdatedAt(event: EventItem): string {
 function getProcessedAt(event: EventItem): string {
   return toTextOrEmpty(event.processed_at) || "";
 }
+
+function isSyntheticEvent(event: EventItem): boolean {
+  return toTextOrEmpty(getEventPayload(event).source) === "synthetic_from_command";
+}
+
+function getHeaderTitle(event: EventItem): string {
+  const capability = getEventCapability(event);
+  if (capability !== "—") return capability;
+
+  return getEventType(event);
+}
+
+/* -------------------------------- Command -------------------------------- */
 
 function getCommandInput(command: CommandItem): Record<string, unknown> {
   return parseMaybeJson(command.input);
@@ -417,34 +548,157 @@ function buildSyntheticEventFromCommand(
   } as EventItem;
 }
 
-function isSyntheticEvent(event: EventItem): boolean {
-  return toTextOrEmpty(getEventPayload(event).source) === "synthetic_from_command";
-}
+/* -------------------------------- Incident ------------------------------- */
 
-function getHeaderTitle(event: EventItem): string {
-  return getEventCapability(event) !== "—"
-    ? getEventCapability(event)
-    : getEventType(event);
-}
+function getIncidentWorkspace(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
 
-function getIncidentIdCandidates(incident: IncidentItem): string[] {
-  return Array.from(
-    new Set(
-      [
-        toTextOrEmpty(incident.id),
-        toTextOrEmpty(incident.flow_id),
-        toTextOrEmpty(incident.root_event_id),
-        toTextOrEmpty((incident as Record<string, unknown>).source_record_id),
-        toTextOrEmpty(incident.command_id),
-        toTextOrEmpty(incident.linked_command),
-      ].filter(Boolean)
-    )
+  return (
+    toTextOrEmpty(record.workspace_id) ||
+    toTextOrEmpty(record.Workspace_ID) ||
+    toTextOrEmpty(record.workspace) ||
+    toTextOrEmpty(incident.workspace_id) ||
+    ""
   );
+}
+
+function getIncidentCandidates(incident: IncidentItem): string[] {
+  const record = incident as Record<string, unknown>;
+
+  return uniq([
+    toTextOrEmpty(incident.id),
+    toTextOrEmpty(incident.flow_id),
+    toTextOrEmpty(incident.root_event_id),
+    toTextOrEmpty(incident.command_id),
+    toTextOrEmpty(incident.linked_command),
+    toTextOrEmpty(incident.run_record_id),
+    toTextOrEmpty(incident.linked_run),
+    toTextOrEmpty(record.source_record_id),
+    toTextOrEmpty(record.Source_Record_ID),
+    toTextOrEmpty(record.source_event_id),
+    toTextOrEmpty(record.Source_Event_ID),
+  ]);
+}
+
+function getEventMatchCandidates(event: EventItem): string[] {
+  return uniq([
+    String(event.id || ""),
+    getLinkedCommandValue(event),
+    getFlowDisplayTarget(event),
+    getFlowNavigationTarget(event),
+    getRootEventId(event),
+    getSourceRecordId(event),
+  ]);
+}
+
+function scoreIncidentMatch(incident: IncidentItem, event: EventItem): number {
+  let score = 0;
+
+  const eventCandidates = getEventMatchCandidates(event);
+  const incidentCandidates = getIncidentCandidates(incident);
+
+  if (intersects(eventCandidates, incidentCandidates)) {
+    score += 100;
+  }
+
+  const eventWorkspace = getEventWorkspace(event);
+  const incidentWorkspace = getIncidentWorkspace(incident);
+
+  if (
+    eventWorkspace &&
+    eventWorkspace !== "—" &&
+    incidentWorkspace &&
+    eventWorkspace === incidentWorkspace
+  ) {
+    score += 10;
+  }
+
+  if (
+    getLinkedCommandValue(event) &&
+    incidentCandidates.includes(getLinkedCommandValue(event))
+  ) {
+    score += 40;
+  }
+
+  if (
+    getFlowDisplayTarget(event) &&
+    incidentCandidates.includes(getFlowDisplayTarget(event))
+  ) {
+    score += 25;
+  }
+
+  return score;
 }
 
 function buildIncidentHref(matchedIncident: IncidentItem | null): string {
   if (!matchedIncident?.id) return "";
   return `/incidents/${encodeURIComponent(String(matchedIncident.id))}`;
+}
+
+/* --------------------------------- Links --------------------------------- */
+
+function buildCommandHref(event: EventItem): string {
+  const linkedCommand = getLinkedCommandValue(event);
+  if (!linkedCommand) return "";
+  return `/commands/${encodeURIComponent(linkedCommand)}`;
+}
+
+function buildFlowHref(event: EventItem): string {
+  const flowNavigationTarget = getFlowNavigationTarget(event);
+  if (!flowNavigationTarget) return "";
+  return `/flows/${encodeURIComponent(flowNavigationTarget)}`;
+}
+
+function buildRootEventHref(event: EventItem): string {
+  const rootEventId = getRootEventId(event);
+  if (!rootEventId || !isRecordIdLike(rootEventId)) return "";
+  return `/events/${encodeURIComponent(rootEventId)}`;
+}
+
+function buildSourceRecordEventHref(event: EventItem): string {
+  const sourceRecordId = getSourceRecordId(event);
+  if (!sourceRecordId || !isRecordIdLike(sourceRecordId)) return "";
+  return `/events/${encodeURIComponent(sourceRecordId)}`;
+}
+
+/* --------------------------------- UI ------------------------------------ */
+
+function MetaValueLink({
+  href,
+  value,
+}: {
+  href: string;
+  value: string;
+}) {
+  if (!href || !value || value === "—") {
+    return <span className="text-zinc-200">{value || "—"}</span>;
+  }
+
+  return (
+    <Link
+      href={href}
+      className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+    >
+      {value}
+    </Link>
+  );
+}
+
+function MetaItem({
+  label,
+  value,
+  breakAll = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  breakAll?: boolean;
+}) {
+  return (
+    <div className={breakAll ? "break-all [overflow-wrap:anywhere]" : undefined}>
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className="mt-1 text-zinc-200">{value}</div>
+    </div>
+  );
 }
 
 export default async function EventDetailPage({ params }: PageProps) {
@@ -485,14 +739,6 @@ export default async function EventDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const title = getHeaderTitle(event);
-  const status = getEventStatus(event);
-  const linkedCommand = getLinkedCommandValue(event);
-  const flowDisplayTarget = getFlowDisplayTarget(event);
-  const flowNavigationTarget = getFlowNavigationTarget(event);
-  const rootEventId = getRootEventId(event);
-  const synthetic = isSyntheticEvent(event);
-
   let matchedIncident: IncidentItem | null = null;
   try {
     const incidentsData = await fetchIncidents(300);
@@ -500,259 +746,350 @@ export default async function EventDetailPage({ params }: PageProps) {
       ? incidentsData.incidents
       : [];
 
-    const identifiers = [
-      String(event.id || ""),
-      linkedCommand,
-      flowDisplayTarget,
-      flowNavigationTarget,
-      rootEventId,
-      getSourceRecordId(event),
-    ].filter(Boolean);
-
-    matchedIncident =
-      incidents.find((incident) =>
-        getIncidentIdCandidates(incident).some((candidate) =>
-          identifiers.includes(candidate)
-        )
-      ) || null;
+    matchedIncident = pickBestMatch(incidents, (incident) =>
+      scoreIncidentMatch(incident, event!)
+    );
   } catch {
     matchedIncident = null;
   }
 
-  const hasCommand = linkedCommand !== "";
-  const hasFlow = flowNavigationTarget !== "";
+  const title = getHeaderTitle(event);
+  const statusLabel = getEventStatusLabel(event);
+  const capability = getEventCapability(event);
+  const workspace = getEventWorkspace(event);
+  const source = getEventSource(event);
+  const runId = getEventRunId(event);
+  const createdAt = getCreatedAt(event);
+  const updatedAt = getUpdatedAt(event);
+  const processedAt = getProcessedAt(event);
+  const linkedCommand = getLinkedCommandValue(event);
+  const flowDisplayTarget = getFlowDisplayTarget(event);
+  const rootEventId = getRootEventId(event);
+  const sourceRecordId = getSourceRecordId(event);
+
+  const commandHref = buildCommandHref(event);
+  const flowHref = buildFlowHref(event);
+  const rootEventHref = buildRootEventHref(event);
+  const sourceRecordEventHref = buildSourceRecordEventHref(event);
   const incidentHref = buildIncidentHref(matchedIncident);
+
+  const hasCommand = commandHref !== "";
+  const hasFlow = flowHref !== "";
   const hasIncident = incidentHref !== "";
+  const synthetic = isSyntheticEvent(event);
+
+  const shellBadges: {
+    label: string;
+    tone?: "default" | "info" | "success" | "warning" | "danger" | "muted";
+  }[] = [
+    { label: statusLabel, tone: getShellToneFromEventStatus(event) },
+  ];
+
+  if (capability !== "—") {
+    shellBadges.push({ label: capability, tone: "muted" });
+  }
+
+  shellBadges.push({
+    label: hasCommand ? "COMMAND CREATED" : "COMMAND MISSING",
+    tone: hasCommand ? "success" : "muted",
+  });
+
+  shellBadges.push({
+    label: hasIncident ? "INCIDENT LINKED" : "NO INCIDENT",
+    tone: hasIncident ? "danger" : "muted",
+  });
+
+  if (synthetic) {
+    shellBadges.push({ label: "FALLBACK FROM COMMAND", tone: "warning" });
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="border-b border-white/10 pb-4">
-        <div className="text-sm text-zinc-400">
-          <Link
-            href="/events"
-            className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
-          >
-            Events
-          </Link>{" "}
-          / {title}
-        </div>
-
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          {title}
-        </h1>
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${tone(
-              status
-            )}`}
-          >
-            {status.toUpperCase()}
-          </span>
-
-          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
-            {hasCommand ? "COMMAND CREATED" : "COMMAND MISSING"}
-          </span>
-
-          <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${incidentTone(
-              hasIncident
-            )}`}
-          >
-            {hasIncident ? "INCIDENT LINKED" : "NO INCIDENT"}
-          </span>
-
-          {synthetic ? (
-            <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-sm font-medium text-amber-300">
-              FALLBACK FROM COMMAND
-            </span>
-          ) : null}
-        </div>
-
-        {synthetic ? (
-          <p className="mt-4 max-w-3xl text-sm text-amber-300/90 sm:text-base">
-            Cet event n’est pas revenu dans la fenêtre actuelle de /events. La
-            page a été reconstruite automatiquement depuis la command liée pour
-            éviter le 404.
-          </p>
-        ) : null}
-      </div>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Created</div>
-          <div className="mt-3 text-xl font-semibold text-white">
-            {formatDate(getCreatedAt(event))}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Updated</div>
-          <div className="mt-3 text-xl font-semibold text-white">
-            {formatDate(getUpdatedAt(event))}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Processed</div>
-          <div className="mt-3 text-xl font-semibold text-white">
-            {formatDate(getProcessedAt(event))}
-          </div>
-        </div>
-      </section>
-
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Event identity</div>
-
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            ID: <span className="break-all text-zinc-200">{event.id}</span>
-          </div>
-          <div>
-            Event type: <span className="text-zinc-200">{getEventType(event)}</span>
-          </div>
-          <div>
-            Capability: <span className="text-zinc-200">{getEventCapability(event)}</span>
-          </div>
-          <div>
-            Workspace: <span className="text-zinc-200">{getEventWorkspace(event)}</span>
-          </div>
-          <div>
-            Source: <span className="text-zinc-200">{getEventSource(event)}</span>
-          </div>
-          <div>
-            Run: <span className="text-zinc-200">{getEventRunId(event)}</span>
-          </div>
-        </div>
-      </section>
-
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Pipeline linking</div>
-
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
-          <div>
-            Command created: <span className="text-zinc-200">{hasCommand ? "Yes" : "No"}</span>
-          </div>
-          <div>
-            Linked command:{" "}
-            <span className="break-all text-zinc-200">
-              {linkedCommand || "—"}
-            </span>
-          </div>
-          <div>
-            Flow:{" "}
-            <span className="break-all text-zinc-200">
-              {flowDisplayTarget || "—"}
-            </span>
-          </div>
-          <div>
-            Root event:{" "}
-            <span className="break-all text-zinc-200">
-              {rootEventId || "—"}
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Payload snapshot</div>
-
-        <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
-{stringifyPretty(event.payload ?? {})}
-        </pre>
-      </section>
-
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Navigation summary</div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-              Event ID
-            </div>
-            <div className="mt-3 break-all text-2xl font-semibold text-white">
-              {event.id}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-              Flow target
-            </div>
-            <div className="mt-3 break-all text-2xl font-semibold text-white">
-              {flowDisplayTarget || "—"}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-              Command target
-            </div>
-            <div className="mt-3 break-all text-2xl font-semibold text-white">
-              {linkedCommand || "—"}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-              Status
-            </div>
-            <div className="mt-3 text-2xl font-semibold text-white">
-              {status.toUpperCase()}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Navigation</div>
-
-        <div className="space-y-3">
+    <ControlPlaneShell
+      eyebrow="BOSAI Control Plane"
+      title={title}
+      description="Lecture détaillée d’un event BOSAI avec identité pipeline, objets liés, fallback éventuel depuis command et navigation croisée."
+      badges={shellBadges}
+      metrics={[
+        { label: "Created", value: formatDate(createdAt) },
+        { label: "Updated", value: formatDate(updatedAt) },
+        { label: "Processed", value: formatDate(processedAt) },
+        {
+          label: "Workspace",
+          value: workspace,
+          toneClass: "text-white",
+          helper: synthetic ? "Fallback reconstitué" : undefined,
+        },
+      ]}
+      actions={
+        <>
           <Link href="/events" className={actionLinkClassName("soft")}>
-            Retour à la liste events
-          </Link>
-
-          <Link href="/events" className={actionLinkClassName("primary")}>
-            Voir tous les events
+            Retour aux events
           </Link>
 
           {hasCommand ? (
-            <Link
-              href={`/commands/${encodeURIComponent(linkedCommand)}`}
-              className={actionLinkClassName("soft")}
-            >
+            <Link href={commandHref} className={actionLinkClassName("primary")}>
               Ouvrir la command liée
             </Link>
-          ) : (
-            <span className={actionLinkClassName("soft", true)}>
-              Ouvrir la command liée
-            </span>
-          )}
+          ) : null}
 
           {hasFlow ? (
-            <Link
-              href={`/flows/${encodeURIComponent(flowNavigationTarget)}`}
-              className={actionLinkClassName("soft")}
-            >
+            <Link href={flowHref} className={actionLinkClassName("soft")}>
               Ouvrir le flow lié
             </Link>
-          ) : (
-            <span className={actionLinkClassName("soft", true)}>
-              Ouvrir le flow lié
-            </span>
-          )}
+          ) : null}
+        </>
+      }
+      aside={
+        <>
+          <SidePanelCard title="Résumé pipeline">
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={getEventStatusBadgeKind(event)}
+                  label={statusLabel}
+                />
 
-          {hasIncident ? (
-            <Link href={incidentHref} className={actionLinkClassName("danger")}>
-              Ouvrir l’incident lié
-            </Link>
-          ) : (
-            <span className={actionLinkClassName("danger", true)}>
-              Ouvrir l’incident lié
-            </span>
-          )}
+                {capability !== "—" ? (
+                  <DashboardStatusBadge kind="queued" label={capability} />
+                ) : null}
+
+                {hasCommand ? (
+                  <DashboardStatusBadge kind="success" label="COMMAND CREATED" />
+                ) : null}
+
+                {hasIncident ? (
+                  <DashboardStatusBadge kind="incident" label="INCIDENT LINKED" />
+                ) : null}
+              </div>
+
+              <div className="space-y-2 text-sm leading-6 text-white/65">
+                <div>
+                  Event ID :{" "}
+                  <span className="break-all text-white/90">
+                    {compactTechnicalId(String(event.id))}
+                  </span>
+                </div>
+                <div>
+                  Flow :{" "}
+                  <span className="break-all text-white/90">
+                    {compactTechnicalId(flowDisplayTarget || "—")}
+                  </span>
+                </div>
+                <div>
+                  Command :{" "}
+                  <span className="break-all text-white/90">
+                    {compactTechnicalId(linkedCommand || "—")}
+                  </span>
+                </div>
+                <div>
+                  Activité :{" "}
+                  <span className="text-white/90">{formatDate(updatedAt)}</span>
+                </div>
+              </div>
+
+              {synthetic ? (
+                <div className="rounded-[20px] border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm leading-6 text-amber-200">
+                  Cet event n’était pas présent dans la fenêtre actuelle de
+                  `fetchEvents()`. La page a été reconstruite depuis la command liée
+                  pour éviter un 404.
+                </div>
+              ) : null}
+            </div>
+          </SidePanelCard>
+
+          <SidePanelCard title="Navigation">
+            <div className="space-y-3">
+              <Link href="/events" className={actionLinkClassName("soft")}>
+                Retour à la liste events
+              </Link>
+
+              <Link href="/events" className={actionLinkClassName("primary")}>
+                Voir tous les events
+              </Link>
+
+              {hasCommand ? (
+                <Link href={commandHref} className={actionLinkClassName("soft")}>
+                  Ouvrir la command liée
+                </Link>
+              ) : (
+                <span className={actionLinkClassName("soft", true)}>
+                  Ouvrir la command liée
+                </span>
+              )}
+
+              {hasFlow ? (
+                <Link href={flowHref} className={actionLinkClassName("soft")}>
+                  Ouvrir le flow lié
+                </Link>
+              ) : (
+                <span className={actionLinkClassName("soft", true)}>
+                  Ouvrir le flow lié
+                </span>
+              )}
+
+              {hasIncident ? (
+                <Link href={incidentHref} className={actionLinkClassName("danger")}>
+                  Ouvrir l’incident lié
+                </Link>
+              ) : (
+                <span className={actionLinkClassName("danger", true)}>
+                  Ouvrir l’incident lié
+                </span>
+              )}
+            </div>
+          </SidePanelCard>
+        </>
+      }
+    >
+      <SectionCard
+        title="Event identity"
+        description="Identité BOSAI de l’event, contexte source et attributs principaux du pipeline."
+      >
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-4">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Type</div>
+            <div className="mt-2 text-zinc-100">{getEventType(event)}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Capability</div>
+            <div className="mt-2 text-zinc-100">{capability}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Workspace</div>
+            <div className="mt-2 text-zinc-100">{workspace}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Source</div>
+            <div className="mt-2 text-zinc-100">{source}</div>
+          </div>
         </div>
+
+        <div className="mt-6 grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+          <MetaItem
+            label="Event ID"
+            value={<span className={technicalValueClassName()}>{String(event.id)}</span>}
+            breakAll
+          />
+
+          <MetaItem
+            label="Run"
+            value={<span className={technicalValueClassName()}>{runId}</span>}
+            breakAll
+          />
+
+          <MetaItem label="Status" value={statusLabel} />
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Pipeline linking"
+        description="Liaisons BOSAI vers command, flow, root event et éventuel incident correspondant."
+        tone="neutral"
+      >
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-3">
+          <MetaItem
+            label="Linked command"
+            value={<MetaValueLink href={commandHref} value={linkedCommand || "—"} />}
+            breakAll
+          />
+
+          <MetaItem
+            label="Flow target"
+            value={<MetaValueLink href={flowHref} value={flowDisplayTarget || "—"} />}
+            breakAll
+          />
+
+          <MetaItem
+            label="Incident"
+            value={
+              <MetaValueLink
+                href={incidentHref}
+                value={matchedIncident ? String(matchedIncident.id) : "—"}
+              />
+            }
+            breakAll
+          />
+
+          <MetaItem
+            label="Root event"
+            value={<MetaValueLink href={rootEventHref} value={rootEventId || "—"} />}
+            breakAll
+          />
+
+          <MetaItem
+            label="Source record"
+            value={
+              <MetaValueLink
+                href={sourceRecordEventHref}
+                value={sourceRecordId || "—"}
+              />
+            }
+            breakAll
+          />
+
+          <MetaItem
+            label="Synthetic fallback"
+            value={synthetic ? "Yes" : "No"}
+          />
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Navigation summary"
+        description="Lecture rapide des cibles BOSAI utiles depuis cet event."
+        tone="neutral"
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Event</div>
+            <div className="mt-2 break-all text-xl font-semibold text-white">
+              {String(event.id)}
+            </div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Flow target</div>
+            <div className="mt-2 break-all text-xl font-semibold text-white">
+              {flowDisplayTarget || "—"}
+            </div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Command target</div>
+            <div className="mt-2 break-all text-xl font-semibold text-white">
+              {linkedCommand || "—"}
+            </div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Incident target</div>
+            <div className="mt-2 break-all text-xl font-semibold text-white">
+              {matchedIncident ? String(matchedIncident.id) : "—"}
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Payload snapshot"
+        description="Prévisualisation brute du payload event pour lecture technique rapide."
+        tone="neutral"
+      >
+        <pre className="overflow-x-auto rounded-[20px] border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+{stringifyPretty(event.payload ?? {})}
+        </pre>
+      </SectionCard>
+
+      <section className={cardClassName()}>
+        <p className="max-w-4xl text-base text-zinc-400">
+          Les liens flow / command / incident sont résolus en best-effort à partir
+          des identifiants event, root_event_id, source_record_id, command_id et
+          workspace.
+        </p>
       </section>
-    </div>
+    </ControlPlaneShell>
   );
 }
