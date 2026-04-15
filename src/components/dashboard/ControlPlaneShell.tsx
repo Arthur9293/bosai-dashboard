@@ -91,7 +91,7 @@ export function SectionCountPill({
   return (
     <span
       className={[
-        "inline-flex min-w-8 items-center justify-center rounded-full border px-2.5 py-1 text-xs font-medium",
+        "inline-flex min-w-8 w-fit self-start items-center justify-center rounded-full border px-2.5 py-1 text-xs font-medium sm:self-auto",
         badgeToneClasses(tone),
       ].join(" ")}
     >
