@@ -791,14 +791,23 @@ function PreviewPanel({
 function DiagnosticRow({
   label,
   value,
+  technical = false,
 }: {
   label: string;
   value: ReactNode;
+  technical?: boolean;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 text-sm">
-      <span className="text-white/55">{label}</span>
-      <span className="break-all text-right text-white/90">{value}</span>
+    <div className="flex flex-col gap-1.5 md:flex-row md:items-start md:justify-between md:gap-4 text-sm">
+      <span className="text-white/55 md:max-w-[38%]">{label}</span>
+      <span
+        className={[
+          "text-white/90 md:max-w-[58%] md:text-right",
+          technical ? "break-all" : "break-words",
+        ].join(" ")}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -900,8 +909,8 @@ export default async function CommandDetailPage({ params }: PageProps) {
         { label: "Updated", value: formatDate(getCommandUpdatedAt(command)) },
       ]}
       topMeta={
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-white/60">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="text-sm text-white/60 break-words">
             <Link
               href="/commands"
               className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
@@ -911,7 +920,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
             / <span className="text-white/85">{title}</span>
           </div>
 
-          <div className="text-xs uppercase tracking-[0.18em] text-white/35">
+          <div className="text-xs uppercase tracking-[0.18em] text-white/35 break-all md:text-right">
             Command ID · {String(command.id)}
           </div>
         </div>
@@ -989,25 +998,22 @@ export default async function CommandDetailPage({ params }: PageProps) {
               </div>
 
               <div className="space-y-3">
-                <DiagnosticRow
-                  label="Workspace"
-                  value={workspace}
-                />
-                <DiagnosticRow
-                  label="Run"
-                  value={runId}
-                />
+                <DiagnosticRow label="Workspace" value={workspace} />
+                <DiagnosticRow label="Run" value={runId} technical />
                 <DiagnosticRow
                   label="Flow target"
                   value={flowId || rootEventId || sourceEventId || String(command.id)}
+                  technical
                 />
                 <DiagnosticRow
                   label="Matched event"
                   value={matchedEvent?.id || "Aucun event lié trouvé"}
+                  technical={Boolean(matchedEvent?.id)}
                 />
                 <DiagnosticRow
                   label="Matched incident"
                   value={matchedIncident?.id || "Aucun incident lié trouvé"}
+                  technical={Boolean(matchedIncident?.id)}
                 />
               </div>
             </div>
