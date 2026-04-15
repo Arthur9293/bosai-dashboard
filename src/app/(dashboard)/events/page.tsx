@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import {
   fetchEvents,
   type EventItem,
@@ -460,7 +461,7 @@ function SectionBlock({
   count: number;
   countTone?: "default" | "info" | "success" | "warning" | "danger" | "muted";
   tone?: "default" | "attention" | "neutral";
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <SectionCard
@@ -478,9 +479,11 @@ export default async function EventsPage() {
   let events: EventItem[] = [];
   let stats: EventStats = {};
   let sourceConnected = false;
+  let sourceReachable = false;
 
   try {
     const data = await fetchEvents();
+    sourceReachable = data !== null && data !== undefined;
 
     if (Array.isArray(data?.events)) {
       events = data.events;
@@ -490,11 +493,20 @@ export default async function EventsPage() {
       stats = data.stats as EventStats;
     }
 
-    sourceConnected = Boolean(data?.events || data?.stats);
+    const hasEvents = Array.isArray(data?.events) && data.events.length > 0;
+    const hasPositiveStats =
+      !!data?.stats &&
+      typeof data.stats === "object" &&
+      Object.values(data.stats as Record<string, unknown>).some(
+        (value) => typeof value === "number" && value > 0
+      );
+
+    sourceConnected = hasEvents || hasPositiveStats;
   } catch {
     events = [];
     stats = {};
     sourceConnected = false;
+    sourceReachable = false;
   }
 
   const sortedEvents = sortEvents(events);
@@ -512,7 +524,9 @@ export default async function EventsPage() {
   const errorEvents = sortedEvents.filter(
     (event) => getEventStatusBucket(event) === "error"
   );
-  const otherEvents = sortedEvents.filter((event) => getEventStatusBucket(event) === "other");
+  const otherEvents = sortedEvents.filter(
+    (event) => getEventStatusBucket(event) === "other"
+  );
 
   const attentionEvents = sortEvents([...newEvents, ...queuedEvents, ...errorEvents]);
   const stableEvents = sortEvents([...processedEvents, ...ignoredEvents, ...otherEvents]);
@@ -520,9 +534,7 @@ export default async function EventsPage() {
   const newCount = stats.new ?? newEvents.length;
   const queuedCount = stats.queued ?? queuedEvents.length;
   const processedCount = stats.processed ?? processedEvents.length;
-  const ignoredCount = stats.ignored ?? ignoredEvents.length;
   const errorCount = stats.error ?? errorEvents.length;
-  const otherCount = stats.other ?? otherEvents.length;
 
   const latestProcessed = latestByBucket(sortedEvents, "processed");
   const latestQueued = latestByBucket(sortedEvents, "queued");
@@ -568,17 +580,35 @@ export default async function EventsPage() {
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 <DashboardStatusBadge
-                  kind={sourceConnected ? "success" : "unknown"}
-                  label={sourceConnected ? "LIVE SOURCE" : "NO SOURCE"}
+                  kind={sourceConnected ? "success" : sourceReachable ? "queued" : "unknown"}
+                  label={
+                    sourceConnected
+                      ? "SOURCE ACTIVE"
+                      : sourceReachable
+                        ? "SOURCE CONNECTÉE"
+                        : "SOURCE INDISPONIBLE"
+                  }
                 />
-                <DashboardStatusBadge kind="success" label={`${commandsCreatedCount} COMMANDS`} />
+
+                <DashboardStatusBadge
+                  kind={commandsCreatedCount > 0 ? "success" : "unknown"}
+                  label={
+                    commandsCreatedCount > 0
+                      ? `${commandsCreatedCount} COMMANDS`
+                      : "AUCUNE COMMAND LIÉE"
+                  }
+                />
               </div>
 
               <div className="space-y-2 text-sm leading-6 text-white/65">
                 <div>
                   Source :{" "}
                   <span className="text-white/90">
-                    {sourceConnected ? "Connected" : "Unavailable"}
+                    {sourceConnected
+                      ? "Active"
+                      : sourceReachable
+                        ? "Connected but empty"
+                        : "Unavailable"}
                   </span>
                 </div>
                 <div>
