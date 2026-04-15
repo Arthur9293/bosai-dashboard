@@ -3,8 +3,8 @@ import {
   ControlPlaneShell,
   SectionCard,
   SidePanelCard,
-  StatusBadge,
 } from "@/components/dashboard/ControlPlaneShell";
+import { DashboardStatusBadge } from "@/components/dashboard/StatusBadge";
 
 type AnyRecord = Record<string, unknown>;
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -75,32 +75,6 @@ function actionLinkClassName(
   }
 
   return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 xl:py-1.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
-}
-
-function badgeTone(status: string) {
-  const s = toText(status).toLowerCase();
-
-  if (s === "success" || s === "done" || s === "completed") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (s === "running") {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  if (s === "failed") {
-    return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
-  }
-
-  if (s === "retry") {
-    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
-  }
-
-  if (s === "partial") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
 function text(value: unknown): string {
@@ -1016,16 +990,6 @@ function matchesActiveSelection(flow: FlowCard, selected: string): boolean {
   return candidates.includes(selected);
 }
 
-function getStatusBadgeTone(
-  status: FlowStatus
-): "default" | "info" | "success" | "warning" | "danger" | "muted" {
-  if (status === "running") return "info";
-  if (status === "failed") return "danger";
-  if (status === "retry") return "warning";
-  if (status === "success") return "success";
-  return "muted";
-}
-
 function CountPill({ value }: { value: number }) {
   return (
     <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-white/80">
@@ -1054,33 +1018,16 @@ function FlowListCard({
       <div className="flex h-full flex-col gap-5 xl:gap-4">
         <div className="space-y-4 xl:space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
-                flow.status
-              )}`}
-            >
-              {humanStatusLabel(flow.status).toUpperCase()}
-            </span>
+            <DashboardStatusBadge label={humanStatusLabel(flow.status).toUpperCase()} status={flow.status} />
 
             {flow.isPartial ? (
-              <span
-                className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${badgeTone(
-                  "partial"
-                )}`}
-              >
-                PARTIAL
-              </span>
+              <DashboardStatusBadge kind="partial" />
             ) : null}
 
-            <span
-              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
-                flow.hasIncident
-                  ? badgeTone("failed")
-                  : "bg-zinc-800 text-zinc-300 border border-zinc-700"
-              }`}
-            >
-              {incidentLabel(flow)}
-            </span>
+            <DashboardStatusBadge
+              kind={flow.hasIncident ? "incident" : "no-incident"}
+              label={flow.hasIncident ? incidentLabel(flow) : "Aucun incident"}
+            />
           </div>
 
           <div className="space-y-2">
@@ -1355,10 +1302,10 @@ export default async function FlowsPage({ searchParams }: PageProps) {
           >
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
-                <StatusBadge label="Running" tone="info" />
-                <StatusBadge label="Failed" tone="danger" />
-                <StatusBadge label="Retry" tone="warning" />
-                <StatusBadge label="Partial" tone="muted" />
+                <DashboardStatusBadge kind="running" />
+                <DashboardStatusBadge kind="failed" />
+                <DashboardStatusBadge kind="retry" />
+                <DashboardStatusBadge kind="partial" />
               </div>
 
               <div className="space-y-2 text-sm leading-6 text-white/65">
@@ -1398,22 +1345,22 @@ export default async function FlowsPage({ searchParams }: PageProps) {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <StatusBadge
+                  <DashboardStatusBadge
                     label={humanStatusLabel(activeFlow.status)}
-                    tone={getStatusBadgeTone(activeFlow.status)}
+                    status={activeFlow.status}
                   />
                   {activeFlow.isPartial ? (
-                    <StatusBadge label="Registry-only" tone="muted" />
+                    <DashboardStatusBadge kind="registry-only" />
                   ) : (
-                    <StatusBadge label="Enriched" tone="info" />
+                    <DashboardStatusBadge label="Enriched" kind="running" />
                   )}
                   {activeFlow.hasIncident ? (
-                    <StatusBadge
+                    <DashboardStatusBadge
+                      kind="incident"
                       label={incidentLabel(activeFlow)}
-                      tone="danger"
                     />
                   ) : (
-                    <StatusBadge label="Sans incident" tone="success" />
+                    <DashboardStatusBadge kind="no-incident" label="Sans incident" />
                   )}
                 </div>
 
