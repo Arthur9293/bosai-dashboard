@@ -48,13 +48,15 @@ type NormalizedCommand = {
   startTs: number;
 };
 
-function cardClassName(isActive: boolean) {
-  const base =
-    "rounded-[28px] border bg-white/[0.04] px-4 py-4 sm:px-5 sm:py-5 xl:px-5 xl:py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
+function cardClassName(isActive: boolean, compact = false) {
+  const base = compact
+    ? "rounded-[28px] border bg-white/[0.04] p-5 md:p-5 xl:px-5 xl:py-4 min-h-[360px] xl:min-h-[280px] 2xl:min-h-[270px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition"
+    : "rounded-[28px] border bg-white/[0.04] p-5 md:p-6 xl:px-5 xl:py-4 min-h-[420px] xl:min-h-[330px] 2xl:min-h-[320px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
+
   const inactive =
     "border-white/10 hover:border-white/15 hover:bg-white/[0.05]";
   const active =
-    "border-emerald-500/35 bg-emerald-500/[0.07] shadow-[0_0_0_1px_rgba(16,185,129,0.05),0_0_30px_rgba(16,185,129,0.07)]";
+    "border-emerald-500/35 bg-emerald-500/[0.08] shadow-[0_0_0_1px_rgba(16,185,129,0.06),0_0_40px_rgba(16,185,129,0.08)]";
 
   return `${base} ${isActive ? active : inactive}`;
 }
@@ -63,18 +65,28 @@ function actionLinkClassName(
   variant: "default" | "primary" | "danger" | "active" = "default"
 ) {
   if (variant === "primary") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
   if (variant === "danger") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
+    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
   }
 
   if (variant === "active") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-300";
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-emerald-300";
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 xl:py-1.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+}
+
+function metaBoxClassName(compact = false) {
+  return `rounded-[22px] border border-white/10 bg-black/20 px-4 ${
+    compact ? "py-3" : "py-4"
+  }`;
+}
+
+function metaLabelClassName() {
+  return "text-xs uppercase tracking-[0.22em] text-white/35";
 }
 
 function text(value: unknown): string {
@@ -249,7 +261,9 @@ function getDisplayTitle(flow: FlowCard): string {
         return cleanCapabilityLabel(root);
       }
 
-      return `${cleanCapabilityLabel(root)} → ${cleanCapabilityLabel(terminal)}`;
+      return `${cleanCapabilityLabel(root)} → ${cleanCapabilityLabel(
+        terminal
+      )}`;
     }
 
     if (root && root !== "Non disponible") {
@@ -998,31 +1012,6 @@ function CountPill({ value }: { value: number }) {
   );
 }
 
-function MetaBox({
-  label,
-  value,
-  fullWidth = false,
-}: {
-  label: string;
-  value: string;
-  fullWidth?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-[20px] border border-white/10 bg-black/20 px-4 py-3 ${
-        fullWidth ? "sm:col-span-2" : ""
-      }`}
-    >
-      <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-        {label}
-      </div>
-      <div className="mt-2 break-words text-[15px] leading-6 text-white">
-        {value || "—"}
-      </div>
-    </div>
-  );
-}
-
 function FlowListCard({
   flow,
   activeKey,
@@ -1031,6 +1020,7 @@ function FlowListCard({
   activeKey: string;
 }) {
   const isActive = isFlowActive(flow, activeKey);
+  const isRegistryOnly = flow.readingMode === "registry-only";
   const title = getDisplayTitle(flow);
   const technicalSubtitle = getTechnicalSubtitle(flow);
   const summaryLine = getFlowSummaryLine(flow);
@@ -1038,82 +1028,121 @@ function FlowListCard({
   const selectHref = buildSelectHref(flow);
   const detailHref = buildDetailHref(flow);
 
-  const activityValue = flowActivityLabel(flow);
-  const workspaceValue = flow.workspaceId || "production";
-  const incidentValue = incidentLabel(flow);
-  const readingValue = flow.isPartial ? "Partielle" : "Complète";
-  const stateValue = humanStatusLabel(flow.status);
-
   return (
-    <article className={cardClassName(isActive)}>
-      <div className="flex h-full flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <DashboardStatusBadge
-            label={humanStatusLabel(flow.status).toUpperCase()}
-            status={flow.status}
-          />
+    <article className={cardClassName(isActive, isRegistryOnly)}>
+      <div
+        className={`flex h-full flex-col ${
+          isRegistryOnly ? "gap-4 xl:gap-3" : "gap-5 xl:gap-4"
+        }`}
+      >
+        <div className={isRegistryOnly ? "space-y-3 xl:space-y-3" : "space-y-4 xl:space-y-3"}>
+          <div className="flex flex-wrap items-center gap-2">
+            <DashboardStatusBadge
+              label={humanStatusLabel(flow.status).toUpperCase()}
+              status={flow.status}
+            />
 
-          {flow.isPartial ? <DashboardStatusBadge kind="partial" /> : null}
+            {flow.isPartial ? <DashboardStatusBadge kind="partial" /> : null}
 
-          <DashboardStatusBadge
-            kind={flow.hasIncident ? "incident" : "no-incident"}
-            label={flow.hasIncident ? incidentLabel(flow) : "Aucun incident"}
-          />
-        </div>
-
-        <div className="space-y-3">
-          <div className="text-xs uppercase tracking-[0.2em] text-white/35">
-            {flow.readingMode === "enriched"
-              ? "Flow enrichi"
-              : "Flow registre uniquement"}
+            <DashboardStatusBadge
+              kind={flow.hasIncident ? "incident" : "no-incident"}
+              label={flow.hasIncident ? incidentLabel(flow) : "Aucun incident"}
+            />
           </div>
 
-          <h3 className="text-[2rem] font-semibold leading-tight tracking-tight text-white sm:text-[2.2rem] xl:text-[1.8rem]">
-            {title}
-          </h3>
+          <div className={isRegistryOnly ? "space-y-2.5" : "space-y-2"}>
+            <div className="text-xs uppercase tracking-[0.2em] text-white/35">
+              {flow.readingMode === "enriched"
+                ? "Flow enrichi"
+                : "Flow registre uniquement"}
+            </div>
 
-          <p className="text-sm leading-6 text-zinc-300">{summaryLine}</p>
-        </div>
+            <h3
+              className={
+                isRegistryOnly
+                  ? "break-words text-[1.45rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.65rem] xl:text-[1.25rem] 2xl:text-[1.35rem]"
+                  : "break-words text-[1.7rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.9rem] xl:text-[1.45rem] 2xl:text-[1.55rem]"
+              }
+            >
+              {title}
+            </h3>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <MetaBox
-            label={flow.readingMode === "enriched" ? "Flow ID" : "Source / Root"}
-            value={technicalSubtitle}
-            fullWidth
-          />
+            {flow.readingMode === "enriched" ? (
+              <div className="break-all text-sm text-zinc-400">
+                Flow ID : <span className="text-zinc-200">{technicalSubtitle}</span>
+              </div>
+            ) : null}
 
-          <MetaBox label="Activité" value={activityValue} />
-          <MetaBox label="Workspace" value={workspaceValue} />
-
-          <MetaBox label="Incident" value={incidentValue} />
-          <MetaBox label="Lecture" value={readingValue} />
+            <p className="text-sm leading-6 text-zinc-300">{summaryLine}</p>
+          </div>
 
           {flow.readingMode === "enriched" ? (
-            <>
-              <MetaBox
-                label="Étapes"
-                value={`${flow.steps} étape${flow.steps > 1 ? "s" : ""}`}
-              />
-              <MetaBox
-                label="Durée"
-                value={flow.durationMs > 0 ? formatDuration(flow.durationMs) : "—"}
-              />
-              <MetaBox
-                label="Chaîne"
-                value={
-                  flow.rootCapability !== flow.terminalCapability
-                    ? `${cleanCapabilityLabel(flow.rootCapability)} → ${cleanCapabilityLabel(flow.terminalCapability)}`
-                    : cleanCapabilityLabel(flow.rootCapability)
-                }
-                fullWidth
-              />
-            </>
+            <div className="grid gap-2.5 text-[15px] leading-6 text-zinc-300 xl:grid-cols-2 xl:gap-x-5 xl:gap-y-2 xl:text-[14px] xl:leading-5">
+              <div>
+                Activité :{" "}
+                <span className="text-zinc-100">{flowActivityLabel(flow)}</span>
+              </div>
+
+              <div>
+                Incident :{" "}
+                <span className="text-zinc-100">{incidentLabel(flow)}</span>
+              </div>
+
+              <div>
+                Workspace :{" "}
+                <span className="text-zinc-100">
+                  {flow.workspaceId || "production"}
+                </span>
+              </div>
+
+              <div>
+                Étapes : <span className="text-zinc-100">{flow.steps}</span>
+              </div>
+
+              <div className="xl:col-span-2">
+                Chaîne :{" "}
+                <span className="text-zinc-100">
+                  {cleanCapabilityLabel(flow.rootCapability)}
+                  {flow.rootCapability !== flow.terminalCapability
+                    ? ` → ${cleanCapabilityLabel(flow.terminalCapability)}`
+                    : ""}
+                </span>
+              </div>
+            </div>
           ) : (
-            <MetaBox label="Dernier état" value={stateValue} fullWidth />
+            <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:gap-3">
+              <div className={metaBoxClassName(true)}>
+                <div className={metaLabelClassName()}>Source / Root</div>
+                <div className="mt-2 break-all text-zinc-100">
+                  {technicalSubtitle}
+                </div>
+              </div>
+
+              <div className={metaBoxClassName(true)}>
+                <div className={metaLabelClassName()}>Activité</div>
+                <div className="mt-2 text-zinc-100">{flowActivityLabel(flow)}</div>
+              </div>
+
+              <div className={metaBoxClassName(true)}>
+                <div className={metaLabelClassName()}>Workspace</div>
+                <div className="mt-2 text-zinc-100">
+                  {flow.workspaceId || "production"}
+                </div>
+              </div>
+
+              <div className={metaBoxClassName(true)}>
+                <div className={metaLabelClassName()}>Incident</div>
+                <div className="mt-2 text-zinc-100">{incidentLabel(flow)}</div>
+              </div>
+            </div>
           )}
         </div>
 
-        <div className="mt-auto flex flex-col gap-2 pt-1">
+        <div
+          className={`mt-auto flex flex-col ${
+            isRegistryOnly ? "gap-2.5 pt-1" : "gap-3 xl:gap-2 pt-2 xl:pt-1"
+          }`}
+        >
           <Link
             href={selectHref}
             className={actionLinkClassName(isActive ? "active" : "default")}
@@ -1229,8 +1258,8 @@ export default async function FlowsPage({ searchParams }: PageProps) {
     Array.isArray((commandsData as Record<string, unknown>).commands)
       ? ((commandsData as Record<string, unknown>).commands as AnyRecord[])
       : Array.isArray(commandsData)
-        ? (commandsData as AnyRecord[])
-        : [];
+      ? (commandsData as AnyRecord[])
+      : [];
 
   const rawIncidents: AnyRecord[] =
     incidentsData &&
@@ -1239,8 +1268,8 @@ export default async function FlowsPage({ searchParams }: PageProps) {
     Array.isArray((incidentsData as Record<string, unknown>).incidents)
       ? ((incidentsData as Record<string, unknown>).incidents as AnyRecord[])
       : Array.isArray(incidentsData)
-        ? (incidentsData as AnyRecord[])
-        : [];
+      ? (incidentsData as AnyRecord[])
+      : [];
 
   const rawFlows: AnyRecord[] =
     flowsData &&
@@ -1249,8 +1278,8 @@ export default async function FlowsPage({ searchParams }: PageProps) {
     Array.isArray((flowsData as Record<string, unknown>).flows)
       ? ((flowsData as Record<string, unknown>).flows as AnyRecord[])
       : Array.isArray(flowsData)
-        ? (flowsData as AnyRecord[])
-        : [];
+      ? (flowsData as AnyRecord[])
+      : [];
 
   const normalizedCommands = rawCommands.map(normalizeCommand);
 
@@ -1311,14 +1340,11 @@ export default async function FlowsPage({ searchParams }: PageProps) {
         { label: "Running", value: runningCount },
         { label: "Retry", value: retryCount },
         { label: "Failed", value: failedCount },
-        { label: "Partial", value: partialCount },
+        { label: "Registry-only", value: partialCount },
       ]}
       aside={
         <>
-          <SidePanelCard
-            title="Lecture opérationnelle"
-            subtitle="Repères visuels pour lire le control plane plus vite sur desktop."
-          >
+          <SidePanelCard title="Lecture opérationnelle">
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 <DashboardStatusBadge kind="running" />
@@ -1344,14 +1370,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
             </div>
           </SidePanelCard>
 
-          <SidePanelCard
-            title="Flow actif"
-            subtitle={
-              activeFlow
-                ? "Contexte rapide du flow actuellement sélectionné."
-                : "Aucun flow actif."
-            }
-          >
+          <SidePanelCard title="Flow actif">
             {activeFlow ? (
               <div className="space-y-4">
                 <div>
