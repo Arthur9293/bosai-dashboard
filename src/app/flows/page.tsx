@@ -885,7 +885,8 @@ function buildIncidentOnlyFlowCards(
   for (const incident of incidents) {
     const flowId = toText(incident.flow_id);
     const rootEventId = toText(incident.root_event_id);
-    const sourceRecordId = toText(incident.source_record_id) || toText(incident.id);
+    const sourceRecordId =
+      toText(incident.source_record_id) || toText(incident.id);
 
     if (!flowId && !rootEventId && !sourceRecordId) continue;
 
@@ -1038,11 +1039,7 @@ function FlowListCard({
 
   return (
     <article className={cardClassName(isActive, isRegistryOnly)}>
-      <div
-        className={`flex h-full flex-col ${
-          isRegistryOnly ? "gap-4 xl:gap-3" : "gap-4 xl:gap-3"
-        }`}
-      >
+      <div className="flex h-full flex-col gap-4 xl:gap-3">
         <div className="space-y-3 xl:space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <DashboardStatusBadge
@@ -1139,11 +1136,7 @@ function FlowListCard({
           )}
         </div>
 
-        <div
-          className={`mt-auto flex flex-col ${
-            isRegistryOnly ? "gap-2.5 pt-1" : "gap-2.5 pt-1"
-          }`}
-        >
+        <div className="mt-auto flex flex-col gap-2.5 pt-1">
           <Link
             href={selectHref}
             className={actionLinkClassName(isActive ? "active" : "default")}
@@ -1259,8 +1252,8 @@ export default async function FlowsPage({ searchParams }: PageProps) {
     Array.isArray((commandsData as Record<string, unknown>).commands)
       ? ((commandsData as Record<string, unknown>).commands as AnyRecord[])
       : Array.isArray(commandsData)
-      ? (commandsData as AnyRecord[])
-      : [];
+        ? (commandsData as AnyRecord[])
+        : [];
 
   const rawIncidents: AnyRecord[] =
     incidentsData &&
@@ -1269,8 +1262,8 @@ export default async function FlowsPage({ searchParams }: PageProps) {
     Array.isArray((incidentsData as Record<string, unknown>).incidents)
       ? ((incidentsData as Record<string, unknown>).incidents as AnyRecord[])
       : Array.isArray(incidentsData)
-      ? (incidentsData as AnyRecord[])
-      : [];
+        ? (incidentsData as AnyRecord[])
+        : [];
 
   const rawFlows: AnyRecord[] =
     flowsData &&
@@ -1279,8 +1272,8 @@ export default async function FlowsPage({ searchParams }: PageProps) {
     Array.isArray((flowsData as Record<string, unknown>).flows)
       ? ((flowsData as Record<string, unknown>).flows as AnyRecord[])
       : Array.isArray(flowsData)
-      ? (flowsData as AnyRecord[])
-      : [];
+        ? (flowsData as AnyRecord[])
+        : [];
 
   const normalizedCommands = rawCommands.map(normalizeCommand);
 
@@ -1312,6 +1305,10 @@ export default async function FlowsPage({ searchParams }: PageProps) {
 
   const stableEnrichedFlows = sortFlowCards(
     enrichedFlows.filter((flow) => !isNeedsAttention(flow))
+  );
+
+  const stableRegistryFlows = sortFlowCards(
+    registrySectionFlows.filter((flow) => !isNeedsAttention(flow))
   );
 
   const activeFlow =
@@ -1478,7 +1475,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
       <SectionBlock
         title="Flows registre uniquement"
         description="Flows présents dans le registre BOSAI mais sans lecture causale détaillée disponible pour le moment."
-        flows={registrySectionFlows}
+        flows={stableRegistryFlows}
         activeKey={activeKey}
         tone="neutral"
       />
