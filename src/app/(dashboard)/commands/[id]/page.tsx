@@ -10,12 +10,10 @@ import {
   type EventItem,
   type IncidentItem,
 } from "@/lib/api";
-import { DashboardStatusBadge } from "@/components/dashboard/StatusBadge";
-import type { DashboardStatusKind } from "@/components/dashboard/StatusBadge";
 import {
-  ControlPlaneShell,
-  SectionCard,
-} from "@/components/dashboard/ControlPlaneShell";
+  DashboardStatusBadge,
+  type DashboardStatusKind,
+} from "@/components/dashboard/StatusBadge";
 
 type PageProps = {
   params:
@@ -27,7 +25,13 @@ type PageProps = {
       };
 };
 
-type ShellTone = "default" | "info" | "success" | "warning" | "danger" | "muted";
+function cardClassName() {
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function statCardClassName() {
+  return "rounded-[28px] border border-white/10 bg-black/20 p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
 
 function actionLinkClassName(
   variant: "default" | "primary" | "soft" | "danger" = "default",
@@ -57,6 +61,14 @@ function sectionLabelClassName() {
 
 function metaLabelClassName() {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function neutralPillClassName() {
+  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-300";
+}
+
+function technicalValueClassName() {
+  return "break-all [overflow-wrap:anywhere] font-mono text-zinc-200";
 }
 
 function formatDate(value?: string | null): string {
@@ -148,19 +160,22 @@ function pickBestMatch<T>(items: T[], scorer: (item: T) => number): T | null {
   return bestItem;
 }
 
-function cleanCapabilityLabel(value: string): string {
-  const raw = toText(value, "");
-  if (!raw) return "unknown_capability";
-  return raw.replace(/_/g, " ");
+function compactTechnicalId(value: string, max = 28): string {
+  const clean = value.trim();
+  if (!clean) return "—";
+  if (clean.length <= max) return clean;
+
+  const start = Math.max(10, Math.floor((max - 3) / 2));
+  const end = Math.max(6, max - start - 3);
+
+  return `${clean.slice(0, start)}...${clean.slice(-end)}`;
 }
 
 function humanStatusLabel(status: string): string {
   const normalized = status.trim().toLowerCase();
 
   if (
-    ["done", "success", "completed", "processed", "resolved"].includes(
-      normalized
-    )
+    ["done", "success", "completed", "processed", "resolved"].includes(normalized)
   ) {
     return "Succès";
   }
@@ -188,40 +203,31 @@ function humanStatusLabel(status: string): string {
   return normalized ? normalized.toUpperCase() : "UNKNOWN";
 }
 
-function getCommandStatusBadgeKind(command: CommandItem): DashboardStatusKind {
-  const normalized = getCommandStatus(command).trim().toLowerCase();
+function getCommandStatusBucketValue(status: string) {
+  const normalized = status.trim().toLowerCase();
 
   if (["queued", "pending", "new"].includes(normalized)) return "queued";
   if (["running", "processing"].includes(normalized)) return "running";
   if (["retry", "retriable"].includes(normalized)) return "retry";
   if (["error", "failed", "dead", "blocked"].includes(normalized)) return "failed";
   if (
-    ["processed", "done", "success", "completed", "resolved"].includes(
-      normalized
-    )
+    ["processed", "done", "success", "completed", "resolved"].includes(normalized)
   ) {
-    return "success";
+    return "done";
   }
 
-  return "unknown";
+  return "other";
 }
 
-function getShellToneFromCommandStatus(command: CommandItem): ShellTone {
-  const normalized = getCommandStatus(command).trim().toLowerCase();
+function getCommandStatusBadgeKind(status: string): DashboardStatusKind {
+  const bucket = getCommandStatusBucketValue(status);
 
-  if (["running", "processing"].includes(normalized)) return "info";
-  if (["retry", "retriable"].includes(normalized)) return "warning";
-  if (["error", "failed", "dead", "blocked"].includes(normalized)) return "danger";
-  if (
-    ["processed", "done", "success", "completed", "resolved"].includes(
-      normalized
-    )
-  ) {
-    return "success";
-  }
-  if (["queued", "pending", "new", "ignored"].includes(normalized)) return "muted";
-
-  return "default";
+  if (bucket === "queued") return "queued";
+  if (bucket === "running") return "running";
+  if (bucket === "retry") return "retry";
+  if (bucket === "failed") return "failed";
+  if (bucket === "done") return "success";
+  return "unknown";
 }
 
 /* ----------------------------- Command helpers ---------------------------- */
@@ -396,7 +402,7 @@ function getCommandTitle(command: CommandItem): string {
 
 function getCommandSummaryLine(command: CommandItem): string {
   const status = humanStatusLabel(getCommandStatus(command));
-  const capability = cleanCapabilityLabel(getCommandCapability(command));
+  const capability = getCommandCapability(command).replace(/_/g, " ");
   const workspace = getCommandWorkspace(command);
 
   return `${status} · ${capability} · ${workspace}`;
@@ -478,6 +484,7 @@ function getEventCommandCandidates(event: EventItem): string[] {
   const record = event as Record<string, unknown>;
 
   return uniq([
+    toTextOrEmpty(event.command_id),
     toTextOrEmpty(record.command_id),
     toTextOrEmpty(record.Command_ID),
     toTextOrEmpty(record.linked_command),
@@ -511,14 +518,13 @@ function getEventRunCandidates(event: EventItem): string[] {
 
 function getEventFlowCandidates(event: EventItem): string[] {
   const payload = getEventPayload(event);
-  const record = event as Record<string, unknown>;
 
   return uniq([
-    toTextOrEmpty(record.id),
-    toTextOrEmpty(record.root_event_id),
-    toTextOrEmpty(record.source_record_id),
-    toTextOrEmpty(record.source_event_id),
-    toTextOrEmpty(record.flow_id),
+    toTextOrEmpty(event.id),
+    toTextOrEmpty(event.root_event_id),
+    toTextOrEmpty(event.source_record_id),
+    toTextOrEmpty(event.source_event_id),
+    toTextOrEmpty(event.flow_id),
     toTextOrEmpty(payload.root_event_id),
     toTextOrEmpty(payload.rootEventId),
     toTextOrEmpty(payload.source_record_id),
@@ -692,15 +698,23 @@ function scoreIncidentMatch(incident: IncidentItem, command: CommandItem): numbe
 
 function buildFlowHref(command: CommandItem): string {
   const flowId = getCommandFlowId(command);
-  if (flowId) return `/flows/${encodeURIComponent(flowId)}`;
+  if (flowId) {
+    return `/flows/${encodeURIComponent(flowId)}`;
+  }
 
   const rootEventId = getCommandRootEventId(command);
-  if (rootEventId) return `/flows/${encodeURIComponent(rootEventId)}`;
+  if (rootEventId) {
+    return `/flows/${encodeURIComponent(rootEventId)}`;
+  }
 
   const sourceEventId = getCommandSourceEventId(command);
-  if (sourceEventId) return `/flows/${encodeURIComponent(sourceEventId)}`;
+  if (sourceEventId) {
+    return `/flows/${encodeURIComponent(sourceEventId)}`;
+  }
 
-  if (command.id) return `/flows/${encodeURIComponent(String(command.id))}`;
+  if (command.id) {
+    return `/flows/${encodeURIComponent(String(command.id))}`;
+  }
 
   return "";
 }
@@ -709,12 +723,8 @@ function buildSafeEventHref(
   matchedEvent: EventItem | null,
   command: CommandItem
 ): string {
-  if (matchedEvent) {
-    const record = matchedEvent as Record<string, unknown>;
-    const matchedId = toTextOrEmpty(record.id);
-    if (matchedId) {
-      return `/events/${encodeURIComponent(matchedId)}`;
-    }
+  if (matchedEvent?.id) {
+    return `/events/${encodeURIComponent(matchedEvent.id)}`;
   }
 
   const rootEventId = getCommandRootEventId(command);
@@ -735,8 +745,6 @@ function buildIncidentHref(matchedIncident: IncidentItem | null): string {
   return `/incidents/${encodeURIComponent(matchedIncident.id)}`;
 }
 
-/* ------------------------------- UI helpers ------------------------------- */
-
 function MetaItem({
   label,
   value,
@@ -747,50 +755,43 @@ function MetaItem({
   breakAll?: boolean;
 }) {
   return (
-    <div className={breakAll ? "break-all" : undefined}>
+    <div className={breakAll ? "break-all [overflow-wrap:anywhere]" : undefined}>
       <div className={metaLabelClassName()}>{label}</div>
       <div className="mt-1 text-zinc-200">{value}</div>
     </div>
   );
 }
 
-function PreviewPanel({
-  title,
+function StatCard({
+  label,
   value,
 }: {
-  title: string;
-  value: unknown;
+  label: string;
+  value: string;
 }) {
   return (
-    <div className="space-y-3">
-      <div className={sectionLabelClassName()}>{title}</div>
-      <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
-        {stringifyPretty(value)}
-      </pre>
+    <div className={statCardClassName()}>
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className="mt-3 text-xl font-semibold tracking-tight text-white">
+        {value}
+      </div>
     </div>
   );
 }
 
-function DiagnosticRow({
+function DiagnosticMeta({
   label,
   value,
-  technical = false,
 }: {
   label: string;
   value: ReactNode;
-  technical?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 md:flex-row md:items-start md:justify-between md:gap-4 text-sm">
-      <span className="text-white/55 md:max-w-[38%]">{label}</span>
-      <span
-        className={[
-          "text-white/90 md:max-w-[58%] md:text-right",
-          technical ? "break-all" : "break-words",
-        ].join(" ")}
-      >
+    <div className="space-y-1">
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className="break-all [overflow-wrap:anywhere] text-zinc-200">
         {value}
-      </span>
+      </div>
     </div>
   );
 }
@@ -813,6 +814,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
       const commands = Array.isArray(commandsData?.commands)
         ? commandsData.commands
         : [];
+
       command = commands.find((item) => String(item.id) === id) || null;
     } catch {
       command = null;
@@ -825,7 +827,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
   const title = getCommandTitle(command);
   const status = getCommandStatus(command);
-  const capability = getCommandCapability(command);
+  const capability = getCommandCapability(command).replace(/_/g, " ");
   const workspace = getCommandWorkspace(command);
   const flowId = getCommandFlowId(command);
   const rootEventId = getCommandRootEventId(command);
@@ -859,13 +861,6 @@ export default async function CommandDetailPage({ params }: PageProps) {
     matchedIncident = null;
   }
 
-  const matchedEventId =
-    matchedEvent && typeof matchedEvent === "object"
-      ? toTextOrEmpty((matchedEvent as Record<string, unknown>).id) || "Aucun event lié trouvé"
-      : "Aucun event lié trouvé";
-
-  const matchedIncidentId = matchedIncident?.id || "Aucun incident lié trouvé";
-
   const flowHref = buildFlowHref(command);
   const eventHref = buildSafeEventHref(matchedEvent, command);
   const incidentHref = buildIncidentHref(matchedIncident);
@@ -874,253 +869,317 @@ export default async function CommandDetailPage({ params }: PageProps) {
   const hasEvent = eventHref !== "";
   const hasIncident = incidentHref !== "";
 
-  const shellBadges: Array<{ label: string; tone: ShellTone }> = [
-    {
-      label: humanStatusLabel(status),
-      tone: getShellToneFromCommandStatus(command),
-    },
-    {
-      label: cleanCapabilityLabel(capability),
-      tone: "muted",
-    },
-  ];
-
-  if (toolKey) {
-    shellBadges.push({ label: `Tool ${toolKey}`, tone: "muted" });
-  }
-
-  if (toolMode) {
-    shellBadges.push({ label: `Mode ${toolMode}`, tone: "muted" });
-  }
+  const commandIdText = String(command.id || "");
+  const compactCommandId = compactTechnicalId(commandIdText, 30);
 
   return (
-    <ControlPlaneShell
-      eyebrow="BOSAI Dashboard"
-      title={title}
-      description="Lecture détaillée d’une command BOSAI, avec contexte d’exécution, liens de drill-down et previews techniques."
-      badges={shellBadges}
-      metrics={[
-        { label: "Created", value: formatDate(getCommandCreatedAt(command)) },
-        { label: "Started", value: formatDate(getCommandStartedAt(command)) },
-        { label: "Finished", value: formatDate(getCommandFinishedAt(command)) },
-        { label: "Updated", value: formatDate(getCommandUpdatedAt(command)) },
-      ]}
-      topMeta={
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="text-sm text-white/60 break-words">
-            <Link
-              href="/commands"
-              className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+    <div className="space-y-8">
+      <section className={cardClassName()}>
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <div className="text-base text-zinc-300">
+              <Link
+                href="/commands"
+                className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+              >
+                Commands
+              </Link>{" "}
+              / {title}
+            </div>
+
+            <div className={metaLabelClassName()}>Command ID</div>
+            <div
+              className="break-all [overflow-wrap:anywhere] font-mono text-sm uppercase tracking-[0.18em] text-zinc-500"
+              title={commandIdText}
             >
-              Commands
-            </Link>{" "}
-            / <span className="text-white/85">{title}</span>
+              {compactCommandId}
+            </div>
           </div>
 
-          <div className="text-xs uppercase tracking-[0.18em] text-white/35 break-all md:text-right">
-            Command ID · {String(command.id)}
+          <div className="border-t border-white/10 pt-5">
+            <div className="space-y-4">
+              <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
+
+              <h1 className="break-words text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+                {title}
+              </h1>
+
+              <p className="max-w-3xl text-base text-zinc-400 sm:text-lg">
+                Lecture détaillée d’une command BOSAI, avec contexte d’exécution,
+                liens de drill-down et previews techniques.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <DashboardStatusBadge
+                  kind={getCommandStatusBadgeKind(status)}
+                  label={humanStatusLabel(status)}
+                />
+
+                <span className={neutralPillClassName()}>{capability}</span>
+
+                {toolKey ? (
+                  <span className={neutralPillClassName()}>TOOL {toolKey}</span>
+                ) : null}
+
+                {toolMode ? (
+                  <span className={neutralPillClassName()}>MODE {toolMode}</span>
+                ) : null}
+              </div>
+            </div>
           </div>
         </div>
-      }
-      footerNote="Les correspondances flow / event / incident sont calculées en best-effort à partir des identifiants de command, run, flow et workspace."
-    >
-      <SectionCard
-        title="Overview"
-        description="Contexte principal, identifiants et liaisons de cette command."
-      >
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <MetaItem label="ID" value={String(command.id)} breakAll />
-          <MetaItem label="Status" value={status} />
-          <MetaItem label="Capability" value={capability} />
-          <MetaItem label="Workspace" value={workspace} />
-          <MetaItem label="Run" value={runId} breakAll />
-          <MetaItem label="Parent" value={parentId || "—"} breakAll />
-          <MetaItem label="Flow" value={flowId || "—"} breakAll />
-          <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
-          <MetaItem label="Source event" value={sourceEventId || "—"} breakAll />
+      </section>
 
-          {errorText ? (
-            <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-rose-500/20 bg-rose-500/10 px-4 py-4">
-              <div className={metaLabelClassName()}>Error</div>
-              <div className="mt-1 break-all text-rose-100">{errorText}</div>
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <StatCard label="Created" value={formatDate(getCommandCreatedAt(command))} />
+        <StatCard label="Started" value={formatDate(getCommandStartedAt(command))} />
+        <StatCard label="Finished" value={formatDate(getCommandFinishedAt(command))} />
+        <StatCard label="Updated" value={formatDate(getCommandUpdatedAt(command))} />
+      </section>
+
+      <section className={cardClassName()}>
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <div className="text-2xl font-semibold tracking-tight text-white">
+              Overview
             </div>
-          ) : (
-            <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
-              <div className={metaLabelClassName()}>Error</div>
-              <div className="mt-1 text-zinc-300">—</div>
-            </div>
-          )}
-        </div>
-      </SectionCard>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <SectionCard
-          title="Quick actions"
-          description="Navigation rapide depuis cette command."
-        >
-          <div className="space-y-3">
-            <Link href="/commands" className={actionLinkClassName("soft")}>
-              Retour à la liste commands
-            </Link>
-
-            <Link href="/commands" className={actionLinkClassName("primary")}>
-              Voir toutes les commands
-            </Link>
-
-            {hasFlow ? (
-              <Link href={flowHref} className={actionLinkClassName("soft")}>
-                Ouvrir le flow lié
-              </Link>
-            ) : (
-              <span className={actionLinkClassName("soft", true)}>
-                Ouvrir le flow lié
-              </span>
-            )}
-
-            {hasEvent ? (
-              <Link href={eventHref} className={actionLinkClassName("soft")}>
-                Ouvrir l’event source
-              </Link>
-            ) : (
-              <span className={actionLinkClassName("soft", true)}>
-                Ouvrir l’event source
-              </span>
-            )}
-
-            {hasIncident ? (
-              <Link href={incidentHref} className={actionLinkClassName("danger")}>
-                Ouvrir l’incident lié
-              </Link>
-            ) : (
-              <span className={actionLinkClassName("danger", true)}>
-                Ouvrir l’incident lié
-              </span>
-            )}
+            <p className="max-w-3xl text-base text-zinc-400">
+              Contexte principal, identifiants et liaisons de cette command.
+            </p>
           </div>
-        </SectionCard>
 
-        <SectionCard
-          title="Routing diagnostic"
-          description="Lecture rapide du matching autour de cette command."
-        >
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              <DashboardStatusBadge
-                kind={getCommandStatusBadgeKind(command)}
-                label={humanStatusLabel(status).toUpperCase()}
+          <div className="border-t border-white/10 pt-5">
+            <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+              <MetaItem
+                label="ID"
+                value={<span className={technicalValueClassName()}>{commandIdText}</span>}
+                breakAll
               />
-              <DashboardStatusBadge
-                kind={hasFlow ? "success" : "unknown"}
-                label={hasFlow ? "FLOW LINKED" : "NO FLOW LINK"}
+              <MetaItem label="Status" value={status} />
+              <MetaItem label="Capability" value={capability} />
+              <MetaItem label="Workspace" value={workspace} />
+              <MetaItem
+                label="Run"
+                value={<span className={technicalValueClassName()}>{runId}</span>}
+                breakAll
               />
-              <DashboardStatusBadge
-                kind={hasEvent ? "success" : "unknown"}
-                label={hasEvent ? "EVENT LINKED" : "NO EVENT LINK"}
+              <MetaItem
+                label="Parent"
+                value={
+                  <span className={technicalValueClassName()}>{parentId || "—"}</span>
+                }
+                breakAll
               />
-              <DashboardStatusBadge
-                kind={hasIncident ? "incident" : "unknown"}
-                label={hasIncident ? "INCIDENT LINKED" : "NO INCIDENT LINK"}
+              <MetaItem
+                label="Flow"
+                value={<span className={technicalValueClassName()}>{flowId || "—"}</span>}
+                breakAll
               />
+              <MetaItem
+                label="Root event"
+                value={
+                  <span className={technicalValueClassName()}>{rootEventId || "—"}</span>
+                }
+                breakAll
+              />
+              <MetaItem
+                label="Source event"
+                value={
+                  <span className={technicalValueClassName()}>
+                    {sourceEventId || "—"}
+                  </span>
+                }
+                breakAll
+              />
+
+              {errorText ? (
+                <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-rose-500/20 bg-rose-500/10 px-4 py-4">
+                  <div className={metaLabelClassName()}>Error</div>
+                  <div className="mt-1 break-all [overflow-wrap:anywhere] text-rose-100">
+                    {errorText}
+                  </div>
+                </div>
+              ) : null}
             </div>
+          </div>
+        </div>
+      </section>
 
+      <section className={cardClassName()}>
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <div className="text-2xl font-semibold tracking-tight text-white">
+              Quick actions
+            </div>
+            <p className="max-w-3xl text-base text-zinc-400">
+              Navigation rapide depuis cette command.
+            </p>
+          </div>
+
+          <div className="border-t border-white/10 pt-5">
             <div className="space-y-3">
-              <DiagnosticRow label="Workspace" value={workspace} />
-              <DiagnosticRow label="Run" value={runId} technical />
-              <DiagnosticRow
+              <Link href="/commands" className={actionLinkClassName("soft")}>
+                Retour à la liste commands
+              </Link>
+
+              <Link href="/commands" className={actionLinkClassName("primary")}>
+                Voir toutes les commands
+              </Link>
+
+              {hasFlow ? (
+                <Link href={flowHref} className={actionLinkClassName("soft")}>
+                  Ouvrir le flow lié
+                </Link>
+              ) : (
+                <span className={actionLinkClassName("soft", true)}>
+                  Ouvrir le flow lié
+                </span>
+              )}
+
+              {hasEvent ? (
+                <Link href={eventHref} className={actionLinkClassName("soft")}>
+                  Ouvrir l’event source
+                </Link>
+              ) : (
+                <span className={actionLinkClassName("soft", true)}>
+                  Ouvrir l’event source
+                </span>
+              )}
+
+              {hasIncident ? (
+                <Link href={incidentHref} className={actionLinkClassName("danger")}>
+                  Ouvrir l’incident lié
+                </Link>
+              ) : (
+                <span className={actionLinkClassName("danger", true)}>
+                  Ouvrir l’incident lié
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={cardClassName()}>
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <div className="text-2xl font-semibold tracking-tight text-white">
+              Routing diagnostic
+            </div>
+            <p className="max-w-3xl text-base text-zinc-400">
+              Lecture rapide du matching autour de cette command.
+            </p>
+          </div>
+
+          <div className="border-t border-white/10 pt-5">
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <DashboardStatusBadge
+                  kind={getCommandStatusBadgeKind(status)}
+                  label={humanStatusLabel(status).toUpperCase()}
+                />
+                <DashboardStatusBadge kind="success" label="FLOW LINKED" />
+                <DashboardStatusBadge
+                  kind={hasEvent ? "success" : "unknown"}
+                  label={hasEvent ? "EVENT LINKED" : "NO EVENT LINK"}
+                />
+                <DashboardStatusBadge
+                  kind={hasIncident ? "incident" : "unknown"}
+                  label={hasIncident ? "INCIDENT LINKED" : "NO INCIDENT LINK"}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <DiagnosticMeta label="Workspace" value={workspace} />
+                <DiagnosticMeta label="Run" value={runId} />
+                <DiagnosticMeta
+                  label="Flow target"
+                  value={flowId || rootEventId || sourceEventId || commandIdText || "—"}
+                />
+                <DiagnosticMeta
+                  label="Matched event"
+                  value={matchedEvent?.id || "Aucun event lié trouvé"}
+                />
+                <DiagnosticMeta
+                  label="Matched incident"
+                  value={matchedIncident?.id || "Aucun incident lié trouvé"}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={cardClassName()}>
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <div className="text-2xl font-semibold tracking-tight text-white">
+              Linking context
+            </div>
+            <p className="max-w-3xl text-base text-zinc-400">
+              Diagnostic détaillé des correspondances autour du flow, de l’event et
+              de l’incident.
+            </p>
+          </div>
+
+          <div className="border-t border-white/10 pt-5">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <DiagnosticMeta label="Flow href" value={flowHref || "—"} />
+              <DiagnosticMeta label="Event href" value={eventHref || "—"} />
+              <DiagnosticMeta label="Incident href" value={incidentHref || "—"} />
+              <DiagnosticMeta
+                label="Matched event ID"
+                value={matchedEvent?.id || "Aucun event lié trouvé"}
+              />
+              <DiagnosticMeta
+                label="Matched incident ID"
+                value={matchedIncident?.id || "Aucun incident lié trouvé"}
+              />
+              <DiagnosticMeta
                 label="Flow target"
-                value={flowId || rootEventId || sourceEventId || String(command.id)}
-                technical
-              />
-              <DiagnosticRow
-                label="Matched event"
-                value={matchedEventId}
-                technical={matchedEventId !== "Aucun event lié trouvé"}
-              />
-              <DiagnosticRow
-                label="Matched incident"
-                value={matchedIncidentId}
-                technical={matchedIncidentId !== "Aucun incident lié trouvé"}
+                value={flowId || rootEventId || sourceEventId || "—"}
               />
             </div>
           </div>
-        </SectionCard>
-      </div>
-
-      <SectionCard
-        title="Linking context"
-        description="Diagnostic détaillé des correspondances autour du flow, de l’event et de l’incident."
-      >
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <MetaItem
-            label="Flow href"
-            value={
-              hasFlow ? (
-                <Link
-                  href={flowHref}
-                  className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                >
-                  {flowHref}
-                </Link>
-              ) : (
-                "—"
-              )
-            }
-            breakAll
-          />
-
-          <MetaItem
-            label="Event href"
-            value={
-              hasEvent ? (
-                <Link
-                  href={eventHref}
-                  className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                >
-                  {eventHref}
-                </Link>
-              ) : (
-                "—"
-              )
-            }
-            breakAll
-          />
-
-          <MetaItem
-            label="Incident href"
-            value={
-              hasIncident ? (
-                <Link
-                  href={incidentHref}
-                  className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
-                >
-                  {incidentHref}
-                </Link>
-              ) : (
-                "—"
-              )
-            }
-            breakAll
-          />
-
-          <MetaItem label="Matched event ID" value={matchedEventId} breakAll />
-          <MetaItem label="Matched incident ID" value={matchedIncidentId} breakAll />
-          <MetaItem
-            label="Flow target"
-            value={flowId || rootEventId || sourceEventId || String(command.id)}
-            breakAll
-          />
         </div>
-      </SectionCard>
+      </section>
 
-      <SectionCard
-        title="Payload previews"
-        description="Prévisualisation brute des données d’entrée et du résultat pour debug rapide."
-      >
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <PreviewPanel title="Input preview" value={command.input ?? {}} />
-          <PreviewPanel title="Result preview" value={command.result ?? {}} />
+      <section className={cardClassName()}>
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <div className="text-2xl font-semibold tracking-tight text-white">
+              Payload previews
+            </div>
+            <p className="max-w-3xl text-base text-zinc-400">
+              Prévisualisation brute des données d’entrée et du résultat pour debug
+              rapide.
+            </p>
+          </div>
+
+          <div className="border-t border-white/10 pt-5 space-y-6">
+            <div>
+              <div className={sectionLabelClassName()}>Input preview</div>
+              <pre className="mt-3 overflow-x-auto rounded-[20px] border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+{stringifyPretty(command.input ?? {})}
+              </pre>
+            </div>
+
+            <div>
+              <div className={sectionLabelClassName()}>Result preview</div>
+              <pre className="mt-3 overflow-x-auto rounded-[20px] border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+{stringifyPretty(command.result ?? {})}
+              </pre>
+            </div>
+          </div>
         </div>
-      </SectionCard>
-    </ControlPlaneShell>
+      </section>
+
+      <section className={cardClassName()}>
+        <p className="max-w-4xl text-base text-zinc-400">
+          Les correspondances flow / event / incident sont calculées en best-effort
+          à partir des identifiants de command, run, flow et workspace.
+        </p>
+      </section>
+    </div>
   );
 }
