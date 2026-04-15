@@ -7,6 +7,10 @@ import {
 } from "@/lib/api";
 import { DashboardStatusBadge } from "@/components/dashboard/StatusBadge";
 import type { DashboardStatusKind } from "@/components/dashboard/StatusBadge";
+import {
+  EmptyStatePanel,
+  SectionCountPill,
+} from "@/components/dashboard/ControlPlaneShell";
 import { CommandsFilters } from "./commands-filters";
 
 type SearchParams = {
@@ -39,10 +43,6 @@ function cardClassName() {
 
 function statCardClassName() {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
-
-function emptyStateClassName() {
-  return "rounded-[28px] border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500";
 }
 
 function actionLinkClassName(
