@@ -16,10 +16,6 @@ import {
   type SlaResponse,
   type CommandItem,
 } from "@/lib/api";
-import {
-  EmptyStatePanel,
-  SectionCountPill,
-} from "@/components/dashboard/ControlPlaneShell";
 
 function formatNumber(value?: number): string {
   return typeof value === "number" && Number.isFinite(value)
@@ -54,15 +50,26 @@ function toText(value: unknown, fallback = ""): string {
   return text || fallback;
 }
 
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return fallback;
+}
+
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
 function toTs(value?: string | number | null): number {
   if (value === null || value === undefined || value === "") return 0;
 
   const ts = new Date(value).getTime();
   return Number.isNaN(ts) ? 0 : ts;
-}
-
-function uniq(values: string[]): string[] {
-  return Array.from(new Set(values.filter(Boolean)));
 }
 
 function healthLabel(score: number, rawStatus?: string): string {
@@ -100,7 +107,7 @@ function metaLabelClassName(): string {
 }
 
 function rowCardClassName(): string {
-  return "rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 transition hover:border-white/15 hover:bg-white/[0.04]";
+  return "block w-full overflow-hidden rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 transition hover:border-white/15 hover:bg-white/[0.04]";
 }
 
 function badgeClassName(
@@ -279,17 +286,6 @@ function getIncidentUpdatedTs(incident: IncidentItem): number {
     toTs(record.updated_at as string | number | null | undefined),
     toTs(record.opened_at as string | number | null | undefined),
     toTs(record.created_at as string | number | null | undefined)
-  );
-}
-
-function getIncidentLastActivityLabel(incident: IncidentItem): string {
-  const record = incident as Record<string, unknown>;
-  return formatDate(
-    toText(record.resolved_at) ||
-      toText(record.updated_at) ||
-      toText(record.opened_at) ||
-      toText(record.created_at) ||
-      null
   );
 }
 
@@ -561,17 +557,6 @@ function getCommandActivityTs(command: CommandItem): number {
   );
 }
 
-function getCommandLastActivityLabel(command: CommandItem): string {
-  const record = command as Record<string, unknown>;
-  return formatDate(
-    toText(record.finished_at) ||
-      toText(record.updated_at) ||
-      toText(record.started_at) ||
-      toText(record.created_at) ||
-      null
-  );
-}
-
 function getCommandFlowKey(command: CommandItem): string {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
@@ -668,7 +653,7 @@ function MetricRow({
   value: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-2.5">
       <span className="text-zinc-400">{label}</span>
       <span className="font-medium text-white">{value}</span>
     </div>
@@ -772,8 +757,8 @@ function AttentionIncidentCard({ incident }: { incident: IncidentItem }) {
             <div className="mt-2 text-sm text-zinc-400">
               {incidentWorkspace} · {incidentFlow}
             </div>
-            <div className="mt-2 text-xs text-zinc-500">
-              Activité : {getIncidentLastActivityLabel(incident)}
+            <div className="mt-2 text-sm text-zinc-500">
+              Activité : {formatDate((incident as Record<string, unknown>).updated_at as string)}
             </div>
           </div>
 
@@ -809,8 +794,8 @@ function AttentionCommandCard({ command }: { command: CommandItem }) {
               {title}
             </div>
             <div className="mt-2 text-sm text-zinc-400">{commandSummaryLine(command)}</div>
-            <div className="mt-2 text-xs text-zinc-500">
-              Activité : {getCommandLastActivityLabel(command)}
+            <div className="mt-2 text-sm text-zinc-500">
+              Activité : {formatDate((command as Record<string, unknown>).updated_at as string)}
             </div>
           </div>
 
@@ -837,14 +822,14 @@ function AttentionCommandCard({ command }: { command: CommandItem }) {
 function RecentRunCard({
   title,
   value,
-  subtitle,
   href,
+  subtitle,
   badge,
 }: {
   title: string;
   value: string;
-  subtitle?: string;
   href: string;
+  subtitle?: string;
   badge?: ReactNode;
 }) {
   return (
@@ -961,9 +946,6 @@ export default async function OverviewPage() {
   const escalatedIncidentItems = incidentItems.filter((item) =>
     isEscalatedIncident(item)
   );
-  const resolvedIncidentItems = incidentItems.filter(
-    (item) => getIncidentStatus(item) === "resolved"
-  );
   const criticalIncidentItems = incidentItems.filter((item) =>
     isCriticalIncident(item)
   );
@@ -973,7 +955,6 @@ export default async function OverviewPage() {
 
   const openIncidents = openIncidentItems.length;
   const escalatedIncidents = escalatedIncidentItems.length;
-  const resolvedIncidents = resolvedIncidentItems.length;
   const criticalIncidents = criticalIncidentItems.length;
   const warningIncidents = warningIncidentItems.length;
 
@@ -1099,7 +1080,11 @@ export default async function OverviewPage() {
       <SectionBlock
         title="Needs attention"
         description="Ce qui demande une action maintenant : incidents ouverts ou escaladés, commands encore actives ou en échec."
-        action={<SectionCountPill value={activeIncidentItems.length + attentionCommands.length} tone="warning" />}
+        action={
+          <div className="text-sm text-zinc-500">
+            {activeIncidentItems.length + attentionCommands.length} élément(s)
+          </div>
+        }
       >
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <div className={cardClassName()}>
@@ -1117,7 +1102,7 @@ export default async function OverviewPage() {
             </div>
 
             <div className="space-y-3">
-              {activeIncidentItems.slice(0, 4).map((incident) => (
+              {activeIncidentItems.slice(0, 2).map((incident) => (
                 <AttentionIncidentCard
                   key={String((incident as Record<string, unknown>).id)}
                   incident={incident}
@@ -1125,10 +1110,9 @@ export default async function OverviewPage() {
               ))}
 
               {activeIncidentItems.length === 0 && (
-                <EmptyStatePanel
-                  title="Aucun incident actif"
-                  description="Aucun incident ouvert ou escaladé n’est visible pour le moment."
-                />
+                <div className="rounded-[24px] border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
+                  Aucun incident actif affiché.
+                </div>
               )}
             </div>
           </div>
@@ -1148,7 +1132,7 @@ export default async function OverviewPage() {
             </div>
 
             <div className="space-y-3">
-              {attentionCommands.slice(0, 4).map((command) => (
+              {attentionCommands.slice(0, 2).map((command) => (
                 <AttentionCommandCard
                   key={String((command as Record<string, unknown>).id)}
                   command={command}
@@ -1156,10 +1140,9 @@ export default async function OverviewPage() {
               ))}
 
               {attentionCommands.length === 0 && (
-                <EmptyStatePanel
-                  title="Aucune command critique"
-                  description="Aucune command running, retry, failed ou dead n’est visible pour le moment."
-                />
+                <div className="rounded-[24px] border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
+                  Aucune command critique affichée.
+                </div>
               )}
             </div>
           </div>
@@ -1358,7 +1341,9 @@ export default async function OverviewPage() {
               key={String((command as Record<string, unknown>).id)}
               title="Command récente"
               value={getCommandTitle(command)}
-              subtitle={`Dernière activité : ${getCommandLastActivityLabel(command)}`}
+              subtitle={`Dernière activité : ${formatDate(
+                (command as Record<string, unknown>).updated_at as string
+              )}`}
               href={`/commands/${encodeURIComponent(String((command as Record<string, unknown>).id || ""))}`}
               badge={
                 <span className={commandTone(getCommandStatus(command))}>
@@ -1369,51 +1354,10 @@ export default async function OverviewPage() {
           ))}
 
           {recentCommands.length === 0 && (
-            <EmptyStatePanel
-              title="Aucune activité récente"
-              description="Le dashboard n’a remonté aucune command récente sur cette vue."
-            />
+            <div className="rounded-[24px] border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500">
+              Aucune activité récente affichée.
+            </div>
           )}
-        </div>
-      </SectionBlock>
-
-      <SectionBlock
-        title="Signals summary"
-        description="Lecture rapide des principaux signaux consolidés du cockpit."
-      >
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div className={cardClassName()}>
-            <div className="mb-5 text-lg font-medium text-white">Incidents</div>
-            <div className="space-y-3 text-sm">
-              <MetricRow label="Open" value={formatNumber(openIncidents)} />
-              <MetricRow label="Escalated" value={formatNumber(escalatedIncidents)} />
-              <MetricRow label="Resolved" value={formatNumber(resolvedIncidents)} />
-              <MetricRow label="Critical" value={formatNumber(criticalIncidents)} />
-              <MetricRow label="Warning" value={formatNumber(warningIncidents)} />
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="mb-5 text-lg font-medium text-white">Commands</div>
-            <div className="space-y-3 text-sm">
-              <MetricRow label="Queued" value={formatNumber(queuedCommands)} />
-              <MetricRow label="Running" value={formatNumber(runningCommands)} />
-              <MetricRow label="Retry" value={formatNumber(retryCommands)} />
-              <MetricRow label="Failed" value={formatNumber(failedCommands)} />
-              <MetricRow label="Done" value={formatNumber(doneCommands)} />
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="mb-5 text-lg font-medium text-white">Coverage</div>
-            <div className="space-y-3 text-sm">
-              <MetricRow label="Runs" value={formatNumber(totalRuns)} />
-              <MetricRow label="Commands" value={formatNumber(totalCommands)} />
-              <MetricRow label="Events" value={formatNumber(totalEvents)} />
-              <MetricRow label="Incidents" value={formatNumber(incidentItems.length)} />
-              <MetricRow label="SLA items" value={formatNumber(totalSlaSignals)} />
-            </div>
-          </div>
         </div>
       </SectionBlock>
     </div>
