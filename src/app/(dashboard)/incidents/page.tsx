@@ -5,11 +5,17 @@ import {
   type IncidentItem,
   type IncidentsResponse,
 } from "@/lib/api";
-import { DashboardStatusBadge } from "@/components/dashboard/StatusBadge";
 import {
-  EmptyStatePanel,
+  ControlPlaneShell,
+  SectionCard,
+  SidePanelCard,
   SectionCountPill,
+  EmptyStatePanel,
 } from "@/components/dashboard/ControlPlaneShell";
+import {
+  DashboardStatusBadge,
+  type DashboardStatusKind,
+} from "@/components/dashboard/StatusBadge";
 
 type SearchParams = {
   flow_id?: string | string[];
@@ -26,34 +32,45 @@ function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
-function statCardClassName(): string {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
-
 function actionLinkClassName(
   variant: "default" | "primary" | "soft" | "danger" = "default"
 ): string {
   if (variant === "primary") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
   if (variant === "danger") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
+    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
   }
 
   if (variant === "soft") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
-function sectionLabelClassName(): string {
-  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
+function chipClassName(): string {
+  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200";
 }
 
 function metaLabelClassName(): string {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function metaBoxClassName(): string {
+  return "rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+}
+
+function compactTechnicalId(value: string, max = 34): string {
+  const clean = value.trim();
+  if (!clean) return "—";
+  if (clean.length <= max) return clean;
+
+  const keepStart = Math.max(12, Math.floor((max - 3) / 2));
+  const keepEnd = Math.max(8, max - keepStart - 3);
+
+  return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
 }
 
 function formatDate(value?: string): string {
@@ -440,7 +457,9 @@ function getBackToFlowsHref(filters: {
   return target ? `/flows/${encodeURIComponent(target)}` : "/flows";
 }
 
-function getIncidentStatusBadgeKind(incident: IncidentItem) {
+function getIncidentStatusBadgeKind(
+  incident: IncidentItem
+): DashboardStatusKind {
   const status = getIncidentStatusNormalized(incident);
 
   if (status === "resolved") return "success";
@@ -449,7 +468,9 @@ function getIncidentStatusBadgeKind(incident: IncidentItem) {
   return "unknown";
 }
 
-function getIncidentSeverityBadgeKind(incident: IncidentItem) {
+function getIncidentSeverityBadgeKind(
+  incident: IncidentItem
+): DashboardStatusKind {
   const severity = getIncidentSeverityNormalized(incident);
 
   if (severity === "critical") return "failed";
@@ -459,7 +480,9 @@ function getIncidentSeverityBadgeKind(incident: IncidentItem) {
   return "unknown";
 }
 
-function getIncidentSlaBadgeKind(incident: IncidentItem) {
+function getIncidentSlaBadgeKind(
+  incident: IncidentItem
+): DashboardStatusKind {
   const resolvedLike =
     Boolean(incident.resolved_at) ||
     getIncidentStatusNormalized(incident) === "resolved";
@@ -482,7 +505,9 @@ function getIncidentSlaBadgeKind(incident: IncidentItem) {
   return "unknown";
 }
 
-function getDecisionBadgeKind(incident: IncidentItem) {
+function getDecisionBadgeKind(
+  incident: IncidentItem
+): DashboardStatusKind {
   const decision = getDecisionStatus(incident).toLowerCase();
 
   if (["escalate", "escalated"].includes(decision)) return "incident";
@@ -490,6 +515,22 @@ function getDecisionBadgeKind(incident: IncidentItem) {
   if (["retry", "retriable"].includes(decision)) return "retry";
   if (decision) return "queued";
   return "unknown";
+}
+
+function getIncidentHref(incident: IncidentItem): string {
+  return `/incidents/${encodeURIComponent(incident.id)}`;
+}
+
+function getFlowHref(incident: IncidentItem): string {
+  const flowTarget = getBestFlowTargetFromIncident(incident);
+  return flowTarget ? `/flows/${encodeURIComponent(flowTarget)}` : "";
+}
+
+function getCommandHref(incident: IncidentItem): string {
+  const commandRecord = getCommandRecord(incident);
+  return commandRecord && commandRecord !== "—"
+    ? `/commands/${encodeURIComponent(commandRecord)}`
+    : "";
 }
 
 function MetaItem({
@@ -509,26 +550,7 @@ function MetaItem({
   );
 }
 
-function StatCard({
-  label,
-  value,
-  tone = "text-white",
-}: {
-  label: string;
-  value: number;
-  tone?: string;
-}) {
-  return (
-    <div className={statCardClassName()}>
-      <div className="text-sm text-zinc-400">{label}</div>
-      <div className={`mt-3 text-4xl font-semibold tracking-tight ${tone}`}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function IncidentCard({ incident }: { incident: IncidentItem }) {
+function IncidentListCard({ incident }: { incident: IncidentItem }) {
   const title = getIncidentTitle(incident);
   const statusLabel = getIncidentStatusLabel(incident);
   const severityLabel = getIncidentSeverityLabel(incident);
@@ -539,16 +561,20 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
   const rootEventId = getRootEventId(incident);
   const runRecord = getRunRecord(incident);
   const suggestedAction = getSuggestedAction(incident);
+  const flowHref = getFlowHref(incident);
+  const commandHref = getCommandHref(incident);
 
   return (
     <article className={cardClassName()}>
       <div className="flex h-full flex-col gap-5">
         <div className="space-y-4 border-b border-white/10 pb-4">
-          <div className={sectionLabelClassName()}>BOSAI Incident</div>
+          <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
+            BOSAI Incident
+          </div>
 
           <div className="space-y-3">
             <Link
-              href={`/incidents/${encodeURIComponent(incident.id)}`}
+              href={getIncidentHref(incident)}
               className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
             >
               {title}
@@ -582,17 +608,35 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
           </div>
         </div>
 
-        <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <MetaItem label="Opened" value={formatDate(getOpenedAt(incident))} />
-          <MetaItem label="Updated" value={formatDate(getUpdatedAt(incident))} />
-          <MetaItem label="Resolved" value={formatDate(getResolvedAt(incident))} />
+        <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-4">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Opened</div>
+            <div className="mt-2 text-zinc-100">{formatDate(getOpenedAt(incident))}</div>
+          </div>
 
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Updated</div>
+            <div className="mt-2 text-zinc-100">{formatDate(getUpdatedAt(incident))}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Workspace</div>
+            <div className="mt-2 text-zinc-100">{getWorkspace(incident)}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Category</div>
+            <div className="mt-2 text-zinc-100">{getCategory(incident)}</div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
           <MetaItem
             label="Flow"
             value={
-              flowTarget ? (
+              flowTarget && flowHref ? (
                 <Link
-                  href={`/flows/${encodeURIComponent(flowTarget)}`}
+                  href={flowHref}
                   className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
                 >
                   {flowTarget}
@@ -610,9 +654,9 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
           <MetaItem
             label="Command"
             value={
-              commandRecord !== "—" && commandRecord ? (
+              commandRecord !== "—" && commandHref ? (
                 <Link
-                  href={`/commands/${encodeURIComponent(commandRecord)}`}
+                  href={commandHref}
                   className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
                 >
                   {commandRecord}
@@ -623,6 +667,9 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
             }
             breakAll
           />
+
+          <MetaItem label="Reason" value={getReason(incident)} breakAll />
+          <MetaItem label="Resolved" value={formatDate(getResolvedAt(incident))} />
 
           <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>Action suggested</div>
@@ -653,6 +700,24 @@ function IncidentCard({ incident }: { incident: IncidentItem }) {
             </div>
           </div>
         </div>
+
+        <div className="mt-auto flex flex-col gap-2.5 pt-1">
+          <Link href={getIncidentHref(incident)} className={actionLinkClassName("primary")}>
+            Ouvrir le détail
+          </Link>
+
+          {flowHref ? (
+            <Link href={flowHref} className={actionLinkClassName("soft")}>
+              Ouvrir le flow lié
+            </Link>
+          ) : null}
+
+          {commandHref ? (
+            <Link href={commandHref} className={actionLinkClassName("soft")}>
+              Ouvrir la command liée
+            </Link>
+          ) : null}
+        </div>
       </div>
     </article>
   );
@@ -663,27 +728,25 @@ function SectionBlock({
   description,
   count,
   countTone = "default",
+  tone = "default",
   children,
 }: {
   title: string;
   description: string;
   count: number;
   countTone?: "default" | "info" | "success" | "warning" | "danger" | "muted";
+  tone?: "default" | "attention" | "neutral";
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-2">
-          <div className={sectionLabelClassName()}>{title}</div>
-          <p className="max-w-3xl text-base text-zinc-400">{description}</p>
-        </div>
-
-        <SectionCountPill value={count} tone={countTone} />
-      </div>
-
+    <SectionCard
+      title={title}
+      description={description}
+      tone={tone}
+      action={<SectionCountPill value={count} tone={countTone} />}
+    >
       {children}
-    </section>
+    </SectionCard>
   );
 }
 
@@ -752,66 +815,191 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
       ? getBackToFlowsHref({ flowId, rootEventId, sourceRecordId })
       : "/flows";
 
+  const focusIncident =
+    activeIncidents[0] ?? sortedResolvedIncidents[0] ?? visibleIncidents[0] ?? null;
+
   return (
-    <div className="space-y-8">
-      <section className="space-y-3 border-b border-white/10 pb-6">
-        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
-
-        <div>
-          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-            Incidents
-          </h1>
-          <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
-            Vue orientée impact métier. Cette page regroupe les incidents ouverts,
-            escaladés et résolus, avec navigation vers les flows BOSAI associés.
-          </p>
-        </div>
-      </section>
-
-      {hasFilters ? (
-        <section className="rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-5 md:p-6">
-          <div className="mb-4 text-lg font-medium text-emerald-200">
-            Filtré depuis Flows
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            {flowId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
-                flow_id: {flowId}
-              </span>
-            ) : null}
-
-            {rootEventId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
-                root_event_id: {rootEventId}
-              </span>
-            ) : null}
-
-            {sourceRecordId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
-                source_record_id: {sourceRecordId}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-5 space-y-3">
+    <ControlPlaneShell
+      eyebrow="BOSAI Control Plane"
+      title="Incidents"
+      description="Vue orientée impact métier pour suivre les incidents ouverts, escaladés et résolus, avec navigation directe vers les flows BOSAI associés."
+      badges={[
+        { label: "Needs Attention", tone: "warning" },
+        { label: "Impact métier", tone: "danger" },
+        { label: "Flow-linked", tone: "info" },
+      ]}
+      metrics={[
+        { label: "Open", value: openIncidents.length, toneClass: "text-sky-300" },
+        {
+          label: "Escalated",
+          value: escalatedIncidents.length,
+          toneClass: "text-amber-300",
+        },
+        {
+          label: "Critical",
+          value: criticalIncidents.length,
+          toneClass: "text-red-300",
+        },
+        {
+          label: "Resolved",
+          value: resolvedIncidents.length,
+          toneClass: "text-emerald-300",
+        },
+      ]}
+      actions={
+        <>
+          {hasFilters ? (
             <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
-              Retour aux flows
+              Retour au flow
             </Link>
+          ) : (
+            <Link href="/flows" className={actionLinkClassName("soft")}>
+              Ouvrir Flows
+            </Link>
+          )}
 
-            <Link href="/incidents" className={actionLinkClassName("primary")}>
-              Voir tous les incidents
-            </Link>
+          <Link href="/commands" className={actionLinkClassName("primary")}>
+            Voir Commands
+          </Link>
+        </>
+      }
+      aside={
+        <>
+          <SidePanelCard title="Lecture opérationnelle">
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <DashboardStatusBadge kind="running" label="OPEN" />
+                <DashboardStatusBadge kind="retry" label="ESCALATED" />
+                <DashboardStatusBadge kind="failed" label="CRITICAL" />
+                <DashboardStatusBadge kind="success" label="RESOLVED" />
+              </div>
+
+              <div className="space-y-2 text-sm leading-6 text-white/65">
+                <p>
+                  <span className="text-white/90">Needs Attention</span> regroupe
+                  les incidents à traiter en priorité.
+                </p>
+                <p>
+                  <span className="text-white/90">Critical</span> met l’accent sur
+                  le niveau de sévérité métier.
+                </p>
+                <p>
+                  <span className="text-white/90">SLA</span> aide à repérer les
+                  risques de breach ou d’escalade.
+                </p>
+              </div>
+            </div>
+          </SidePanelCard>
+
+          <SidePanelCard title="Incident actif">
+            {focusIncident ? (
+              <div className="space-y-4">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/35">
+                    Titre
+                  </div>
+                  <div className="mt-2 text-sm font-medium leading-6 text-white">
+                    {getIncidentTitle(focusIncident)}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <DashboardStatusBadge
+                    kind={getIncidentStatusBadgeKind(focusIncident)}
+                    label={getIncidentStatusLabel(focusIncident)}
+                  />
+                  <DashboardStatusBadge
+                    kind={getIncidentSeverityBadgeKind(focusIncident)}
+                    label={getIncidentSeverityLabel(focusIncident)}
+                  />
+                  <DashboardStatusBadge
+                    kind={getIncidentSlaBadgeKind(focusIncident)}
+                    label={`SLA ${getSlaLabel(focusIncident)}`}
+                  />
+                </div>
+
+                <div className="space-y-2 text-sm leading-6 text-white/65">
+                  <div>
+                    Workspace :{" "}
+                    <span className="text-white/90">
+                      {getWorkspace(focusIncident)}
+                    </span>
+                  </div>
+                  <div>
+                    Flow :{" "}
+                    <span className="break-all text-white/90">
+                      {compactTechnicalId(
+                        getBestFlowTargetFromIncident(focusIncident)
+                      )}
+                    </span>
+                  </div>
+                  <div>
+                    Activité :{" "}
+                    <span className="text-white/90">
+                      {formatDate(
+                        getUpdatedAt(focusIncident) || getOpenedAt(focusIncident)
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Link
+                    href={getIncidentHref(focusIncident)}
+                    className={actionLinkClassName("primary")}
+                  >
+                    Ouvrir le détail
+                  </Link>
+
+                  {getFlowHref(focusIncident) ? (
+                    <Link
+                      href={getFlowHref(focusIncident)}
+                      className={actionLinkClassName("soft")}
+                    >
+                      Ouvrir le flow lié
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-white/55">Aucun incident sélectionné.</div>
+            )}
+          </SidePanelCard>
+        </>
+      }
+    >
+      {hasFilters ? (
+        <SectionCard
+          title="Filtré depuis Flows"
+          description="Cette vue est limitée au contexte du flow sélectionné."
+          tone="attention"
+          action={<SectionCountPill value={visibleIncidents.length} tone="warning" />}
+        >
+          <div className="space-y-5">
+            <div className="flex flex-wrap gap-3">
+              {flowId ? <span className={chipClassName()}>flow_id: {flowId}</span> : null}
+              {rootEventId ? (
+                <span className={chipClassName()}>root_event_id: {rootEventId}</span>
+              ) : null}
+              {sourceRecordId ? (
+                <span className={chipClassName()}>
+                  source_record_id: {sourceRecordId}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
+                Retour aux flows
+              </Link>
+
+              <Link href="/incidents" className={actionLinkClassName("primary")}>
+                Voir tous les incidents
+              </Link>
+            </div>
           </div>
-        </section>
+        </SectionCard>
       ) : null}
-
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Open incidents" value={openIncidents.length} tone="text-sky-300" />
-        <StatCard label="Escalated" value={escalatedIncidents.length} tone="text-amber-300" />
-        <StatCard label="Resolved" value={resolvedIncidents.length} tone="text-emerald-300" />
-        <StatCard label="Critical" value={criticalIncidents.length} tone="text-red-300" />
-      </section>
 
       {visibleIncidents.length === 0 ? (
         <EmptyStatePanel
@@ -819,12 +1007,13 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
           description="Le Dashboard n’a remonté aucun incident sur la vue actuelle."
         />
       ) : (
-        <div className="space-y-8">
+        <>
           <SectionBlock
-            title="Needs attention"
+            title="Needs Attention"
             description="Incidents à surveiller en priorité : ouverts, escaladés, critiques ou encore non résolus."
             count={activeIncidents.length}
             countTone="warning"
+            tone="attention"
           >
             {activeIncidents.length === 0 ? (
               <EmptyStatePanel
@@ -832,9 +1021,9 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 description="Aucun incident ouvert ou escaladé n’est visible pour le moment."
               />
             ) : (
-              <div className="space-y-4">
+              <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
                 {activeIncidents.map((incident) => (
-                  <IncidentCard key={incident.id} incident={incident} />
+                  <IncidentListCard key={incident.id} incident={incident} />
                 ))}
               </div>
             )}
@@ -845,6 +1034,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
             description="Historique des incidents déjà résolus, triés du plus récent au plus ancien."
             count={sortedResolvedIncidents.length}
             countTone="success"
+            tone="neutral"
           >
             {sortedResolvedIncidents.length === 0 ? (
               <EmptyStatePanel
@@ -852,15 +1042,15 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 description="Aucun incident résolu n’est visible sur cette vue pour le moment."
               />
             ) : (
-              <div className="space-y-4">
+              <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
                 {sortedResolvedIncidents.map((incident) => (
-                  <IncidentCard key={incident.id} incident={incident} />
+                  <IncidentListCard key={incident.id} incident={incident} />
                 ))}
               </div>
             )}
           </SectionBlock>
-        </div>
+        </>
       )}
-    </div>
+    </ControlPlaneShell>
   );
 }
