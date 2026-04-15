@@ -6,6 +6,10 @@ import {
   type IncidentsResponse,
 } from "@/lib/api";
 import { DashboardStatusBadge } from "@/components/dashboard/StatusBadge";
+import {
+  EmptyStatePanel,
+  SectionCountPill,
+} from "@/components/dashboard/ControlPlaneShell";
 
 type SearchParams = {
   flow_id?: string | string[];
@@ -24,10 +28,6 @@ function cardClassName(): string {
 
 function statCardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
-
-function emptyStateClassName(): string {
-  return "rounded-[28px] border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500";
 }
 
 function actionLinkClassName(
@@ -662,11 +662,13 @@ function SectionBlock({
   title,
   description,
   count,
+  countTone = "default",
   children,
 }: {
   title: string;
   description: string;
   count: number;
+  countTone?: "default" | "info" | "success" | "warning" | "danger" | "muted";
   children: ReactNode;
 }) {
   return (
@@ -677,7 +679,7 @@ function SectionBlock({
           <p className="max-w-3xl text-base text-zinc-400">{description}</p>
         </div>
 
-        <div className="text-sm text-zinc-500">{count}</div>
+        <SectionCountPill value={count} tone={countTone} />
       </div>
 
       {children}
@@ -812,18 +814,23 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
       </section>
 
       {visibleIncidents.length === 0 ? (
-        <section className={emptyStateClassName()}>
-          Aucun incident visible pour le moment.
-        </section>
+        <EmptyStatePanel
+          title="Aucun incident visible"
+          description="Le Dashboard n’a remonté aucun incident sur la vue actuelle."
+        />
       ) : (
         <div className="space-y-8">
           <SectionBlock
             title="Needs attention"
             description="Incidents à surveiller en priorité : ouverts, escaladés, critiques ou encore non résolus."
             count={activeIncidents.length}
+            countTone="warning"
           >
             {activeIncidents.length === 0 ? (
-              <div className={emptyStateClassName()}>Aucun incident actif.</div>
+              <EmptyStatePanel
+                title="Aucun incident actif"
+                description="Aucun incident ouvert ou escaladé n’est visible pour le moment."
+              />
             ) : (
               <div className="space-y-4">
                 {activeIncidents.map((incident) => (
@@ -837,11 +844,13 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
             title="Resolved incidents"
             description="Historique des incidents déjà résolus, triés du plus récent au plus ancien."
             count={sortedResolvedIncidents.length}
+            countTone="success"
           >
             {sortedResolvedIncidents.length === 0 ? (
-              <div className={emptyStateClassName()}>
-                Aucun incident résolu.
-              </div>
+              <EmptyStatePanel
+                title="Aucun incident résolu"
+                description="Aucun incident résolu n’est visible sur cette vue pour le moment."
+              />
             ) : (
               <div className="space-y-4">
                 {sortedResolvedIncidents.map((incident) => (
