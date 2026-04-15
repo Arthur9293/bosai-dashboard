@@ -21,6 +21,8 @@ type ControlPlaneShellProps = {
   metrics?: ShellMetric[];
   aside?: ReactNode;
   children: ReactNode;
+  topMeta?: ReactNode;
+  footerNote?: ReactNode;
 };
 
 type SectionCardProps = {
@@ -76,6 +78,57 @@ export function StatusBadge({ label, tone = "default" }: ShellBadge) {
     >
       {label}
     </span>
+  );
+}
+
+export function SectionCountPill({
+  value,
+  tone = "default",
+}: {
+  value: ReactNode;
+  tone?: BadgeTone;
+}) {
+  return (
+    <span
+      className={[
+        "inline-flex min-w-8 items-center justify-center rounded-full border px-2.5 py-1 text-xs font-medium",
+        badgeToneClasses(tone),
+      ].join(" ")}
+    >
+      {value}
+    </span>
+  );
+}
+
+export function EmptyStatePanel({
+  title,
+  description,
+}: {
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-10">
+      <div className="text-sm font-medium text-white/85">{title}</div>
+      {description ? (
+        <div className="mt-2 text-sm leading-6 text-white/55">{description}</div>
+      ) : null}
+    </div>
+  );
+}
+
+export function InlineInfoStrip({
+  label,
+  value,
+}: {
+  label: string;
+  value: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+      <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">{label}</div>
+      <div className="mt-2 text-sm text-white/85">{value}</div>
+    </div>
   );
 }
 
@@ -153,12 +206,18 @@ export function ControlPlaneShell({
   metrics = [],
   aside,
   children,
+  topMeta,
+  footerNote,
 }: ControlPlaneShellProps) {
   return (
     <div className="mx-auto w-full max-w-7xl px-4 pb-8 pt-4 sm:px-6 lg:px-8 lg:pb-10 lg:pt-6">
       <div className="space-y-6 lg:space-y-8">
         <header className="overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.14),transparent_28%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.10),transparent_24%),rgba(255,255,255,0.04)] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]">
           <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+            {topMeta ? (
+              <div className="mb-5 border-b border-white/8 pb-4">{topMeta}</div>
+            ) : null}
+
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 max-w-4xl">
                 <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-cyan-200/80">
@@ -193,8 +252,8 @@ export function ControlPlaneShell({
                   <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
                     Surface
                   </div>
-                  <div className="mt-2 text-sm font-medium text-white/85">Flows</div>
-                  <div className="mt-1 text-xs text-white/50">Desktop reading shell</div>
+                  <div className="mt-2 text-sm font-medium text-white/85">Control Plane</div>
+                  <div className="mt-1 text-xs text-white/50">Premium reading shell</div>
                 </div>
               </div>
             </div>
@@ -223,6 +282,12 @@ export function ControlPlaneShell({
             </div>
           ) : null}
         </div>
+
+        {footerNote ? (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/55 sm:px-5">
+            {footerNote}
+          </div>
+        ) : null}
       </div>
     </div>
   );
