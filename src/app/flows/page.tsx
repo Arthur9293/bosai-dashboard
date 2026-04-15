@@ -50,11 +50,11 @@ type NormalizedCommand = {
 
 function cardClassName(isActive: boolean) {
   const base =
-    "rounded-[28px] border bg-white/[0.04] p-5 md:p-6 xl:p-5 2xl:p-6 min-h-[420px] xl:min-h-[350px] 2xl:min-h-[340px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
+    "rounded-[28px] border bg-white/[0.04] px-4 py-4 sm:px-5 sm:py-5 xl:px-5 xl:py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
   const inactive =
     "border-white/10 hover:border-white/15 hover:bg-white/[0.05]";
   const active =
-    "border-emerald-500/35 bg-emerald-500/[0.08] shadow-[0_0_0_1px_rgba(16,185,129,0.06),0_0_40px_rgba(16,185,129,0.08)]";
+    "border-emerald-500/35 bg-emerald-500/[0.07] shadow-[0_0_0_1px_rgba(16,185,129,0.05),0_0_30px_rgba(16,185,129,0.07)]";
 
   return `${base} ${isActive ? active : inactive}`;
 }
@@ -75,10 +75,6 @@ function actionLinkClassName(
   }
 
   return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
-}
-
-function miniStatClassName() {
-  return "rounded-2xl border border-white/10 bg-black/20 px-3.5 py-3";
 }
 
 function text(value: unknown): string {
@@ -1002,6 +998,31 @@ function CountPill({ value }: { value: number }) {
   );
 }
 
+function MetaBox({
+  label,
+  value,
+  fullWidth = false,
+}: {
+  label: string;
+  value: string;
+  fullWidth?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-[20px] border border-white/10 bg-black/20 px-4 py-3 ${
+        fullWidth ? "sm:col-span-2" : ""
+      }`}
+    >
+      <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+        {label}
+      </div>
+      <div className="mt-2 break-words text-[15px] leading-6 text-white">
+        {value || "—"}
+      </div>
+    </div>
+  );
+}
+
 function FlowListCard({
   flow,
   activeKey,
@@ -1017,110 +1038,82 @@ function FlowListCard({
   const selectHref = buildSelectHref(flow);
   const detailHref = buildDetailHref(flow);
 
+  const activityValue = flowActivityLabel(flow);
+  const workspaceValue = flow.workspaceId || "production";
+  const incidentValue = incidentLabel(flow);
+  const readingValue = flow.isPartial ? "Partielle" : "Complète";
+  const stateValue = humanStatusLabel(flow.status);
+
   return (
     <article className={cardClassName(isActive)}>
-      <div className="flex h-full flex-col gap-5">
-        <div className="space-y-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <DashboardStatusBadge
-              label={humanStatusLabel(flow.status).toUpperCase()}
-              status={flow.status}
-            />
+      <div className="flex h-full flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <DashboardStatusBadge
+            label={humanStatusLabel(flow.status).toUpperCase()}
+            status={flow.status}
+          />
 
-            {flow.isPartial ? <DashboardStatusBadge kind="partial" /> : null}
+          {flow.isPartial ? <DashboardStatusBadge kind="partial" /> : null}
 
-            <DashboardStatusBadge
-              kind={flow.hasIncident ? "incident" : "no-incident"}
-              label={flow.hasIncident ? incidentLabel(flow) : "Aucun incident"}
-            />
+          <DashboardStatusBadge
+            kind={flow.hasIncident ? "incident" : "no-incident"}
+            label={flow.hasIncident ? incidentLabel(flow) : "Aucun incident"}
+          />
+        </div>
+
+        <div className="space-y-3">
+          <div className="text-xs uppercase tracking-[0.2em] text-white/35">
+            {flow.readingMode === "enriched"
+              ? "Flow enrichi"
+              : "Flow registre uniquement"}
           </div>
 
-          <div className="space-y-3">
-            <div className="text-xs uppercase tracking-[0.2em] text-white/35">
-              {flow.readingMode === "enriched"
-                ? "Flow enrichi"
-                : "Flow registre uniquement"}
-            </div>
+          <h3 className="text-[2rem] font-semibold leading-tight tracking-tight text-white sm:text-[2.2rem] xl:text-[1.8rem]">
+            {title}
+          </h3>
 
-            <h3 className="break-words text-[1.55rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.75rem] xl:text-[1.42rem] 2xl:text-[1.5rem]">
-              {title}
-            </h3>
+          <p className="text-sm leading-6 text-zinc-300">{summaryLine}</p>
+        </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/20 px-3.5 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                {flow.readingMode === "enriched" ? "Flow ID" : "Source / Root"}
-              </div>
-              <div className="mt-1 break-all text-sm text-zinc-200">
-                {technicalSubtitle}
-              </div>
-            </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <MetaBox
+            label={flow.readingMode === "enriched" ? "Flow ID" : "Source / Root"}
+            value={technicalSubtitle}
+            fullWidth
+          />
 
-            <p className="text-sm leading-6 text-zinc-300">{summaryLine}</p>
-          </div>
+          <MetaBox label="Activité" value={activityValue} />
+          <MetaBox label="Workspace" value={workspaceValue} />
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className={miniStatClassName()}>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                Activité
-              </div>
-              <div className="mt-1 text-sm text-zinc-100">
-                {flowActivityLabel(flow)}
-              </div>
-            </div>
-
-            <div className={miniStatClassName()}>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                Workspace
-              </div>
-              <div className="mt-1 text-sm text-zinc-100">
-                {flow.workspaceId || "production"}
-              </div>
-            </div>
-
-            <div className={miniStatClassName()}>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                Incident
-              </div>
-              <div className="mt-1 text-sm text-zinc-100">
-                {incidentLabel(flow)}
-              </div>
-            </div>
-
-            <div className={miniStatClassName()}>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                {flow.readingMode === "enriched" ? "Étapes" : "Lecture"}
-              </div>
-              <div className="mt-1 text-sm text-zinc-100">
-                {flow.readingMode === "enriched" ? flow.steps : "Partielle"}
-              </div>
-            </div>
-          </div>
+          <MetaBox label="Incident" value={incidentValue} />
+          <MetaBox label="Lecture" value={readingValue} />
 
           {flow.readingMode === "enriched" ? (
-            <div className="rounded-2xl border border-white/10 bg-black/20 px-3.5 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                Chaîne
-              </div>
-              <div className="mt-1 text-sm leading-6 text-zinc-100">
-                {cleanCapabilityLabel(flow.rootCapability)}
-                {flow.rootCapability !== flow.terminalCapability
-                  ? ` → ${cleanCapabilityLabel(flow.terminalCapability)}`
-                  : ""}
-              </div>
-            </div>
+            <>
+              <MetaBox
+                label="Étapes"
+                value={`${flow.steps} étape${flow.steps > 1 ? "s" : ""}`}
+              />
+              <MetaBox
+                label="Durée"
+                value={flow.durationMs > 0 ? formatDuration(flow.durationMs) : "—"}
+              />
+              <MetaBox
+                label="Chaîne"
+                value={
+                  flow.rootCapability !== flow.terminalCapability
+                    ? `${cleanCapabilityLabel(flow.rootCapability)} → ${cleanCapabilityLabel(flow.terminalCapability)}`
+                    : cleanCapabilityLabel(flow.rootCapability)
+                }
+                fullWidth
+              />
+            </>
           ) : (
-            <div className="rounded-2xl border border-white/10 bg-black/20 px-3.5 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                Dernier état
-              </div>
-              <div className="mt-1 text-sm text-zinc-100">
-                {humanStatusLabel(flow.status)}
-              </div>
-            </div>
+            <MetaBox label="Dernier état" value={stateValue} fullWidth />
           )}
         </div>
 
-        <div className="mt-auto grid gap-2 pt-2">
+        <div className="mt-auto flex flex-col gap-2 pt-1">
           <Link
             href={selectHref}
             className={actionLinkClassName(isActive ? "active" : "default")}
@@ -1165,7 +1158,7 @@ function SectionBlock({
       tone={tone}
       action={<CountPill value={flows.length} />}
     >
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
         {flows.map((flow) => (
           <FlowListCard key={flow.key} flow={flow} activeKey={activeKey} />
         ))}
@@ -1326,7 +1319,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
             title="Lecture opérationnelle"
             subtitle="Repères visuels pour lire le control plane plus vite sur desktop."
           >
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 <DashboardStatusBadge kind="running" />
                 <DashboardStatusBadge kind="failed" />
@@ -1334,7 +1327,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
                 <DashboardStatusBadge kind="partial" />
               </div>
 
-              <div className="space-y-3 text-sm leading-6 text-white/65">
+              <div className="space-y-2 text-sm leading-6 text-white/65">
                 <p>
                   <span className="text-white/90">Needs Attention</span> regroupe
                   les flows à surveiller en priorité.
@@ -1386,43 +1379,32 @@ export default async function FlowsPage({ searchParams }: PageProps) {
                       label={incidentLabel(activeFlow)}
                     />
                   ) : (
-                    <DashboardStatusBadge
-                      kind="no-incident"
-                      label="Sans incident"
-                    />
+                    <DashboardStatusBadge kind="no-incident" label="Sans incident" />
                   )}
                 </div>
 
-                <div className="grid gap-3">
-                  <div className={miniStatClassName()}>
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                      Workspace
-                    </div>
-                    <div className="mt-1 text-sm text-white/90">
+                <div className="space-y-2 text-sm leading-6 text-white/65">
+                  <div>
+                    Workspace :{" "}
+                    <span className="text-white/90">
                       {activeFlow.workspaceId || "production"}
-                    </div>
+                    </span>
                   </div>
-
-                  <div className={miniStatClassName()}>
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                      Activité
-                    </div>
-                    <div className="mt-1 text-sm text-white/90">
+                  <div>
+                    Activité :{" "}
+                    <span className="text-white/90">
                       {flowActivityLabel(activeFlow)}
-                    </div>
+                    </span>
                   </div>
-
-                  <div className={miniStatClassName()}>
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                      Identifiant
-                    </div>
-                    <div className="mt-1 break-all text-sm text-white/90">
+                  <div>
+                    Identifiant :{" "}
+                    <span className="break-all text-white/90">
                       {compactTechnicalId(
                         activeFlow.sourceRecordId ||
                           activeFlow.flowId ||
                           activeFlow.rootEventId
                       )}
-                    </div>
+                    </span>
                   </div>
                 </div>
 
