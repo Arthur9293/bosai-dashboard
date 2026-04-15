@@ -37,7 +37,7 @@ export function dashboardCardClassName(): string {
 }
 
 export function dashboardRowCardClassName(): string {
-  return "rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 transition hover:border-white/15 hover:bg-white/[0.04]";
+  return "block w-full overflow-hidden rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 transition hover:border-white/15 hover:bg-white/[0.04]";
 }
 
 export function dashboardSectionLabelClassName(): string {
@@ -285,7 +285,7 @@ export function DashboardMetricCard({
   helper,
 }: {
   label: string;
-  value: number | string;
+  value: number | string | ReactNode;
   toneClass?: string;
   helper?: string;
 }) {
@@ -308,7 +308,7 @@ export function DashboardInlineMetric({
   value: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-2.5">
       <span className="text-zinc-400">{label}</span>
       <span className="font-medium text-white">{value}</span>
     </div>
@@ -378,71 +378,65 @@ export function ControlPlaneShell({
     Boolean(badges?.length) ||
     Boolean(metrics?.length);
 
-  const mainContent = (
-    <div className="space-y-8">
-      {hasHeader ? (
-        <section className="space-y-5 border-b border-white/10 pb-6">
-          {eyebrow ? (
-            <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
-          ) : null}
-
-          <div className="space-y-4 xl:flex xl:items-end xl:justify-between xl:gap-8 xl:space-y-0">
-            <div className="max-w-4xl">
-              {title ? (
-                <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-                  {title}
-                </h1>
-              ) : null}
-
-              {description ? (
-                <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
-                  {description}
-                </p>
-              ) : null}
-            </div>
-
-            {actions ? (
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap xl:justify-end">
-                {actions}
-              </div>
-            ) : null}
-          </div>
-
-          {badges && badges.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {badges.map((badge, index) => (
-                <span
-                  key={`${badge.label}-${index}`}
-                  className={[
-                    "inline-flex rounded-full border px-3 py-1.5 text-sm font-medium",
-                    sectionCountToneClass(normalizeTone(badge.tone)),
-                  ].join(" ")}
-                >
-                  {badge.label}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
-          {metrics && metrics.length > 0 ? (
-            <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-              {metrics.map((metric, index) => (
-                <DashboardMetricCard
-                  key={`${metric.label}-${index}`}
-                  label={metric.label}
-                  value={metric.value}
-                  toneClass={metric.toneClass ?? "text-white"}
-                  helper={metric.helper}
-                />
-              ))}
-            </div>
-          ) : null}
-        </section>
+  const header = hasHeader ? (
+    <section className="space-y-5 border-b border-white/10 pb-6">
+      {eyebrow ? (
+        <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
       ) : null}
 
-      {children}
-    </div>
-  );
+      <div className="space-y-4 xl:flex xl:items-end xl:justify-between xl:gap-8 xl:space-y-0">
+        <div className="max-w-4xl">
+          {title ? (
+            <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+              {title}
+            </h1>
+          ) : null}
+
+          {description ? (
+            <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
+              {description}
+            </p>
+          ) : null}
+        </div>
+
+        {actions ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap xl:justify-end">
+            {actions}
+          </div>
+        ) : null}
+      </div>
+
+      {badges && badges.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {badges.map((badge, index) => (
+            <span
+              key={`${badge.label}-${index}`}
+              className={[
+                "inline-flex rounded-full border px-3 py-1.5 text-sm font-medium",
+                sectionCountToneClass(normalizeTone(badge.tone)),
+              ].join(" ")}
+            >
+              {badge.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {metrics && metrics.length > 0 ? (
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+          {metrics.map((metric, index) => (
+            <DashboardMetricCard
+              key={`${metric.label}-${index}`}
+              label={metric.label}
+              value={metric.value}
+              toneClass={metric.toneClass ?? "text-white"}
+              helper={metric.helper}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  ) : null;
 
   if (aside) {
     return (
@@ -454,30 +448,31 @@ export function ControlPlaneShell({
           .filter(Boolean)
           .join(" ")}
       >
-        {mainContent}
+        <div className="space-y-8">
+          {header}
+          {children}
+        </div>
+
         <div className="space-y-6">{aside}</div>
       </div>
     );
   }
 
-  return <div className={["space-y-8", className].filter(Boolean).join(" ")}>{mainContent}</div>;
+  return (
+    <div className={["space-y-8", className].filter(Boolean).join(" ")}>
+      {header}
+      {children}
+    </div>
+  );
 }
 
 /* -------------------------------------------------------------------------- */
 /* LEGACY COMPAT EXPORTS                                                      */
 /* -------------------------------------------------------------------------- */
 
-export function SectionCard({
-  title,
-  description,
-  eyebrow,
-  action,
-  children,
-  className = "",
-  padding = "md",
-  tone = "default",
-}: {
+type LegacyCardProps = {
   title?: string;
+  subtitle?: string;
   description?: string;
   eyebrow?: string;
   action?: ReactNode;
@@ -485,7 +480,20 @@ export function SectionCard({
   className?: string;
   padding?: "none" | "sm" | "md";
   tone?: LegacyPanelTone;
-}) {
+};
+
+export function SectionCard({
+  title,
+  subtitle,
+  description,
+  eyebrow,
+  action,
+  children,
+  className = "",
+  padding = "md",
+  tone = "default",
+}: LegacyCardProps) {
+  const resolvedDescription = description ?? subtitle;
   const paddingClass =
     padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-5 md:p-6";
 
@@ -500,7 +508,7 @@ export function SectionCard({
         .filter(Boolean)
         .join(" ")}
     >
-      {title || description || eyebrow || action ? (
+      {title || resolvedDescription || eyebrow || action ? (
         <div className="mb-5 flex flex-col gap-3 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-2">
             {eyebrow ? (
@@ -513,8 +521,10 @@ export function SectionCard({
               </div>
             ) : null}
 
-            {description ? (
-              <p className="max-w-3xl text-base text-zinc-400">{description}</p>
+            {resolvedDescription ? (
+              <p className="max-w-3xl text-base text-zinc-400">
+                {resolvedDescription}
+              </p>
             ) : null}
           </div>
 
@@ -529,6 +539,7 @@ export function SectionCard({
 
 export function SidePanelCard({
   title,
+  subtitle,
   description,
   eyebrow,
   action,
@@ -536,16 +547,8 @@ export function SidePanelCard({
   className = "",
   padding = "md",
   tone = "default",
-}: {
-  title?: string;
-  description?: string;
-  eyebrow?: string;
-  action?: ReactNode;
-  children: ReactNode;
-  className?: string;
-  padding?: "none" | "sm" | "md";
-  tone?: LegacyPanelTone;
-}) {
+}: LegacyCardProps) {
+  const resolvedDescription = description ?? subtitle;
   const paddingClass =
     padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-5 md:p-6";
 
@@ -560,7 +563,7 @@ export function SidePanelCard({
         .filter(Boolean)
         .join(" ")}
     >
-      {title || description || eyebrow || action ? (
+      {title || resolvedDescription || eyebrow || action ? (
         <div className="mb-5 flex flex-col gap-3 border-b border-white/10 pb-5">
           <div className="space-y-2">
             {eyebrow ? (
@@ -573,8 +576,8 @@ export function SidePanelCard({
               </div>
             ) : null}
 
-            {description ? (
-              <p className="text-sm text-zinc-400">{description}</p>
+            {resolvedDescription ? (
+              <p className="text-sm text-zinc-400">{resolvedDescription}</p>
             ) : null}
           </div>
 
