@@ -1,4 +1,10 @@
 import Link from "next/link";
+import {
+  ControlPlaneShell,
+  SectionCard,
+  SidePanelCard,
+  StatusBadge,
+} from "@/components/dashboard/ControlPlaneShell";
 
 type AnyRecord = Record<string, unknown>;
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -51,10 +57,6 @@ function cardClassName(isActive: boolean) {
     "border-emerald-500/35 bg-emerald-500/[0.08] shadow-[0_0_0_1px_rgba(16,185,129,0.06),0_0_40px_rgba(16,185,129,0.08)]";
 
   return `${base} ${isActive ? active : inactive}`;
-}
-
-function sectionTitleClassName() {
-  return "text-xs uppercase tracking-[0.28em] text-white/40";
 }
 
 function actionLinkClassName(
@@ -230,10 +232,6 @@ function formatDuration(ms?: number): string {
   if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
   if (minutes > 0) return `${minutes}m ${seconds}s`;
   return `${seconds}s`;
-}
-
-function isRecordIdLike(value: string): boolean {
-  return /^rec[a-zA-Z0-9]+$/.test(value);
 }
 
 function compactTechnicalId(value: string, max = 32): string {
@@ -1018,6 +1016,24 @@ function matchesActiveSelection(flow: FlowCard, selected: string): boolean {
   return candidates.includes(selected);
 }
 
+function getStatusBadgeTone(
+  status: FlowStatus
+): "default" | "info" | "success" | "warning" | "danger" | "muted" {
+  if (status === "running") return "info";
+  if (status === "failed") return "danger";
+  if (status === "retry") return "warning";
+  if (status === "success") return "success";
+  return "muted";
+}
+
+function CountPill({ value }: { value: number }) {
+  return (
+    <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-white/80">
+      {value}
+    </span>
+  );
+}
+
 function FlowListCard({
   flow,
   activeKey,
@@ -1113,17 +1129,15 @@ function FlowListCard({
             )}
 
             {flow.readingMode === "enriched" ? (
-              <>
-                <div className="xl:col-span-2">
-                  Chaîne :{" "}
-                  <span className="text-zinc-100">
-                    {cleanCapabilityLabel(flow.rootCapability)}
-                    {flow.rootCapability !== flow.terminalCapability
-                      ? ` → ${cleanCapabilityLabel(flow.terminalCapability)}`
-                      : ""}
-                  </span>
-                </div>
-              </>
+              <div className="xl:col-span-2">
+                Chaîne :{" "}
+                <span className="text-zinc-100">
+                  {cleanCapabilityLabel(flow.rootCapability)}
+                  {flow.rootCapability !== flow.terminalCapability
+                    ? ` → ${cleanCapabilityLabel(flow.terminalCapability)}`
+                    : ""}
+                </span>
+              </div>
             ) : (
               <div className="xl:col-span-2">
                 Dernier état :{" "}
@@ -1161,29 +1175,43 @@ function SectionBlock({
   description,
   flows,
   activeKey,
+  tone = "default",
 }: {
   title: string;
   description: string;
   flows: FlowCard[];
   activeKey: string;
+  tone?: "default" | "attention" | "neutral";
 }) {
   if (flows.length === 0) return null;
 
   return (
-    <section className="space-y-5">
-      <div className="space-y-3">
-        <div className={sectionTitleClassName()}>{title}</div>
-        <p className="max-w-4xl text-[18px] leading-9 text-zinc-300 sm:text-[20px]">
-          {description}
-        </p>
-      </div>
-
-      <div className="grid gap-5 xl:gap-5 xl:grid-cols-2">
+    <SectionCard
+      title={title}
+      description={description}
+      tone={tone}
+      action={<CountPill value={flows.length} />}
+    >
+      <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
         {flows.map((flow) => (
           <FlowListCard key={flow.key} flow={flow} activeKey={activeKey} />
         ))}
       </div>
-    </section>
+    </SectionCard>
+  );
+}
+
+function EmptyFlowsState() {
+  return (
+    <SectionCard
+      title="Aucun flow"
+      description="Le Dashboard n’a remonté aucun flow sur la source actuelle."
+      tone="neutral"
+    >
+      <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-10 text-sm text-white/55">
+        Aucun flow disponible pour le moment.
+      </div>
+    </SectionCard>
   );
 }
 
@@ -1298,25 +1326,159 @@ export default async function FlowsPage({ searchParams }: PageProps) {
 
   const activeKey = activeFlow?.key || "";
 
+  const runningCount = allFlows.filter((flow) => flow.status === "running").length;
+  const retryCount = allFlows.filter((flow) => flow.status === "retry").length;
+  const failedCount = allFlows.filter((flow) => flow.status === "failed").length;
+  const partialCount = allFlows.filter((flow) => flow.isPartial).length;
+
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-10 px-4 py-6 sm:px-6 lg:px-8">
-      <section className="space-y-4 border-b border-white/10 pb-8">
-        <div className="text-sm text-zinc-400">BOSAI Control Plane</div>
+    <ControlPlaneShell
+      eyebrow="BOSAI Control Plane"
+      title="Flows"
+      description="Vue de pilotage BOSAI pour suivre les flows enrichis, les flows registre uniquement et les signaux qui demandent une attention immédiate."
+      badges={[
+        { label: "Needs Attention", tone: "warning" },
+        { label: "Enriched + Registry-only", tone: "info" },
+        { label: "Mobile préservé", tone: "muted" },
+      ]}
+      metrics={[
+        { label: "Running", value: runningCount },
+        { label: "Retry", value: retryCount },
+        { label: "Failed", value: failedCount },
+        { label: "Partial", value: partialCount },
+      ]}
+      aside={
+        <>
+          <SidePanelCard
+            title="Lecture opérationnelle"
+            subtitle="Repères visuels pour lire le control plane plus vite sur desktop."
+          >
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <StatusBadge label="Running" tone="info" />
+                <StatusBadge label="Failed" tone="danger" />
+                <StatusBadge label="Retry" tone="warning" />
+                <StatusBadge label="Partial" tone="muted" />
+              </div>
 
-        <h1 className="text-5xl font-semibold tracking-tight text-white sm:text-6xl">
-          Flows
-        </h1>
+              <div className="space-y-2 text-sm leading-6 text-white/65">
+                <p>
+                  <span className="text-white/90">Needs Attention</span> regroupe
+                  les flows à surveiller en priorité.
+                </p>
+                <p>
+                  <span className="text-white/90">Flows enrichis</span> gardent la
+                  lecture causale détaillée.
+                </p>
+                <p>
+                  <span className="text-white/90">Registry-only</span> assume une
+                  lecture partielle mais exploitable.
+                </p>
+              </div>
+            </div>
+          </SidePanelCard>
 
-        <p className="max-w-5xl text-[19px] leading-9 text-zinc-300 sm:text-[22px]">
-          Vue de pilotage BOSAI pour suivre les flows enrichis et les flows présents uniquement dans le registre.
-        </p>
-      </section>
+          <SidePanelCard
+            title="Flow actif"
+            subtitle={
+              activeFlow
+                ? "Contexte rapide du flow actuellement sélectionné."
+                : "Aucun flow actif."
+            }
+          >
+            {activeFlow ? (
+              <div className="space-y-4">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/35">
+                    Titre
+                  </div>
+                  <div className="mt-2 text-sm font-medium leading-6 text-white">
+                    {getDisplayTitle(activeFlow)}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <StatusBadge
+                    label={humanStatusLabel(activeFlow.status)}
+                    tone={getStatusBadgeTone(activeFlow.status)}
+                  />
+                  {activeFlow.isPartial ? (
+                    <StatusBadge label="Registry-only" tone="muted" />
+                  ) : (
+                    <StatusBadge label="Enriched" tone="info" />
+                  )}
+                  {activeFlow.hasIncident ? (
+                    <StatusBadge
+                      label={incidentLabel(activeFlow)}
+                      tone="danger"
+                    />
+                  ) : (
+                    <StatusBadge label="Sans incident" tone="success" />
+                  )}
+                </div>
+
+                <div className="space-y-2 text-sm leading-6 text-white/65">
+                  <div>
+                    Workspace :{" "}
+                    <span className="text-white/90">
+                      {activeFlow.workspaceId || "production"}
+                    </span>
+                  </div>
+                  <div>
+                    Activité :{" "}
+                    <span className="text-white/90">
+                      {flowActivityLabel(activeFlow)}
+                    </span>
+                  </div>
+                  <div>
+                    Identifiant :{" "}
+                    <span className="break-all text-white/90">
+                      {compactTechnicalId(
+                        activeFlow.sourceRecordId ||
+                          activeFlow.flowId ||
+                          activeFlow.rootEventId
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Link
+                    href={buildDetailHref(activeFlow)}
+                    className={actionLinkClassName("default")}
+                  >
+                    Ouvrir le détail
+                  </Link>
+
+                  <Link
+                    href={buildIncidentsHref(activeFlow)}
+                    className={actionLinkClassName(
+                      activeFlow.hasIncident ? "danger" : "default"
+                    )}
+                  >
+                    {activeFlow.hasIncident
+                      ? activeFlow.incidentCount > 1
+                        ? "Voir les incidents liés"
+                        : "Voir l’incident lié"
+                      : "Voir les incidents"}
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-white/55">Aucun flow sélectionné.</div>
+            )}
+          </SidePanelCard>
+        </>
+      }
+    >
+      {allFlows.length === 0 ? <EmptyFlowsState /> : null}
 
       <SectionBlock
-        title="Needs attention"
+        title="Needs Attention"
         description="Flows prioritaires à surveiller maintenant : incidents actifs, exécutions en cours, retries et échecs."
         flows={needsAttentionFlows}
         activeKey={activeKey}
+        tone="attention"
       />
 
       <SectionBlock
@@ -1324,6 +1486,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
         description="Flows avec lecture causale détaillée disponible : structure, étapes, graphe et navigation complète."
         flows={stableEnrichedFlows}
         activeKey={activeKey}
+        tone="default"
       />
 
       <SectionBlock
@@ -1331,13 +1494,8 @@ export default async function FlowsPage({ searchParams }: PageProps) {
         description="Flows présents dans le registre BOSAI mais sans lecture causale détaillée disponible pour le moment."
         flows={registrySectionFlows}
         activeKey={activeKey}
+        tone="neutral"
       />
-
-      {allFlows.length === 0 ? (
-        <section className="rounded-[28px] border border-dashed border-white/10 bg-white/[0.03] px-6 py-10 text-zinc-400">
-          Aucun flow disponible pour le moment.
-        </section>
-      ) : null}
-    </div>
+    </ControlPlaneShell>
   );
 }
