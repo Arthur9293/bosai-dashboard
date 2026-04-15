@@ -51,7 +51,7 @@ type NormalizedCommand = {
 function cardClassName(isActive: boolean, compact = false) {
   const base = compact
     ? "rounded-[28px] border bg-white/[0.04] p-5 md:p-5 xl:px-5 xl:py-4 min-h-[360px] xl:min-h-[280px] 2xl:min-h-[270px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition"
-    : "rounded-[28px] border bg-white/[0.04] p-5 md:p-6 xl:px-5 xl:py-4 min-h-[420px] xl:min-h-[330px] 2xl:min-h-[320px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
+    : "rounded-[28px] border bg-white/[0.04] p-5 md:p-6 xl:px-5 xl:py-4 min-h-[390px] xl:min-h-[300px] 2xl:min-h-[290px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
 
   const inactive =
     "border-white/10 hover:border-white/15 hover:bg-white/[0.05]";
@@ -87,6 +87,14 @@ function metaBoxClassName(compact = false) {
 
 function metaLabelClassName() {
   return "text-xs uppercase tracking-[0.22em] text-white/35";
+}
+
+function titleClassName(isRegistryOnly: boolean) {
+  if (isRegistryOnly) {
+    return "break-words text-[1.45rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.65rem] xl:text-[1.25rem] 2xl:text-[1.35rem]";
+  }
+
+  return "break-words text-[1.5rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.72rem] xl:text-[1.3rem] 2xl:text-[1.4rem]";
 }
 
 function text(value: unknown): string {
@@ -740,8 +748,7 @@ function buildEnrichedFlowCards(
     const terminalCommand = getTerminalCommand(ordered);
 
     const flowId = ordered.map((cmd) => cmd.flowId).find(Boolean) || "";
-    const rootEventId =
-      ordered.map((cmd) => cmd.rootEventId).find(Boolean) || "";
+    const rootEventId = ordered.map((cmd) => cmd.rootEventId).find(Boolean) || "";
     const workspaceId =
       ordered.map((cmd) => cmd.workspaceId).find(Boolean) || "production";
 
@@ -878,8 +885,7 @@ function buildIncidentOnlyFlowCards(
   for (const incident of incidents) {
     const flowId = toText(incident.flow_id);
     const rootEventId = toText(incident.root_event_id);
-    const sourceRecordId =
-      toText(incident.source_record_id) || toText(incident.id);
+    const sourceRecordId = toText(incident.source_record_id) || toText(incident.id);
 
     if (!flowId && !rootEventId && !sourceRecordId) continue;
 
@@ -911,8 +917,7 @@ function buildIncidentOnlyFlowCards(
       `incident-${toText(latest.id)}`;
 
     const rootEventId = toText(latest.root_event_id) || flowId;
-    const sourceRecordId =
-      toText(latest.source_record_id) || toText(latest.id);
+    const sourceRecordId = toText(latest.source_record_id) || toText(latest.id);
 
     cards.push({
       key,
@@ -1035,12 +1040,10 @@ function FlowListCard({
     <article className={cardClassName(isActive, isRegistryOnly)}>
       <div
         className={`flex h-full flex-col ${
-          isRegistryOnly ? "gap-4 xl:gap-3" : "gap-5 xl:gap-4"
+          isRegistryOnly ? "gap-4 xl:gap-3" : "gap-4 xl:gap-3"
         }`}
       >
-        <div
-          className={isRegistryOnly ? "space-y-3 xl:space-y-3" : "space-y-4 xl:space-y-3"}
-        >
+        <div className="space-y-3 xl:space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <DashboardStatusBadge
               label={humanStatusLabel(flow.status).toUpperCase()}
@@ -1055,24 +1058,16 @@ function FlowListCard({
             />
           </div>
 
-          <div className={isRegistryOnly ? "space-y-2.5" : "space-y-2"}>
+          <div className="space-y-2.5">
             <div className="text-xs uppercase tracking-[0.2em] text-white/35">
               {flow.readingMode === "enriched"
                 ? "Flow enrichi"
                 : "Flow registre uniquement"}
             </div>
 
-            <h3
-              className={
-                isRegistryOnly
-                  ? "break-words text-[1.45rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.65rem] xl:text-[1.25rem] 2xl:text-[1.35rem]"
-                  : "break-words text-[1.7rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.9rem] xl:text-[1.45rem] 2xl:text-[1.55rem]"
-              }
-            >
-              {title}
-            </h3>
+            <h3 className={titleClassName(isRegistryOnly)}>{title}</h3>
 
-            {flow.readingMode === "enriched" ? (
+            {!isRegistryOnly ? (
               <div className="break-all text-sm text-zinc-400">
                 Flow ID : <span className="text-zinc-200">{technicalSubtitle}</span>
               </div>
@@ -1081,37 +1076,38 @@ function FlowListCard({
             <p className="text-sm leading-6 text-zinc-300">{summaryLine}</p>
           </div>
 
-          {flow.readingMode === "enriched" ? (
-            <div className="grid gap-2.5 text-[15px] leading-6 text-zinc-300 xl:grid-cols-2 xl:gap-x-5 xl:gap-y-2 xl:text-[14px] xl:leading-5">
-              <div>
-                Activité :{" "}
-                <span className="text-zinc-100">{flowActivityLabel(flow)}</span>
+          {!isRegistryOnly ? (
+            <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:gap-3">
+              <div className={metaBoxClassName(true)}>
+                <div className={metaLabelClassName()}>Activité</div>
+                <div className="mt-2 text-zinc-100">{flowActivityLabel(flow)}</div>
               </div>
 
-              <div>
-                Incident :{" "}
-                <span className="text-zinc-100">{incidentLabel(flow)}</span>
+              <div className={metaBoxClassName(true)}>
+                <div className={metaLabelClassName()}>Incident</div>
+                <div className="mt-2 text-zinc-100">{incidentLabel(flow)}</div>
               </div>
 
-              <div>
-                Workspace :{" "}
-                <span className="text-zinc-100">
+              <div className={metaBoxClassName(true)}>
+                <div className={metaLabelClassName()}>Workspace</div>
+                <div className="mt-2 text-zinc-100">
                   {flow.workspaceId || "production"}
-                </span>
+                </div>
               </div>
 
-              <div>
-                Étapes : <span className="text-zinc-100">{flow.steps}</span>
+              <div className={metaBoxClassName(true)}>
+                <div className={metaLabelClassName()}>Étapes</div>
+                <div className="mt-2 text-zinc-100">{flow.steps}</div>
               </div>
 
-              <div className="xl:col-span-2">
-                Chaîne :{" "}
-                <span className="text-zinc-100">
+              <div className={`${metaBoxClassName(true)} md:col-span-2`}>
+                <div className={metaLabelClassName()}>Chaîne</div>
+                <div className="mt-2 text-zinc-100">
                   {cleanCapabilityLabel(flow.rootCapability)}
                   {flow.rootCapability !== flow.terminalCapability
                     ? ` → ${cleanCapabilityLabel(flow.terminalCapability)}`
                     : ""}
-                </span>
+                </div>
               </div>
             </div>
           ) : (
@@ -1145,7 +1141,7 @@ function FlowListCard({
 
         <div
           className={`mt-auto flex flex-col ${
-            isRegistryOnly ? "gap-2.5 pt-1" : "gap-3 xl:gap-2 pt-2 xl:pt-1"
+            isRegistryOnly ? "gap-2.5 pt-1" : "gap-2.5 pt-1"
           }`}
         >
           <Link
