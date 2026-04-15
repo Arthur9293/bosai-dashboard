@@ -5,12 +5,17 @@ import {
   type CommandItem,
   type CommandsResponse,
 } from "@/lib/api";
-import { DashboardStatusBadge } from "@/components/dashboard/StatusBadge";
-import type { DashboardStatusKind } from "@/components/dashboard/StatusBadge";
 import {
-  EmptyStatePanel,
+  ControlPlaneShell,
+  SectionCard,
+  SidePanelCard,
   SectionCountPill,
+  EmptyStatePanel,
 } from "@/components/dashboard/ControlPlaneShell";
+import {
+  DashboardStatusBadge,
+  type DashboardStatusKind,
+} from "@/components/dashboard/StatusBadge";
 import { CommandsFilters } from "./commands-filters";
 
 type SearchParams = {
@@ -37,34 +42,49 @@ type CommandFilters = {
   limit: number;
 };
 
-function cardClassName() {
+function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
-function statCardClassName() {
+function statCardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function actionLinkClassName(
   variant: "default" | "primary" | "soft" = "default"
-) {
+): string {
   if (variant === "primary") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
-function sectionLabelClassName() {
+function sectionLabelClassName(): string {
   return "text-xs uppercase tracking-[0.22em] text-zinc-500";
 }
 
-function metaLabelClassName() {
+function metaLabelClassName(): string {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
-function neutralPillClassName() {
+function neutralPillClassName(): string {
   return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
+}
+
+function chipClassName(): string {
+  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200";
+}
+
+function compactTechnicalId(value: string, max = 34): string {
+  const clean = value.trim();
+  if (!clean) return "—";
+  if (clean.length <= max) return clean;
+
+  const keepStart = Math.max(12, Math.floor((max - 3) / 2));
+  const keepEnd = Math.max(8, max - keepStart - 3);
+
+  return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
 }
 
 function formatDate(value?: string | null): string {
@@ -98,7 +118,7 @@ function toTextOrEmpty(value: unknown): string {
   return toText(value, "");
 }
 
-function firstParam(value?: string | string[]) {
+function firstParam(value?: string | string[]): string {
   if (Array.isArray(value)) return value[0] || "";
   return value || "";
 }
@@ -339,7 +359,7 @@ function commandMatchesFlowFilters(
     rootEventId: string;
     sourceEventId: string;
   }
-) {
+): boolean {
   const commandValues = [
     getCommandFlowId(command),
     getCommandRootEventId(command),
@@ -361,7 +381,7 @@ function getBackToFlowsHref(filters: {
   flowId: string;
   rootEventId: string;
   sourceEventId: string;
-}) {
+}): string {
   if (filters.flowId) {
     return `/flows/${encodeURIComponent(filters.flowId)}`;
   }
@@ -377,7 +397,7 @@ function getBackToFlowsHref(filters: {
   return "/flows";
 }
 
-function getCommandStatusBucket(command: CommandItem) {
+function getCommandStatusBucket(command: CommandItem): string {
   const normalized = getCommandStatus(command).toLowerCase();
 
   if (["queued", "pending", "new"].includes(normalized)) return "queued";
@@ -473,7 +493,7 @@ function parseCommandFilters(
 function commandMatchesCommandFilters(
   command: CommandItem,
   filters: CommandFilters
-) {
+): boolean {
   if (filters.bucket && getCommandStatusBucket(command) !== filters.bucket) {
     return false;
   }
@@ -495,7 +515,7 @@ function commandMatchesCommandFilters(
   return true;
 }
 
-function sortCommands(items: CommandItem[]) {
+function sortCommands(items: CommandItem[]): CommandItem[] {
   return [...items].sort((a, b) => {
     const priorityDiff = getCommandPriority(a) - getCommandPriority(b);
     if (priorityDiff !== 0) return priorityDiff;
@@ -504,7 +524,7 @@ function sortCommands(items: CommandItem[]) {
   });
 }
 
-function sortDoneCommands(items: CommandItem[]) {
+function sortDoneCommands(items: CommandItem[]): CommandItem[] {
   return [...items].sort((a, b) => getCommandTimestamp(b) - getCommandTimestamp(a));
 }
 
@@ -534,30 +554,29 @@ function SectionBlock({
   description,
   count,
   countTone = "default",
+  tone = "default",
   children,
 }: {
   title: string;
   description: string;
   count: number;
   countTone?: "default" | "info" | "success" | "warning" | "danger" | "muted";
+  tone?: "default" | "attention" | "neutral";
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-4">
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <div className={sectionLabelClassName()}>{title}</div>
-          <SectionCountPill value={count} tone={countTone} />
-        </div>
-        <p className="max-w-3xl text-base text-zinc-400">{description}</p>
-      </div>
-
+    <SectionCard
+      title={title}
+      description={description}
+      tone={tone}
+      action={<SectionCountPill value={count} tone={countTone} />}
+    >
       {children}
-    </section>
+    </SectionCard>
   );
 }
 
-function CommandCard({ command }: { command: CommandItem }) {
+function CommandListCard({ command }: { command: CommandItem }) {
   const id = String(command.id || "");
   const title = getCommandTitle(command);
   const status = getCommandStatus(command);
@@ -610,50 +629,54 @@ function CommandCard({ command }: { command: CommandItem }) {
 
           <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2">
             <div>
-              Workspace: <span className="text-zinc-300">{workspace}</span>
+              Workspace : <span className="text-zinc-300">{workspace}</span>
             </div>
             <div>
-              Run: <span className="text-zinc-300">{runId}</span>
+              Run : <span className="text-zinc-300">{runId}</span>
             </div>
             <div className="hidden md:block">
-              Parent: <span className="text-zinc-300">{parentId || "—"}</span>
+              Parent : <span className="text-zinc-300">{parentId || "—"}</span>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <div>
+        <div className="grid grid-cols-1 gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-3">
+          <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>ID</div>
-            <div className="mt-1 break-all text-zinc-200">{id}</div>
+            <div className="mt-2 break-all text-zinc-100">{id}</div>
           </div>
 
-          <div>
+          <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Created</div>
-            <div className="mt-1 text-zinc-200">
+            <div className="mt-2 text-zinc-100">
               {formatDate(getCommandCreatedAt(command))}
             </div>
           </div>
 
-          <div>
+          <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Finished</div>
-            <div className="mt-1 text-zinc-200">
+            <div className="mt-2 text-zinc-100">
               {formatDate(getCommandFinishedAt(command))}
             </div>
           </div>
 
-          <div className="hidden md:block">
+          <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Flow</div>
-            <div className="mt-1 break-all text-zinc-200">{flowId || "—"}</div>
+            <div className="mt-2 break-all text-zinc-100">{flowId || "—"}</div>
           </div>
 
-          <div className="hidden md:block">
+          <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Root event</div>
-            <div className="mt-1 break-all text-zinc-200">{rootEventId || "—"}</div>
+            <div className="mt-2 break-all text-zinc-100">
+              {rootEventId || "—"}
+            </div>
           </div>
 
-          <div className="hidden md:block">
+          <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Source event</div>
-            <div className="mt-1 break-all text-zinc-200">{sourceEventId || "—"}</div>
+            <div className="mt-2 break-all text-zinc-100">
+              {sourceEventId || "—"}
+            </div>
           </div>
 
           <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
@@ -662,7 +685,7 @@ function CommandCard({ command }: { command: CommandItem }) {
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="mt-auto flex flex-col gap-2.5 pt-1">
           <Link
             href={`/commands/${encodeURIComponent(id)}`}
             className={actionLinkClassName("primary")}
@@ -711,9 +734,11 @@ export default async function CommandsPage({ searchParams }: PageProps) {
       )
     : commands;
 
-  const visibleCommands = flowVisibleCommands
-    .filter((command) => commandMatchesCommandFilters(command, commandFilters))
-    .slice(0, commandFilters.limit);
+  const filteredCommands = flowVisibleCommands.filter((command) =>
+    commandMatchesCommandFilters(command, commandFilters)
+  );
+
+  const visibleCommands = filteredCommands.slice(0, commandFilters.limit);
 
   const queuedCommands = visibleCommands.filter(
     (item) => getCommandStatusBucket(item) === "queued"
@@ -750,96 +775,197 @@ export default async function CommandsPage({ searchParams }: PageProps) {
       ? getBackToFlowsHref({ flowId, rootEventId, sourceEventId })
       : "/flows";
 
+  const focusCommand =
+    needsAttentionCommands[0] ??
+    completedCommands[0] ??
+    visibleCommands[0] ??
+    null;
+
   return (
-    <div className="space-y-8">
-      <section className="space-y-3 border-b border-white/10 pb-6">
-        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
-
-        <div>
-          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-            Commands
-          </h1>
-          <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
-            Vue de la file d’exécution BOSAI. Cette page permet de suivre les
-            commands, leur statut, leur liaison au flow, et leur détail.
-          </p>
-        </div>
-      </section>
-
-      {hasFlowFilters ? (
-        <section className="rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-5 md:p-6">
-          <div className="mb-4 text-lg font-medium text-emerald-200">
-            Filtré depuis Flows
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            {flowId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
-                flow_id: {flowId}
-              </span>
-            ) : null}
-
-            {rootEventId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
-                root_event_id: {rootEventId}
-              </span>
-            ) : null}
-
-            {sourceEventId ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
-                source_event_id: {sourceEventId}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-5 space-y-3">
+    <ControlPlaneShell
+      eyebrow="BOSAI Control Plane"
+      title="Commands"
+      description="Vue de la file d’exécution BOSAI pour suivre les commands, leur statut, leur liaison au flow et leur détail."
+      badges={[
+        { label: "Queue & Execution", tone: "warning" },
+        { label: "Flow-linked", tone: "info" },
+        { label: "Operations", tone: "muted" },
+      ]}
+      metrics={[
+        { label: "Queued", value: queuedCommands.length, toneClass: "text-amber-300" },
+        { label: "Running", value: runningCommands.length, toneClass: "text-sky-300" },
+        { label: "Retry", value: retryCommands.length, toneClass: "text-violet-300" },
+        { label: "Failed", value: failedCommands.length, toneClass: "text-red-300" },
+      ]}
+      actions={
+        <>
+          {hasFlowFilters ? (
             <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
-              Retour aux flows
+              Retour au flow
             </Link>
+          ) : (
+            <Link href="/flows" className={actionLinkClassName("soft")}>
+              Ouvrir Flows
+            </Link>
+          )}
 
-            <Link href="/commands" className={actionLinkClassName("primary")}>
-              Voir toutes les commands
-            </Link>
+          <Link href="/incidents" className={actionLinkClassName("primary")}>
+            Voir Incidents
+          </Link>
+        </>
+      }
+      aside={
+        <>
+          <SidePanelCard title="Lecture opérationnelle">
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <DashboardStatusBadge kind="queued" label="QUEUED" />
+                <DashboardStatusBadge kind="running" label="RUNNING" />
+                <DashboardStatusBadge kind="retry" label="RETRY" />
+                <DashboardStatusBadge kind="failed" label="FAILED" />
+                <DashboardStatusBadge kind="success" label="DONE" />
+              </div>
+
+              <div className="space-y-2 text-sm leading-6 text-white/65">
+                <p>
+                  <span className="text-white/90">Needs Attention</span> regroupe
+                  les commands en file, en cours, en retry ou en échec.
+                </p>
+                <p>
+                  <span className="text-white/90">Completed</span> montre
+                  l’historique récent des commands terminées.
+                </p>
+                <p>
+                  <span className="text-white/90">Filters</span> permet
+                  d’isoler capability, workspace, période et bucket.
+                </p>
+              </div>
+            </div>
+          </SidePanelCard>
+
+          <SidePanelCard title="Command active">
+            {focusCommand ? (
+              <div className="space-y-4">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/35">
+                    Titre
+                  </div>
+                  <div className="mt-2 text-sm font-medium leading-6 text-white">
+                    {getCommandTitle(focusCommand)}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <DashboardStatusBadge
+                    kind={getCommandStatusBadgeKind(focusCommand)}
+                    label={humanStatusLabel(getCommandStatus(focusCommand)).toUpperCase()}
+                  />
+                  <span className={neutralPillClassName()}>
+                    {cleanCapabilityLabel(getCommandCapability(focusCommand))}
+                  </span>
+                </div>
+
+                <div className="space-y-2 text-sm leading-6 text-white/65">
+                  <div>
+                    Workspace :{" "}
+                    <span className="text-white/90">
+                      {getCommandWorkspace(focusCommand)}
+                    </span>
+                  </div>
+                  <div>
+                    Flow :{" "}
+                    <span className="break-all text-white/90">
+                      {compactTechnicalId(
+                        getCommandFlowId(focusCommand) ||
+                          getCommandRootEventId(focusCommand) ||
+                          getCommandSourceEventId(focusCommand) ||
+                          "—"
+                      )}
+                    </span>
+                  </div>
+                  <div>
+                    Activité :{" "}
+                    <span className="text-white/90">
+                      {formatDate(
+                        getCommandFinishedAt(focusCommand) ||
+                          getCommandStartedAt(focusCommand) ||
+                          getCommandCreatedAt(focusCommand)
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Link
+                    href={`/commands/${encodeURIComponent(String(focusCommand.id || ""))}`}
+                    className={actionLinkClassName("primary")}
+                  >
+                    Ouvrir le détail
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-white/55">Aucune command sélectionnée.</div>
+            )}
+          </SidePanelCard>
+        </>
+      }
+    >
+      {hasFlowFilters ? (
+        <SectionCard
+          title="Filtré depuis Flows"
+          description="Cette vue est limitée au contexte du flow sélectionné."
+          tone="attention"
+          action={<SectionCountPill value={visibleCommands.length} tone="warning" />}
+        >
+          <div className="space-y-5">
+            <div className="flex flex-wrap gap-3">
+              {flowId ? <span className={chipClassName()}>flow_id: {flowId}</span> : null}
+              {rootEventId ? (
+                <span className={chipClassName()}>root_event_id: {rootEventId}</span>
+              ) : null}
+              {sourceEventId ? (
+                <span className={chipClassName()}>
+                  source_event_id: {sourceEventId}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
+                Retour aux flows
+              </Link>
+
+              <Link href="/commands" className={actionLinkClassName("primary")}>
+                Voir toutes les commands
+              </Link>
+            </div>
           </div>
-        </section>
+        </SectionCard>
       ) : null}
 
-      <CommandsFilters
-        initialFilters={commandFilters}
-        preservedParams={{
-          flow_id: flowId,
-          root_event_id: rootEventId,
-          source_event_id: sourceEventId,
-          from,
-        }}
-      />
+      <SectionCard
+        title="Filtres Commands"
+        description="Affinage par statut, capability, workspace, période et volume."
+        tone="neutral"
+      >
+        <CommandsFilters
+          initialFilters={commandFilters}
+          preservedParams={{
+            flow_id: flowId,
+            root_event_id: rootEventId,
+            source_event_id: sourceEventId,
+            from,
+          }}
+        />
+      </SectionCard>
 
       <section className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-5">
-        <StatCard
-          label="Queued"
-          value={queuedCommands.length}
-          toneClass="text-amber-300"
-        />
-        <StatCard
-          label="Running"
-          value={runningCommands.length}
-          toneClass="text-sky-300"
-        />
-        <StatCard
-          label="Retry"
-          value={retryCommands.length}
-          toneClass="text-violet-300"
-        />
-        <StatCard
-          label="Failed"
-          value={failedCommands.length}
-          toneClass="text-red-300"
-        />
-        <StatCard
-          label="Done"
-          value={doneCommands.length}
-          toneClass="text-emerald-300"
-        />
+        <StatCard label="Queued" value={queuedCommands.length} toneClass="text-amber-300" />
+        <StatCard label="Running" value={runningCommands.length} toneClass="text-sky-300" />
+        <StatCard label="Retry" value={retryCommands.length} toneClass="text-violet-300" />
+        <StatCard label="Failed" value={failedCommands.length} toneClass="text-red-300" />
+        <StatCard label="Done" value={doneCommands.length} toneClass="text-emerald-300" />
       </section>
 
       {visibleCommands.length === 0 ? (
@@ -848,12 +974,13 @@ export default async function CommandsPage({ searchParams }: PageProps) {
           description="Le Dashboard n’a remonté aucune command sur la vue actuelle."
         />
       ) : (
-        <div className="space-y-8">
+        <>
           <SectionBlock
-            title="Needs attention"
+            title="Needs Attention"
             description="Commands à surveiller en priorité : en file, en cours, en retry ou en échec."
             count={needsAttentionCommands.length}
             countTone="warning"
+            tone="attention"
           >
             {needsAttentionCommands.length === 0 ? (
               <EmptyStatePanel
@@ -861,9 +988,9 @@ export default async function CommandsPage({ searchParams }: PageProps) {
                 description="Aucune command en file, en cours, en retry ou en échec n’est visible pour le moment."
               />
             ) : (
-              <div className="space-y-4">
+              <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
                 {needsAttentionCommands.map((command) => (
-                  <CommandCard key={String(command.id)} command={command} />
+                  <CommandListCard key={String(command.id)} command={command} />
                 ))}
               </div>
             )}
@@ -874,6 +1001,7 @@ export default async function CommandsPage({ searchParams }: PageProps) {
             description="Historique des commands terminées avec succès, triées de la plus récente à la plus ancienne."
             count={completedCommands.length}
             countTone="success"
+            tone="neutral"
           >
             {completedCommands.length === 0 ? (
               <EmptyStatePanel
@@ -881,15 +1009,15 @@ export default async function CommandsPage({ searchParams }: PageProps) {
                 description="Aucune command terminée avec succès n’est visible sur cette vue pour le moment."
               />
             ) : (
-              <div className="space-y-4">
+              <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
                 {completedCommands.map((command) => (
-                  <CommandCard key={String(command.id)} command={command} />
+                  <CommandListCard key={String(command.id)} command={command} />
                 ))}
               </div>
             )}
           </SectionBlock>
-        </div>
+        </>
       )}
-    </div>
+    </ControlPlaneShell>
   );
 }
