@@ -9,6 +9,8 @@ export type SectionCountTone =
   | "danger"
   | "muted";
 
+type LegacyPanelTone = "default" | "attention" | "neutral";
+
 export function dashboardCardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
@@ -73,6 +75,18 @@ function sectionCountToneClass(tone: SectionCountTone): string {
   }
 
   return "border-white/10 bg-white/[0.04] text-zinc-300";
+}
+
+function legacyPanelToneClass(tone: LegacyPanelTone): string {
+  if (tone === "attention") {
+    return "border-amber-500/20 bg-amber-500/[0.06] shadow-[inset_0_1px_0_rgba(251,191,36,0.08)]";
+  }
+
+  if (tone === "neutral") {
+    return "border-white/10 bg-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]";
+  }
+
+  return dashboardCardClassName();
 }
 
 export function SectionCountPill({
@@ -332,6 +346,7 @@ export function SectionCard({
   children,
   className = "",
   padding = "md",
+  tone = "default",
 }: {
   title?: string;
   description?: string;
@@ -340,13 +355,14 @@ export function SectionCard({
   children: ReactNode;
   className?: string;
   padding?: "none" | "sm" | "md";
+  tone?: LegacyPanelTone;
 }) {
   const paddingClass =
     padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-5 md:p-6";
 
   return (
     <div
-      className={[dashboardCardClassName(), paddingClass, className]
+      className={[legacyPanelToneClass(tone), paddingClass, "rounded-[28px] border", className]
         .filter(Boolean)
         .join(" ")}
     >
@@ -385,6 +401,7 @@ export function SidePanelCard({
   children,
   className = "",
   padding = "md",
+  tone = "default",
 }: {
   title?: string;
   description?: string;
@@ -393,13 +410,14 @@ export function SidePanelCard({
   children: ReactNode;
   className?: string;
   padding?: "none" | "sm" | "md";
+  tone?: LegacyPanelTone;
 }) {
   const paddingClass =
     padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-5 md:p-6";
 
   return (
     <aside
-      className={[dashboardCardClassName(), paddingClass, className]
+      className={[legacyPanelToneClass(tone), paddingClass, "rounded-[28px] border", className]
         .filter(Boolean)
         .join(" ")}
     >
