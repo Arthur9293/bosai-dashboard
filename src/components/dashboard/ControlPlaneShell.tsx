@@ -147,10 +147,7 @@ export function DashboardPageHeader({
 }) {
   return (
     <section
-      className={[
-        "space-y-4 border-b border-white/10 pb-6",
-        className,
-      ]
+      className={["space-y-4 border-b border-white/10 pb-6", className]
         .filter(Boolean)
         .join(" ")}
     >
@@ -237,11 +234,7 @@ export function DashboardCard({
 
   return (
     <div
-      className={[
-        dashboardCardClassName(),
-        paddingClass,
-        className,
-      ]
+      className={[dashboardCardClassName(), paddingClass, className]
         .filter(Boolean)
         .join(" ")}
     >
@@ -314,5 +307,125 @@ export function DashboardLaneCard({
         {badge ? <div className="shrink-0">{badge}</div> : null}
       </div>
     </Link>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* LEGACY COMPAT EXPORTS — SAFE PATCH                                         */
+/* -------------------------------------------------------------------------- */
+
+export function ControlPlaneShell({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={["space-y-8", className].filter(Boolean).join(" ")}>{children}</div>;
+}
+
+export function SectionCard({
+  title,
+  description,
+  eyebrow,
+  action,
+  children,
+  className = "",
+  padding = "md",
+}: {
+  title?: string;
+  description?: string;
+  eyebrow?: string;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  padding?: "none" | "sm" | "md";
+}) {
+  const paddingClass =
+    padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-5 md:p-6";
+
+  return (
+    <div
+      className={[dashboardCardClassName(), paddingClass, className]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {title || description || eyebrow || action ? (
+        <div className="mb-5 flex flex-col gap-3 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-2">
+            {eyebrow ? (
+              <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
+            ) : null}
+
+            {title ? (
+              <div className="text-2xl font-semibold tracking-tight text-white">
+                {title}
+              </div>
+            ) : null}
+
+            {description ? (
+              <p className="max-w-3xl text-base text-zinc-400">{description}</p>
+            ) : null}
+          </div>
+
+          {action ? <div className="shrink-0">{action}</div> : null}
+        </div>
+      ) : null}
+
+      {children}
+    </div>
+  );
+}
+
+export function SidePanelCard({
+  title,
+  description,
+  eyebrow,
+  action,
+  children,
+  className = "",
+  padding = "md",
+}: {
+  title?: string;
+  description?: string;
+  eyebrow?: string;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  padding?: "none" | "sm" | "md";
+}) {
+  const paddingClass =
+    padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-5 md:p-6";
+
+  return (
+    <aside
+      className={[dashboardCardClassName(), paddingClass, className]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {title || description || eyebrow || action ? (
+        <div className="mb-5 flex flex-col gap-3 border-b border-white/10 pb-5">
+          <div className="space-y-2">
+            {eyebrow ? (
+              <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
+            ) : null}
+
+            {title ? (
+              <div className="text-xl font-semibold tracking-tight text-white">
+                {title}
+              </div>
+            ) : null}
+
+            {description ? (
+              <p className="text-sm text-zinc-400">{description}</p>
+            ) : null}
+          </div>
+
+          {action ? <div>{action}</div> : null}
+        </div>
+      ) : null}
+
+      {children}
+    </aside>
   );
 }
