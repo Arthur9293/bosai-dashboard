@@ -533,11 +533,13 @@ function SectionBlock({
   title,
   description,
   count,
+  countTone = "default",
   children,
 }: {
   title: string;
   description: string;
   count: number;
+  countTone?: "default" | "info" | "success" | "warning" | "danger" | "muted";
   children: ReactNode;
 }) {
   return (
@@ -545,9 +547,7 @@ function SectionBlock({
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div className={sectionLabelClassName()}>{title}</div>
-          <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
-            {count}
-          </span>
+          <SectionCountPill value={count} tone={countTone} />
         </div>
         <p className="max-w-3xl text-base text-zinc-400">{description}</p>
       </div>
@@ -843,18 +843,23 @@ export default async function CommandsPage({ searchParams }: PageProps) {
       </section>
 
       {visibleCommands.length === 0 ? (
-        <section className={emptyStateClassName()}>
-          Aucune command visible pour le moment.
-        </section>
+        <EmptyStatePanel
+          title="Aucune command visible"
+          description="Le Dashboard n’a remonté aucune command sur la vue actuelle."
+        />
       ) : (
         <div className="space-y-8">
           <SectionBlock
             title="Needs attention"
             description="Commands à surveiller en priorité : en file, en cours, en retry ou en échec."
             count={needsAttentionCommands.length}
+            countTone="warning"
           >
             {needsAttentionCommands.length === 0 ? (
-              <div className={emptyStateClassName()}>Aucune command active.</div>
+              <EmptyStatePanel
+                title="Aucune command active"
+                description="Aucune command en file, en cours, en retry ou en échec n’est visible pour le moment."
+              />
             ) : (
               <div className="space-y-4">
                 {needsAttentionCommands.map((command) => (
@@ -868,11 +873,13 @@ export default async function CommandsPage({ searchParams }: PageProps) {
             title="Completed commands"
             description="Historique des commands terminées avec succès, triées de la plus récente à la plus ancienne."
             count={completedCommands.length}
+            countTone="success"
           >
             {completedCommands.length === 0 ? (
-              <div className={emptyStateClassName()}>
-                Aucune command terminée.
-              </div>
+              <EmptyStatePanel
+                title="Aucune command terminée"
+                description="Aucune command terminée avec succès n’est visible sur cette vue pour le moment."
+              />
             ) : (
               <div className="space-y-4">
                 {completedCommands.map((command) => (
