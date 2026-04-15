@@ -11,6 +11,17 @@ import {
   type FlowDetail,
   type IncidentItem,
 } from "@/lib/api";
+import {
+  ControlPlaneShell,
+  SectionCard,
+  SidePanelCard,
+  SectionCountPill,
+  EmptyStatePanel,
+} from "@/components/dashboard/ControlPlaneShell";
+import {
+  DashboardStatusBadge,
+  type DashboardStatusKind,
+} from "@/components/dashboard/StatusBadge";
 
 type PageProps = {
   params:
@@ -44,26 +55,30 @@ type TimelineItem = {
 };
 
 function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
-function softPanelClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-4";
+function metaBoxClassName() {
+  return "rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
 }
 
-function emptyStateClassName() {
-  return "rounded-2xl border border-dashed border-white/10 bg-white/5 px-5 py-8 text-sm text-zinc-500";
+function metaLabelClassName() {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function sectionLabelClassName() {
+  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
 
 function actionLinkClassName(
-  variant: "default" | "primary" | "danger" = "default",
+  variant: "default" | "primary" | "soft" | "danger" = "default",
   disabled = false
 ) {
   const base =
-    "inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
+    "inline-flex w-full items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition";
 
   if (disabled) {
-    return `${base} cursor-not-allowed border border-white/10 bg-white/5 text-zinc-500 opacity-60`;
+    return `${base} cursor-not-allowed border border-white/10 bg-white/[0.04] text-zinc-500 opacity-60`;
   }
 
   if (variant === "primary") {
@@ -74,7 +89,22 @@ function actionLinkClassName(
     return `${base} border border-rose-500/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15`;
   }
 
-  return `${base} border border-white/10 bg-white/5 text-white hover:bg-white/10`;
+  if (variant === "soft") {
+    return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+  }
+
+  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+}
+
+function compactTechnicalId(value: string, max = 34): string {
+  const clean = value.trim();
+  if (!clean) return "—";
+  if (clean.length <= max) return clean;
+
+  const keepStart = Math.max(12, Math.floor((max - 3) / 2));
+  const keepEnd = Math.max(8, max - keepStart - 3);
+
+  return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
 }
 
 function toText(value: unknown, fallback = ""): string {
@@ -176,58 +206,122 @@ function isRecordIdLike(value: string): boolean {
   return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
 }
 
-function tone(status?: string): string {
-  const s = (status || "").trim().toLowerCase();
-
-  if (["processed", "done", "success", "completed", "resolved"].includes(s)) {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (["running", "processing"].includes(s)) {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  if (["queued", "pending", "new"].includes(s)) {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (["retry", "retriable"].includes(s)) {
-    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
-  }
-
-  if (["ignored"].includes(s)) {
-    return "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20";
-  }
-
-  if (["error", "failed", "dead", "blocked", "escalated"].includes(s)) {
-    return "bg-rose-500/15 text-rose-300 border border-rose-500/20";
-  }
-
-  if (["partial", "unknown"].includes(s)) {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
-function incidentTone(hasIncident: boolean) {
-  return hasIncident
-    ? "bg-rose-500/15 text-rose-300 border border-rose-500/20"
-    : "bg-zinc-800 text-zinc-300 border border-white/10";
+function flowStatusBadgeKind(status?: string): DashboardStatusKind {
+  const normalized = (status || "").trim().toLowerCase();
+
+  if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
+    return "success";
+  }
+
+  if (["running", "processing"].includes(normalized)) {
+    return "running";
+  }
+
+  if (["queued", "pending", "new"].includes(normalized)) {
+    return "queued";
+  }
+
+  if (["retry", "retriable"].includes(normalized)) {
+    return "retry";
+  }
+
+  if (["error", "failed", "dead", "blocked", "escalated"].includes(normalized)) {
+    return "failed";
+  }
+
+  if (["partial"].includes(normalized)) {
+    return "retry";
+  }
+
+  return "unknown";
+}
+
+function flowStatusLabel(status?: string): string {
+  const normalized = (status || "").trim().toLowerCase();
+
+  if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
+    return "PROCESSED";
+  }
+
+  if (["running", "processing"].includes(normalized)) {
+    return "RUNNING";
+  }
+
+  if (["queued", "pending", "new"].includes(normalized)) {
+    return "QUEUED";
+  }
+
+  if (["retry", "retriable"].includes(normalized)) {
+    return "RETRY";
+  }
+
+  if (["error", "failed", "dead", "blocked", "escalated"].includes(normalized)) {
+    return "FAILED";
+  }
+
+  if (["partial"].includes(normalized)) {
+    return "PARTIAL";
+  }
+
+  return normalized ? normalized.toUpperCase() : "UNKNOWN";
+}
+
+function flowStatusTone(status?: string):
+  | "default"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger"
+  | "muted" {
+  const normalized = (status || "").trim().toLowerCase();
+
+  if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
+    return "success";
+  }
+
+  if (["running", "processing"].includes(normalized)) {
+    return "info";
+  }
+
+  if (["queued", "pending", "new", "retry", "retriable", "partial"].includes(normalized)) {
+    return "warning";
+  }
+
+  if (["error", "failed", "dead", "blocked", "escalated"].includes(normalized)) {
+    return "danger";
+  }
+
+  return "muted";
+}
+
+function modeTone(mode: "registry-only" | "enriched"):
+  | "default"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger"
+  | "muted" {
+  return mode === "registry-only" ? "warning" : "info";
+}
+
+function incidentTone(hasIncident: boolean):
+  | "default"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger"
+  | "muted" {
+  return hasIncident ? "danger" : "muted";
 }
 
 function incidentLabel(count: number, hasIncident: boolean) {
-  if (!hasIncident || count <= 0) return "Aucun incident";
-  if (count === 1) return "1 incident";
-  return `${count} incidents`;
-}
-
-function modeTone(mode: "registry-only" | "enriched") {
-  if (mode === "registry-only") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+  if (!hasIncident || count <= 0) return "NO INCIDENT";
+  if (count === 1) return "1 INCIDENT";
+  return `${count} INCIDENTS`;
 }
 
 function getEventPayload(event: EventItem): Record<string, unknown> {
@@ -566,8 +660,7 @@ function normalizeTimelineItem(command: CommandItem): TimelineItem {
   const sourceEventId = getCommandSourceEventId(command);
   const rootEventId = getCommandRootEventId(command);
 
-  const workspaceId =
-    getCommandWorkspaceId(command) || "production";
+  const workspaceId = getCommandWorkspaceId(command) || "production";
 
   const parentCommandId =
     toText(command.parent_command_id) ||
@@ -619,8 +712,7 @@ function buildSyntheticTimelineItemFromEvent(
     getEventSourceRecordId(event) ||
     fallbackId;
 
-  const sourceEventId =
-    getEventSourceRecordId(event) || getEventRootEventId(event);
+  const sourceEventId = getEventSourceRecordId(event) || getEventRootEventId(event);
 
   return {
     id: linkedCommand || toText(event.id) || fallbackId,
@@ -635,8 +727,7 @@ function buildSyntheticTimelineItemFromEvent(
     flowId,
     rootEventId,
     sourceEventId,
-    workspaceId:
-      toText(flow.workspace_id) || getEventWorkspaceId(event) || "production",
+    workspaceId: toText(flow.workspace_id) || getEventWorkspaceId(event) || "production",
     inputJson: stringifyPretty(event.payload ?? {}),
     resultJson: stringifyPretty({
       source: "synthetic_from_event",
@@ -893,6 +984,110 @@ function buildSafeEventHref(sourceEvent: EventItem | null): string {
   return `/events/${encodeURIComponent(sourceEvent.id)}`;
 }
 
+function TimelineCard({
+  item,
+  resolvedFlowId,
+}: {
+  item: TimelineItem;
+  resolvedFlowId: string;
+}) {
+  return (
+    <article className={cardClassName()}>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="break-words text-xl font-semibold text-white">
+            {item.capability}
+          </h3>
+
+          <DashboardStatusBadge
+            kind={flowStatusBadgeKind(item.status)}
+            label={flowStatusLabel(item.status)}
+          />
+
+          <DashboardStatusBadge kind="queued" label={`STEP ${item.stepIndex}`} />
+
+          {item.isRoot ? <DashboardStatusBadge kind="unknown" label="ROOT" /> : null}
+          {item.isTerminal ? (
+            <DashboardStatusBadge kind="unknown" label="TERMINAL" />
+          ) : null}
+          {item.syntheticSource === "event" ? (
+            <DashboardStatusBadge kind="retry" label="SOURCE EVENT" />
+          ) : null}
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-4">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Started</div>
+            <div className="mt-2 text-zinc-100">
+              {formatDate(item.startedAt || item.createdAt)}
+            </div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Finished</div>
+            <div className="mt-2 text-zinc-100">{formatDate(item.finishedAt)}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Worker</div>
+            <div className="mt-2 text-zinc-100">{item.worker || "—"}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Flow</div>
+            <div className="mt-2 break-all text-zinc-100">
+              {item.flowId || resolvedFlowId || "—"}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+          <div>
+            <div className={metaLabelClassName()}>Command ID</div>
+            <div className="mt-1 break-all text-zinc-200">{item.id || "—"}</div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Parent</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {item.parentCommandId || "—"}
+            </div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Root event</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {item.rootEventId || "—"}
+            </div>
+          </div>
+        </div>
+
+        <details className="rounded-[20px] border border-white/10 bg-black/20">
+          <summary className="cursor-pointer list-none px-4 py-3 text-sm text-zinc-300">
+            Voir input / result
+          </summary>
+
+          <div className="grid grid-cols-1 gap-4 border-t border-white/10 p-4 xl:grid-cols-2">
+            <div>
+              <div className={metaLabelClassName()}>Input</div>
+              <pre className="mt-2 overflow-x-auto rounded-[16px] border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+{item.inputJson}
+              </pre>
+            </div>
+
+            <div>
+              <div className={metaLabelClassName()}>Result</div>
+              <pre className="mt-2 overflow-x-auto rounded-[16px] border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+{item.resultJson}
+              </pre>
+            </div>
+          </div>
+        </details>
+      </div>
+    </article>
+  );
+}
+
 export default async function FlowDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
@@ -1018,7 +1213,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
           toText(incident.id),
           toText(incident.flow_id),
           toText(incident.root_event_id),
-          toText(incident.source_record_id),
+          toText((incident as Record<string, unknown>).source_record_id),
           toText(incident.command_id),
           toText(incident.linked_command),
         ].filter(Boolean);
@@ -1071,16 +1266,15 @@ export default async function FlowDetailPage({ params }: PageProps) {
   const hasIncident = incidents.length > 0;
   const incidentCount = incidents.length;
 
-  const graphCommands =
-    hasDetailedCommands
-      ? sortedTimeline.map((item) => ({
-          id: item.id,
-          capability: item.capability,
-          status: item.status,
-          parent_command_id: item.parentCommandId,
-          flow_id: item.flowId || resolvedFlowId,
-        }))
-      : [];
+  const graphCommands = hasDetailedCommands
+    ? sortedTimeline.map((item) => ({
+        id: item.id,
+        capability: item.capability,
+        status: item.status,
+        parent_command_id: item.parentCommandId,
+        flow_id: item.flowId || resolvedFlowId,
+      }))
+    : [];
 
   const sourceEventHref = buildSafeEventHref(sourceEvent);
 
@@ -1110,410 +1304,353 @@ export default async function FlowDetailPage({ params }: PageProps) {
       : "Indisponible pour ce flow pour le moment.";
 
   return (
-    <div className="space-y-6">
-      <div className="border-b border-white/10 pb-4">
-        <div className="text-sm text-zinc-400">
-          <Link
-            href="/flows"
-            className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
-          >
-            ← Retour aux flows
+    <ControlPlaneShell
+      eyebrow="BOSAI Control Plane"
+      title={title}
+      description="Lecture détaillée d’un flow BOSAI avec timeline, graphe d’exécution, objets liés et fallback registre si nécessaire."
+      badges={[
+        {
+          label: flowStatusLabel(resolvedStatus),
+          tone: flowStatusTone(resolvedStatus),
+        },
+        {
+          label: readingMode === "registry-only" ? "REGISTRY-ONLY" : "ENRICHED",
+          tone: modeTone(readingMode),
+        },
+        {
+          label: incidentLabel(incidentCount, hasIncident),
+          tone: incidentTone(hasIncident),
+        },
+      ]}
+      metrics={[
+        { label: "Étapes", value: displayedSteps, toneClass: "text-white" },
+        { label: "Terminées", value: doneCount, toneClass: "text-emerald-300" },
+        { label: "En cours", value: runningCount, toneClass: "text-sky-300" },
+        { label: "Échecs", value: failedCount, toneClass: "text-rose-300" },
+      ]}
+      actions={
+        <>
+          <Link href="/flows" className={actionLinkClassName("soft")}>
+            Retour aux flows
           </Link>
-        </div>
 
-        <div className="mt-4 text-xs uppercase tracking-[0.2em] text-white/40">
-          Flow
-        </div>
+          {sourceEventHref ? (
+            <Link href={sourceEventHref} className={actionLinkClassName("soft")}>
+              Retour à l’event source
+            </Link>
+          ) : null}
 
-        <h1 className="mt-2 break-words text-3xl font-semibold tracking-tight sm:text-4xl">
-          {title}
-        </h1>
+          {hasIncident ? (
+            <Link href={incidentsHref} className={actionLinkClassName("danger")}>
+              Voir les incidents
+            </Link>
+          ) : null}
+        </>
+      }
+      aside={
+        <>
+          <SidePanelCard title="Lecture flow">
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={flowStatusBadgeKind(resolvedStatus)}
+                  label={flowStatusLabel(resolvedStatus)}
+                />
+                <DashboardStatusBadge
+                  kind={readingMode === "registry-only" ? "retry" : "running"}
+                  label={readingMode === "registry-only" ? "REGISTRY-ONLY" : "ENRICHED"}
+                />
+                <DashboardStatusBadge
+                  kind={hasIncident ? "incident" : "unknown"}
+                  label={incidentLabel(incidentCount, hasIncident)}
+                />
+              </div>
 
-        <p className="mt-2 max-w-3xl text-sm text-zinc-400 sm:text-base">
-          Vue détaillée du flow BOSAI.
-        </p>
+              <div className="space-y-2 text-sm leading-6 text-white/65">
+                <div>
+                  Workspace :{" "}
+                  <span className="text-white/90">{resolvedWorkspaceId}</span>
+                </div>
+                <div>
+                  Root :{" "}
+                  <span className="break-all text-white/90">
+                    {compactTechnicalId(resolvedRootEventId || "—")}
+                  </span>
+                </div>
+                <div>
+                  Dernière activité :{" "}
+                  <span className="text-white/90">
+                    {lastActivityTs > 0 ? formatDate(lastActivityTs) : "—"}
+                  </span>
+                </div>
+                <div>
+                  Durée : <span className="text-white/90">{formatDuration(durationMs)}</span>
+                </div>
+              </div>
+            </div>
+          </SidePanelCard>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${tone(
-              resolvedStatus
-            )}`}
-          >
-            {toText(resolvedStatus, "unknown").toUpperCase()}
-          </span>
-
-          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-zinc-300">
-            {displayedSteps > 0
-              ? `${displayedSteps} étape${displayedSteps > 1 ? "s" : ""}`
-              : "Étapes non chargées"}
-          </span>
-
-          <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${modeTone(
-              readingMode
-            )}`}
-          >
-            {readingMode === "registry-only" ? "REGISTRY-ONLY" : "ENRICHED"}
-          </span>
-
-          <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${incidentTone(
-              hasIncident
-            )}`}
-          >
-            {incidentLabel(incidentCount, hasIncident)}
-          </span>
-        </div>
-      </div>
-
+          <SidePanelCard title="Résumé rapide">
+            <div className="space-y-3 text-sm leading-6 text-white/65">
+              <div>
+                Timeline : <span className="text-white/90">{timelineSummaryText}</span>
+              </div>
+              <div>
+                Graphe : <span className="text-white/90">{graphSummaryText}</span>
+              </div>
+              <div>
+                Racine : <span className="text-white/90">{rootCapability}</span>
+              </div>
+              <div>
+                Terminal : <span className="text-white/90">{terminalCapability}</span>
+              </div>
+            </div>
+          </SidePanelCard>
+        </>
+      }
+    >
       {isPartialObservability ? (
-        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-5">
-          <div className="text-2xl font-semibold text-amber-200">
-            Observabilité partielle
+        <SectionCard
+          title="Observabilité partielle"
+          description="Ce flow est présent dans le registre BOSAI mais sa chaîne détaillée n’a pas encore été complètement reconstruite."
+          tone="attention"
+        >
+          <div className="space-y-3 text-sm leading-6 text-zinc-300">
+            <p>
+              La page utilise l’event source, les commands et les incidents comme
+              fallback pour éviter le 404 et préserver la navigation.
+            </p>
+            <p>
+              Dès qu’une chaîne complète sera disponible, cette vue passera
+              automatiquement en mode enrichi.
+            </p>
           </div>
-          <p className="mt-3 text-base leading-7 text-amber-100/85">
-            Ce flow est bien présent dans le registre BOSAI, mais aucune chaîne
-            complète n’a encore été reconstruite. La page utilise l’event, les
-            commands et les incidents comme fallback pour éviter le 404.
-          </p>
-        </div>
+        </SectionCard>
       ) : null}
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Étapes</div>
-          <div className="mt-3 text-4xl font-semibold text-white">
-            {displayedSteps > 0 ? displayedSteps : "—"}
+      <SectionCard
+        title="Overview"
+        description="Identité principale du flow, contexte d’exécution et statut de lecture."
+        action={<SectionCountPill value={displayedSteps} tone="info" />}
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Durée</div>
+            <div className="mt-2 text-zinc-100">{formatDuration(durationMs)}</div>
           </div>
-          {displayedSteps === 0 ? (
-            <div className="mt-2 text-xs text-zinc-500">Détail non chargé</div>
-          ) : null}
-        </div>
 
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Terminées</div>
-          <div className="mt-3 text-4xl font-semibold text-emerald-300">
-            {doneCount}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">En cours / En file</div>
-          <div className="mt-3 text-4xl font-semibold text-sky-300">
-            {runningCount}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Échecs</div>
-          <div className="mt-3 text-4xl font-semibold text-rose-300">
-            {failedCount}
-          </div>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Capacité racine</div>
-          <div className="mt-3 break-words text-xl font-semibold text-white">
-            {rootCapability}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Capacité terminale</div>
-          <div className="mt-3 break-words text-xl font-semibold text-white">
-            {terminalCapability}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Durée totale</div>
-          <div className="mt-3 text-xl font-semibold text-white">
-            {formatDuration(durationMs)}
-          </div>
-        </div>
-      </section>
-
-      <section className={cardClassName()}>
-        <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/40">
-          Identité du flow
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            Flow key: <span className="break-all text-zinc-200">{resolvedFlowId}</span>
-          </div>
-          <div>
-            Root event:{" "}
-            <span className="break-all text-zinc-200">
-              {resolvedRootEventId || "—"}
-            </span>
-          </div>
-          <div>
-            Workspace:{" "}
-            <span className="text-zinc-200">{resolvedWorkspaceId}</span>
-          </div>
-          <div>
-            Dernière étape: <span className="text-zinc-200">{terminalCapability}</span>
-          </div>
-          <div>
-            Dernière activité:{" "}
-            <span className="text-zinc-200">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Dernière activité</div>
+            <div className="mt-2 text-zinc-100">
               {lastActivityTs > 0 ? formatDate(lastActivityTs) : "—"}
-            </span>
-          </div>
-          <div>
-            Dernier statut:{" "}
-            <span className="text-zinc-200">
-              {toText(resolvedStatus, "unknown").toUpperCase()}
-            </span>
-          </div>
-
-          {resolvedSourceRecordId ? (
-            <div className="md:col-span-2 xl:col-span-3 break-all">
-              Source record: <span className="text-zinc-200">{resolvedSourceRecordId}</span>
             </div>
-          ) : null}
+          </div>
 
-          <div className="md:col-span-2 xl:col-span-3">
-            Type de lecture:{" "}
-            <span className="text-zinc-200">
-              {readingMode === "registry-only" ? "Registre uniquement" : "Enrichie"}
-            </span>
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Workspace</div>
+            <div className="mt-2 text-zinc-100">{resolvedWorkspaceId}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Mode</div>
+            <div className="mt-2 text-zinc-100">
+              {readingMode === "registry-only" ? "Registre uniquement" : "Enrichi"}
+            </div>
           </div>
         </div>
-      </section>
+
+        <div className="mt-5 grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+          <div>
+            <div className={metaLabelClassName()}>Flow key</div>
+            <div className="mt-1 break-all text-zinc-200">{resolvedFlowId}</div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Root event</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {resolvedRootEventId || "—"}
+            </div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Source record</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {resolvedSourceRecordId || "—"}
+            </div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Capacité racine</div>
+            <div className="mt-1 text-zinc-200">{rootCapability}</div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Capacité terminale</div>
+            <div className="mt-1 text-zinc-200">{terminalCapability}</div>
+          </div>
+
+          <div>
+            <div className={metaLabelClassName()}>Dernier statut</div>
+            <div className="mt-1 text-zinc-200">{flowStatusLabel(resolvedStatus)}</div>
+          </div>
+        </div>
+      </SectionCard>
 
       {sourceEvent ? (
-        <section className={cardClassName()}>
-          <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/40">
-            Event source
+        <SectionCard
+          title="Event source"
+          description="Event d’origine utilisé pour ancrer la lecture du flow et ses liens de navigation."
+          tone="neutral"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Type</div>
+              <div className="mt-2 text-zinc-100">{getEventType(sourceEvent)}</div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Capability</div>
+              <div className="mt-2 text-zinc-100">{getEventCapability(sourceEvent)}</div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Processed</div>
+              <div className="mt-2 text-zinc-100">
+                {formatDate(getEventProcessedAt(sourceEvent))}
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Linked command</div>
+              <div className="mt-2 break-all text-zinc-100">
+                {getEventLinkedCommand(sourceEvent) || "—"}
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-4 text-sm text-zinc-400">
+          <div className="mt-5 grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
             <div>
-              Event ID :{" "}
-              <span className="break-all text-zinc-200">{sourceEvent.id}</span>
+              <div className={metaLabelClassName()}>Event ID</div>
+              <div className="mt-1 break-all text-zinc-200">{sourceEvent.id}</div>
             </div>
+
             <div>
-              Type : <span className="text-zinc-200">{getEventType(sourceEvent)}</span>
-            </div>
-            <div>
-              Capability :{" "}
-              <span className="text-zinc-200">{getEventCapability(sourceEvent)}</span>
-            </div>
-            <div>
-              Source : <span className="text-zinc-200">{getEventSource(sourceEvent)}</span>
-            </div>
-            <div>
-              Linked command :{" "}
-              <span className="break-all text-zinc-200">
-                {getEventLinkedCommand(sourceEvent) || "—"}
-              </span>
-            </div>
-            <div>
-              Processed :{" "}
-              <span className="text-zinc-200">
-                {formatDate(getEventProcessedAt(sourceEvent))}
-              </span>
+              <div className={metaLabelClassName()}>Source</div>
+              <div className="mt-1 text-zinc-200">{getEventSource(sourceEvent)}</div>
             </div>
           </div>
 
           {sourceEventHref ? (
-            <div className="mt-4">
-              <Link href={sourceEventHref} className={actionLinkClassName("default")}>
+            <div className="mt-5">
+              <Link href={sourceEventHref} className={actionLinkClassName("soft")}>
                 Ouvrir l’event source
               </Link>
             </div>
           ) : null}
-        </section>
+        </SectionCard>
       ) : null}
 
-      <section className={cardClassName()}>
-        <div className="mb-2 text-xs uppercase tracking-[0.2em] text-white/40">
-          Graphe d’exécution
-        </div>
-        <p className="mb-4 text-sm text-zinc-400">
-          Touchez un nœud du graphe pour aller directement à l’étape correspondante
-          dans la timeline.
-        </p>
-
+      <SectionCard
+        title="Graphe d’exécution"
+        description="Lecture visuelle du flow. Touchez un nœud pour retrouver l’étape dans la timeline."
+        action={<SectionCountPill value={graphCommands.length} tone="info" />}
+      >
         {graphCommands.length > 0 ? (
           <FlowGraphClient commands={graphCommands} />
         ) : (
-          <div className={emptyStateClassName()}>{graphSummaryText}</div>
+          <EmptyStatePanel
+            title="Graphe indisponible"
+            description={graphSummaryText}
+          />
         )}
-      </section>
+      </SectionCard>
 
-      <section className={cardClassName()}>
-        <div className="mb-4 text-xs uppercase tracking-[0.2em] text-white/40">
-          Timeline d’exécution
-        </div>
-
+      <SectionCard
+        title="Timeline d’exécution"
+        description="Étapes ordonnées du flow, avec statut, parentage et payloads techniques."
+        action={<SectionCountPill value={sortedTimeline.length} tone="info" />}
+      >
         {sortedTimeline.length === 0 ? (
-          <div className={emptyStateClassName()}>
-            Aucune étape détaillée disponible pour ce flow.
-          </div>
+          <EmptyStatePanel
+            title="Aucune étape détaillée"
+            description="Aucune command n’a été reconstituée pour ce flow pour le moment."
+          />
         ) : (
           <div className="space-y-4">
             {sortedTimeline.map((item) => (
-              <article
+              <TimelineCard
                 key={`${item.id}-${item.stepIndex}`}
-                className="rounded-2xl border border-white/10 bg-white/5 p-4"
-              >
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="break-words text-xl font-semibold text-white">
-                      {item.capability}
-                    </h3>
-
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
-                        item.status
-                      )}`}
-                    >
-                      {toText(item.status, "unknown").toUpperCase()}
-                    </span>
-
-                    <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                      STEP {item.stepIndex}
-                    </span>
-
-                    {item.isRoot ? (
-                      <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                        ROOT
-                      </span>
-                    ) : null}
-
-                    {item.isTerminal ? (
-                      <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
-                        TERMINAL
-                      </span>
-                    ) : null}
-
-                    {item.syntheticSource === "event" ? (
-                      <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-300">
-                        SOURCE EVENT
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-                    <div>
-                      ID: <span className="break-all text-zinc-200">{item.id || "—"}</span>
-                    </div>
-                    <div>
-                      Parent:{" "}
-                      <span className="break-all text-zinc-200">
-                        {item.parentCommandId || "—"}
-                      </span>
-                    </div>
-                    <div>
-                      Worker: <span className="text-zinc-200">{item.worker || "—"}</span>
-                    </div>
-                    <div>
-                      Démarré:{" "}
-                      <span className="text-zinc-200">
-                        {formatDate(item.startedAt || item.createdAt)}
-                      </span>
-                    </div>
-                    <div>
-                      Terminé:{" "}
-                      <span className="text-zinc-200">{formatDate(item.finishedAt)}</span>
-                    </div>
-                    <div>
-                      Flow:{" "}
-                      <span className="break-all text-zinc-200">
-                        {item.flowId || resolvedFlowId || "—"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <details className="rounded-xl border border-white/10 bg-black/20">
-                    <summary className="cursor-pointer list-none px-4 py-3 text-sm text-zinc-300">
-                      Voir input / result
-                    </summary>
-
-                    <div className="grid grid-cols-1 gap-4 border-t border-white/10 p-4 xl:grid-cols-2">
-                      <div>
-                        <div className="mb-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          Input
-                        </div>
-                        <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
-{item.inputJson}
-                        </pre>
-                      </div>
-
-                      <div>
-                        <div className="mb-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
-                          Result
-                        </div>
-                        <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
-{item.resultJson}
-                        </pre>
-                      </div>
-                    </div>
-                  </details>
-                </div>
-              </article>
+                item={item}
+                resolvedFlowId={resolvedFlowId}
+              />
             ))}
           </div>
         )}
-      </section>
+      </SectionCard>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className={cardClassName()}>
-          <div className="mb-4 text-xl font-semibold text-white">Résumé rapide</div>
+      <SectionCard
+        title="Résumé pipeline"
+        description="Cibles BOSAI utiles et objets liés pour la navigation croisée."
+        tone="neutral"
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Flow target</div>
+            <div className="mt-2 break-all text-zinc-100">{resolvedFlowId}</div>
+          </div>
 
-          <div className="space-y-3 text-sm text-zinc-300">
-            <div className={softPanelClassName()}>
-              <div className="text-zinc-400">Incidents</div>
-              <div className="mt-2 flex items-center gap-2">
-                <span
-                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${incidentTone(
-                    hasIncident
-                  )}`}
-                >
-                  {incidentLabel(incidentCount, hasIncident)}
-                </span>
-              </div>
-            </div>
-
-            <div className={softPanelClassName()}>
-              <div className="text-zinc-400">Graphe</div>
-              <div className="mt-2 text-zinc-200">{graphSummaryText}</div>
-            </div>
-
-            <div className={softPanelClassName()}>
-              <div className="text-zinc-400">Timeline</div>
-              <div className="mt-2 text-zinc-200">{timelineSummaryText}</div>
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Root event</div>
+            <div className="mt-2 break-all text-zinc-100">
+              {resolvedRootEventId || "—"}
             </div>
           </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Source record</div>
+            <div className="mt-2 break-all text-zinc-100">
+              {resolvedSourceRecordId || "—"}
+            </div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Incidents</div>
+            <div className="mt-2 text-zinc-100">{incidentLabel(incidentCount, hasIncident)}</div>
+          </div>
         </div>
+      </SectionCard>
 
-        <div className={cardClassName()}>
-          <div className="mb-4 text-xl font-semibold text-white">Navigation</div>
+      <SectionCard
+        title="Navigation"
+        description="Navigation croisée depuis ce flow vers les objets liés."
+        tone="neutral"
+      >
+        <div className="flex flex-col gap-3">
+          <Link href="/flows" className={actionLinkClassName("soft")}>
+            Retour aux flows
+          </Link>
 
-          <div className="flex flex-col gap-3">
-            <Link href="/flows" className={actionLinkClassName("default")}>
-              Retour aux flows
+          {hasIncident ? (
+            <Link href={incidentsHref} className={actionLinkClassName("danger")}>
+              Voir les incidents
             </Link>
+          ) : (
+            <span className={actionLinkClassName("danger", true)}>
+              Voir les incidents
+            </span>
+          )}
 
-            {hasIncident ? (
-              <Link href={incidentsHref} className={actionLinkClassName("danger")}>
-                Voir les incidents
-              </Link>
-            ) : null}
-
-            {sourceEventHref ? (
-              <Link href={sourceEventHref} className={actionLinkClassName("default")}>
-                Retour à l’event source
-              </Link>
-            ) : null}
-          </div>
+          {sourceEventHref ? (
+            <Link href={sourceEventHref} className={actionLinkClassName("soft")}>
+              Ouvrir l’event source
+            </Link>
+          ) : (
+            <span className={actionLinkClassName("soft", true)}>
+              Ouvrir l’event source
+            </span>
+          )}
         </div>
-      </section>
-    </div>
+      </SectionCard>
+    </ControlPlaneShell>
   );
 }
