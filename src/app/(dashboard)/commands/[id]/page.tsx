@@ -15,7 +15,6 @@ import type { DashboardStatusKind } from "@/components/dashboard/StatusBadge";
 import {
   ControlPlaneShell,
   SectionCard,
-  SidePanelCard,
 } from "@/components/dashboard/ControlPlaneShell";
 
 type PageProps = {
@@ -926,100 +925,6 @@ export default async function CommandDetailPage({ params }: PageProps) {
         </div>
       }
       footerNote="Les correspondances flow / event / incident sont calculées en best-effort à partir des identifiants de command, run, flow et workspace."
-      aside={
-        <>
-          <SidePanelCard
-            title="Quick actions"
-            subtitle="Navigation rapide depuis cette command."
-          >
-            <div className="space-y-3">
-              <Link href="/commands" className={actionLinkClassName("soft")}>
-                Retour à la liste commands
-              </Link>
-
-              <Link href="/commands" className={actionLinkClassName("primary")}>
-                Voir toutes les commands
-              </Link>
-
-              {hasFlow ? (
-                <Link href={flowHref} className={actionLinkClassName("soft")}>
-                  Ouvrir le flow lié
-                </Link>
-              ) : (
-                <span className={actionLinkClassName("soft", true)}>
-                  Ouvrir le flow lié
-                </span>
-              )}
-
-              {hasEvent ? (
-                <Link href={eventHref} className={actionLinkClassName("soft")}>
-                  Ouvrir l’event source
-                </Link>
-              ) : (
-                <span className={actionLinkClassName("soft", true)}>
-                  Ouvrir l’event source
-                </span>
-              )}
-
-              {hasIncident ? (
-                <Link href={incidentHref} className={actionLinkClassName("danger")}>
-                  Ouvrir l’incident lié
-                </Link>
-              ) : (
-                <span className={actionLinkClassName("danger", true)}>
-                  Ouvrir l’incident lié
-                </span>
-              )}
-            </div>
-          </SidePanelCard>
-
-          <SidePanelCard
-            title="Routing diagnostic"
-            subtitle="Lecture rapide du matching autour de cette command."
-          >
-            <div className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                <DashboardStatusBadge
-                  kind={getCommandStatusBadgeKind(command)}
-                  label={humanStatusLabel(status).toUpperCase()}
-                />
-                <DashboardStatusBadge
-                  kind={hasFlow ? "success" : "unknown"}
-                  label={hasFlow ? "FLOW LINKED" : "NO FLOW LINK"}
-                />
-                <DashboardStatusBadge
-                  kind={hasEvent ? "success" : "unknown"}
-                  label={hasEvent ? "EVENT LINKED" : "NO EVENT LINK"}
-                />
-                <DashboardStatusBadge
-                  kind={hasIncident ? "incident" : "unknown"}
-                  label={hasIncident ? "INCIDENT LINKED" : "NO INCIDENT LINK"}
-                />
-              </div>
-
-              <div className="space-y-3">
-                <DiagnosticRow label="Workspace" value={workspace} />
-                <DiagnosticRow label="Run" value={runId} technical />
-                <DiagnosticRow
-                  label="Flow target"
-                  value={flowId || rootEventId || sourceEventId || String(command.id)}
-                  technical
-                />
-                <DiagnosticRow
-                  label="Matched event"
-                  value={matchedEvent?.id || "Aucun event lié trouvé"}
-                  technical={Boolean(matchedEvent?.id)}
-                />
-                <DiagnosticRow
-                  label="Matched incident"
-                  value={matchedIncident?.id || "Aucun incident lié trouvé"}
-                  technical={Boolean(matchedIncident?.id)}
-                />
-              </div>
-            </div>
-          </SidePanelCard>
-        </>
-      }
     >
       <SectionCard
         title="Overview"
@@ -1049,6 +954,99 @@ export default async function CommandDetailPage({ params }: PageProps) {
           )}
         </div>
       </SectionCard>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <SectionCard
+          title="Quick actions"
+          description="Navigation rapide depuis cette command."
+        >
+          <div className="space-y-3">
+            <Link href="/commands" className={actionLinkClassName("soft")}>
+              Retour à la liste commands
+            </Link>
+
+            <Link href="/commands" className={actionLinkClassName("primary")}>
+              Voir toutes les commands
+            </Link>
+
+            {hasFlow ? (
+              <Link href={flowHref} className={actionLinkClassName("soft")}>
+                Ouvrir le flow lié
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir le flow lié
+              </span>
+            )}
+
+            {hasEvent ? (
+              <Link href={eventHref} className={actionLinkClassName("soft")}>
+                Ouvrir l’event source
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir l’event source
+              </span>
+            )}
+
+            {hasIncident ? (
+              <Link href={incidentHref} className={actionLinkClassName("danger")}>
+                Ouvrir l’incident lié
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("danger", true)}>
+                Ouvrir l’incident lié
+              </span>
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Routing diagnostic"
+          description="Lecture rapide du matching autour de cette command."
+        >
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <DashboardStatusBadge
+                kind={getCommandStatusBadgeKind(command)}
+                label={humanStatusLabel(status).toUpperCase()}
+              />
+              <DashboardStatusBadge
+                kind={hasFlow ? "success" : "unknown"}
+                label={hasFlow ? "FLOW LINKED" : "NO FLOW LINK"}
+              />
+              <DashboardStatusBadge
+                kind={hasEvent ? "success" : "unknown"}
+                label={hasEvent ? "EVENT LINKED" : "NO EVENT LINK"}
+              />
+              <DashboardStatusBadge
+                kind={hasIncident ? "incident" : "unknown"}
+                label={hasIncident ? "INCIDENT LINKED" : "NO INCIDENT LINK"}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <DiagnosticRow label="Workspace" value={workspace} />
+              <DiagnosticRow label="Run" value={runId} technical />
+              <DiagnosticRow
+                label="Flow target"
+                value={flowId || rootEventId || sourceEventId || String(command.id)}
+                technical
+              />
+              <DiagnosticRow
+                label="Matched event"
+                value={matchedEvent?.id || "Aucun event lié trouvé"}
+                technical={Boolean(matchedEvent?.id)}
+              />
+              <DiagnosticRow
+                label="Matched incident"
+                value={matchedIncident?.id || "Aucun incident lié trouvé"}
+                technical={Boolean(matchedIncident?.id)}
+              />
+            </div>
+          </div>
+        </SectionCard>
+      </div>
 
       <SectionCard
         title="Linking context"
