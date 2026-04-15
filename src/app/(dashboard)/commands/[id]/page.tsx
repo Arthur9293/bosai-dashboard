@@ -10,6 +10,13 @@ import {
   type EventItem,
   type IncidentItem,
 } from "@/lib/api";
+import { DashboardStatusBadge } from "@/components/dashboard/StatusBadge";
+import type { DashboardStatusKind } from "@/components/dashboard/StatusBadge";
+import {
+  ControlPlaneShell,
+  SectionCard,
+  SidePanelCard,
+} from "@/components/dashboard/ControlPlaneShell";
 
 type PageProps = {
   params:
@@ -20,14 +27,6 @@ type PageProps = {
         id: string;
       };
 };
-
-function cardClassName() {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
-
-function statCardClassName() {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
 
 function actionLinkClassName(
   variant: "default" | "primary" | "soft" | "danger" = "default",
@@ -120,9 +119,7 @@ function toTextOrEmpty(value: unknown): string {
 }
 
 function uniq(values: string[]): string[] {
-  return Array.from(
-    new Set(values.map((value) => value.trim()).filter(Boolean))
-  );
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
 function isRecordIdLike(value: string): boolean {
@@ -150,40 +147,20 @@ function pickBestMatch<T>(items: T[], scorer: (item: T) => number): T | null {
   return bestItem;
 }
 
-function tone(status?: string): string {
-  const normalized = (status || "").trim().toLowerCase();
-
-  if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (["queued", "pending", "new"].includes(normalized)) {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (["running", "processing"].includes(normalized)) {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  if (["retry", "retriable"].includes(normalized)) {
-    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
-  }
-
-  if (["ignored"].includes(normalized)) {
-    return "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20";
-  }
-
-  if (["error", "failed", "dead", "blocked"].includes(normalized)) {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+function cleanCapabilityLabel(value: string): string {
+  const raw = toText(value, "");
+  if (!raw) return "unknown_capability";
+  return raw.replace(/_/g, " ");
 }
 
 function humanStatusLabel(status: string): string {
   const normalized = status.trim().toLowerCase();
 
-  if (["done", "success", "completed", "processed", "resolved"].includes(normalized)) {
+  if (
+    ["done", "success", "completed", "processed", "resolved"].includes(
+      normalized
+    )
+  ) {
     return "Succès";
   }
 
@@ -208,6 +185,56 @@ function humanStatusLabel(status: string): string {
   }
 
   return normalized ? normalized.toUpperCase() : "UNKNOWN";
+}
+
+function getCommandStatusBadgeKind(command: CommandItem): DashboardStatusKind {
+  const normalized = getCommandStatus(command).trim().toLowerCase();
+
+  if (["queued", "pending", "new"].includes(normalized)) return "queued";
+  if (["running", "processing"].includes(normalized)) return "running";
+  if (["retry", "retriable"].includes(normalized)) return "retry";
+  if (["error", "failed", "dead", "blocked"].includes(normalized)) return "failed";
+  if (
+    ["processed", "done", "success", "completed", "resolved"].includes(
+      normalized
+    )
+  ) {
+    return "success";
+  }
+
+  return "unknown";
+}
+
+function getShellToneFromCommandStatus(
+  command: CommandItem
+): "default" | "info" | "success" | "warning" | "danger" | "muted" {
+  const normalized = getCommandStatus(command).trim().toLowerCase();
+
+  if (["queued", "pending", "new", "ignored"].includes(normalized)) {
+    return "muted";
+  }
+
+  if (["running", "processing"].includes(normalized)) {
+    return "info";
+  }
+
+  if (["retry", "retriable"].includes(normalized)) {
+    return "warning";
+  }
+
+  if (["error", "failed", "dead", "blocked"].includes(normalized)) {
+    return "danger";
+  }
+
+  if (
+    ["processed", "done", "success", "completed", "resolved"].includes(
+      normalized
+    )
+  ) {
+    return "success";
+  }
+
+  return "default";
 }
 
 /* ----------------------------- Command helpers ---------------------------- */
@@ -382,17 +409,14 @@ function getCommandTitle(command: CommandItem): string {
 
 function getCommandSummaryLine(command: CommandItem): string {
   const status = humanStatusLabel(getCommandStatus(command));
-  const capability = getCommandCapability(command);
+  const capability = cleanCapabilityLabel(getCommandCapability(command));
   const workspace = getCommandWorkspace(command);
 
   return `${status} · ${capability} · ${workspace}`;
 }
 
 function getCommandCommandCandidates(command: CommandItem): string[] {
-  return uniq([
-    String(command.id || ""),
-    getCommandParentId(command),
-  ]);
+  return uniq([String(command.id || ""), getCommandParentId(command)]);
 }
 
 function getCommandRunCandidates(command: CommandItem): string[] {
@@ -728,6 +752,8 @@ function buildIncidentHref(matchedIncident: IncidentItem | null): string {
   return `/incidents/${encodeURIComponent(matchedIncident.id)}`;
 }
 
+/* ------------------------------- UI helpers ------------------------------- */
+
 function MetaItem({
   label,
   value,
@@ -745,19 +771,34 @@ function MetaItem({
   );
 }
 
-function StatCard({
+function PreviewPanel({
+  title,
+  value,
+}: {
+  title: string;
+  value: unknown;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className={sectionLabelClassName()}>{title}</div>
+      <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
+        {stringifyPretty(value)}
+      </pre>
+    </div>
+  );
+}
+
+function DiagnosticRow({
   label,
   value,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
 }) {
   return (
-    <div className={statCardClassName()}>
-      <div className={metaLabelClassName()}>{label}</div>
-      <div className="mt-3 text-xl font-semibold tracking-tight text-white">
-        {value}
-      </div>
+    <div className="flex items-start justify-between gap-4 text-sm">
+      <span className="text-white/55">{label}</span>
+      <span className="break-all text-right text-white/90">{value}</span>
     </div>
   );
 }
@@ -836,181 +877,258 @@ export default async function CommandDetailPage({ params }: PageProps) {
   const hasIncident = incidentHref !== "";
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-4 border-b border-white/10 pb-6">
-        <div className="text-sm text-zinc-400">
-          <Link
-            href="/commands"
-            className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+    <ControlPlaneShell
+      eyebrow="BOSAI Dashboard"
+      title={title}
+      description="Lecture détaillée d’une command BOSAI, avec contexte d’exécution, liens de drill-down et previews techniques."
+      badges={[
+        {
+          label: humanStatusLabel(status),
+          tone: getShellToneFromCommandStatus(command),
+        },
+        {
+          label: cleanCapabilityLabel(capability),
+          tone: "muted",
+        },
+        ...(toolKey ? [{ label: `Tool ${toolKey}`, tone: "muted" as const }] : []),
+        ...(toolMode ? [{ label: `Mode ${toolMode}`, tone: "muted" as const }] : []),
+      ]}
+      metrics={[
+        { label: "Created", value: formatDate(getCommandCreatedAt(command)) },
+        { label: "Started", value: formatDate(getCommandStartedAt(command)) },
+        { label: "Finished", value: formatDate(getCommandFinishedAt(command)) },
+        { label: "Updated", value: formatDate(getCommandUpdatedAt(command)) },
+      ]}
+      topMeta={
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-white/60">
+            <Link
+              href="/commands"
+              className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+            >
+              Commands
+            </Link>{" "}
+            / <span className="text-white/85">{title}</span>
+          </div>
+
+          <div className="text-xs uppercase tracking-[0.18em] text-white/35">
+            Command ID · {String(command.id)}
+          </div>
+        </div>
+      }
+      footerNote="Les correspondances flow / event / incident sont calculées en best-effort à partir des identifiants de command, run, flow et workspace."
+      aside={
+        <>
+          <SidePanelCard
+            title="Quick actions"
+            subtitle="Navigation rapide depuis cette command."
           >
-            Commands
-          </Link>{" "}
-          / {title}
-        </div>
+            <div className="space-y-3">
+              <Link href="/commands" className={actionLinkClassName("soft")}>
+                Retour à la liste commands
+              </Link>
 
-        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
+              <Link href="/commands" className={actionLinkClassName("primary")}>
+                Voir toutes les commands
+              </Link>
 
-        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          {title}
-        </h1>
+              {hasFlow ? (
+                <Link href={flowHref} className={actionLinkClassName("soft")}>
+                  Ouvrir le flow lié
+                </Link>
+              ) : (
+                <span className={actionLinkClassName("soft", true)}>
+                  Ouvrir le flow lié
+                </span>
+              )}
 
-        <div className="text-sm text-zinc-400">{getCommandSummaryLine(command)}</div>
+              {hasEvent ? (
+                <Link href={eventHref} className={actionLinkClassName("soft")}>
+                  Ouvrir l’event source
+                </Link>
+              ) : (
+                <span className={actionLinkClassName("soft", true)}>
+                  Ouvrir l’event source
+                </span>
+              )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${tone(
-              status
-            )}`}
+              {hasIncident ? (
+                <Link href={incidentHref} className={actionLinkClassName("danger")}>
+                  Ouvrir l’incident lié
+                </Link>
+              ) : (
+                <span className={actionLinkClassName("danger", true)}>
+                  Ouvrir l’incident lié
+                </span>
+              )}
+            </div>
+          </SidePanelCard>
+
+          <SidePanelCard
+            title="Routing diagnostic"
+            subtitle="Lecture rapide du matching autour de cette command."
           >
-            {humanStatusLabel(status).toUpperCase()}
-          </span>
-
-          <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-300">
-            {capability}
-          </span>
-
-          {toolKey ? (
-            <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-300">
-              TOOL {toolKey}
-            </span>
-          ) : null}
-
-          {toolMode ? (
-            <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-zinc-300">
-              MODE {toolMode}
-            </span>
-          ) : null}
-        </div>
-
-        <div className="space-y-2 text-base text-zinc-300">
-          <div>Workspace: {workspace}</div>
-          <div>Run: {runId}</div>
-          <div>Parent: {parentId || "—"}</div>
-          <div>Flow: {flowId || rootEventId || sourceEventId || "—"}</div>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <StatCard label="Created" value={formatDate(getCommandCreatedAt(command))} />
-        <StatCard label="Started" value={formatDate(getCommandStartedAt(command))} />
-        <StatCard label="Finished" value={formatDate(getCommandFinishedAt(command))} />
-        <StatCard label="Updated" value={formatDate(getCommandUpdatedAt(command))} />
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-5 text-lg font-medium text-white">Overview</div>
-
-          <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-            <MetaItem label="ID" value={String(command.id)} breakAll />
-            <MetaItem label="Status" value={status} />
-            <MetaItem label="Capability" value={capability} />
-            <MetaItem label="Workspace" value={workspace} />
-            <MetaItem label="Run" value={runId} breakAll />
-            <MetaItem label="Parent" value={parentId || "—"} breakAll />
-            <MetaItem label="Flow" value={flowId || "—"} breakAll />
-            <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
-            <MetaItem label="Source event" value={sourceEventId || "—"} breakAll />
-
-            {errorText ? (
-              <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-rose-500/20 bg-rose-500/10 px-4 py-4">
-                <div className={metaLabelClassName()}>Error</div>
-                <div className="mt-1 break-all text-rose-100">{errorText}</div>
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={getCommandStatusBadgeKind(command)}
+                  label={humanStatusLabel(status).toUpperCase()}
+                />
+                <DashboardStatusBadge
+                  kind={hasFlow ? "success" : "unknown"}
+                  label={hasFlow ? "FLOW LINKED" : "NO FLOW LINK"}
+                />
+                <DashboardStatusBadge
+                  kind={hasEvent ? "success" : "unknown"}
+                  label={hasEvent ? "EVENT LINKED" : "NO EVENT LINK"}
+                />
+                <DashboardStatusBadge
+                  kind={hasIncident ? "incident" : "unknown"}
+                  label={hasIncident ? "INCIDENT LINKED" : "NO INCIDENT LINK"}
+                />
               </div>
-            ) : null}
-          </div>
-        </div>
 
-        <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">Routing / links</div>
-
-          <div className="space-y-4 text-sm">
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-zinc-400">Event match</span>
-              <span className="break-all text-right text-zinc-200">
-                {matchedEvent?.id || "Aucun event lié trouvé"}
-              </span>
+              <div className="space-y-3">
+                <DiagnosticRow
+                  label="Workspace"
+                  value={workspace}
+                />
+                <DiagnosticRow
+                  label="Run"
+                  value={runId}
+                />
+                <DiagnosticRow
+                  label="Flow target"
+                  value={flowId || rootEventId || sourceEventId || String(command.id)}
+                />
+                <DiagnosticRow
+                  label="Matched event"
+                  value={matchedEvent?.id || "Aucun event lié trouvé"}
+                />
+                <DiagnosticRow
+                  label="Matched incident"
+                  value={matchedIncident?.id || "Aucun incident lié trouvé"}
+                />
+              </div>
             </div>
+          </SidePanelCard>
+        </>
+      }
+    >
+      <SectionCard
+        title="Overview"
+        description="Contexte principal, identifiants et liaisons de cette command."
+      >
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+          <MetaItem label="ID" value={String(command.id)} breakAll />
+          <MetaItem label="Status" value={status} />
+          <MetaItem label="Capability" value={capability} />
+          <MetaItem label="Workspace" value={workspace} />
+          <MetaItem label="Run" value={runId} breakAll />
+          <MetaItem label="Parent" value={parentId || "—"} breakAll />
+          <MetaItem label="Flow" value={flowId || "—"} breakAll />
+          <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
+          <MetaItem label="Source event" value={sourceEventId || "—"} breakAll />
 
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-zinc-400">Incident match</span>
-              <span className="break-all text-right text-zinc-200">
-                {matchedIncident?.id || "Aucun incident lié trouvé"}
-              </span>
+          {errorText ? (
+            <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-rose-500/20 bg-rose-500/10 px-4 py-4">
+              <div className={metaLabelClassName()}>Error</div>
+              <div className="mt-1 break-all text-rose-100">{errorText}</div>
             </div>
-
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-zinc-400">Flow target</span>
-              <span className="break-all text-right text-zinc-200">
-                {flowId || rootEventId || sourceEventId || String(command.id) || "—"}
-              </span>
+          ) : (
+            <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className={metaLabelClassName()}>Error</div>
+              <div className="mt-1 text-zinc-300">—</div>
             </div>
-
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-zinc-400">Error</span>
-              <span className="break-all text-right text-zinc-200">
-                {errorText || "—"}
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-6 space-y-3">
-            <Link href="/commands" className={actionLinkClassName("soft")}>
-              Retour à la liste commands
-            </Link>
-
-            <Link href="/commands" className={actionLinkClassName("primary")}>
-              Voir toutes les commands
-            </Link>
-
-            {hasFlow ? (
-              <Link href={flowHref} className={actionLinkClassName("soft")}>
-                Ouvrir le flow lié
-              </Link>
-            ) : (
-              <span className={actionLinkClassName("soft", true)}>
-                Ouvrir le flow lié
-              </span>
-            )}
-
-            {hasEvent ? (
-              <Link href={eventHref} className={actionLinkClassName("soft")}>
-                Ouvrir l’event source
-              </Link>
-            ) : (
-              <span className={actionLinkClassName("soft", true)}>
-                Ouvrir l’event source
-              </span>
-            )}
-
-            {hasIncident ? (
-              <Link href={incidentHref} className={actionLinkClassName("danger")}>
-                Ouvrir l’incident lié
-              </Link>
-            ) : (
-              <span className={actionLinkClassName("danger", true)}>
-                Ouvrir l’incident lié
-              </span>
-            )}
-          </div>
+          )}
         </div>
-      </section>
+      </SectionCard>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">Input preview</div>
-          <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
-{stringifyPretty(command.input ?? {})}
-          </pre>
-        </div>
+      <SectionCard
+        title="Linking context"
+        description="Diagnostic détaillé des correspondances autour du flow, de l’event et de l’incident."
+      >
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+          <MetaItem
+            label="Flow href"
+            value={
+              hasFlow ? (
+                <Link
+                  href={flowHref}
+                  className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  {flowHref}
+                </Link>
+              ) : (
+                "—"
+              )
+            }
+            breakAll
+          />
 
-        <div className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">Result preview</div>
-          <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-zinc-300">
-{stringifyPretty(command.result ?? {})}
-          </pre>
+          <MetaItem
+            label="Event href"
+            value={
+              hasEvent ? (
+                <Link
+                  href={eventHref}
+                  className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  {eventHref}
+                </Link>
+              ) : (
+                "—"
+              )
+            }
+            breakAll
+          />
+
+          <MetaItem
+            label="Incident href"
+            value={
+              hasIncident ? (
+                <Link
+                  href={incidentHref}
+                  className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  {incidentHref}
+                </Link>
+              ) : (
+                "—"
+              )
+            }
+            breakAll
+          />
+
+          <MetaItem
+            label="Matched event ID"
+            value={matchedEvent?.id || "Aucun event lié trouvé"}
+            breakAll
+          />
+
+          <MetaItem
+            label="Matched incident ID"
+            value={matchedIncident?.id || "Aucun incident lié trouvé"}
+            breakAll
+          />
+
+          <MetaItem
+            label="Flow target"
+            value={flowId || rootEventId || sourceEventId || String(command.id)}
+            breakAll
+          />
         </div>
-      </section>
-    </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Payload previews"
+        description="Prévisualisation brute des données d’entrée et du résultat pour debug rapide."
+      >
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <PreviewPanel title="Input preview" value={command.input ?? {}} />
+          <PreviewPanel title="Result preview" value={command.result ?? {}} />
+        </div>
+      </SectionCard>
+    </ControlPlaneShell>
   );
 }
