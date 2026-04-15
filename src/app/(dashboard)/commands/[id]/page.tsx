@@ -27,6 +27,8 @@ type PageProps = {
       };
 };
 
+type ShellTone = "default" | "info" | "success" | "warning" | "danger" | "muted";
+
 function actionLinkClassName(
   variant: "default" | "primary" | "soft" | "danger" = "default",
   disabled = false
@@ -204,27 +206,12 @@ function getCommandStatusBadgeKind(command: CommandItem): DashboardStatusKind {
   return "unknown";
 }
 
-function getShellToneFromCommandStatus(
-  command: CommandItem
-): "default" | "info" | "success" | "warning" | "danger" | "muted" {
+function getShellToneFromCommandStatus(command: CommandItem): ShellTone {
   const normalized = getCommandStatus(command).trim().toLowerCase();
 
-  if (["queued", "pending", "new", "ignored"].includes(normalized)) {
-    return "muted";
-  }
-
-  if (["running", "processing"].includes(normalized)) {
-    return "info";
-  }
-
-  if (["retry", "retriable"].includes(normalized)) {
-    return "warning";
-  }
-
-  if (["error", "failed", "dead", "blocked"].includes(normalized)) {
-    return "danger";
-  }
-
+  if (["running", "processing"].includes(normalized)) return "info";
+  if (["retry", "retriable"].includes(normalized)) return "warning";
+  if (["error", "failed", "dead", "blocked"].includes(normalized)) return "danger";
   if (
     ["processed", "done", "success", "completed", "resolved"].includes(
       normalized
@@ -232,6 +219,7 @@ function getShellToneFromCommandStatus(
   ) {
     return "success";
   }
+  if (["queued", "pending", "new", "ignored"].includes(normalized)) return "muted";
 
   return "default";
 }
@@ -490,7 +478,6 @@ function getEventCommandCandidates(event: EventItem): string[] {
   const record = event as Record<string, unknown>;
 
   return uniq([
-    toTextOrEmpty(event.command_id),
     toTextOrEmpty(record.command_id),
     toTextOrEmpty(record.Command_ID),
     toTextOrEmpty(record.linked_command),
@@ -524,13 +511,14 @@ function getEventRunCandidates(event: EventItem): string[] {
 
 function getEventFlowCandidates(event: EventItem): string[] {
   const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
 
   return uniq([
-    toTextOrEmpty(event.id),
-    toTextOrEmpty(event.root_event_id),
-    toTextOrEmpty(event.source_record_id),
-    toTextOrEmpty(event.source_event_id),
-    toTextOrEmpty(event.flow_id),
+    toTextOrEmpty(record.id),
+    toTextOrEmpty(record.root_event_id),
+    toTextOrEmpty(record.source_record_id),
+    toTextOrEmpty(record.source_event_id),
+    toTextOrEmpty(record.flow_id),
     toTextOrEmpty(payload.root_event_id),
     toTextOrEmpty(payload.rootEventId),
     toTextOrEmpty(payload.source_record_id),
@@ -704,23 +692,15 @@ function scoreIncidentMatch(incident: IncidentItem, command: CommandItem): numbe
 
 function buildFlowHref(command: CommandItem): string {
   const flowId = getCommandFlowId(command);
-  if (flowId) {
-    return `/flows/${encodeURIComponent(flowId)}`;
-  }
+  if (flowId) return `/flows/${encodeURIComponent(flowId)}`;
 
   const rootEventId = getCommandRootEventId(command);
-  if (rootEventId) {
-    return `/flows/${encodeURIComponent(rootEventId)}`;
-  }
+  if (rootEventId) return `/flows/${encodeURIComponent(rootEventId)}`;
 
   const sourceEventId = getCommandSourceEventId(command);
-  if (sourceEventId) {
-    return `/flows/${encodeURIComponent(sourceEventId)}`;
-  }
+  if (sourceEventId) return `/flows/${encodeURIComponent(sourceEventId)}`;
 
-  if (command.id) {
-    return `/flows/${encodeURIComponent(String(command.id))}`;
-  }
+  if (command.id) return `/flows/${encodeURIComponent(String(command.id))}`;
 
   return "";
 }
@@ -729,8 +709,12 @@ function buildSafeEventHref(
   matchedEvent: EventItem | null,
   command: CommandItem
 ): string {
-  if (matchedEvent?.id) {
-    return `/events/${encodeURIComponent(matchedEvent.id)}`;
+  if (matchedEvent) {
+    const record = matchedEvent as Record<string, unknown>;
+    const matchedId = toTextOrEmpty(record.id);
+    if (matchedId) {
+      return `/events/${encodeURIComponent(matchedId)}`;
+    }
   }
 
   const rootEventId = getCommandRootEventId(command);
@@ -829,7 +813,6 @@ export default async function CommandDetailPage({ params }: PageProps) {
       const commands = Array.isArray(commandsData?.commands)
         ? commandsData.commands
         : [];
-
       command = commands.find((item) => String(item.id) === id) || null;
     } catch {
       command = null;
@@ -876,6 +859,13 @@ export default async function CommandDetailPage({ params }: PageProps) {
     matchedIncident = null;
   }
 
+  const matchedEventId =
+    matchedEvent && typeof matchedEvent === "object"
+      ? toTextOrEmpty((matchedEvent as Record<string, unknown>).id) || "Aucun event lié trouvé"
+      : "Aucun event lié trouvé";
+
+  const matchedIncidentId = matchedIncident?.id || "Aucun incident lié trouvé";
+
   const flowHref = buildFlowHref(command);
   const eventHref = buildSafeEventHref(matchedEvent, command);
   const incidentHref = buildIncidentHref(matchedIncident);
@@ -884,23 +874,31 @@ export default async function CommandDetailPage({ params }: PageProps) {
   const hasEvent = eventHref !== "";
   const hasIncident = incidentHref !== "";
 
+  const shellBadges: Array<{ label: string; tone: ShellTone }> = [
+    {
+      label: humanStatusLabel(status),
+      tone: getShellToneFromCommandStatus(command),
+    },
+    {
+      label: cleanCapabilityLabel(capability),
+      tone: "muted",
+    },
+  ];
+
+  if (toolKey) {
+    shellBadges.push({ label: `Tool ${toolKey}`, tone: "muted" });
+  }
+
+  if (toolMode) {
+    shellBadges.push({ label: `Mode ${toolMode}`, tone: "muted" });
+  }
+
   return (
     <ControlPlaneShell
       eyebrow="BOSAI Dashboard"
       title={title}
       description="Lecture détaillée d’une command BOSAI, avec contexte d’exécution, liens de drill-down et previews techniques."
-      badges={[
-        {
-          label: humanStatusLabel(status),
-          tone: getShellToneFromCommandStatus(command),
-        },
-        {
-          label: cleanCapabilityLabel(capability),
-          tone: "muted",
-        },
-        ...(toolKey ? [{ label: `Tool ${toolKey}`, tone: "muted" as const }] : []),
-        ...(toolMode ? [{ label: `Mode ${toolMode}`, tone: "muted" as const }] : []),
-      ]}
+      badges={shellBadges}
       metrics={[
         { label: "Created", value: formatDate(getCommandCreatedAt(command)) },
         { label: "Started", value: formatDate(getCommandStartedAt(command)) },
@@ -1035,13 +1033,13 @@ export default async function CommandDetailPage({ params }: PageProps) {
               />
               <DiagnosticRow
                 label="Matched event"
-                value={matchedEvent?.id || "Aucun event lié trouvé"}
-                technical={Boolean(matchedEvent?.id)}
+                value={matchedEventId}
+                technical={matchedEventId !== "Aucun event lié trouvé"}
               />
               <DiagnosticRow
                 label="Matched incident"
-                value={matchedIncident?.id || "Aucun incident lié trouvé"}
-                technical={Boolean(matchedIncident?.id)}
+                value={matchedIncidentId}
+                technical={matchedIncidentId !== "Aucun incident lié trouvé"}
               />
             </div>
           </div>
@@ -1104,18 +1102,8 @@ export default async function CommandDetailPage({ params }: PageProps) {
             breakAll
           />
 
-          <MetaItem
-            label="Matched event ID"
-            value={matchedEvent?.id || "Aucun event lié trouvé"}
-            breakAll
-          />
-
-          <MetaItem
-            label="Matched incident ID"
-            value={matchedIncident?.id || "Aucun incident lié trouvé"}
-            breakAll
-          />
-
+          <MetaItem label="Matched event ID" value={matchedEventId} breakAll />
+          <MetaItem label="Matched incident ID" value={matchedIncidentId} breakAll />
           <MetaItem
             label="Flow target"
             value={flowId || rootEventId || sourceEventId || String(command.id)}
