@@ -5,20 +5,24 @@ import {
   type CommandItem,
   type CommandsResponse,
 } from "@/lib/api";
+import { DashboardStatusBadge } from "@/components/dashboard/StatusBadge";
+import type { DashboardStatusKind } from "@/components/dashboard/StatusBadge";
 import { CommandsFilters } from "./commands-filters";
 
+type SearchParams = {
+  flow_id?: string | string[];
+  root_event_id?: string | string[];
+  source_event_id?: string | string[];
+  from?: string | string[];
+  bucket?: string | string[];
+  capability?: string | string[];
+  workspace_id?: string | string[];
+  period_key?: string | string[];
+  limit?: string | string[];
+};
+
 type PageProps = {
-  searchParams?: Promise<{
-    flow_id?: string | string[];
-    root_event_id?: string | string[];
-    source_event_id?: string | string[];
-    from?: string | string[];
-    bucket?: string | string[];
-    capability?: string | string[];
-    workspace_id?: string | string[];
-    period_key?: string | string[];
-    limit?: string | string[];
-  }>;
+  searchParams?: Promise<SearchParams> | SearchParams;
 };
 
 type CommandFilters = {
@@ -57,6 +61,10 @@ function sectionLabelClassName() {
 
 function metaLabelClassName() {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function neutralPillClassName() {
+  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
 function formatDate(value?: string | null): string {
@@ -116,40 +124,14 @@ function parseMaybeJson(value: unknown): Record<string, unknown> {
   return {};
 }
 
-function tone(status?: string): string {
-  const normalized = (status || "").trim().toLowerCase();
-
-  if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (["queued", "pending", "new"].includes(normalized)) {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (["running", "processing"].includes(normalized)) {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  if (["retry", "retriable"].includes(normalized)) {
-    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
-  }
-
-  if (["ignored"].includes(normalized)) {
-    return "bg-zinc-500/15 text-zinc-300 border border-zinc-500/20";
-  }
-
-  if (["error", "failed", "dead", "blocked"].includes(normalized)) {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-}
-
 function humanStatusLabel(status?: string): string {
   const normalized = (status || "").trim().toLowerCase();
 
-  if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
+  if (
+    ["processed", "done", "success", "completed", "resolved"].includes(
+      normalized
+    )
+  ) {
     return "Succès";
   }
 
@@ -402,11 +384,28 @@ function getCommandStatusBucket(command: CommandItem) {
   if (["running", "processing"].includes(normalized)) return "running";
   if (["retry", "retriable"].includes(normalized)) return "retry";
   if (["error", "failed", "dead", "blocked"].includes(normalized)) return "failed";
-  if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
+  if (
+    ["processed", "done", "success", "completed", "resolved"].includes(
+      normalized
+    )
+  ) {
     return "done";
   }
 
   return "other";
+}
+
+function getCommandStatusBadgeKind(
+  command: CommandItem
+): DashboardStatusKind {
+  const bucket = getCommandStatusBucket(command);
+
+  if (bucket === "queued") return "queued";
+  if (bucket === "running") return "running";
+  if (bucket === "retry") return "retry";
+  if (bucket === "failed") return "failed";
+  if (bucket === "done") return "success";
+  return "unknown";
 }
 
 function getCommandPriority(command: CommandItem): number {
@@ -590,28 +589,21 @@ function CommandCard({ command }: { command: CommandItem }) {
             <div className="text-sm text-zinc-400">{getCommandSummaryLine(command)}</div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone(
-                  status
-                )}`}
-              >
-                {humanStatusLabel(status).toUpperCase()}
-              </span>
+              <DashboardStatusBadge
+                kind={getCommandStatusBadgeKind(command)}
+                label={humanStatusLabel(status).toUpperCase()}
+              />
 
-              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
+              <span className={neutralPillClassName()}>
                 {cleanCapabilityLabel(capability)}
               </span>
 
               {toolKey ? (
-                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
-                  TOOL {toolKey}
-                </span>
+                <span className={neutralPillClassName()}>TOOL {toolKey}</span>
               ) : null}
 
               {toolMode ? (
-                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
-                  MODE {toolMode}
-                </span>
+                <span className={neutralPillClassName()}>MODE {toolMode}</span>
               ) : null}
             </div>
           </div>
@@ -684,7 +676,9 @@ function CommandCard({ command }: { command: CommandItem }) {
 }
 
 export default async function CommandsPage({ searchParams }: PageProps) {
-  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const resolvedSearchParams = searchParams
+    ? await Promise.resolve(searchParams)
+    : {};
 
   const flowId = firstParam(resolvedSearchParams.flow_id).trim();
   const rootEventId = firstParam(resolvedSearchParams.root_event_id).trim();
@@ -743,7 +737,9 @@ export default async function CommandsPage({ searchParams }: PageProps) {
 
   const needsAttentionCommands = sortCommands(
     visibleCommands.filter((item) =>
-      ["queued", "running", "retry", "failed"].includes(getCommandStatusBucket(item))
+      ["queued", "running", "retry", "failed"].includes(
+        getCommandStatusBucket(item)
+      )
     )
   );
 
