@@ -50,7 +50,7 @@ type NormalizedCommand = {
 
 function cardClassName(isActive: boolean) {
   const base =
-    "rounded-[28px] border bg-white/[0.04] p-5 md:p-6 xl:px-5 xl:py-4 min-h-[420px] xl:min-h-[330px] 2xl:min-h-[320px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
+    "rounded-[28px] border bg-white/[0.04] p-5 md:p-6 xl:p-5 2xl:p-6 min-h-[420px] xl:min-h-[350px] 2xl:min-h-[340px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
   const inactive =
     "border-white/10 hover:border-white/15 hover:bg-white/[0.05]";
   const active =
@@ -63,18 +63,22 @@ function actionLinkClassName(
   variant: "default" | "primary" | "danger" | "active" = "default"
 ) {
   if (variant === "primary") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
   if (variant === "danger") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
+    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
   }
 
   if (variant === "active") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-emerald-300";
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-300";
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 xl:py-1.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+}
+
+function miniStatClassName() {
+  return "rounded-2xl border border-white/10 bg-black/20 px-3.5 py-3";
 }
 
 function text(value: unknown): string {
@@ -1015,14 +1019,15 @@ function FlowListCard({
 
   return (
     <article className={cardClassName(isActive)}>
-      <div className="flex h-full flex-col gap-5 xl:gap-4">
-        <div className="space-y-4 xl:space-y-3">
+      <div className="flex h-full flex-col gap-5">
+        <div className="space-y-5">
           <div className="flex flex-wrap items-center gap-2">
-            <DashboardStatusBadge label={humanStatusLabel(flow.status).toUpperCase()} status={flow.status} />
+            <DashboardStatusBadge
+              label={humanStatusLabel(flow.status).toUpperCase()}
+              status={flow.status}
+            />
 
-            {flow.isPartial ? (
-              <DashboardStatusBadge kind="partial" />
-            ) : null}
+            {flow.isPartial ? <DashboardStatusBadge kind="partial" /> : null}
 
             <DashboardStatusBadge
               kind={flow.hasIncident ? "incident" : "no-incident"}
@@ -1030,71 +1035,92 @@ function FlowListCard({
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="text-xs uppercase tracking-[0.2em] text-white/35">
               {flow.readingMode === "enriched"
                 ? "Flow enrichi"
                 : "Flow registre uniquement"}
             </div>
 
-            <h3 className="break-words text-[1.7rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.9rem] xl:text-[1.45rem] 2xl:text-[1.55rem]">
+            <h3 className="break-words text-[1.55rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.75rem] xl:text-[1.42rem] 2xl:text-[1.5rem]">
               {title}
             </h3>
 
-            <div className="break-all text-sm text-zinc-400">
-              {flow.readingMode === "enriched" ? "Flow ID" : "Source / Root"} :{" "}
-              <span className="text-zinc-200">{technicalSubtitle}</span>
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-3.5 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                {flow.readingMode === "enriched" ? "Flow ID" : "Source / Root"}
+              </div>
+              <div className="mt-1 break-all text-sm text-zinc-200">
+                {technicalSubtitle}
+              </div>
             </div>
 
             <p className="text-sm leading-6 text-zinc-300">{summaryLine}</p>
           </div>
 
-          <div className="grid gap-2.5 text-[15px] leading-6 text-zinc-300 xl:grid-cols-2 xl:gap-x-5 xl:gap-y-2 xl:text-[14px] xl:leading-5">
-            <div>
-              Activité :{" "}
-              <span className="text-zinc-100">{flowActivityLabel(flow)}</span>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className={miniStatClassName()}>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                Activité
+              </div>
+              <div className="mt-1 text-sm text-zinc-100">
+                {flowActivityLabel(flow)}
+              </div>
             </div>
 
-            <div>
-              Incident :{" "}
-              <span className="text-zinc-100">{incidentLabel(flow)}</span>
+            <div className={miniStatClassName()}>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                Workspace
+              </div>
+              <div className="mt-1 text-sm text-zinc-100">
+                {flow.workspaceId || "production"}
+              </div>
             </div>
 
-            <div>
-              Workspace :{" "}
-              <span className="text-zinc-100">{flow.workspaceId || "production"}</span>
+            <div className={miniStatClassName()}>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                Incident
+              </div>
+              <div className="mt-1 text-sm text-zinc-100">
+                {incidentLabel(flow)}
+              </div>
             </div>
 
-            {flow.readingMode === "enriched" ? (
-              <div>
-                Étapes : <span className="text-zinc-100">{flow.steps}</span>
+            <div className={miniStatClassName()}>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                {flow.readingMode === "enriched" ? "Étapes" : "Lecture"}
               </div>
-            ) : (
-              <div>
-                Lecture : <span className="text-zinc-100">Partielle</span>
+              <div className="mt-1 text-sm text-zinc-100">
+                {flow.readingMode === "enriched" ? flow.steps : "Partielle"}
               </div>
-            )}
-
-            {flow.readingMode === "enriched" ? (
-              <div className="xl:col-span-2">
-                Chaîne :{" "}
-                <span className="text-zinc-100">
-                  {cleanCapabilityLabel(flow.rootCapability)}
-                  {flow.rootCapability !== flow.terminalCapability
-                    ? ` → ${cleanCapabilityLabel(flow.terminalCapability)}`
-                    : ""}
-                </span>
-              </div>
-            ) : (
-              <div className="xl:col-span-2">
-                Dernier état :{" "}
-                <span className="text-zinc-100">{humanStatusLabel(flow.status)}</span>
-              </div>
-            )}
+            </div>
           </div>
+
+          {flow.readingMode === "enriched" ? (
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-3.5 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                Chaîne
+              </div>
+              <div className="mt-1 text-sm leading-6 text-zinc-100">
+                {cleanCapabilityLabel(flow.rootCapability)}
+                {flow.rootCapability !== flow.terminalCapability
+                  ? ` → ${cleanCapabilityLabel(flow.terminalCapability)}`
+                  : ""}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-3.5 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                Dernier état
+              </div>
+              <div className="mt-1 text-sm text-zinc-100">
+                {humanStatusLabel(flow.status)}
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="mt-auto flex flex-col gap-3 xl:gap-2 pt-2 xl:pt-1">
+        <div className="mt-auto grid gap-2 pt-2">
           <Link
             href={selectHref}
             className={actionLinkClassName(isActive ? "active" : "default")}
@@ -1139,7 +1165,7 @@ function SectionBlock({
       tone={tone}
       action={<CountPill value={flows.length} />}
     >
-      <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
+      <div className="grid gap-5 xl:grid-cols-2">
         {flows.map((flow) => (
           <FlowListCard key={flow.key} flow={flow} activeKey={activeKey} />
         ))}
@@ -1300,7 +1326,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
             title="Lecture opérationnelle"
             subtitle="Repères visuels pour lire le control plane plus vite sur desktop."
           >
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 <DashboardStatusBadge kind="running" />
                 <DashboardStatusBadge kind="failed" />
@@ -1308,7 +1334,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
                 <DashboardStatusBadge kind="partial" />
               </div>
 
-              <div className="space-y-2 text-sm leading-6 text-white/65">
+              <div className="space-y-3 text-sm leading-6 text-white/65">
                 <p>
                   <span className="text-white/90">Needs Attention</span> regroupe
                   les flows à surveiller en priorité.
@@ -1360,32 +1386,43 @@ export default async function FlowsPage({ searchParams }: PageProps) {
                       label={incidentLabel(activeFlow)}
                     />
                   ) : (
-                    <DashboardStatusBadge kind="no-incident" label="Sans incident" />
+                    <DashboardStatusBadge
+                      kind="no-incident"
+                      label="Sans incident"
+                    />
                   )}
                 </div>
 
-                <div className="space-y-2 text-sm leading-6 text-white/65">
-                  <div>
-                    Workspace :{" "}
-                    <span className="text-white/90">
+                <div className="grid gap-3">
+                  <div className={miniStatClassName()}>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                      Workspace
+                    </div>
+                    <div className="mt-1 text-sm text-white/90">
                       {activeFlow.workspaceId || "production"}
-                    </span>
+                    </div>
                   </div>
-                  <div>
-                    Activité :{" "}
-                    <span className="text-white/90">
+
+                  <div className={miniStatClassName()}>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                      Activité
+                    </div>
+                    <div className="mt-1 text-sm text-white/90">
                       {flowActivityLabel(activeFlow)}
-                    </span>
+                    </div>
                   </div>
-                  <div>
-                    Identifiant :{" "}
-                    <span className="break-all text-white/90">
+
+                  <div className={miniStatClassName()}>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                      Identifiant
+                    </div>
+                    <div className="mt-1 break-all text-sm text-white/90">
                       {compactTechnicalId(
                         activeFlow.sourceRecordId ||
                           activeFlow.flowId ||
                           activeFlow.rootEventId
                       )}
-                    </span>
+                    </div>
                   </div>
                 </div>
 
