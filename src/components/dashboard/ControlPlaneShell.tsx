@@ -1,99 +1,98 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
-type BadgeTone = "default" | "info" | "success" | "warning" | "danger" | "muted";
+export type SectionCountTone =
+  | "default"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger"
+  | "muted";
 
-type ShellBadge = {
-  label: string;
-  tone?: BadgeTone;
-};
-
-type ShellMetric = {
-  label: string;
-  value: ReactNode;
-  hint?: string;
-};
-
-type ControlPlaneShellProps = {
-  eyebrow?: string;
-  title: string;
-  description?: string;
-  badges?: ShellBadge[];
-  metrics?: ShellMetric[];
-  aside?: ReactNode;
-  children: ReactNode;
-  topMeta?: ReactNode;
-  footerNote?: ReactNode;
-};
-
-type SectionCardProps = {
-  title: string;
-  description?: string;
-  action?: ReactNode;
-  children: ReactNode;
-  tone?: "default" | "attention" | "neutral";
-  compact?: boolean;
-};
-
-type SidePanelCardProps = {
-  title: string;
-  subtitle?: string;
-  children: ReactNode;
-};
-
-function badgeToneClasses(tone: BadgeTone = "default"): string {
-  switch (tone) {
-    case "info":
-      return "border-cyan-400/20 bg-cyan-500/10 text-cyan-200";
-    case "success":
-      return "border-emerald-400/20 bg-emerald-500/10 text-emerald-200";
-    case "warning":
-      return "border-amber-400/20 bg-amber-500/10 text-amber-200";
-    case "danger":
-      return "border-rose-400/20 bg-rose-500/10 text-rose-200";
-    case "muted":
-      return "border-white/10 bg-white/[0.04] text-white/60";
-    default:
-      return "border-white/10 bg-white/[0.06] text-white/80";
-  }
+export function dashboardCardClassName(): string {
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
-function sectionToneClasses(tone: SectionCardProps["tone"] = "default"): string {
-  switch (tone) {
-    case "attention":
-      return "border-amber-400/20 bg-white/[0.045]";
-    case "neutral":
-      return "border-white/8 bg-white/[0.03]";
-    default:
-      return "border-white/10 bg-white/[0.04]";
-  }
+export function dashboardRowCardClassName(): string {
+  return "rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 transition hover:border-white/15 hover:bg-white/[0.04]";
 }
 
-export function StatusBadge({ label, tone = "default" }: ShellBadge) {
-  return (
-    <span
-      className={[
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium tracking-wide",
-        badgeToneClasses(tone),
-      ].join(" ")}
-    >
-      {label}
-    </span>
-  );
+export function dashboardSectionLabelClassName(): string {
+  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
+}
+
+export function dashboardMetaLabelClassName(): string {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+export function dashboardButtonClassName(
+  variant: "default" | "primary" | "soft" | "danger" = "default",
+  fullWidth = false
+): string {
+  const base = [
+    "inline-flex items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition",
+    fullWidth ? "w-full" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (variant === "primary") {
+    return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
+  }
+
+  if (variant === "danger") {
+    return `${base} border border-rose-500/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15`;
+  }
+
+  if (variant === "soft") {
+    return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+  }
+
+  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+}
+
+function sectionCountToneClass(tone: SectionCountTone): string {
+  if (tone === "info") {
+    return "border-sky-500/20 bg-sky-500/10 text-sky-300";
+  }
+
+  if (tone === "success") {
+    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-300";
+  }
+
+  if (tone === "warning") {
+    return "border-amber-500/20 bg-amber-500/10 text-amber-300";
+  }
+
+  if (tone === "danger") {
+    return "border-rose-500/20 bg-rose-500/10 text-rose-300";
+  }
+
+  if (tone === "muted") {
+    return "border-zinc-700 bg-zinc-800 text-zinc-300";
+  }
+
+  return "border-white/10 bg-white/[0.04] text-zinc-300";
 }
 
 export function SectionCountPill({
   value,
   tone = "default",
+  className = "",
 }: {
-  value: ReactNode;
-  tone?: BadgeTone;
+  value: number | string;
+  tone?: SectionCountTone;
+  className?: string;
 }) {
   return (
     <span
       className={[
-        "inline-flex min-w-8 w-fit self-start items-center justify-center rounded-full border px-2.5 py-1 text-xs font-medium sm:self-auto",
-        badgeToneClasses(tone),
-      ].join(" ")}
+        "inline-flex min-w-8 items-center justify-center rounded-full border px-3 py-1 text-xs font-medium",
+        sectionCountToneClass(tone),
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       {value}
     </span>
@@ -103,21 +102,177 @@ export function SectionCountPill({
 export function EmptyStatePanel({
   title,
   description,
+  action,
+  className = "",
 }: {
   title: string;
-  description?: string;
+  description: string;
+  action?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-10">
-      <div className="text-sm font-medium text-white/85">{title}</div>
-      {description ? (
-        <div className="mt-2 text-sm leading-6 text-white/55">{description}</div>
-      ) : null}
+    <div
+      className={[
+        dashboardCardClassName(),
+        "border-dashed px-5 py-8 md:px-6",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <div className="space-y-2">
+        <div className="text-lg font-medium text-white">{title}</div>
+        <p className="max-w-2xl text-sm text-zinc-400">{description}</p>
+      </div>
+
+      {action ? <div className="mt-5">{action}</div> : null}
     </div>
   );
 }
 
-export function InlineInfoStrip({
+export function DashboardPageHeader({
+  eyebrow = "BOSAI Dashboard",
+  title,
+  description,
+  actions,
+  children,
+  className = "",
+}: {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section
+      className={[
+        "space-y-4 border-b border-white/10 pb-6",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
+
+      <div className="space-y-4 xl:flex xl:items-end xl:justify-between xl:gap-8 xl:space-y-0">
+        <div className="max-w-4xl">
+          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+            {title}
+          </h1>
+
+          {description ? (
+            <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
+              {description}
+            </p>
+          ) : null}
+        </div>
+
+        {actions ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap xl:justify-end">
+            {actions}
+          </div>
+        ) : null}
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
+export function DashboardSection({
+  eyebrow,
+  title,
+  description,
+  action,
+  children,
+  className = "",
+}: {
+  eyebrow?: string;
+  title?: string;
+  description?: string;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={["space-y-4", className].filter(Boolean).join(" ")}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-2">
+          {eyebrow ? (
+            <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
+          ) : null}
+
+          {title ? (
+            <div className="text-2xl font-semibold tracking-tight text-white">
+              {title}
+            </div>
+          ) : null}
+
+          {description ? (
+            <p className="max-w-3xl text-base text-zinc-400">{description}</p>
+          ) : null}
+        </div>
+
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
+export function DashboardCard({
+  children,
+  className = "",
+  padding = "md",
+}: {
+  children: ReactNode;
+  className?: string;
+  padding?: "none" | "sm" | "md";
+}) {
+  const paddingClass =
+    padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-5 md:p-6";
+
+  return (
+    <div
+      className={[
+        dashboardCardClassName(),
+        paddingClass,
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function DashboardMetricCard({
+  label,
+  value,
+  toneClass = "text-white",
+  helper,
+}: {
+  label: string;
+  value: number | string;
+  toneClass?: string;
+  helper?: string;
+}) {
+  return (
+    <DashboardCard>
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className={`mt-3 text-4xl font-semibold tracking-tight ${toneClass}`}>
+        {value}
+      </div>
+      {helper ? <div className="mt-3 text-sm text-zinc-300">{helper}</div> : null}
+    </DashboardCard>
+  );
+}
+
+export function DashboardInlineMetric({
   label,
   value,
 }: {
@@ -125,170 +280,39 @@ export function InlineInfoStrip({
   value: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-      <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">{label}</div>
-      <div className="mt-2 text-sm text-white/85">{value}</div>
+    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+      <span className="text-zinc-400">{label}</span>
+      <span className="font-medium text-white">{value}</span>
     </div>
   );
 }
 
-export function SectionCard({
+export function DashboardLaneCard({
+  eyebrow = "BOSAI Lane",
   title,
-  description,
-  action,
-  children,
-  tone = "default",
-  compact = false,
-}: SectionCardProps) {
+  subtitle,
+  href,
+  badge,
+}: {
+  eyebrow?: string;
+  title: string;
+  subtitle: string;
+  href: string;
+  badge?: ReactNode;
+}) {
   return (
-    <section
-      className={[
-        "rounded-2xl border shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]",
-        sectionToneClasses(tone),
-      ].join(" ")}
-    >
-      <div
-        className={[
-          "border-b border-white/8",
-          compact ? "px-4 py-4 sm:px-5" : "px-4 py-4 sm:px-6 sm:py-5",
-        ].join(" ")}
-      >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold tracking-wide text-white sm:text-base">
-              {title}
-            </h2>
-            {description ? (
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-white/60">
-                {description}
-              </p>
-            ) : null}
+    <Link href={href} className={dashboardRowCardClassName()}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className={dashboardMetaLabelClassName()}>{eyebrow}</div>
+          <div className="mt-2 text-lg font-semibold tracking-tight text-white">
+            {title}
           </div>
-
-          {action ? <div className="shrink-0">{action}</div> : null}
-        </div>
-      </div>
-
-      <div className={compact ? "px-4 py-4 sm:px-5" : "px-4 py-4 sm:px-6 sm:py-6"}>
-        {children}
-      </div>
-    </section>
-  );
-}
-
-export function SidePanelCard({ title, subtitle, children }: SidePanelCardProps) {
-  return (
-    <aside className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset] sm:p-5">
-      <div className="border-b border-white/8 pb-3">
-        <h3 className="text-sm font-semibold tracking-wide text-white">{title}</h3>
-        {subtitle ? <p className="mt-1 text-sm text-white/60">{subtitle}</p> : null}
-      </div>
-      <div className="pt-4">{children}</div>
-    </aside>
-  );
-}
-
-function MetricCard({ label, value, hint }: ShellMetric) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-      <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">{label}</div>
-      <div className="mt-2 text-xl font-semibold tracking-tight text-white">{value}</div>
-      {hint ? <div className="mt-1 text-xs text-white/50">{hint}</div> : null}
-    </div>
-  );
-}
-
-export function ControlPlaneShell({
-  eyebrow = "BOSAI Control Plane",
-  title,
-  description,
-  badges = [],
-  metrics = [],
-  aside,
-  children,
-  topMeta,
-  footerNote,
-}: ControlPlaneShellProps) {
-  return (
-    <div className="mx-auto w-full max-w-7xl px-4 pb-8 pt-4 sm:px-6 lg:px-8 lg:pb-10 lg:pt-6">
-      <div className="space-y-6 lg:space-y-8">
-        <header className="overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.14),transparent_28%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.10),transparent_24%),rgba(255,255,255,0.04)] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]">
-          <div className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
-            {topMeta ? (
-              <div className="mb-5 border-b border-white/8 pb-4">{topMeta}</div>
-            ) : null}
-
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0 max-w-4xl">
-                <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-cyan-200/80">
-                  {eyebrow}
-                </div>
-
-                <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl lg:text-4xl">
-                  {title}
-                </h1>
-
-                {description ? (
-                  <p className="mt-3 max-w-3xl text-sm leading-6 text-white/65 sm:text-[15px]">
-                    {description}
-                  </p>
-                ) : null}
-
-                {badges.length > 0 ? (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {badges.map((badge) => (
-                      <StatusBadge
-                        key={`${badge.label}-${badge.tone ?? "default"}`}
-                        label={badge.label}
-                        tone={badge.tone}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="hidden shrink-0 lg:block">
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-right">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
-                    Surface
-                  </div>
-                  <div className="mt-2 text-sm font-medium text-white/85">Control Plane</div>
-                  <div className="mt-1 text-xs text-white/50">Premium reading shell</div>
-                </div>
-              </div>
-            </div>
-
-            {metrics.length > 0 ? (
-              <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {metrics.map((metric) => (
-                  <MetricCard
-                    key={metric.label}
-                    label={metric.label}
-                    value={metric.value}
-                    hint={metric.hint}
-                  />
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </header>
-
-        <div className={aside ? "grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-8" : ""}>
-          <main className="min-w-0 space-y-6">{children}</main>
-
-          {aside ? (
-            <div className="min-w-0">
-              <div className="space-y-4 lg:sticky lg:top-24">{aside}</div>
-            </div>
-          ) : null}
+          <div className="mt-2 text-sm text-zinc-400">{subtitle}</div>
         </div>
 
-        {footerNote ? (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/55 sm:px-5">
-            {footerNote}
-          </div>
-        ) : null}
+        {badge ? <div className="shrink-0">{badge}</div> : null}
       </div>
-    </div>
+    </Link>
   );
 }
