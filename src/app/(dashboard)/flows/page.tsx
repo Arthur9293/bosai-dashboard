@@ -48,15 +48,34 @@ type NormalizedCommand = {
   startTs: number;
 };
 
+function sectionPanelClassName(
+  tone: "default" | "attention" | "neutral" = "default"
+) {
+  if (tone === "attention") {
+    return "border-amber-500/20 bg-[radial-gradient(110%_120%_at_100%_0%,rgba(251,191,36,0.08),transparent_46%),radial-gradient(120%_120%_at_0%_100%,rgba(14,165,233,0.07),transparent_52%),linear-gradient(180deg,rgba(7,14,28,0.96)_0%,rgba(4,8,18,0.92)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  }
+
+  if (tone === "neutral") {
+    return "border-cyan-500/12 bg-[radial-gradient(110%_120%_at_100%_0%,rgba(14,165,233,0.08),transparent_46%),linear-gradient(180deg,rgba(7,13,26,0.94)_0%,rgba(4,8,18,0.92)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]";
+  }
+
+  return "border-cyan-500/14 bg-[radial-gradient(120%_130%_at_100%_0%,rgba(14,165,233,0.11),transparent_44%),radial-gradient(120%_130%_at_0%_100%,rgba(59,130,246,0.06),transparent_50%),linear-gradient(180deg,rgba(6,13,27,0.96)_0%,rgba(3,8,18,0.92)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function sidePanelClassName() {
+  return "border-cyan-500/14 bg-[radial-gradient(110%_120%_at_100%_0%,rgba(14,165,233,0.09),transparent_44%),linear-gradient(180deg,rgba(7,13,26,0.94)_0%,rgba(4,8,18,0.92)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
 function cardClassName(isActive: boolean, compact = false) {
   const base = compact
-    ? "rounded-[28px] border bg-white/[0.04] p-5 md:p-5 xl:px-5 xl:py-4 min-h-[360px] xl:min-h-[280px] 2xl:min-h-[270px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition"
-    : "rounded-[28px] border bg-white/[0.04] p-5 md:p-6 xl:px-5 xl:py-4 min-h-[390px] xl:min-h-[300px] 2xl:min-h-[290px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
+    ? "rounded-[28px] border p-5 md:p-5 xl:px-5 xl:py-4 min-h-[360px] xl:min-h-[280px] 2xl:min-h-[270px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition"
+    : "rounded-[28px] border p-5 md:p-6 xl:px-5 xl:py-4 min-h-[390px] xl:min-h-[300px] 2xl:min-h-[290px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
 
   const inactive =
-    "border-white/10 hover:border-white/15 hover:bg-white/[0.05]";
+    "border-cyan-500/14 bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.10),transparent_46%),linear-gradient(180deg,rgba(6,16,38,0.82)_0%,rgba(4,10,24,0.66)_100%)] hover:border-cyan-400/22 hover:bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.12),transparent_46%),linear-gradient(180deg,rgba(7,18,42,0.86)_0%,rgba(4,10,24,0.70)_100%)]";
+
   const active =
-    "border-emerald-500/35 bg-emerald-500/[0.08] shadow-[0_0_0_1px_rgba(16,185,129,0.06),0_0_40px_rgba(16,185,129,0.08)]";
+    "border-emerald-500/34 bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.11),transparent_42%),radial-gradient(120%_120%_at_0%_100%,rgba(16,185,129,0.09),transparent_48%),linear-gradient(180deg,rgba(8,24,44,0.88)_0%,rgba(5,13,28,0.76)_100%)] shadow-[0_0_0_1px_rgba(16,185,129,0.06),0_0_36px_rgba(16,185,129,0.08),inset_0_1px_0_rgba(255,255,255,0.04)]";
 
   return `${base} ${isActive ? active : inactive}`;
 }
@@ -76,11 +95,11 @@ function actionLinkClassName(
     return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-emerald-300";
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 xl:py-1.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04)_0%,rgba(255,255,255,0.02)_100%)] px-4 py-2.5 xl:py-1.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
 function metaBoxClassName(compact = false) {
-  return `rounded-[22px] border border-white/10 bg-black/20 px-4 ${
+  return `rounded-[22px] border border-cyan-500/12 bg-[radial-gradient(110%_110%_at_100%_0%,rgba(14,165,233,0.07),transparent_52%),linear-gradient(180deg,rgba(4,13,34,0.78)_0%,rgba(3,9,22,0.60)_100%)] px-4 ${
     compact ? "py-3" : "py-4"
   }`;
 }
@@ -1015,7 +1034,7 @@ function matchesActiveSelection(flow: FlowCard, selected: string): boolean {
 
 function CountPill({ value }: { value: number }) {
   return (
-    <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-white/80">
+    <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-sky-500/25 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-300">
       {value}
     </span>
   );
@@ -1179,6 +1198,7 @@ function SectionBlock({
       title={title}
       description={description}
       tone={tone}
+      className={sectionPanelClassName(tone)}
       action={<CountPill value={flows.length} />}
     >
       <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
@@ -1196,6 +1216,7 @@ function EmptyFlowsState() {
       title="Aucun flow"
       description="Le Dashboard n’a remonté aucun flow sur la source actuelle."
       tone="neutral"
+      className={sectionPanelClassName("neutral")}
     >
       <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-10 text-sm text-white/55">
         Aucun flow disponible pour le moment.
@@ -1342,7 +1363,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
       ]}
       aside={
         <>
-          <SidePanelCard title="Lecture opérationnelle">
+          <SidePanelCard title="Lecture opérationnelle" className={sidePanelClassName()}>
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 <DashboardStatusBadge kind="running" />
@@ -1368,7 +1389,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
             </div>
           </SidePanelCard>
 
-          <SidePanelCard title="Flow actif">
+          <SidePanelCard title="Flow actif" className={sidePanelClassName()}>
             {activeFlow ? (
               <div className="space-y-4">
                 <div>
