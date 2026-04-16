@@ -39,7 +39,7 @@ export default function LoginForm() {
         return;
       }
 
-      router.replace("/auth-check");
+      router.replace("/");
       router.refresh();
     } catch {
       setError("Erreur réseau ou serveur.");
