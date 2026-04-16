@@ -1,68 +1,82 @@
-import { NextResponse } from "next/server"
+import { NextResponse } from "next/server";
 import {
   AUTH_COOKIE_NAME,
+  SESSION_MAX_AGE_SECONDS,
   createSessionToken,
-  getExpectedPassword,
-  getExpectedUsername,
-  isAuthConfigured,
-} from "@/lib/auth"
+  normalizeNextPath,
+} from "@/lib/auth";
+
+type LoginBody = {
+  email?: string;
+  password?: string;
+  next?: string;
+};
 
 export async function POST(request: Request) {
-  if (!isAuthConfigured()) {
+  let body: LoginBody | null = null;
+
+  try {
+    body = (await request.json()) as LoginBody;
+  } catch {
+    body = null;
+  }
+
+  const email = String(body?.email || "").trim().toLowerCase();
+  const password = String(body?.password || "");
+  const next = normalizeNextPath(body?.next);
+
+  const expectedEmail = String(process.env.BOSAI_ADMIN_EMAIL || "")
+    .trim()
+    .toLowerCase();
+  const expectedPassword = String(process.env.BOSAI_ADMIN_PASSWORD || "");
+
+  if (!expectedEmail || !expectedPassword || !process.env.AUTH_SESSION_SECRET) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          "Auth non configurée. Ajoute BOSAI_LOGIN_USERNAME, BOSAI_LOGIN_PASSWORD et BOSAI_SESSION_SECRET.",
+        error: "server_auth_not_configured",
+        message: "Auth server non configuré.",
       },
       { status: 500 }
-    )
+    );
   }
 
-  let body: { username?: string; password?: string } = {}
-
-  try {
-    body = await request.json()
-  } catch {
+  if (!email || !password) {
     return NextResponse.json(
-      { ok: false, error: "Requête invalide." },
+      {
+        ok: false,
+        error: "missing_credentials",
+        message: "Email et mot de passe requis.",
+      },
       { status: 400 }
-    )
+    );
   }
 
-  const username = (body.username || "").trim()
-  const password = body.password || ""
-
-  if (!username || !password) {
+  if (email !== expectedEmail || password !== expectedPassword) {
     return NextResponse.json(
-      { ok: false, error: "Identifiants requis." },
-      { status: 400 }
-    )
-  }
-
-  if (
-    username !== getExpectedUsername() ||
-    password !== getExpectedPassword()
-  ) {
-    return NextResponse.json(
-      { ok: false, error: "Identifiants invalides." },
+      {
+        ok: false,
+        error: "invalid_credentials",
+        message: "Identifiants invalides.",
+      },
       { status: 401 }
-    )
+    );
   }
 
-  const token = await createSessionToken(username)
+  const token = await createSessionToken(expectedEmail);
 
-  const response = NextResponse.json({ ok: true })
+  const response = NextResponse.json({
+    ok: true,
+    redirectTo: next || "/",
+  });
 
-  response.cookies.set({
-    name: AUTH_COOKIE_NAME,
-    value: token,
+  response.cookies.set(AUTH_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  })
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  });
 
-  return response
+  return response;
 }
