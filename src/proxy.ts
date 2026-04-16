@@ -1,31 +1,31 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-
-const AUTH_COOKIE_NAME =
-  process.env.BOSAI_AUTH_COOKIE_NAME?.trim() || "bosai_auth";
-
-const AUTH_COOKIE_VALUE =
-  process.env.BOSAI_AUTH_COOKIE_VALUE?.trim() || "authenticated";
+import { AUTH_COOKIE_NAME, verifySessionToken } from "@/lib/auth";
 
 function isPublicPath(pathname: string) {
   return pathname === "/login" || pathname.startsWith("/login/");
 }
 
-export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  if (
+function isIgnoredPath(pathname: string) {
+  return (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
     pathname === "/favicon.ico" ||
     pathname === "/robots.txt" ||
     pathname === "/sitemap.xml"
-  ) {
+  );
+}
+
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (isIgnoredPath(pathname)) {
     return NextResponse.next();
   }
 
-  const authCookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  const isAuthenticated = authCookie === AUTH_COOKIE_VALUE;
+  const rawToken = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const session = await verifySessionToken(rawToken);
+  const isAuthenticated = Boolean(session);
 
   if (isPublicPath(pathname)) {
     if (isAuthenticated) {
@@ -36,7 +36,8 @@ export function proxy(request: NextRequest) {
   }
 
   if (!isAuthenticated) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    const loginUrl = new URL("/login", request.url);
+    return NextResponse.redirect(loginUrl);
   }
 
   return NextResponse.next();
