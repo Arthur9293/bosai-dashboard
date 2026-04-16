@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 const AUTH_COOKIE_NAME =
-  process.env.BOSAI_AUTH_COOKIE_NAME?.trim() || "bosai_auth";
+  (process.env.BOSAI_AUTH_COOKIE_NAME || "bosai_auth").trim() || "bosai_auth";
 
 export async function POST() {
   const response = NextResponse.json({ ok: true });
