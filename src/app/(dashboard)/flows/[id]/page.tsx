@@ -55,11 +55,11 @@ type TimelineItem = {
 };
 
 function cardClassName() {
-  return "rounded-[28px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(6,18,45,0.78)_0%,rgba(4,10,26,0.64)_100%)] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[28px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(6,18,45,0.78)_0%,rgba(4,10,26,0.64)_100%)] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function metaBoxClassName() {
-  return "rounded-[20px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(8,20,48,0.72)_0%,rgba(3,9,24,0.55)_100%)] px-4 py-4";
+  return "rounded-[20px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(8,20,48,0.72)_0%,rgba(3,9,24,0.55)_100%)] px-4 py-3.5";
 }
 
 function metaLabelClassName() {
@@ -68,6 +68,14 @@ function metaLabelClassName() {
 
 function blueSectionClassName() {
   return "bg-[radial-gradient(80%_120%_at_100%_0%,rgba(14,165,233,0.10),transparent_58%),linear-gradient(180deg,rgba(7,18,43,0.62)_0%,rgba(3,8,22,0.50)_100%)]";
+}
+
+function graphFrameClassName() {
+  return "rounded-[24px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(9,24,58,0.82)_0%,rgba(4,11,29,0.72)_100%)] p-3 md:p-4";
+}
+
+function graphViewportClassName() {
+  return "h-[300px] sm:h-[340px] lg:h-[380px] xl:h-[420px] 2xl:h-[480px] overflow-hidden rounded-[20px] border border-cyan-500/10 bg-black/20";
 }
 
 function actionLinkClassName(
@@ -266,9 +274,13 @@ function flowStatusLabel(status?: string): string {
   return normalized ? normalized.toUpperCase() : "UNKNOWN";
 }
 
-function flowStatusTone(
-  status?: string
-): "default" | "info" | "success" | "warning" | "danger" | "muted" {
+function flowStatusTone(status?: string):
+  | "default"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger"
+  | "muted" {
   const normalized = (status || "").trim().toLowerCase();
 
   if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
@@ -290,15 +302,23 @@ function flowStatusTone(
   return "muted";
 }
 
-function modeTone(
-  mode: "registry-only" | "enriched"
-): "default" | "info" | "success" | "warning" | "danger" | "muted" {
+function modeTone(mode: "registry-only" | "enriched"):
+  | "default"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger"
+  | "muted" {
   return mode === "registry-only" ? "warning" : "info";
 }
 
-function incidentTone(
-  hasIncident: boolean
-): "default" | "info" | "success" | "warning" | "danger" | "muted" {
+function incidentTone(hasIncident: boolean):
+  | "default"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger"
+  | "muted" {
   return hasIncident ? "danger" : "muted";
 }
 
@@ -960,33 +980,40 @@ function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string)
   return flowId || sourceRecordId || rootEventId || id || "Flow";
 }
 
-function capitalizeToken(value: string): string {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+function titleCaseToken(token: string): string {
+  const upperLike = ["http", "https", "api", "id", "sla", "bosai"];
+  const lower = token.toLowerCase();
+
+  if (upperLike.includes(lower)) {
+    return lower.toUpperCase();
+  }
+
+  if (/^\d+$/.test(token)) {
+    return token;
+  }
+
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
 function buildHeroTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string): string {
   const rawTitle = buildTitle(flow, sourceEvent, id);
 
   if (rawTitle.startsWith("flow_")) {
-    const tokens = rawTitle
-      .replace(/^flow_/, "")
+    const cleaned = rawTitle.replace(/^flow_/, "");
+    const parts = cleaned
       .split("_")
+      .map((part) => part.trim())
       .filter(Boolean)
-      .map((token) => {
-        if (/^\d+$/.test(token)) return token;
-        if (token.toLowerCase() === "http") return "HTTP";
-        return capitalizeToken(token);
-      });
+      .map(titleCaseToken);
 
-    return `Flow · ${tokens.join(" · ")}`;
+    return `Flow · ${parts.join(" · ")}`;
   }
 
   return rawTitle;
 }
 
 function makeWrapFriendlyTitle(value: string): string {
-  return value.replace(/([·/_\-.])/g, "$1\u200B");
+  return value.replace(/([/_\-.])/g, "$1\u200B");
 }
 
 function buildSafeEventHref(sourceEvent: EventItem | null): string {
@@ -1365,8 +1392,11 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </>
       }
       aside={
-        <>
-          <SidePanelCard title="Lecture flow">
+        <div className="hidden xl:block xl:space-y-6">
+          <SidePanelCard
+            title="Lecture flow"
+            className={blueSectionClassName()}
+          >
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 <DashboardStatusBadge
@@ -1385,7 +1415,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
               <div className="space-y-2 text-sm leading-6 text-white/65">
                 <div>
-                  Workspace : <span className="text-white/90">{resolvedWorkspaceId}</span>
+                  Workspace :{" "}
+                  <span className="text-white/90">{resolvedWorkspaceId}</span>
                 </div>
                 <div>
                   Root :{" "}
@@ -1406,7 +1437,10 @@ export default async function FlowDetailPage({ params }: PageProps) {
             </div>
           </SidePanelCard>
 
-          <SidePanelCard title="Résumé rapide">
+          <SidePanelCard
+            title="Résumé rapide"
+            className={blueSectionClassName()}
+          >
             <div className="space-y-3 text-sm leading-6 text-white/65">
               <div>
                 Timeline : <span className="text-white/90">{timelineSummaryText}</span>
@@ -1422,7 +1456,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
               </div>
             </div>
           </SidePanelCard>
-        </>
+        </div>
       }
     >
       {isPartialObservability ? (
@@ -1571,12 +1605,16 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
       <SectionCard
         title="Graphe d’exécution"
-        description="Lecture visuelle du flow. Touchez un nœud pour retrouver l’étape dans la timeline."
+        description="Lecture visuelle du flow. Le graphe reste compact, zoomable et cliquable."
         action={<SectionCountPill value={graphCommands.length} tone="info" />}
         className={blueSectionClassName()}
       >
         {graphCommands.length > 0 ? (
-          <FlowGraphClient commands={graphCommands} />
+          <div className={graphFrameClassName()}>
+            <div className={graphViewportClassName()}>
+              <FlowGraphClient commands={graphCommands} />
+            </div>
+          </div>
         ) : (
           <EmptyStatePanel
             title="Graphe indisponible"
