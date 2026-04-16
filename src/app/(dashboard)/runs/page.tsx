@@ -1,8 +1,19 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { fetchRuns } from "../../../lib/api";
 import { PageHeader } from "../../../components/ui/page-header";
+import {
+  appendWorkspaceIdToHref,
+  resolveWorkspaceContext,
+  workspaceMatchesOrUnscoped,
+} from "@/lib/workspace";
 
 type RunRecord = Record<string, unknown>;
+type SearchParams = Record<string, string | string[] | undefined>;
+
+type PageProps = {
+  searchParams?: Promise<SearchParams> | SearchParams;
+};
 
 type RunStats = {
   running?: number;
@@ -192,6 +203,19 @@ function getRunDryRun(run: RunRecord): boolean {
   return toBoolean(firstDefined(run, ["dry_run", "Dry_Run"]), false);
 }
 
+function getRunWorkspaceId(run: RunRecord): string {
+  return toText(
+    firstDefined(run, [
+      "workspace_id",
+      "Workspace_ID",
+      "workspaceId",
+      "workspace",
+      "Workspace",
+    ]),
+    ""
+  );
+}
+
 function getRunLatestTs(run: RunRecord): number {
   const finished = new Date(getRunFinishedAt(run) || 0).getTime();
   const updated = new Date(getRunUpdatedAt(run) || 0).getTime();
@@ -206,34 +230,85 @@ function getRunLatestTs(run: RunRecord): number {
   );
 }
 
-function getRunHref(run: RunRecord): string {
+function getRunHref(run: RunRecord, activeWorkspaceId?: string): string {
   const id = getRunId(run);
-  if (id) return `/runs/${encodeURIComponent(id)}`;
+  if (id) {
+    return appendWorkspaceIdToHref(
+      `/runs/${encodeURIComponent(id)}`,
+      activeWorkspaceId || getRunWorkspaceId(run)
+    );
+  }
 
   const publicId = getRunPublicId(run);
-  if (publicId) return `/runs/${encodeURIComponent(publicId)}`;
+  if (publicId) {
+    return appendWorkspaceIdToHref(
+      `/runs/${encodeURIComponent(publicId)}`,
+      activeWorkspaceId || getRunWorkspaceId(run)
+    );
+  }
 
   return "";
 }
 
-export default async function RunsPage() {
+export default async function RunsPage({ searchParams }: PageProps) {
+  const resolvedSearchParams = (await Promise.resolve(
+    searchParams ?? {}
+  )) as SearchParams;
+
+  const cookieStore = await cookies();
+
+  const workspace = resolveWorkspaceContext({
+    searchParams: resolvedSearchParams,
+    cookieValues: {
+      bosai_active_workspace_id:
+        cookieStore.get("bosai_active_workspace_id")?.value,
+      bosai_workspace_id: cookieStore.get("bosai_workspace_id")?.value,
+      workspace_id: cookieStore.get("workspace_id")?.value,
+      bosai_allowed_workspace_ids:
+        cookieStore.get("bosai_allowed_workspace_ids")?.value,
+      allowed_workspace_ids:
+        cookieStore.get("allowed_workspace_ids")?.value,
+    },
+  });
+
+  const activeWorkspaceId = workspace.activeWorkspaceId || "";
+
   let data: Awaited<ReturnType<typeof fetchRuns>> | null = null;
 
   try {
-    data = await fetchRuns();
+    data = await fetchRuns({
+      workspaceId: activeWorkspaceId || undefined,
+    });
   } catch {
     data = null;
   }
 
-  const runs: RunRecord[] = Array.isArray(data?.runs) ? data.runs : [];
+  const runsUnfiltered: RunRecord[] = Array.isArray(data?.runs) ? data.runs : [];
+  const runs = runsUnfiltered.filter((run) =>
+    workspaceMatchesOrUnscoped(getRunWorkspaceId(run), activeWorkspaceId)
+  );
+
   const stats = ((data?.stats ?? {}) as RunStats) || {};
 
-  const totalRuns = data?.count ?? runs.length ?? 0;
-  const runningCount = stats.running ?? 0;
-  const doneCount = stats.done ?? 0;
-  const errorCount = stats.error ?? 0;
-  const unsupportedCount = stats.unsupported ?? 0;
-  const otherCount = stats.other ?? 0;
+  const totalRuns = runs.length;
+  const runningCount =
+    stats.running ??
+    runs.filter((run) => getRunStatus(run).toLowerCase() === "running").length;
+  const doneCount =
+    stats.done ??
+    runs.filter((run) => getRunStatus(run).toLowerCase() === "done").length;
+  const errorCount =
+    stats.error ??
+    runs.filter((run) => getRunStatus(run).toLowerCase() === "error").length;
+  const unsupportedCount =
+    stats.unsupported ??
+    runs.filter((run) => getRunStatus(run).toLowerCase() === "unsupported").length;
+  const otherCount =
+    stats.other ??
+    runs.filter((run) => {
+      const status = getRunStatus(run).toLowerCase();
+      return !["running", "done", "error", "unsupported"].includes(status);
+    }).length;
 
   const visibleRuns = [...runs]
     .sort((a, b) => getRunLatestTs(b) - getRunLatestTs(a))
@@ -324,7 +399,7 @@ export default async function RunsPage() {
               const finishedAt = getRunFinishedAt(run);
               const updatedAt = getRunUpdatedAt(run);
               const duration = formatDuration(startedAt, finishedAt, updatedAt);
-              const href = getRunHref(run);
+              const href = getRunHref(run, activeWorkspaceId);
 
               const content = (
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
