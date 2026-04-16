@@ -17,6 +17,7 @@ export function LogoutButton() {
     } finally {
       router.replace("/login");
       router.refresh();
+      setLoading(false);
     }
   }
 
