@@ -55,11 +55,11 @@ type TimelineItem = {
 };
 
 function cardClassName() {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[28px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(6,18,45,0.78)_0%,rgba(4,10,26,0.64)_100%)] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function metaBoxClassName() {
-  return "rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+  return "rounded-[20px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(8,20,48,0.72)_0%,rgba(3,9,24,0.55)_100%)] px-4 py-4";
 }
 
 function metaLabelClassName() {
@@ -473,6 +473,7 @@ function getCommandFlowId(command: CommandItem): string {
     toText(input.flowId) ||
     toText(input.flowid) ||
     toText(result.flow_id) ||
+    toText(result.FlowId) ||
     toText(result.flowId) ||
     toText(result.flowid) ||
     ""
@@ -754,9 +755,7 @@ function getDurationMs(items: TimelineItem[]): number {
 
   const sorted = sortTimeline(items);
 
-  const firstTs = new Date(
-    sorted[0].startedAt || sorted[0].createdAt || 0
-  ).getTime();
+  const firstTs = new Date(sorted[0].startedAt || sorted[0].createdAt || 0).getTime();
 
   const lastTs = new Date(
     sorted[sorted.length - 1].finishedAt ||
@@ -815,9 +814,7 @@ function resolveFlowStatus(
     return "failed";
   }
 
-  if (
-    items.some((item) => ["retry", "retriable"].includes(item.status.toLowerCase()))
-  ) {
+  if (items.some((item) => ["retry", "retriable"].includes(item.status.toLowerCase()))) {
     return "retry";
   }
 
@@ -834,9 +831,7 @@ function resolveFlowStatus(
   if (
     items.length > 0 &&
     items.every((item) =>
-      ["processed", "done", "success", "completed"].includes(
-        item.status.toLowerCase()
-      )
+      ["processed", "done", "success", "completed"].includes(item.status.toLowerCase())
     )
   ) {
     return "processed";
@@ -866,10 +861,8 @@ function resolveFlowStatus(
     flow.stats && typeof flow.stats === "object" ? flow.stats : undefined;
 
   if (flowStats) {
-    const running =
-      toNumber(flowStats.running, 0) + toNumber(flowStats.queued, 0) > 0;
-    const failed =
-      toNumber(flowStats.error, 0) + toNumber(flowStats.dead, 0) > 0;
+    const running = toNumber(flowStats.running, 0) + toNumber(flowStats.queued, 0) > 0;
+    const failed = toNumber(flowStats.error, 0) + toNumber(flowStats.dead, 0) > 0;
     const retry = toNumber(flowStats.retry, 0) > 0;
     const done = toNumber(flowStats.done, 0) > 0;
 
@@ -971,39 +964,32 @@ function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string)
   return flowId || sourceRecordId || rootEventId || id || "Flow";
 }
 
-function humanizeFlowPart(part: string): string {
-  const value = part.trim();
-  if (!value) return "";
+function formatTitleSegment(segment: string): string {
+  const lower = segment.trim().toLowerCase();
 
-  const lower = value.toLowerCase();
-
+  if (!lower) return "";
   if (lower === "http") return "HTTP";
-  if (lower === "api") return "API";
-  if (lower === "sla") return "SLA";
-  if (/^\d+$/.test(value)) return value;
 
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
-function buildHeroTitle(
-  flow: FlowDetail,
-  sourceEvent: EventItem | null,
-  id: string
-): string {
-  const raw = buildTitle(flow, sourceEvent, id);
+function buildHeroTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string): string {
+  const rawTitle = buildTitle(flow, sourceEvent, id).trim();
 
-  if (!raw) return "Flow";
+  if (!rawTitle) return "Flow";
 
-  if (raw.startsWith("flow_")) {
-    const parts = raw.replace(/^flow_/, "").split("_").filter(Boolean);
-    const pretty = parts.map(humanizeFlowPart).filter(Boolean);
+  const normalized = rawTitle.replace(/^flow[_\-. ]*/i, "");
+  const parts = normalized
+    .split(/[_\-. ]+/)
+    .map(formatTitleSegment)
+    .filter(Boolean);
 
-    if (pretty.length > 0) {
-      return `Flow · ${pretty.join(" · ")}`;
-    }
-  }
+  if (parts.length === 0) return "Flow";
+  return `Flow · ${parts.join(" · ")}`;
+}
 
-  return raw;
+function makeWrapFriendlyTitle(value: string): string {
+  return value.replace(/([/_\-.])/g, "$1\u200B");
 }
 
 function buildSafeEventHref(sourceEvent: EventItem | null): string {
@@ -1040,9 +1026,7 @@ function TimelineCard({
           <DashboardStatusBadge kind="queued" label={`STEP ${item.stepIndex}`} />
 
           {item.isRoot ? <DashboardStatusBadge kind="unknown" label="ROOT" /> : null}
-          {item.isTerminal ? (
-            <DashboardStatusBadge kind="unknown" label="TERMINAL" />
-          ) : null}
+          {item.isTerminal ? <DashboardStatusBadge kind="unknown" label="TERMINAL" /> : null}
           {item.syntheticSource === "event" ? (
             <DashboardStatusBadge kind="retry" label="SOURCE EVENT" />
           ) : null}
@@ -1082,16 +1066,12 @@ function TimelineCard({
 
           <div>
             <div className={metaLabelClassName()}>Parent</div>
-            <div className="mt-1 break-all text-zinc-200">
-              {item.parentCommandId || "—"}
-            </div>
+            <div className="mt-1 break-all text-zinc-200">{item.parentCommandId || "—"}</div>
           </div>
 
           <div>
             <div className={metaLabelClassName()}>Root event</div>
-            <div className="mt-1 break-all text-zinc-200">
-              {item.rootEventId || "—"}
-            </div>
+            <div className="mt-1 break-all text-zinc-200">{item.rootEventId || "—"}</div>
           </div>
         </div>
 
@@ -1151,8 +1131,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
     const allCommands = Array.isArray((commandsData as { commands?: CommandItem[] })?.commands)
       ? ((commandsData as { commands?: CommandItem[] }).commands as CommandItem[])
       : Array.isArray(commandsData)
-      ? (commandsData as CommandItem[])
-      : [];
+        ? (commandsData as CommandItem[])
+        : [];
 
     const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
 
@@ -1265,7 +1245,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   const isPartialObservability = !hasDetailedCommands;
 
-  const heroTitle = buildHeroTitle(flow, sourceEvent, id);
+  const title = makeWrapFriendlyTitle(buildHeroTitle(flow, sourceEvent, id));
   const resolvedStatus = resolveFlowStatus(flow, sortedTimeline, sourceEvent);
   const durationMs = getDurationMs(sortedTimeline);
   const lastActivityTs = getLastKnownTimestamp(sortedTimeline, sourceEvent);
@@ -1326,20 +1306,21 @@ export default async function FlowDetailPage({ params }: PageProps) {
     sortedTimeline.length === 0
       ? "Aucune étape détaillée disponible."
       : readingMode === "registry-only"
-      ? `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""} reconstituée${sortedTimeline.length > 1 ? "s" : ""}`
-      : `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""}`;
+        ? `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""} reconstituée${sortedTimeline.length > 1 ? "s" : ""}`
+        : `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""}`;
 
   const graphSummaryText =
     readingMode === "registry-only"
       ? "Indisponible en lecture registre uniquement."
       : graphCommands.length > 0
-      ? "Disponible"
-      : "Indisponible pour ce flow pour le moment.";
+        ? "Disponible"
+        : "Indisponible pour ce flow pour le moment.";
 
   return (
     <ControlPlaneShell
+      className="relative"
       eyebrow="BOSAI Control Plane"
-      title={heroTitle}
+      title={title}
       description="Lecture détaillée d’un flow BOSAI avec timeline, graphe d’exécution, objets liés et fallback registre si nécessaire."
       badges={[
         {
@@ -1449,8 +1430,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
         >
           <div className="space-y-3 text-sm leading-6 text-zinc-300">
             <p>
-              La page utilise l’event source, les commands et les incidents comme
-              fallback pour éviter le 404 et préserver la navigation.
+              La page utilise l’event source, les commands et les incidents comme fallback
+              pour éviter le 404 et préserver la navigation.
             </p>
             <p>
               Dès qu’une chaîne complète sera disponible, cette vue passera
@@ -1466,24 +1447,24 @@ export default async function FlowDetailPage({ params }: PageProps) {
         action={<SectionCountPill value={displayedSteps} tone="info" />}
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className={metaBoxClassName()}>
+          <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>Durée</div>
             <div className="mt-2 text-zinc-100">{formatDuration(durationMs)}</div>
           </div>
 
-          <div className={metaBoxClassName()}>
+          <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>Dernière activité</div>
             <div className="mt-2 text-zinc-100">
               {lastActivityTs > 0 ? formatDate(lastActivityTs) : "—"}
             </div>
           </div>
 
-          <div className={metaBoxClassName()}>
+          <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>Workspace</div>
             <div className="mt-2 text-zinc-100">{resolvedWorkspaceId}</div>
           </div>
 
-          <div className={metaBoxClassName()}>
+          <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>Mode</div>
             <div className="mt-2 text-zinc-100">
               {readingMode === "registry-only" ? "Registre uniquement" : "Enrichi"}
@@ -1499,16 +1480,12 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
           <div>
             <div className={metaLabelClassName()}>Root event</div>
-            <div className="mt-1 break-all text-zinc-200">
-              {resolvedRootEventId || "—"}
-            </div>
+            <div className="mt-1 break-all text-zinc-200">{resolvedRootEventId || "—"}</div>
           </div>
 
           <div>
             <div className={metaLabelClassName()}>Source record</div>
-            <div className="mt-1 break-all text-zinc-200">
-              {resolvedSourceRecordId || "—"}
-            </div>
+            <div className="mt-1 break-all text-zinc-200">{resolvedSourceRecordId || "—"}</div>
           </div>
 
           <div>
@@ -1535,24 +1512,24 @@ export default async function FlowDetailPage({ params }: PageProps) {
           tone="neutral"
         >
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className={metaBoxClassName()}>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
               <div className={metaLabelClassName()}>Type</div>
               <div className="mt-2 text-zinc-100">{getEventType(sourceEvent)}</div>
             </div>
 
-            <div className={metaBoxClassName()}>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
               <div className={metaLabelClassName()}>Capability</div>
               <div className="mt-2 text-zinc-100">{getEventCapability(sourceEvent)}</div>
             </div>
 
-            <div className={metaBoxClassName()}>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
               <div className={metaLabelClassName()}>Processed</div>
               <div className="mt-2 text-zinc-100">
                 {formatDate(getEventProcessedAt(sourceEvent))}
               </div>
             </div>
 
-            <div className={metaBoxClassName()}>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
               <div className={metaLabelClassName()}>Linked command</div>
               <div className="mt-2 break-all text-zinc-100">
                 {getEventLinkedCommand(sourceEvent) || "—"}
@@ -1629,26 +1606,26 @@ export default async function FlowDetailPage({ params }: PageProps) {
           tone="neutral"
         >
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className={metaBoxClassName()}>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
               <div className={metaLabelClassName()}>Flow target</div>
               <div className="mt-2 break-all text-zinc-100">{resolvedFlowId}</div>
             </div>
 
-            <div className={metaBoxClassName()}>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
               <div className={metaLabelClassName()}>Root event</div>
               <div className="mt-2 break-all text-zinc-100">
                 {resolvedRootEventId || "—"}
               </div>
             </div>
 
-            <div className={metaBoxClassName()}>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
               <div className={metaLabelClassName()}>Source record</div>
               <div className="mt-2 break-all text-zinc-100">
                 {resolvedSourceRecordId || "—"}
               </div>
             </div>
 
-            <div className={metaBoxClassName()}>
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
               <div className={metaLabelClassName()}>Incidents</div>
               <div className="mt-2 text-zinc-100">{incidentLabel(incidentCount, hasIncident)}</div>
             </div>
