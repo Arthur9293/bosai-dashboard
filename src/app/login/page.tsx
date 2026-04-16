@@ -1,47 +1,51 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
-import { useFormStatus } from "react-dom";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { loginAction } from "./actions";
-
-const initialLoginActionState = {
-  error: null as string | null,
-  ok: false,
-};
-
-function SubmitButton() {
-  const { pending } = useFormStatus();
-
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className={`inline-flex w-full items-center justify-center rounded-full px-4 py-4 text-lg font-medium transition ${
-        pending
-          ? "cursor-not-allowed border border-emerald-500/20 bg-emerald-500/10 text-emerald-200 opacity-70"
-          : "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20"
-      }`}
-    >
-      {pending ? "Connexion..." : "Se connecter"}
-    </button>
-  );
-}
 
 export default function LoginPage() {
   const router = useRouter();
 
-  const [state, formAction] = useActionState(
-    loginAction,
-    initialLoginActionState
-  );
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (state.ok) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
+      const data = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !data.ok) {
+        setError(data.error || "Connexion impossible.");
+        setPending(false);
+        return;
+      }
+
       router.replace("/auth-check");
       router.refresh();
+    } catch {
+      setError("Erreur réseau ou serveur.");
+      setPending(false);
     }
-  }, [state.ok, router]);
+  }
 
   return (
     <main className="min-h-screen bg-black px-4 py-10 text-white antialiased sm:px-6">
@@ -61,7 +65,7 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <form action={formAction} className="mt-10 space-y-7">
+          <form onSubmit={handleSubmit} className="mt-10 space-y-7">
             <div className="space-y-3">
               <label
                 htmlFor="email"
@@ -76,6 +80,8 @@ export default function LoginPage() {
                 type="email"
                 autoComplete="email"
                 placeholder="admin@bosai.app"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full rounded-[24px] border border-white/10 bg-black/40 px-6 py-5 text-lg text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:bg-black/50"
                 required
               />
@@ -95,24 +101,30 @@ export default function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-[24px] border border-white/10 bg-black/40 px-6 py-5 text-lg text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:bg-black/50"
                 required
               />
             </div>
 
-            {state.error ? (
+            {error ? (
               <div className="rounded-[24px] border border-rose-500/20 bg-rose-500/10 px-5 py-4 text-sm text-rose-200">
-                {state.error}
+                {error}
               </div>
             ) : null}
 
-            {state.ok ? (
-              <div className="rounded-[24px] border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-200">
-                Connexion validée. Redirection en cours...
-              </div>
-            ) : null}
-
-            <SubmitButton />
+            <button
+              type="submit"
+              disabled={pending}
+              className={`inline-flex w-full items-center justify-center rounded-full px-4 py-4 text-lg font-medium transition ${
+                pending
+                  ? "cursor-not-allowed border border-emerald-500/20 bg-emerald-500/10 text-emerald-200 opacity-70"
+                  : "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20"
+              }`}
+            >
+              {pending ? "Connexion..." : "Se connecter"}
+            </button>
           </form>
         </section>
       </div>
