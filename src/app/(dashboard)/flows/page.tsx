@@ -1,10 +1,17 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import {
   ControlPlaneShell,
   SectionCard,
   SidePanelCard,
 } from "@/components/dashboard/ControlPlaneShell";
 import { DashboardStatusBadge } from "@/components/dashboard/StatusBadge";
+import {
+  appendWorkspaceIdToHref,
+  extractWorkspaceId,
+  resolveWorkspaceContext,
+  workspaceMatchesOrUnscoped,
+} from "@/lib/workspace";
 
 type AnyRecord = Record<string, unknown>;
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -975,7 +982,7 @@ function sortFlowCards(cards: FlowCard[]): FlowCard[] {
   });
 }
 
-function buildIncidentsHref(flow: FlowCard): string {
+function buildIncidentsHref(flow: FlowCard, activeWorkspaceId?: string): string {
   const params = new URLSearchParams();
 
   if (flow.flowId) {
@@ -992,18 +999,24 @@ function buildIncidentsHref(flow: FlowCard): string {
 
   params.set("from", "flows");
 
-  const query = params.toString();
-  return query ? `/incidents?${params.toString()}` : "/incidents";
+  const baseHref = params.toString() ? `/incidents?${params.toString()}` : "/incidents";
+  return appendWorkspaceIdToHref(baseHref, activeWorkspaceId || flow.workspaceId);
 }
 
-function buildSelectHref(flow: FlowCard): string {
+function buildSelectHref(flow: FlowCard, activeWorkspaceId?: string): string {
   const params = new URLSearchParams();
   params.set("selected", flow.detailId);
-  return `/flows?${params.toString()}`;
+  return appendWorkspaceIdToHref(
+    `/flows?${params.toString()}`,
+    activeWorkspaceId || flow.workspaceId
+  );
 }
 
-function buildDetailHref(flow: FlowCard): string {
-  return `/flows/${encodeURIComponent(flow.detailId)}`;
+function buildDetailHref(flow: FlowCard, activeWorkspaceId?: string): string {
+  return appendWorkspaceIdToHref(
+    `/flows/${encodeURIComponent(flow.detailId)}`,
+    activeWorkspaceId || flow.workspaceId
+  );
 }
 
 function isNeedsAttention(flow: FlowCard): boolean {
@@ -1046,18 +1059,20 @@ function CountPill({ value }: { value: number }) {
 function FlowListCard({
   flow,
   activeKey,
+  activeWorkspaceId,
 }: {
   flow: FlowCard;
   activeKey: string;
+  activeWorkspaceId?: string;
 }) {
   const isActive = isFlowActive(flow, activeKey);
   const isRegistryOnly = flow.readingMode === "registry-only";
   const title = getDisplayTitle(flow);
   const technicalSubtitle = getTechnicalSubtitle(flow);
   const summaryLine = getFlowSummaryLine(flow);
-  const incidentHref = buildIncidentsHref(flow);
-  const selectHref = buildSelectHref(flow);
-  const detailHref = buildDetailHref(flow);
+  const incidentHref = buildIncidentsHref(flow, activeWorkspaceId);
+  const selectHref = buildSelectHref(flow, activeWorkspaceId);
+  const detailHref = buildDetailHref(flow, activeWorkspaceId);
 
   return (
     <article className={cardClassName(isActive, isRegistryOnly)}>
@@ -1187,12 +1202,14 @@ function SectionBlock({
   flows,
   activeKey,
   tone = "default",
+  activeWorkspaceId,
 }: {
   title: string;
   description: string;
   flows: FlowCard[];
   activeKey: string;
   tone?: "default" | "attention" | "neutral";
+  activeWorkspaceId?: string;
 }) {
   if (flows.length === 0) return null;
 
@@ -1206,7 +1223,12 @@ function SectionBlock({
     >
       <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-2">
         {flows.map((flow) => (
-          <FlowListCard key={flow.key} flow={flow} activeKey={activeKey} />
+          <FlowListCard
+            key={flow.key}
+            flow={flow}
+            activeKey={activeKey}
+            activeWorkspaceId={activeWorkspaceId}
+          />
         ))}
       </div>
     </SectionCard>
@@ -1234,42 +1256,65 @@ export default async function FlowsPage({ searchParams }: PageProps) {
   )) as SearchParams;
 
   const selected = decodeSearchParam(resolvedSearchParams.selected);
+  const cookieStore = await cookies();
+
+  const workspace = resolveWorkspaceContext({
+    searchParams: resolvedSearchParams,
+    cookieValues: {
+      bosai_active_workspace_id:
+        cookieStore.get("bosai_active_workspace_id")?.value,
+      bosai_workspace_id: cookieStore.get("bosai_workspace_id")?.value,
+      workspace_id: cookieStore.get("workspace_id")?.value,
+      bosai_allowed_workspace_ids:
+        cookieStore.get("bosai_allowed_workspace_ids")?.value,
+      allowed_workspace_ids:
+        cookieStore.get("allowed_workspace_ids")?.value,
+    },
+  });
+
+  const activeWorkspaceId = workspace.activeWorkspaceId || "";
 
   const api = await import("@/lib/api");
 
   const fetchCommands = (api as AnyRecord).fetchCommands as
     | undefined
-    | (() => Promise<unknown>);
+    | ((input?: number | { workspaceId?: string | null; limit?: number }) => Promise<unknown>);
   const fetchIncidents = (api as AnyRecord).fetchIncidents as
     | undefined
-    | (() => Promise<unknown>);
+    | ((input?: number | { workspaceId?: string | null; limit?: number }) => Promise<unknown>);
   const fetchFlows = (api as AnyRecord).fetchFlows as
     | undefined
-    | (() => Promise<unknown>);
+    | ((input?: { workspaceId?: string | null; limit?: number }) => Promise<unknown>);
 
   let commandsData: unknown = null;
   let incidentsData: unknown = null;
   let flowsData: unknown = null;
 
   try {
-    commandsData = fetchCommands ? await fetchCommands() : null;
+    commandsData = fetchCommands
+      ? await fetchCommands({ workspaceId: activeWorkspaceId || undefined })
+      : null;
   } catch {
     commandsData = null;
   }
 
   try {
-    incidentsData = fetchIncidents ? await fetchIncidents() : null;
+    incidentsData = fetchIncidents
+      ? await fetchIncidents({ workspaceId: activeWorkspaceId || undefined })
+      : null;
   } catch {
     incidentsData = null;
   }
 
   try {
-    flowsData = fetchFlows ? await fetchFlows() : null;
+    flowsData = fetchFlows
+      ? await fetchFlows({ workspaceId: activeWorkspaceId || undefined })
+      : null;
   } catch {
     flowsData = null;
   }
 
-  const rawCommands: AnyRecord[] =
+  const rawCommandsUnfiltered: AnyRecord[] =
     commandsData &&
     typeof commandsData === "object" &&
     !Array.isArray(commandsData) &&
@@ -1279,7 +1324,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
         ? (commandsData as AnyRecord[])
         : [];
 
-  const rawIncidents: AnyRecord[] =
+  const rawIncidentsUnfiltered: AnyRecord[] =
     incidentsData &&
     typeof incidentsData === "object" &&
     !Array.isArray(incidentsData) &&
@@ -1289,7 +1334,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
         ? (incidentsData as AnyRecord[])
         : [];
 
-  const rawFlows: AnyRecord[] =
+  const rawFlowsUnfiltered: AnyRecord[] =
     flowsData &&
     typeof flowsData === "object" &&
     !Array.isArray(flowsData) &&
@@ -1299,7 +1344,23 @@ export default async function FlowsPage({ searchParams }: PageProps) {
         ? (flowsData as AnyRecord[])
         : [];
 
-  const normalizedCommands = rawCommands.map(normalizeCommand);
+  const rawCommands = rawCommandsUnfiltered.filter((record) =>
+    workspaceMatchesOrUnscoped(extractWorkspaceId(record), activeWorkspaceId)
+  );
+
+  const rawIncidents = rawIncidentsUnfiltered.filter((record) =>
+    workspaceMatchesOrUnscoped(extractWorkspaceId(record), activeWorkspaceId)
+  );
+
+  const rawFlows = rawFlowsUnfiltered.filter((record) =>
+    workspaceMatchesOrUnscoped(extractWorkspaceId(record), activeWorkspaceId)
+  );
+
+  const normalizedCommands = rawCommands
+    .map(normalizeCommand)
+    .filter((cmd) =>
+      workspaceMatchesOrUnscoped(cmd.workspaceId, activeWorkspaceId)
+    );
 
   const enrichedFlows = sortFlowCards(
     buildEnrichedFlowCards(normalizedCommands, rawIncidents)
@@ -1451,14 +1512,14 @@ export default async function FlowsPage({ searchParams }: PageProps) {
 
                 <div className="flex flex-col gap-2">
                   <Link
-                    href={buildDetailHref(activeFlow)}
+                    href={buildDetailHref(activeFlow, activeWorkspaceId)}
                     className={actionLinkClassName("default")}
                   >
                     Ouvrir le détail
                   </Link>
 
                   <Link
-                    href={buildIncidentsHref(activeFlow)}
+                    href={buildIncidentsHref(activeFlow, activeWorkspaceId)}
                     className={actionLinkClassName(
                       activeFlow.hasIncident ? "danger" : "default"
                     )}
@@ -1486,6 +1547,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
         flows={needsAttentionFlows}
         activeKey={activeKey}
         tone="attention"
+        activeWorkspaceId={activeWorkspaceId}
       />
 
       <SectionBlock
@@ -1494,6 +1556,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
         flows={stableEnrichedFlows}
         activeKey={activeKey}
         tone="default"
+        activeWorkspaceId={activeWorkspaceId}
       />
 
       <SectionBlock
@@ -1502,6 +1565,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
         flows={stableRegistryFlows}
         activeKey={activeKey}
         tone="neutral"
+        activeWorkspaceId={activeWorkspaceId}
       />
     </ControlPlaneShell>
   );
