@@ -13,7 +13,6 @@ export function LogoutButton() {
     try {
       await fetch("/api/auth/logout", {
         method: "POST",
-        credentials: "same-origin",
       });
     } finally {
       router.replace("/login");
