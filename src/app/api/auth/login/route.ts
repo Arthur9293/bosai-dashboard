@@ -1,82 +1,77 @@
 import { NextResponse } from "next/server";
-import {
-  AUTH_COOKIE_NAME,
-  SESSION_MAX_AGE_SECONDS,
-  createSessionToken,
-  normalizeNextPath,
-} from "@/lib/auth";
 
-type LoginBody = {
-  email?: string;
-  password?: string;
-  next?: string;
-};
+const AUTH_COOKIE_NAME =
+  (process.env.BOSAI_AUTH_COOKIE_NAME || "bosai_auth").trim() || "bosai_auth";
+
+const AUTH_COOKIE_VALUE =
+  (process.env.BOSAI_AUTH_COOKIE_VALUE || "authenticated").trim() || "authenticated";
 
 export async function POST(request: Request) {
-  let body: LoginBody | null = null;
-
   try {
-    body = (await request.json()) as LoginBody;
+    const contentType = request.headers.get("content-type") || "";
+
+    let email = "";
+    let password = "";
+
+    if (contentType.includes("application/json")) {
+      const body = (await request.json()) as {
+        email?: string;
+        password?: string;
+      };
+
+      email = String(body.email || "")
+        .trim()
+        .toLowerCase();
+      password = String(body.password || "").trim();
+    } else {
+      const formData = await request.formData();
+      email = String(formData.get("email") || "")
+        .trim()
+        .toLowerCase();
+      password = String(formData.get("password") || "").trim();
+    }
+
+    const expectedEmail = (process.env.BOSAI_AUTH_EMAIL || "")
+      .trim()
+      .toLowerCase();
+    const expectedPassword = (process.env.BOSAI_AUTH_PASSWORD || "").trim();
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { ok: false, error: "Renseigne ton email et ton mot de passe." },
+        { status: 400 }
+      );
+    }
+
+    if (!expectedEmail || !expectedPassword) {
+      return NextResponse.json(
+        { ok: false, error: "Configuration auth incomplète côté serveur." },
+        { status: 500 }
+      );
+    }
+
+    if (email !== expectedEmail || password !== expectedPassword) {
+      return NextResponse.json(
+        { ok: false, error: "Identifiants invalides." },
+        { status: 401 }
+      );
+    }
+
+    const response = NextResponse.json({ ok: true });
+
+    response.cookies.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    return response;
   } catch {
-    body = null;
-  }
-
-  const email = String(body?.email || "").trim().toLowerCase();
-  const password = String(body?.password || "");
-  const next = normalizeNextPath(body?.next);
-
-  const expectedEmail = String(process.env.BOSAI_ADMIN_EMAIL || "")
-    .trim()
-    .toLowerCase();
-  const expectedPassword = String(process.env.BOSAI_ADMIN_PASSWORD || "");
-
-  if (!expectedEmail || !expectedPassword || !process.env.AUTH_SESSION_SECRET) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "server_auth_not_configured",
-        message: "Auth server non configuré.",
-      },
+      { ok: false, error: "Erreur serveur pendant la connexion." },
       { status: 500 }
     );
   }
-
-  if (!email || !password) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "missing_credentials",
-        message: "Email et mot de passe requis.",
-      },
-      { status: 400 }
-    );
-  }
-
-  if (email !== expectedEmail || password !== expectedPassword) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "invalid_credentials",
-        message: "Identifiants invalides.",
-      },
-      { status: 401 }
-    );
-  }
-
-  const token = await createSessionToken(expectedEmail);
-
-  const response = NextResponse.json({
-    ok: true,
-    redirectTo: next || "/",
-  });
-
-  response.cookies.set(AUTH_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MAX_AGE_SECONDS,
-  });
-
-  return response;
 }
