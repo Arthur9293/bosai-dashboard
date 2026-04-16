@@ -1,8 +1,8 @@
 "use client";
 
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Sidebar } from "./sidebar";
-import { MobileSidebar } from "./mobile-sidebar";
+import { MobileShell } from "./mobile-shell";
 import { Topbar } from "./topbar";
 
 type AppShellProps = {
@@ -11,22 +11,25 @@ type AppShellProps = {
 
 export function AppShell({ children }: AppShellProps) {
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      {/* Mobile / tablet top bar */}
-      <div className="border-b border-white/10 px-4 py-4 xl:hidden">
-        <MobileSidebar />
-      </div>
+    <div className="relative min-h-screen overflow-x-hidden bg-black text-white">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(70%_80%_at_100%_0%,rgba(14,165,233,0.16),transparent_55%),radial-gradient(55%_65%_at_85%_20%,rgba(59,130,246,0.12),transparent_50%),linear-gradient(180deg,#020617_0%,#020617_45%,#000000_100%)]"
+      />
 
-      <div className="flex">
-        {/* Desktop sidebar */}
-        <div className="hidden xl:block">
-          <Sidebar />
+      <div className="relative flex min-h-screen">
+        <div className="hidden xl:block xl:w-[300px] xl:shrink-0">
+          <Sidebar variant="desktop" />
         </div>
 
-        {/* Main content */}
-        <div className="flex min-h-screen flex-1 flex-col">
-          <Topbar />
-          <main className="flex-1 p-4 lg:p-6">{children}</main>
+        <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-transparent">
+          <MobileShell title="BOSAI" />
+
+          <div className="hidden xl:block">
+            <Topbar />
+          </div>
+
+          <main className="flex-1 px-4 py-5 lg:px-6 lg:py-6">{children}</main>
         </div>
       </div>
     </div>
