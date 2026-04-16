@@ -55,11 +55,11 @@ type TimelineItem = {
 };
 
 function cardClassName() {
-  return "rounded-[28px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(6,18,45,0.78)_0%,rgba(4,10,26,0.64)_100%)] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[28px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(6,18,45,0.78)_0%,rgba(4,10,26,0.64)_100%)] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function metaBoxClassName() {
-  return "rounded-[20px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(8,20,48,0.72)_0%,rgba(3,9,24,0.55)_100%)] px-4 py-3.5";
+  return "rounded-[20px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(8,20,48,0.72)_0%,rgba(3,9,24,0.55)_100%)] px-4 py-4";
 }
 
 function metaLabelClassName() {
@@ -68,14 +68,6 @@ function metaLabelClassName() {
 
 function blueSectionClassName() {
   return "bg-[radial-gradient(80%_120%_at_100%_0%,rgba(14,165,233,0.10),transparent_58%),linear-gradient(180deg,rgba(7,18,43,0.62)_0%,rgba(3,8,22,0.50)_100%)]";
-}
-
-function graphFrameClassName() {
-  return "rounded-[24px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(9,24,58,0.82)_0%,rgba(4,11,29,0.72)_100%)] p-3 md:p-4";
-}
-
-function graphViewportClassName() {
-  return "h-[300px] sm:h-[340px] lg:h-[380px] xl:h-[420px] 2xl:h-[480px] overflow-hidden rounded-[20px] border border-cyan-500/10 bg-black/20";
 }
 
 function actionLinkClassName(
@@ -113,6 +105,27 @@ function compactTechnicalId(value: string, max = 34): string {
   const keepEnd = Math.max(8, max - keepStart - 3);
 
   return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
+}
+
+function titleizeFlowKey(value: string): string {
+  const clean = value.trim();
+  if (!clean) return "Flow";
+
+  const normalized = clean.replace(/^flow[_-]?/i, "");
+  const parts = normalized
+    .split(/[_-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) return clean;
+
+  return `Flow · ${parts
+    .map((part) =>
+      /^\d+$/.test(part)
+        ? part
+        : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+    )
+    .join(" · ")}`;
 }
 
 function toText(value: unknown, fallback = ""): string {
@@ -980,36 +993,9 @@ function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string)
   return flowId || sourceRecordId || rootEventId || id || "Flow";
 }
 
-function titleCaseToken(token: string): string {
-  const upperLike = ["http", "https", "api", "id", "sla", "bosai"];
-  const lower = token.toLowerCase();
-
-  if (upperLike.includes(lower)) {
-    return lower.toUpperCase();
-  }
-
-  if (/^\d+$/.test(token)) {
-    return token;
-  }
-
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
-}
-
 function buildHeroTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string): string {
   const rawTitle = buildTitle(flow, sourceEvent, id);
-
-  if (rawTitle.startsWith("flow_")) {
-    const cleaned = rawTitle.replace(/^flow_/, "");
-    const parts = cleaned
-      .split("_")
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map(titleCaseToken);
-
-    return `Flow · ${parts.join(" · ")}`;
-  }
-
-  return rawTitle;
+  return titleizeFlowKey(rawTitle);
 }
 
 function makeWrapFriendlyTitle(value: string): string {
@@ -1161,8 +1147,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
     const allCommands = Array.isArray((commandsData as { commands?: CommandItem[] })?.commands)
       ? ((commandsData as { commands?: CommandItem[] }).commands as CommandItem[])
       : Array.isArray(commandsData)
-      ? (commandsData as CommandItem[])
-      : [];
+        ? (commandsData as CommandItem[])
+        : [];
 
     const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
 
@@ -1336,15 +1322,15 @@ export default async function FlowDetailPage({ params }: PageProps) {
     sortedTimeline.length === 0
       ? "Aucune étape détaillée disponible."
       : readingMode === "registry-only"
-      ? `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""} reconstituée${sortedTimeline.length > 1 ? "s" : ""}`
-      : `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""}`;
+        ? `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""} reconstituée${sortedTimeline.length > 1 ? "s" : ""}`
+        : `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""}`;
 
   const graphSummaryText =
     readingMode === "registry-only"
       ? "Indisponible en lecture registre uniquement."
       : graphCommands.length > 0
-      ? "Disponible"
-      : "Indisponible pour ce flow pour le moment.";
+        ? "Disponible"
+        : "Indisponible pour ce flow pour le moment.";
 
   return (
     <ControlPlaneShell
@@ -1377,12 +1363,6 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <Link href="/flows" className={actionLinkClassName("soft")}>
             Retour aux flows
           </Link>
-
-          {sourceEventHref ? (
-            <Link href={sourceEventHref} className={actionLinkClassName("soft")}>
-              Retour à l’event source
-            </Link>
-          ) : null}
 
           {hasIncident ? (
             <Link href={incidentsHref} className={actionLinkClassName("danger")}>
@@ -1610,11 +1590,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
         className={blueSectionClassName()}
       >
         {graphCommands.length > 0 ? (
-          <div className={graphFrameClassName()}>
-            <div className={graphViewportClassName()}>
-              <FlowGraphClient commands={graphCommands} />
-            </div>
-          </div>
+          <FlowGraphClient commands={graphCommands} />
         ) : (
           <EmptyStatePanel
             title="Graphe indisponible"
