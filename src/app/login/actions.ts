@@ -27,7 +27,7 @@ export async function loginAction(
 
   const password = String(formData.get("password") || "").trim();
 
-  const nextPath = normalizeNextPath(String(formData.get("next") || "/commands"));
+  const nextPath = normalizeNextPath(String(formData.get("next") || "/auth-check"));
 
   const expectedEmail = (
     process.env.AUTH_EMAIL ||
@@ -41,21 +41,15 @@ export async function loginAction(
     (process.env.AUTH_PASSWORD || process.env.BOSAI_AUTH_PASSWORD || "").trim();
 
   if (!email || !password) {
-    return {
-      error: "Renseigne ton email et ton mot de passe.",
-    };
+    return { error: "Renseigne ton email et ton mot de passe." };
   }
 
   if (!expectedEmail || !expectedPassword) {
-    return {
-      error: "Configuration auth incomplète côté serveur.",
-    };
+    return { error: "Configuration auth incomplète côté serveur." };
   }
 
   if (email !== expectedEmail || password !== expectedPassword) {
-    return {
-      error: "Identifiants invalides.",
-    };
+    return { error: "Identifiants invalides." };
   }
 
   let token: string;
@@ -63,9 +57,7 @@ export async function loginAction(
   try {
     token = await createSessionToken(email);
   } catch {
-    return {
-      error: "Configuration session incomplète côté serveur.",
-    };
+    return { error: "Configuration session incomplète côté serveur." };
   }
 
   const cookieStore = await cookies();
