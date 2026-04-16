@@ -1,11 +1,11 @@
-import "./globals.css"
-import type { ReactNode } from "react"
-import { AppChrome } from "@/components/layout/AppChrome"
+import "./globals.css";
+import type { ReactNode } from "react";
+import { AppChrome } from "@/components/AppChrome";
 
 export default function RootLayout({
   children,
 }: {
-  children: ReactNode
+  children: ReactNode;
 }) {
   return (
     <html lang="fr">
@@ -13,5 +13,5 @@ export default function RootLayout({
         <AppChrome>{children}</AppChrome>
       </body>
     </html>
-  )
+  );
 }
