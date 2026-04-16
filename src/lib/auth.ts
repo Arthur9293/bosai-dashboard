@@ -6,21 +6,33 @@ export type SessionPayload = {
 };
 
 export const AUTH_COOKIE_NAME =
-  (process.env.AUTH_COOKIE_NAME || "bosai_session").trim() || "bosai_session";
+  (
+    process.env.BOSAI_AUTH_COOKIE_NAME ||
+    process.env.AUTH_COOKIE_NAME ||
+    "bosai_session"
+  ).trim() || "bosai_session";
 
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 jours
 
 const subtle = globalThis.crypto?.subtle ?? webcrypto.subtle;
 
 function getSessionSecret(): string {
-  return (process.env.AUTH_SESSION_SECRET || "").trim();
+  return (
+    process.env.BOSAI_AUTH_SESSION_SECRET ||
+    process.env.AUTH_SESSION_SECRET ||
+    ""
+  ).trim();
 }
 
 function requireSessionSecret(): string {
   const secret = getSessionSecret();
+
   if (!secret) {
-    throw new Error("Missing AUTH_SESSION_SECRET");
+    throw new Error(
+      "Missing session secret. Set BOSAI_AUTH_SESSION_SECRET (or AUTH_SESSION_SECRET)."
+    );
   }
+
   return secret;
 }
 
