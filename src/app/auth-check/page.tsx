@@ -1,13 +1,18 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { AUTH_COOKIE_NAME, verifySessionToken } from "@/lib/auth";
+
+const AUTH_COOKIE_NAME =
+  (process.env.BOSAI_AUTH_COOKIE_NAME || "bosai_auth").trim() || "bosai_auth";
+
+const AUTH_COOKIE_VALUE =
+  (process.env.BOSAI_AUTH_COOKIE_VALUE || "authenticated").trim() || "authenticated";
 
 export default async function AuthCheckPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
-  const session = await verifySessionToken(token);
+  const isAuthenticated = token === AUTH_COOKIE_VALUE;
 
-  if (!session) {
+  if (!isAuthenticated) {
     redirect("/login");
   }
 
@@ -25,11 +30,11 @@ export default async function AuthCheckPage() {
             </h1>
 
             <p className="max-w-xl text-lg leading-9 text-zinc-400">
-              Session validée côté serveur.
+              Cookie simple validé côté serveur.
             </p>
 
             <div className="rounded-[24px] border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-200">
-              Connecté en tant que : {session.email}
+              Session de diagnostic active.
             </div>
 
             <div className="flex flex-col gap-3 pt-4">
