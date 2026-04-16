@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { AUTH_COOKIE_NAME } from "@/lib/auth";
+
+const AUTH_COOKIE_NAME =
+  process.env.BOSAI_AUTH_COOKIE_NAME?.trim() || "bosai_auth";
 
 export async function POST() {
-  const cookieStore = await cookies();
+  const response = NextResponse.json({ ok: true });
 
-  cookieStore.set(AUTH_COOKIE_NAME, "", {
+  response.cookies.set(AUTH_COOKIE_NAME, "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -13,5 +14,5 @@ export async function POST() {
     maxAge: 0,
   });
 
-  return NextResponse.json({ ok: true });
+  return response;
 }
