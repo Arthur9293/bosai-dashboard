@@ -2,6 +2,12 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import {
+  AUTH_COOKIE_NAME,
+  SESSION_MAX_AGE_SECONDS,
+  createSessionToken,
+  normalizeNextPath,
+} from "@/lib/auth";
 
 export type LoginActionState = {
   error: string | null;
@@ -11,11 +17,28 @@ export const initialLoginActionState: LoginActionState = {
   error: null,
 };
 
-const AUTH_COOKIE_NAME =
-  process.env.BOSAI_AUTH_COOKIE_NAME?.trim() || "bosai_auth";
+function getExpectedEmail(): string {
+  return (
+    process.env.AUTH_LOGIN_EMAIL?.trim().toLowerCase() ||
+    process.env.BOSAI_AUTH_EMAIL?.trim().toLowerCase() ||
+    ""
+  );
+}
 
-const AUTH_COOKIE_VALUE =
-  process.env.BOSAI_AUTH_COOKIE_VALUE?.trim() || "authenticated";
+function getExpectedPassword(): string {
+  return (
+    process.env.AUTH_LOGIN_PASSWORD?.trim() ||
+    process.env.BOSAI_AUTH_PASSWORD?.trim() ||
+    ""
+  );
+}
+
+function hasSessionSecret(): boolean {
+  return Boolean(
+    process.env.AUTH_SESSION_SECRET?.trim() ||
+      process.env.BOSAI_AUTH_SESSION_SECRET?.trim()
+  );
+}
 
 export async function loginAction(
   _prevState: LoginActionState,
@@ -26,9 +49,10 @@ export async function loginAction(
     .toLowerCase();
 
   const password = String(formData.get("password") || "").trim();
+  const next = normalizeNextPath(String(formData.get("next") || "/commands"));
 
-  const expectedEmail = process.env.BOSAI_AUTH_EMAIL?.trim().toLowerCase();
-  const expectedPassword = process.env.BOSAI_AUTH_PASSWORD?.trim();
+  const expectedEmail = getExpectedEmail();
+  const expectedPassword = getExpectedPassword();
 
   if (!email || !password) {
     return {
@@ -42,23 +66,36 @@ export async function loginAction(
     };
   }
 
+  if (!hasSessionSecret()) {
+    return {
+      error: "AUTH_SESSION_SECRET manque côté Vercel.",
+    };
+  }
+
   if (email !== expectedEmail || password !== expectedPassword) {
     return {
       error: "Identifiants invalides.",
     };
   }
 
-  const cookieStore = await cookies();
+  try {
+    const token = await createSessionToken(email);
+    const cookieStore = await cookies();
 
-  cookieStore.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
+    cookieStore.set(AUTH_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_MAX_AGE_SECONDS,
+    });
+  } catch {
+    return {
+      error: "Impossible de créer la session.",
+    };
+  }
 
-  redirect("/commands");
+  redirect(next);
 }
 
 export async function logoutAction() {
