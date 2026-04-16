@@ -2,12 +2,6 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import {
-  AUTH_COOKIE_NAME,
-  SESSION_MAX_AGE_SECONDS,
-  createSessionToken,
-  normalizeNextPath,
-} from "@/lib/auth";
 
 export type LoginActionState = {
   error: string | null;
@@ -16,6 +10,23 @@ export type LoginActionState = {
 export const initialLoginActionState: LoginActionState = {
   error: null,
 };
+
+const AUTH_COOKIE_NAME =
+  (process.env.BOSAI_AUTH_COOKIE_NAME || "bosai_auth").trim() || "bosai_auth";
+
+const AUTH_COOKIE_VALUE =
+  (process.env.BOSAI_AUTH_COOKIE_VALUE || "authenticated").trim() || "authenticated";
+
+function normalizeNextPath(value?: string | null): string {
+  const raw = (value || "").trim();
+
+  if (!raw) return "/auth-check";
+  if (!raw.startsWith("/")) return "/auth-check";
+  if (raw.startsWith("//")) return "/auth-check";
+  if (raw.startsWith("/login")) return "/auth-check";
+
+  return raw;
+}
 
 export async function loginAction(
   _prevState: LoginActionState,
@@ -29,16 +40,8 @@ export async function loginAction(
 
   const nextPath = normalizeNextPath(String(formData.get("next") || "/auth-check"));
 
-  const expectedEmail = (
-    process.env.AUTH_EMAIL ||
-    process.env.BOSAI_AUTH_EMAIL ||
-    ""
-  )
-    .trim()
-    .toLowerCase();
-
-  const expectedPassword =
-    (process.env.AUTH_PASSWORD || process.env.BOSAI_AUTH_PASSWORD || "").trim();
+  const expectedEmail = (process.env.BOSAI_AUTH_EMAIL || "").trim().toLowerCase();
+  const expectedPassword = (process.env.BOSAI_AUTH_PASSWORD || "").trim();
 
   if (!email || !password) {
     return { error: "Renseigne ton email et ton mot de passe." };
@@ -52,22 +55,14 @@ export async function loginAction(
     return { error: "Identifiants invalides." };
   }
 
-  let token: string;
-
-  try {
-    token = await createSessionToken(email);
-  } catch {
-    return { error: "Configuration session incomplète côté serveur." };
-  }
-
   const cookieStore = await cookies();
 
-  cookieStore.set(AUTH_COOKIE_NAME, token, {
+  cookieStore.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: SESSION_MAX_AGE_SECONDS,
+    maxAge: 60 * 60 * 24 * 7,
   });
 
   redirect(nextPath);
