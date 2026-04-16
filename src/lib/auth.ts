@@ -20,12 +20,8 @@ function getSessionSecret(): string {
   );
 }
 
-function getSubtle(): SubtleCrypto {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) {
-    throw new Error("Web Crypto subtle API unavailable");
-  }
-  return subtle;
+function getSubtle(): SubtleCrypto | null {
+  return globalThis.crypto?.subtle ?? null;
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -69,6 +65,10 @@ function base64UrlToString(value: string): string {
 
 async function signValue(value: string, secret: string): Promise<string> {
   const subtle = getSubtle();
+
+  if (!subtle) {
+    throw new Error("Web Crypto subtle API unavailable");
+  }
 
   const key = await subtle.importKey(
     "raw",
@@ -119,17 +119,17 @@ export async function createSessionToken(email: string): Promise<string> {
 export async function verifySessionToken(
   token?: string | null
 ): Promise<SessionPayload | null> {
-  const secret = getSessionSecret();
-
-  if (!secret || !token) return null;
-
-  const [encodedPayload, signature] = token.split(".");
-  if (!encodedPayload || !signature) return null;
-
-  const expectedSignature = await signValue(encodedPayload, secret);
-  if (signature !== expectedSignature) return null;
-
   try {
+    const secret = getSessionSecret();
+
+    if (!secret || !token) return null;
+
+    const [encodedPayload, signature] = token.split(".");
+    if (!encodedPayload || !signature) return null;
+
+    const expectedSignature = await signValue(encodedPayload, secret);
+    if (signature !== expectedSignature) return null;
+
     const parsed = JSON.parse(base64UrlToString(encodedPayload)) as SessionPayload;
 
     if (!parsed?.email || !parsed?.exp) return null;
