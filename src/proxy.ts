@@ -23,9 +23,15 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  const session = await verifySessionToken(token);
-  const isAuthenticated = Boolean(session);
+  let isAuthenticated = false;
+
+  try {
+    const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+    const session = await verifySessionToken(token);
+    isAuthenticated = Boolean(session);
+  } catch {
+    isAuthenticated = false;
+  }
 
   if (isPublicPath(pathname)) {
     if (isAuthenticated) {
