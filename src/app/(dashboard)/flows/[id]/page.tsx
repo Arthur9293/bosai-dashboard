@@ -473,7 +473,7 @@ function getCommandFlowId(command: CommandItem): string {
     toText(input.flowId) ||
     toText(input.flowid) ||
     toText(result.flow_id) ||
-    toText(result.FlowId) ||
+    toText(result.Flow_ID) ||
     toText(result.flowId) ||
     toText(result.flowid) ||
     ""
@@ -493,6 +493,7 @@ function getCommandRootEventId(command: CommandItem): string {
     toText(input.rootEventId) ||
     toText(input.rooteventid) ||
     toText(result.root_event_id) ||
+    toText(result.Root_Event_ID) ||
     toText(result.rootEventId) ||
     toText(result.rooteventid) ||
     getCommandSourceEventId(command) ||
@@ -516,6 +517,7 @@ function getCommandSourceEventId(command: CommandItem): string {
     toText(input.eventId) ||
     toText(input.eventid) ||
     toText(result.source_event_id) ||
+    toText(result.Source_Event_ID) ||
     toText(result.sourceEventId) ||
     toText(result.sourceeventid) ||
     toText(result.event_id) ||
@@ -539,6 +541,7 @@ function getCommandWorkspaceId(command: CommandItem): string {
     toText(input.workspaceid) ||
     toText(input.workspace) ||
     toText(result.workspace_id) ||
+    toText(result.Workspace_ID) ||
     toText(result.workspaceId) ||
     toText(result.workspaceid) ||
     toText(result.workspace) ||
@@ -656,6 +659,7 @@ function normalizeTimelineItem(command: CommandItem): TimelineItem {
   const flowId = getCommandFlowId(command);
   const sourceEventId = getCommandSourceEventId(command);
   const rootEventId = getCommandRootEventId(command);
+
   const workspaceId = getCommandWorkspaceId(command) || "production";
 
   const parentCommandId =
@@ -755,7 +759,9 @@ function getDurationMs(items: TimelineItem[]): number {
 
   const sorted = sortTimeline(items);
 
-  const firstTs = new Date(sorted[0].startedAt || sorted[0].createdAt || 0).getTime();
+  const firstTs = new Date(
+    sorted[0].startedAt || sorted[0].createdAt || 0
+  ).getTime();
 
   const lastTs = new Date(
     sorted[sorted.length - 1].finishedAt ||
@@ -814,7 +820,9 @@ function resolveFlowStatus(
     return "failed";
   }
 
-  if (items.some((item) => ["retry", "retriable"].includes(item.status.toLowerCase()))) {
+  if (
+    items.some((item) => ["retry", "retriable"].includes(item.status.toLowerCase()))
+  ) {
     return "retry";
   }
 
@@ -831,7 +839,9 @@ function resolveFlowStatus(
   if (
     items.length > 0 &&
     items.every((item) =>
-      ["processed", "done", "success", "completed"].includes(item.status.toLowerCase())
+      ["processed", "done", "success", "completed"].includes(
+        item.status.toLowerCase()
+      )
     )
   ) {
     return "processed";
@@ -861,8 +871,10 @@ function resolveFlowStatus(
     flow.stats && typeof flow.stats === "object" ? flow.stats : undefined;
 
   if (flowStats) {
-    const running = toNumber(flowStats.running, 0) + toNumber(flowStats.queued, 0) > 0;
-    const failed = toNumber(flowStats.error, 0) + toNumber(flowStats.dead, 0) > 0;
+    const running =
+      toNumber(flowStats.running, 0) + toNumber(flowStats.queued, 0) > 0;
+    const failed =
+      toNumber(flowStats.error, 0) + toNumber(flowStats.dead, 0) > 0;
     const retry = toNumber(flowStats.retry, 0) > 0;
     const done = toNumber(flowStats.done, 0) > 0;
 
@@ -964,32 +976,26 @@ function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string)
   return flowId || sourceRecordId || rootEventId || id || "Flow";
 }
 
-function formatTitleSegment(segment: string): string {
-  const lower = segment.trim().toLowerCase();
-
+function toTitleCaseWord(word: string): string {
+  const lower = word.toLowerCase();
   if (!lower) return "";
-  if (lower === "http") return "HTTP";
-
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
 function buildHeroTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string): string {
-  const rawTitle = buildTitle(flow, sourceEvent, id).trim();
+  const rawTitle = buildTitle(flow, sourceEvent, id);
 
-  if (!rawTitle) return "Flow";
+  if (rawTitle.startsWith("flow_")) {
+    const cleaned = rawTitle.replace(/^flow_/, "");
+    const parts = cleaned
+      .split("_")
+      .filter(Boolean)
+      .map((part) => (/^\d+$/.test(part) ? part : toTitleCaseWord(part)));
 
-  const normalized = rawTitle.replace(/^flow[_\-. ]*/i, "");
-  const parts = normalized
-    .split(/[_\-. ]+/)
-    .map(formatTitleSegment)
-    .filter(Boolean);
+    return `Flow · ${parts.join(" · ")}`;
+  }
 
-  if (parts.length === 0) return "Flow";
-  return `Flow · ${parts.join(" · ")}`;
-}
-
-function makeWrapFriendlyTitle(value: string): string {
-  return value.replace(/([/_\-.])/g, "$1\u200B");
+  return rawTitle;
 }
 
 function buildSafeEventHref(sourceEvent: EventItem | null): string {
@@ -1026,7 +1032,9 @@ function TimelineCard({
           <DashboardStatusBadge kind="queued" label={`STEP ${item.stepIndex}`} />
 
           {item.isRoot ? <DashboardStatusBadge kind="unknown" label="ROOT" /> : null}
-          {item.isTerminal ? <DashboardStatusBadge kind="unknown" label="TERMINAL" /> : null}
+          {item.isTerminal ? (
+            <DashboardStatusBadge kind="unknown" label="TERMINAL" />
+          ) : null}
           {item.syntheticSource === "event" ? (
             <DashboardStatusBadge kind="retry" label="SOURCE EVENT" />
           ) : null}
@@ -1066,12 +1074,16 @@ function TimelineCard({
 
           <div>
             <div className={metaLabelClassName()}>Parent</div>
-            <div className="mt-1 break-all text-zinc-200">{item.parentCommandId || "—"}</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {item.parentCommandId || "—"}
+            </div>
           </div>
 
           <div>
             <div className={metaLabelClassName()}>Root event</div>
-            <div className="mt-1 break-all text-zinc-200">{item.rootEventId || "—"}</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {item.rootEventId || "—"}
+            </div>
           </div>
         </div>
 
@@ -1245,7 +1257,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   const isPartialObservability = !hasDetailedCommands;
 
-  const title = makeWrapFriendlyTitle(buildHeroTitle(flow, sourceEvent, id));
+  const title = buildHeroTitle(flow, sourceEvent, id);
   const resolvedStatus = resolveFlowStatus(flow, sortedTimeline, sourceEvent);
   const durationMs = getDurationMs(sortedTimeline);
   const lastActivityTs = getLastKnownTimestamp(sortedTimeline, sourceEvent);
@@ -1281,12 +1293,12 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   const graphCommands = hasDetailedCommands
     ? sortedTimeline.map((item) => ({
-        id: item.id,
-        capability: item.capability,
-        status: item.status,
-        parent_command_id: item.parentCommandId,
-        flow_id: item.flowId || resolvedFlowId,
-      }))
+      id: item.id,
+      capability: item.capability,
+      status: item.status,
+      parent_command_id: item.parentCommandId,
+      flow_id: item.flowId || resolvedFlowId,
+    }))
     : [];
 
   const sourceEventHref = buildSafeEventHref(sourceEvent);
@@ -1362,64 +1374,129 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </>
       }
       aside={
-        <div className="hidden xl:block xl:space-y-6">
-          <SidePanelCard title="Lecture flow">
-            <div className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                <DashboardStatusBadge
-                  kind={flowStatusBadgeKind(resolvedStatus)}
-                  label={flowStatusLabel(resolvedStatus)}
-                />
-                <DashboardStatusBadge
-                  kind={readingMode === "registry-only" ? "retry" : "running"}
-                  label={readingMode === "registry-only" ? "REGISTRY-ONLY" : "ENRICHED"}
-                />
-                <DashboardStatusBadge
-                  kind={hasIncident ? "incident" : "unknown"}
-                  label={incidentLabel(incidentCount, hasIncident)}
-                />
-              </div>
+        <>
+          <div className="xl:hidden space-y-6">
+            <SidePanelCard title="Lecture flow">
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <DashboardStatusBadge
+                    kind={flowStatusBadgeKind(resolvedStatus)}
+                    label={flowStatusLabel(resolvedStatus)}
+                  />
+                  <DashboardStatusBadge
+                    kind={readingMode === "registry-only" ? "retry" : "running"}
+                    label={readingMode === "registry-only" ? "REGISTRY-ONLY" : "ENRICHED"}
+                  />
+                  <DashboardStatusBadge
+                    kind={hasIncident ? "incident" : "unknown"}
+                    label={incidentLabel(incidentCount, hasIncident)}
+                  />
+                </div>
 
-              <div className="space-y-2 text-sm leading-6 text-white/65">
-                <div>
-                  Workspace : <span className="text-white/90">{resolvedWorkspaceId}</span>
-                </div>
-                <div>
-                  Root :{" "}
-                  <span className="break-all text-white/90">
-                    {compactTechnicalId(resolvedRootEventId || "—")}
-                  </span>
-                </div>
-                <div>
-                  Dernière activité :{" "}
-                  <span className="text-white/90">
-                    {lastActivityTs > 0 ? formatDate(lastActivityTs) : "—"}
-                  </span>
-                </div>
-                <div>
-                  Durée : <span className="text-white/90">{formatDuration(durationMs)}</span>
+                <div className="space-y-2 text-sm leading-6 text-white/65">
+                  <div>
+                    Workspace :{" "}
+                    <span className="text-white/90">{resolvedWorkspaceId}</span>
+                  </div>
+                  <div>
+                    Root :{" "}
+                    <span className="break-all text-white/90">
+                      {compactTechnicalId(resolvedRootEventId || "—")}
+                    </span>
+                  </div>
+                  <div>
+                    Dernière activité :{" "}
+                    <span className="text-white/90">
+                      {lastActivityTs > 0 ? formatDate(lastActivityTs) : "—"}
+                    </span>
+                  </div>
+                  <div>
+                    Durée :{" "}
+                    <span className="text-white/90">{formatDuration(durationMs)}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </SidePanelCard>
+            </SidePanelCard>
 
-          <SidePanelCard title="Résumé rapide">
-            <div className="space-y-3 text-sm leading-6 text-white/65">
-              <div>
-                Timeline : <span className="text-white/90">{timelineSummaryText}</span>
+            <SidePanelCard title="Résumé rapide">
+              <div className="space-y-3 text-sm leading-6 text-white/65">
+                <div>
+                  Timeline : <span className="text-white/90">{timelineSummaryText}</span>
+                </div>
+                <div>
+                  Graphe : <span className="text-white/90">{graphSummaryText}</span>
+                </div>
+                <div>
+                  Racine : <span className="text-white/90">{rootCapability}</span>
+                </div>
+                <div>
+                  Terminal : <span className="text-white/90">{terminalCapability}</span>
+                </div>
               </div>
-              <div>
-                Graphe : <span className="text-white/90">{graphSummaryText}</span>
+            </SidePanelCard>
+          </div>
+
+          <div className="hidden xl:block xl:space-y-6">
+            <SidePanelCard title="Lecture flow">
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <DashboardStatusBadge
+                    kind={flowStatusBadgeKind(resolvedStatus)}
+                    label={flowStatusLabel(resolvedStatus)}
+                  />
+                  <DashboardStatusBadge
+                    kind={readingMode === "registry-only" ? "retry" : "running"}
+                    label={readingMode === "registry-only" ? "REGISTRY-ONLY" : "ENRICHED"}
+                  />
+                  <DashboardStatusBadge
+                    kind={hasIncident ? "incident" : "unknown"}
+                    label={incidentLabel(incidentCount, hasIncident)}
+                  />
+                </div>
+
+                <div className="space-y-2 text-sm leading-6 text-white/65">
+                  <div>
+                    Workspace :{" "}
+                    <span className="text-white/90">{resolvedWorkspaceId}</span>
+                  </div>
+                  <div>
+                    Root :{" "}
+                    <span className="break-all text-white/90">
+                      {compactTechnicalId(resolvedRootEventId || "—")}
+                    </span>
+                  </div>
+                  <div>
+                    Dernière activité :{" "}
+                    <span className="text-white/90">
+                      {lastActivityTs > 0 ? formatDate(lastActivityTs) : "—"}
+                    </span>
+                  </div>
+                  <div>
+                    Durée :{" "}
+                    <span className="text-white/90">{formatDuration(durationMs)}</span>
+                  </div>
+                </div>
               </div>
-              <div>
-                Racine : <span className="text-white/90">{rootCapability}</span>
+            </SidePanelCard>
+
+            <SidePanelCard title="Résumé rapide">
+              <div className="space-y-3 text-sm leading-6 text-white/65">
+                <div>
+                  Timeline : <span className="text-white/90">{timelineSummaryText}</span>
+                </div>
+                <div>
+                  Graphe : <span className="text-white/90">{graphSummaryText}</span>
+                </div>
+                <div>
+                  Racine : <span className="text-white/90">{rootCapability}</span>
+                </div>
+                <div>
+                  Terminal : <span className="text-white/90">{terminalCapability}</span>
+                </div>
               </div>
-              <div>
-                Terminal : <span className="text-white/90">{terminalCapability}</span>
-              </div>
-            </div>
-          </SidePanelCard>
-        </div>
+            </SidePanelCard>
+          </div>
+        </>
       }
     >
       {isPartialObservability ? (
@@ -1430,8 +1507,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
         >
           <div className="space-y-3 text-sm leading-6 text-zinc-300">
             <p>
-              La page utilise l’event source, les commands et les incidents comme fallback
-              pour éviter le 404 et préserver la navigation.
+              La page utilise l’event source, les commands et les incidents comme
+              fallback pour éviter le 404 et préserver la navigation.
             </p>
             <p>
               Dès qu’une chaîne complète sera disponible, cette vue passera
@@ -1445,26 +1522,27 @@ export default async function FlowDetailPage({ params }: PageProps) {
         title="Overview"
         description="Identité principale du flow, contexte d’exécution et statut de lecture."
         action={<SectionCountPill value={displayedSteps} tone="info" />}
+        className={blueSectionClassName()}
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Durée</div>
             <div className="mt-2 text-zinc-100">{formatDuration(durationMs)}</div>
           </div>
 
-          <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Dernière activité</div>
             <div className="mt-2 text-zinc-100">
               {lastActivityTs > 0 ? formatDate(lastActivityTs) : "—"}
             </div>
           </div>
 
-          <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Workspace</div>
             <div className="mt-2 text-zinc-100">{resolvedWorkspaceId}</div>
           </div>
 
-          <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Mode</div>
             <div className="mt-2 text-zinc-100">
               {readingMode === "registry-only" ? "Registre uniquement" : "Enrichi"}
@@ -1480,12 +1558,16 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
           <div>
             <div className={metaLabelClassName()}>Root event</div>
-            <div className="mt-1 break-all text-zinc-200">{resolvedRootEventId || "—"}</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {resolvedRootEventId || "—"}
+            </div>
           </div>
 
           <div>
             <div className={metaLabelClassName()}>Source record</div>
-            <div className="mt-1 break-all text-zinc-200">{resolvedSourceRecordId || "—"}</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {resolvedSourceRecordId || "—"}
+            </div>
           </div>
 
           <div>
@@ -1512,24 +1594,24 @@ export default async function FlowDetailPage({ params }: PageProps) {
           tone="neutral"
         >
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaBoxClassName()}>
               <div className={metaLabelClassName()}>Type</div>
               <div className="mt-2 text-zinc-100">{getEventType(sourceEvent)}</div>
             </div>
 
-            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaBoxClassName()}>
               <div className={metaLabelClassName()}>Capability</div>
               <div className="mt-2 text-zinc-100">{getEventCapability(sourceEvent)}</div>
             </div>
 
-            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaBoxClassName()}>
               <div className={metaLabelClassName()}>Processed</div>
               <div className="mt-2 text-zinc-100">
                 {formatDate(getEventProcessedAt(sourceEvent))}
               </div>
             </div>
 
-            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaBoxClassName()}>
               <div className={metaLabelClassName()}>Linked command</div>
               <div className="mt-2 break-all text-zinc-100">
                 {getEventLinkedCommand(sourceEvent) || "—"}
@@ -1599,73 +1681,71 @@ export default async function FlowDetailPage({ params }: PageProps) {
         )}
       </SectionCard>
 
-      <div className="hidden xl:block">
-        <SectionCard
-          title="Résumé pipeline"
-          description="Cibles BOSAI utiles et objets liés pour la navigation croisée."
-          tone="neutral"
-        >
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
-              <div className={metaLabelClassName()}>Flow target</div>
-              <div className="mt-2 break-all text-zinc-100">{resolvedFlowId}</div>
-            </div>
+      <SectionCard
+        title="Résumé pipeline"
+        description="Cibles BOSAI utiles et objets liés pour la navigation croisée."
+        tone="neutral"
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Flow target</div>
+            <div className="mt-2 break-all text-zinc-100">{resolvedFlowId}</div>
+          </div>
 
-            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
-              <div className={metaLabelClassName()}>Root event</div>
-              <div className="mt-2 break-all text-zinc-100">
-                {resolvedRootEventId || "—"}
-              </div>
-            </div>
-
-            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
-              <div className={metaLabelClassName()}>Source record</div>
-              <div className="mt-2 break-all text-zinc-100">
-                {resolvedSourceRecordId || "—"}
-              </div>
-            </div>
-
-            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
-              <div className={metaLabelClassName()}>Incidents</div>
-              <div className="mt-2 text-zinc-100">{incidentLabel(incidentCount, hasIncident)}</div>
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Root event</div>
+            <div className="mt-2 break-all text-zinc-100">
+              {resolvedRootEventId || "—"}
             </div>
           </div>
-        </SectionCard>
-      </div>
 
-      <div className="hidden xl:block">
-        <SectionCard
-          title="Navigation"
-          description="Navigation croisée depuis ce flow vers les objets liés."
-          tone="neutral"
-        >
-          <div className="flex flex-col gap-3">
-            <Link href="/flows" className={actionLinkClassName("soft")}>
-              Retour aux flows
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Source record</div>
+            <div className="mt-2 break-all text-zinc-100">
+              {resolvedSourceRecordId || "—"}
+            </div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Incidents</div>
+            <div className="mt-2 text-zinc-100">
+              {incidentLabel(incidentCount, hasIncident)}
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Navigation"
+        description="Navigation croisée depuis ce flow vers les objets liés."
+        tone="neutral"
+      >
+        <div className="flex flex-col gap-3">
+          <Link href="/flows" className={actionLinkClassName("soft")}>
+            Retour aux flows
+          </Link>
+
+          {hasIncident ? (
+            <Link href={incidentsHref} className={actionLinkClassName("danger")}>
+              Voir les incidents
             </Link>
+          ) : (
+            <span className={actionLinkClassName("danger", true)}>
+              Voir les incidents
+            </span>
+          )}
 
-            {hasIncident ? (
-              <Link href={incidentsHref} className={actionLinkClassName("danger")}>
-                Voir les incidents
-              </Link>
-            ) : (
-              <span className={actionLinkClassName("danger", true)}>
-                Voir les incidents
-              </span>
-            )}
-
-            {sourceEventHref ? (
-              <Link href={sourceEventHref} className={actionLinkClassName("soft")}>
-                Ouvrir l’event source
-              </Link>
-            ) : (
-              <span className={actionLinkClassName("soft", true)}>
-                Ouvrir l’event source
-              </span>
-            )}
-          </div>
-        </SectionCard>
-      </div>
+          {sourceEventHref ? (
+            <Link href={sourceEventHref} className={actionLinkClassName("soft")}>
+              Ouvrir l’event source
+            </Link>
+          ) : (
+            <span className={actionLinkClassName("soft", true)}>
+              Ouvrir l’event source
+            </span>
+          )}
+        </div>
+      </SectionCard>
     </ControlPlaneShell>
   );
 }
