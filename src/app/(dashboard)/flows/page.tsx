@@ -49,16 +49,37 @@ type NormalizedCommand = {
 };
 
 function cardClassName(isActive: boolean, compact = false) {
-  const base = compact
-    ? "rounded-[28px] border bg-white/[0.04] p-4 md:p-5 xl:px-4 xl:py-4 min-h-[300px] xl:min-h-[248px] 2xl:min-h-[238px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition"
-    : "rounded-[28px] border bg-white/[0.04] p-4 md:p-5 xl:px-4 xl:py-4 min-h-[338px] xl:min-h-[270px] 2xl:min-h-[258px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
+  const base = [
+    "h-full rounded-[28px] border p-5 md:p-6 xl:p-5 2xl:p-6",
+    "bg-[linear-gradient(180deg,rgba(8,20,48,0.76)_0%,rgba(3,8,22,0.56)_100%)]",
+    "shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition",
+    compact
+      ? "min-h-[330px] xl:min-h-[308px] 2xl:min-h-[316px]"
+      : "min-h-[352px] xl:min-h-[320px] 2xl:min-h-[332px]",
+  ].join(" ");
 
   const inactive =
-    "border-white/10 hover:border-white/15 hover:bg-white/[0.05]";
+    "border-white/10 hover:border-white/15 hover:bg-[linear-gradient(180deg,rgba(9,22,53,0.8)_0%,rgba(4,10,26,0.60)_100%)]";
   const active =
-    "border-emerald-500/35 bg-emerald-500/[0.08] shadow-[0_0_0_1px_rgba(16,185,129,0.06),0_0_40px_rgba(16,185,129,0.08)]";
+    "border-emerald-400/35 bg-[linear-gradient(180deg,rgba(16,185,129,0.08)_0%,rgba(8,20,48,0.78)_18%,rgba(3,8,22,0.58)_100%)] shadow-[0_0_0_1px_rgba(16,185,129,0.08),0_18px_48px_rgba(16,185,129,0.08),inset_0_1px_0_rgba(255,255,255,0.05)]";
 
   return `${base} ${isActive ? active : inactive}`;
+}
+
+function sectionFrameClassName(tone: "default" | "attention" | "neutral" = "default") {
+  if (tone === "attention") {
+    return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(245,158,11,0.08),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
+  }
+
+  if (tone === "neutral") {
+    return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.06),transparent_46%),linear-gradient(180deg,rgba(7,18,43,0.68)_0%,rgba(3,8,22,0.54)_100%)]";
+  }
+
+  return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.08),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
+}
+
+function asidePanelClassName() {
+  return "bg-[radial-gradient(100%_120%_at_100%_0%,rgba(14,165,233,0.08),transparent_52%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
 }
 
 function actionLinkClassName(
@@ -69,20 +90,21 @@ function actionLinkClassName(
   }
 
   if (variant === "danger") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 xl:py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
+    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/25 bg-rose-500/12 px-4 py-2.5 xl:py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/18";
   }
 
   if (variant === "active") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-2 text-sm font-medium text-emerald-300";
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/35 bg-emerald-500/16 px-4 py-2.5 xl:py-2 text-sm font-medium text-emerald-300";
   }
 
   return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 xl:py-2 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
 function metaBoxClassName(compact = false) {
-  return `rounded-[22px] border border-white/10 bg-black/20 px-3.5 ${
-    compact ? "py-2.5" : "py-4"
-  }`;
+  return [
+    "rounded-[22px] border border-white/10 bg-black/20 px-4",
+    compact ? "min-h-[84px] py-3" : "min-h-[92px] py-4",
+  ].join(" ");
 }
 
 function metaLabelClassName() {
@@ -91,10 +113,10 @@ function metaLabelClassName() {
 
 function titleClassName(isRegistryOnly: boolean) {
   if (isRegistryOnly) {
-    return "break-words text-[1.34rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.55rem] xl:text-[1.12rem] 2xl:text-[1.2rem]";
+    return "break-words text-[1.42rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.6rem] xl:text-[1.28rem] 2xl:text-[1.38rem]";
   }
 
-  return "break-words text-[1.42rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.62rem] xl:text-[1.18rem] 2xl:text-[1.26rem]";
+  return "break-words text-[1.5rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.7rem] xl:text-[1.34rem] 2xl:text-[1.46rem]";
 }
 
 function text(value: unknown): string {
@@ -342,7 +364,7 @@ function getStatusKind(
 ): "done" | "running" | "failed" | "retry" | "other" {
   const s = toText(status).toLowerCase();
 
-  if (["done", "success", "resolved", "ok", "completed"].includes(s)) {
+  if (["done", "success", "resolved", "ok", "completed", "processed"].includes(s)) {
     return "done";
   }
 
@@ -971,7 +993,7 @@ function buildIncidentsHref(flow: FlowCard): string {
   params.set("from", "flows");
 
   const query = params.toString();
-  return query ? `/incidents?${query}` : "/incidents";
+  return query ? `/incidents?${params.toString()}` : "/incidents";
 }
 
 function buildSelectHref(flow: FlowCard): string {
@@ -1015,7 +1037,7 @@ function matchesActiveSelection(flow: FlowCard, selected: string): boolean {
 
 function CountPill({ value }: { value: number }) {
   return (
-    <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-white/80">
+    <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-300">
       {value}
     </span>
   );
@@ -1039,8 +1061,8 @@ function FlowListCard({
 
   return (
     <article className={cardClassName(isActive, isRegistryOnly)}>
-      <div className="flex h-full flex-col gap-3.5 xl:gap-3">
-        <div className="space-y-3">
+      <div className="flex h-full flex-col gap-4 xl:gap-4">
+        <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <DashboardStatusBadge
               label={humanStatusLabel(flow.status).toUpperCase()}
@@ -1055,8 +1077,8 @@ function FlowListCard({
             />
           </div>
 
-          <div className="space-y-2">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-white/35">
+          <div className="space-y-2.5">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">
               {flow.readingMode === "enriched"
                 ? "Flow enrichi"
                 : "Flow registre uniquement"}
@@ -1074,32 +1096,32 @@ function FlowListCard({
           </div>
 
           {!isRegistryOnly ? (
-            <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:gap-3">
+            <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2">
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Activité</div>
-                <div className="mt-1.5 text-zinc-100">{flowActivityLabel(flow)}</div>
+                <div className="mt-2 text-zinc-100">{flowActivityLabel(flow)}</div>
               </div>
 
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Incident</div>
-                <div className="mt-1.5 text-zinc-100">{incidentLabel(flow)}</div>
+                <div className="mt-2 text-zinc-100">{incidentLabel(flow)}</div>
               </div>
 
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Workspace</div>
-                <div className="mt-1.5 text-zinc-100">
+                <div className="mt-2 text-zinc-100">
                   {flow.workspaceId || "production"}
                 </div>
               </div>
 
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Étapes</div>
-                <div className="mt-1.5 text-zinc-100">{flow.steps}</div>
+                <div className="mt-2 text-zinc-100">{flow.steps}</div>
               </div>
 
               <div className={`${metaBoxClassName(true)} md:col-span-2`}>
                 <div className={metaLabelClassName()}>Chaîne</div>
-                <div className="mt-1.5 text-zinc-100">
+                <div className="mt-2 text-zinc-100">
                   {cleanCapabilityLabel(flow.rootCapability)}
                   {flow.rootCapability !== flow.terminalCapability
                     ? ` → ${cleanCapabilityLabel(flow.terminalCapability)}`
@@ -1108,35 +1130,35 @@ function FlowListCard({
               </div>
             </div>
           ) : (
-            <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:gap-3">
+            <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2">
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Source / Root</div>
-                <div className="mt-1.5 break-all text-zinc-100">
+                <div className="mt-2 break-all text-zinc-100">
                   {technicalSubtitle}
                 </div>
               </div>
 
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Activité</div>
-                <div className="mt-1.5 text-zinc-100">{flowActivityLabel(flow)}</div>
+                <div className="mt-2 text-zinc-100">{flowActivityLabel(flow)}</div>
               </div>
 
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Workspace</div>
-                <div className="mt-1.5 text-zinc-100">
+                <div className="mt-2 text-zinc-100">
                   {flow.workspaceId || "production"}
                 </div>
               </div>
 
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Incident</div>
-                <div className="mt-1.5 text-zinc-100">{incidentLabel(flow)}</div>
+                <div className="mt-2 text-zinc-100">{incidentLabel(flow)}</div>
               </div>
             </div>
           )}
         </div>
 
-        <div className="mt-auto flex flex-col gap-2 pt-1">
+        <div className="mt-auto flex flex-col gap-2.5 pt-1">
           <Link
             href={selectHref}
             className={actionLinkClassName(isActive ? "active" : "default")}
@@ -1179,9 +1201,10 @@ function SectionBlock({
       title={title}
       description={description}
       tone={tone}
+      className={sectionFrameClassName(tone)}
       action={<CountPill value={flows.length} />}
     >
-      <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-3 xl:gap-4 2xl:gap-5">
+      <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-2">
         {flows.map((flow) => (
           <FlowListCard key={flow.key} flow={flow} activeKey={activeKey} />
         ))}
@@ -1196,6 +1219,7 @@ function EmptyFlowsState() {
       title="Aucun flow"
       description="Le Dashboard n’a remonté aucun flow sur la source actuelle."
       tone="neutral"
+      className={sectionFrameClassName("neutral")}
     >
       <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-10 text-sm text-white/55">
         Aucun flow disponible pour le moment.
@@ -1341,8 +1365,8 @@ export default async function FlowsPage({ searchParams }: PageProps) {
         { label: "Registry-only", value: partialCount },
       ]}
       aside={
-        <>
-          <SidePanelCard title="Lecture opérationnelle">
+        <div className="xl:sticky xl:top-6 xl:space-y-6">
+          <SidePanelCard title="Lecture opérationnelle" className={asidePanelClassName()}>
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 <DashboardStatusBadge kind="running" />
@@ -1368,7 +1392,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
             </div>
           </SidePanelCard>
 
-          <SidePanelCard title="Flow actif">
+          <SidePanelCard title="Flow actif" className={asidePanelClassName()}>
             {activeFlow ? (
               <div className="space-y-4">
                 <div>
@@ -1451,7 +1475,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
               <div className="text-sm text-white/55">Aucun flow sélectionné.</div>
             )}
           </SidePanelCard>
-        </>
+        </div>
       }
     >
       {allFlows.length === 0 ? <EmptyFlowsState /> : null}
