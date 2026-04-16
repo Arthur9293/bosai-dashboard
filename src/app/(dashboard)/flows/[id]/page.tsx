@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import FlowGraphClient from "../FlowGraphClient";
 import {
@@ -22,6 +23,13 @@ import {
   DashboardStatusBadge,
   type DashboardStatusKind,
 } from "@/components/dashboard/StatusBadge";
+import {
+  appendWorkspaceIdToHref,
+  resolveWorkspaceContext,
+  workspaceMatchesOrUnscoped,
+} from "@/lib/workspace";
+
+type SearchParams = Record<string, string | string[] | undefined>;
 
 type PageProps = {
   params:
@@ -31,6 +39,9 @@ type PageProps = {
     | {
         id: string;
       };
+  searchParams?:
+    | Promise<SearchParams>
+    | SearchParams;
 };
 
 type TimelineItem = {
@@ -1002,12 +1013,18 @@ function makeWrapFriendlyTitle(value: string): string {
   return value.replace(/([/_\-.])/g, "$1\u200B");
 }
 
-function buildSafeEventHref(sourceEvent: EventItem | null): string {
+function buildSafeEventHref(
+  sourceEvent: EventItem | null,
+  activeWorkspaceId?: string
+): string {
   if (!sourceEvent?.id) {
     return "";
   }
 
-  return `/events/${encodeURIComponent(sourceEvent.id)}`;
+  return appendWorkspaceIdToHref(
+    `/events/${encodeURIComponent(sourceEvent.id)}`,
+    activeWorkspaceId || getEventWorkspaceId(sourceEvent)
+  );
 }
 
 function TimelineCard({
@@ -1117,14 +1134,40 @@ function TimelineCard({
   );
 }
 
-export default async function FlowDetailPage({ params }: PageProps) {
+export default async function FlowDetailPage({
+  params,
+  searchParams,
+}: PageProps) {
   const resolvedParams = await Promise.resolve(params);
+  const resolvedSearchParams = (await Promise.resolve(
+    searchParams ?? {}
+  )) as SearchParams;
+
+  const cookieStore = await cookies();
+
+  const workspace = resolveWorkspaceContext({
+    searchParams: resolvedSearchParams,
+    cookieValues: {
+      bosai_active_workspace_id:
+        cookieStore.get("bosai_active_workspace_id")?.value,
+      bosai_workspace_id: cookieStore.get("bosai_workspace_id")?.value,
+      workspace_id: cookieStore.get("workspace_id")?.value,
+      bosai_allowed_workspace_ids:
+        cookieStore.get("bosai_allowed_workspace_ids")?.value,
+      allowed_workspace_ids:
+        cookieStore.get("allowed_workspace_ids")?.value,
+    },
+  });
+
+  const activeWorkspaceId = workspace.activeWorkspaceId || "";
   const id = decodeURIComponent(resolvedParams.id);
 
   let flow: FlowDetail | null = null;
 
   try {
-    flow = await fetchFlowById(id);
+    flow = await fetchFlowById(id, {
+      workspaceId: activeWorkspaceId || undefined,
+    });
   } catch {
     flow = null;
   }
@@ -1133,27 +1176,48 @@ export default async function FlowDetailPage({ params }: PageProps) {
     notFound();
   }
 
+  const fetchedFlowWorkspaceId = toText(flow.workspace_id);
+  if (
+    activeWorkspaceId &&
+    fetchedFlowWorkspaceId &&
+    !workspaceMatchesOrUnscoped(fetchedFlowWorkspaceId, activeWorkspaceId)
+  ) {
+    notFound();
+  }
+
   const flowId = toText(flow.flow_id);
   const rootEventId = toText(flow.root_event_id);
   const sourceRecordId =
     toText(flow.source_record_id) || toText(flow.source_event_id) || rootEventId;
 
-  const baseCommands = Array.isArray(flow.commands) ? flow.commands : [];
+  const baseCommands = Array.isArray(flow.commands)
+    ? flow.commands.filter((command) =>
+        workspaceMatchesOrUnscoped(getCommandWorkspaceId(command), activeWorkspaceId)
+      )
+    : [];
 
   let discoveredCommands: CommandItem[] = [];
 
   try {
-    const commandsData = await fetchCommands(500);
+    const commandsData = await fetchCommands({
+      limit: 500,
+      workspaceId: activeWorkspaceId || undefined,
+    });
+
     const allCommands = Array.isArray((commandsData as { commands?: CommandItem[] })?.commands)
       ? ((commandsData as { commands?: CommandItem[] }).commands as CommandItem[])
       : Array.isArray(commandsData)
         ? (commandsData as CommandItem[])
         : [];
 
+    const workspaceScopedCommands = allCommands.filter((command) =>
+      workspaceMatchesOrUnscoped(getCommandWorkspaceId(command), activeWorkspaceId)
+    );
+
     const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
 
     discoveredCommands = dedupeCommands(
-      allCommands.filter((command) => matchCommand(command, identifiers))
+      workspaceScopedCommands.filter((command) => matchCommand(command, identifiers))
     );
   } catch {
     discoveredCommands = [];
@@ -1165,14 +1229,21 @@ export default async function FlowDetailPage({ params }: PageProps) {
   let sourceEvent: EventItem | null = null;
 
   try {
-    const eventsData = await fetchEvents(500);
+    const eventsData = await fetchEvents({
+      limit: 500,
+      workspaceId: activeWorkspaceId || undefined,
+    });
     const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
+
+    const workspaceScopedEvents = events.filter((event) =>
+      workspaceMatchesOrUnscoped(getEventWorkspaceId(event), activeWorkspaceId)
+    );
 
     const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
     const linkedCommands = mergedCommands.map((item) => toText(item.id)).filter(Boolean);
 
     sourceEvent =
-      events.find((event) => matchEvent(event, identifiers, linkedCommands)) || null;
+      workspaceScopedEvents.find((event) => matchEvent(event, identifiers, linkedCommands)) || null;
   } catch {
     sourceEvent = null;
   }
@@ -1217,15 +1288,23 @@ export default async function FlowDetailPage({ params }: PageProps) {
     sortedTimeline.find((item) => toText(item.workspaceId))?.workspaceId ||
     (sourceEvent ? getEventWorkspaceId(sourceEvent) : "") ||
     toText(flow.workspace_id) ||
+    activeWorkspaceId ||
     "production";
 
   let incidents: IncidentItem[] = [];
 
   try {
-    const incidentsData = await fetchIncidents(300);
+    const incidentsData = await fetchIncidents({
+      limit: 300,
+      workspaceId: activeWorkspaceId || undefined,
+    });
     const allIncidents = Array.isArray(incidentsData?.incidents)
       ? incidentsData.incidents
       : [];
+
+    const workspaceScopedIncidents = allIncidents.filter((incident) =>
+      workspaceMatchesOrUnscoped(toText(incident.workspace_id), activeWorkspaceId)
+    );
 
     const identifiers = [
       id,
@@ -1237,7 +1316,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
     ].filter(Boolean);
 
     incidents = dedupeIncidents(
-      allIncidents.filter((incident) => {
+      workspaceScopedIncidents.filter((incident) => {
         const candidates = [
           toText(incident.id),
           toText(incident.flow_id),
@@ -1305,7 +1384,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
       }))
     : [];
 
-  const sourceEventHref = buildSafeEventHref(sourceEvent);
+  const sourceEventHref = buildSafeEventHref(sourceEvent, activeWorkspaceId || resolvedWorkspaceId);
 
   const incidentsHref = (() => {
     const params = new URLSearchParams();
@@ -1315,8 +1394,16 @@ export default async function FlowDetailPage({ params }: PageProps) {
     if (resolvedSourceRecordId) params.set("source_record_id", resolvedSourceRecordId);
     params.set("from", "flow_detail");
 
-    return `/incidents?${params.toString()}`;
+    return appendWorkspaceIdToHref(
+      `/incidents?${params.toString()}`,
+      activeWorkspaceId || resolvedWorkspaceId
+    );
   })();
+
+  const flowsHref = appendWorkspaceIdToHref(
+    "/flows",
+    activeWorkspaceId || resolvedWorkspaceId
+  );
 
   const timelineSummaryText =
     sortedTimeline.length === 0
@@ -1360,7 +1447,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
       ]}
       actions={
         <>
-          <Link href="/flows" className={actionLinkClassName("soft")}>
+          <Link href={flowsHref} className={actionLinkClassName("soft")}>
             Retour aux flows
           </Link>
 
@@ -1663,7 +1750,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
         className={blueSectionClassName()}
       >
         <div className="flex flex-col gap-3">
-          <Link href="/flows" className={actionLinkClassName("soft")}>
+          <Link href={flowsHref} className={actionLinkClassName("soft")}>
             Retour aux flows
           </Link>
 
