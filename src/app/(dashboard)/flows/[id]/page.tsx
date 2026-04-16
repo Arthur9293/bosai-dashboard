@@ -473,7 +473,6 @@ function getCommandFlowId(command: CommandItem): string {
     toText(input.flowId) ||
     toText(input.flowid) ||
     toText(result.flow_id) ||
-    toText(result.Flow_ID) ||
     toText(result.flowId) ||
     toText(result.flowid) ||
     ""
@@ -493,7 +492,6 @@ function getCommandRootEventId(command: CommandItem): string {
     toText(input.rootEventId) ||
     toText(input.rooteventid) ||
     toText(result.root_event_id) ||
-    toText(result.Root_Event_ID) ||
     toText(result.rootEventId) ||
     toText(result.rooteventid) ||
     getCommandSourceEventId(command) ||
@@ -517,7 +515,6 @@ function getCommandSourceEventId(command: CommandItem): string {
     toText(input.eventId) ||
     toText(input.eventid) ||
     toText(result.source_event_id) ||
-    toText(result.Source_Event_ID) ||
     toText(result.sourceEventId) ||
     toText(result.sourceeventid) ||
     toText(result.event_id) ||
@@ -541,7 +538,6 @@ function getCommandWorkspaceId(command: CommandItem): string {
     toText(input.workspaceid) ||
     toText(input.workspace) ||
     toText(result.workspace_id) ||
-    toText(result.Workspace_ID) ||
     toText(result.workspaceId) ||
     toText(result.workspaceid) ||
     toText(result.workspace) ||
@@ -1293,12 +1289,12 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   const graphCommands = hasDetailedCommands
     ? sortedTimeline.map((item) => ({
-      id: item.id,
-      capability: item.capability,
-      status: item.status,
-      parent_command_id: item.parentCommandId,
-      flow_id: item.flowId || resolvedFlowId,
-    }))
+        id: item.id,
+        capability: item.capability,
+        status: item.status,
+        parent_command_id: item.parentCommandId,
+        flow_id: item.flowId || resolvedFlowId,
+      }))
     : [];
 
   const sourceEventHref = buildSafeEventHref(sourceEvent);
@@ -1359,144 +1355,69 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <Link href="/flows" className={actionLinkClassName("soft")}>
             Retour aux flows
           </Link>
-
-          {sourceEventHref ? (
-            <Link href={sourceEventHref} className={actionLinkClassName("soft")}>
-              Retour à l’event source
-            </Link>
-          ) : null}
-
-          {hasIncident ? (
-            <Link href={incidentsHref} className={actionLinkClassName("danger")}>
-              Voir les incidents
-            </Link>
-          ) : null}
         </>
       }
       aside={
-        <>
-          <div className="xl:hidden space-y-6">
-            <SidePanelCard title="Lecture flow">
-              <div className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  <DashboardStatusBadge
-                    kind={flowStatusBadgeKind(resolvedStatus)}
-                    label={flowStatusLabel(resolvedStatus)}
-                  />
-                  <DashboardStatusBadge
-                    kind={readingMode === "registry-only" ? "retry" : "running"}
-                    label={readingMode === "registry-only" ? "REGISTRY-ONLY" : "ENRICHED"}
-                  />
-                  <DashboardStatusBadge
-                    kind={hasIncident ? "incident" : "unknown"}
-                    label={incidentLabel(incidentCount, hasIncident)}
-                  />
-                </div>
+        <div className="hidden xl:block xl:space-y-6">
+          <SidePanelCard title="Lecture flow">
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={flowStatusBadgeKind(resolvedStatus)}
+                  label={flowStatusLabel(resolvedStatus)}
+                />
+                <DashboardStatusBadge
+                  kind={readingMode === "registry-only" ? "retry" : "running"}
+                  label={readingMode === "registry-only" ? "REGISTRY-ONLY" : "ENRICHED"}
+                />
+                <DashboardStatusBadge
+                  kind={hasIncident ? "incident" : "unknown"}
+                  label={incidentLabel(incidentCount, hasIncident)}
+                />
+              </div>
 
-                <div className="space-y-2 text-sm leading-6 text-white/65">
-                  <div>
-                    Workspace :{" "}
-                    <span className="text-white/90">{resolvedWorkspaceId}</span>
-                  </div>
-                  <div>
-                    Root :{" "}
-                    <span className="break-all text-white/90">
-                      {compactTechnicalId(resolvedRootEventId || "—")}
-                    </span>
-                  </div>
-                  <div>
-                    Dernière activité :{" "}
-                    <span className="text-white/90">
-                      {lastActivityTs > 0 ? formatDate(lastActivityTs) : "—"}
-                    </span>
-                  </div>
-                  <div>
-                    Durée :{" "}
-                    <span className="text-white/90">{formatDuration(durationMs)}</span>
-                  </div>
+              <div className="space-y-2 text-sm leading-6 text-white/65">
+                <div>
+                  Workspace :{" "}
+                  <span className="text-white/90">{resolvedWorkspaceId}</span>
+                </div>
+                <div>
+                  Root :{" "}
+                  <span className="break-all text-white/90">
+                    {compactTechnicalId(resolvedRootEventId || "—")}
+                  </span>
+                </div>
+                <div>
+                  Dernière activité :{" "}
+                  <span className="text-white/90">
+                    {lastActivityTs > 0 ? formatDate(lastActivityTs) : "—"}
+                  </span>
+                </div>
+                <div>
+                  Durée :{" "}
+                  <span className="text-white/90">{formatDuration(durationMs)}</span>
                 </div>
               </div>
-            </SidePanelCard>
+            </div>
+          </SidePanelCard>
 
-            <SidePanelCard title="Résumé rapide">
-              <div className="space-y-3 text-sm leading-6 text-white/65">
-                <div>
-                  Timeline : <span className="text-white/90">{timelineSummaryText}</span>
-                </div>
-                <div>
-                  Graphe : <span className="text-white/90">{graphSummaryText}</span>
-                </div>
-                <div>
-                  Racine : <span className="text-white/90">{rootCapability}</span>
-                </div>
-                <div>
-                  Terminal : <span className="text-white/90">{terminalCapability}</span>
-                </div>
+          <SidePanelCard title="Résumé rapide">
+            <div className="space-y-3 text-sm leading-6 text-white/65">
+              <div>
+                Timeline : <span className="text-white/90">{timelineSummaryText}</span>
               </div>
-            </SidePanelCard>
-          </div>
-
-          <div className="hidden xl:block xl:space-y-6">
-            <SidePanelCard title="Lecture flow">
-              <div className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  <DashboardStatusBadge
-                    kind={flowStatusBadgeKind(resolvedStatus)}
-                    label={flowStatusLabel(resolvedStatus)}
-                  />
-                  <DashboardStatusBadge
-                    kind={readingMode === "registry-only" ? "retry" : "running"}
-                    label={readingMode === "registry-only" ? "REGISTRY-ONLY" : "ENRICHED"}
-                  />
-                  <DashboardStatusBadge
-                    kind={hasIncident ? "incident" : "unknown"}
-                    label={incidentLabel(incidentCount, hasIncident)}
-                  />
-                </div>
-
-                <div className="space-y-2 text-sm leading-6 text-white/65">
-                  <div>
-                    Workspace :{" "}
-                    <span className="text-white/90">{resolvedWorkspaceId}</span>
-                  </div>
-                  <div>
-                    Root :{" "}
-                    <span className="break-all text-white/90">
-                      {compactTechnicalId(resolvedRootEventId || "—")}
-                    </span>
-                  </div>
-                  <div>
-                    Dernière activité :{" "}
-                    <span className="text-white/90">
-                      {lastActivityTs > 0 ? formatDate(lastActivityTs) : "—"}
-                    </span>
-                  </div>
-                  <div>
-                    Durée :{" "}
-                    <span className="text-white/90">{formatDuration(durationMs)}</span>
-                  </div>
-                </div>
+              <div>
+                Graphe : <span className="text-white/90">{graphSummaryText}</span>
               </div>
-            </SidePanelCard>
-
-            <SidePanelCard title="Résumé rapide">
-              <div className="space-y-3 text-sm leading-6 text-white/65">
-                <div>
-                  Timeline : <span className="text-white/90">{timelineSummaryText}</span>
-                </div>
-                <div>
-                  Graphe : <span className="text-white/90">{graphSummaryText}</span>
-                </div>
-                <div>
-                  Racine : <span className="text-white/90">{rootCapability}</span>
-                </div>
-                <div>
-                  Terminal : <span className="text-white/90">{terminalCapability}</span>
-                </div>
+              <div>
+                Racine : <span className="text-white/90">{rootCapability}</span>
               </div>
-            </SidePanelCard>
-          </div>
-        </>
+              <div>
+                Terminal : <span className="text-white/90">{terminalCapability}</span>
+              </div>
+            </div>
+          </SidePanelCard>
+        </div>
       }
     >
       {isPartialObservability ? (
