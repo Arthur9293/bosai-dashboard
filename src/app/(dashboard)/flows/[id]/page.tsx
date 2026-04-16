@@ -55,15 +55,19 @@ type TimelineItem = {
 };
 
 function cardClassName() {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[28px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(6,18,45,0.78)_0%,rgba(4,10,26,0.64)_100%)] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function metaBoxClassName() {
-  return "rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+  return "rounded-[20px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(8,20,48,0.72)_0%,rgba(3,9,24,0.55)_100%)] px-4 py-4";
 }
 
 function metaLabelClassName() {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function blueSectionClassName() {
+  return "bg-[radial-gradient(80%_120%_at_100%_0%,rgba(14,165,233,0.10),transparent_58%),linear-gradient(180deg,rgba(7,18,43,0.62)_0%,rgba(3,8,22,0.50)_100%)]";
 }
 
 function actionLinkClassName(
@@ -968,6 +972,17 @@ function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string)
   return flowId || sourceRecordId || rootEventId || id || "Flow";
 }
 
+function buildHeroTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string): string {
+  const rawTitle = buildTitle(flow, sourceEvent, id);
+
+  if (rawTitle.startsWith("flow_")) {
+    const cleaned = rawTitle.replace(/^flow_/, "").split("_").join(" · ");
+    return `Flow · ${cleaned}`;
+  }
+
+  return rawTitle;
+}
+
 function makeWrapFriendlyTitle(value: string): string {
   return value.replace(/([/_\-.])/g, "$1\u200B");
 }
@@ -1231,7 +1246,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   const isPartialObservability = !hasDetailedCommands;
 
-  const title = makeWrapFriendlyTitle(buildTitle(flow, sourceEvent, id));
+  const title = makeWrapFriendlyTitle(buildHeroTitle(flow, sourceEvent, id));
   const resolvedStatus = resolveFlowStatus(flow, sortedTimeline, sourceEvent);
   const durationMs = getDurationMs(sortedTimeline);
   const lastActivityTs = getLastKnownTimestamp(sortedTimeline, sourceEvent);
@@ -1304,6 +1319,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   return (
     <ControlPlaneShell
+      className="relative"
       eyebrow="BOSAI Control Plane"
       title={title}
       description="Lecture détaillée d’un flow BOSAI avec timeline, graphe d’exécution, objets liés et fallback registre si nécessaire."
@@ -1347,8 +1363,11 @@ export default async function FlowDetailPage({ params }: PageProps) {
         </>
       }
       aside={
-        <>
-          <SidePanelCard title="Lecture flow">
+        <div className="hidden xl:block xl:space-y-6">
+          <SidePanelCard
+            title="Lecture flow"
+            className={blueSectionClassName()}
+          >
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 <DashboardStatusBadge
@@ -1389,7 +1408,10 @@ export default async function FlowDetailPage({ params }: PageProps) {
             </div>
           </SidePanelCard>
 
-          <SidePanelCard title="Résumé rapide">
+          <SidePanelCard
+            title="Résumé rapide"
+            className={blueSectionClassName()}
+          >
             <div className="space-y-3 text-sm leading-6 text-white/65">
               <div>
                 Timeline : <span className="text-white/90">{timelineSummaryText}</span>
@@ -1405,7 +1427,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
               </div>
             </div>
           </SidePanelCard>
-        </>
+        </div>
       }
     >
       {isPartialObservability ? (
@@ -1413,6 +1435,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
           title="Observabilité partielle"
           description="Ce flow est présent dans le registre BOSAI mais sa chaîne détaillée n’a pas encore été complètement reconstruite."
           tone="attention"
+          className={blueSectionClassName()}
         >
           <div className="space-y-3 text-sm leading-6 text-zinc-300">
             <p>
@@ -1431,6 +1454,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
         title="Overview"
         description="Identité principale du flow, contexte d’exécution et statut de lecture."
         action={<SectionCountPill value={displayedSteps} tone="info" />}
+        className={blueSectionClassName()}
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className={metaBoxClassName()}>
@@ -1500,6 +1524,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
           title="Event source"
           description="Event d’origine utilisé pour ancrer la lecture du flow et ses liens de navigation."
           tone="neutral"
+          className={blueSectionClassName()}
         >
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className={metaBoxClassName()}>
@@ -1553,6 +1578,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
         title="Graphe d’exécution"
         description="Lecture visuelle du flow. Touchez un nœud pour retrouver l’étape dans la timeline."
         action={<SectionCountPill value={graphCommands.length} tone="info" />}
+        className={blueSectionClassName()}
       >
         {graphCommands.length > 0 ? (
           <FlowGraphClient commands={graphCommands} />
@@ -1568,6 +1594,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
         title="Timeline d’exécution"
         description="Étapes ordonnées du flow, avec statut, parentage et payloads techniques."
         action={<SectionCountPill value={sortedTimeline.length} tone="info" />}
+        className={blueSectionClassName()}
       >
         {sortedTimeline.length === 0 ? (
           <EmptyStatePanel
@@ -1587,69 +1614,75 @@ export default async function FlowDetailPage({ params }: PageProps) {
         )}
       </SectionCard>
 
-      <SectionCard
-        title="Résumé pipeline"
-        description="Cibles BOSAI utiles et objets liés pour la navigation croisée."
-        tone="neutral"
-      >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Flow target</div>
-            <div className="mt-2 break-all text-zinc-100">{resolvedFlowId}</div>
-          </div>
+      <div className="hidden xl:block">
+        <SectionCard
+          title="Résumé pipeline"
+          description="Cibles BOSAI utiles et objets liés pour la navigation croisée."
+          tone="neutral"
+          className={blueSectionClassName()}
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Flow target</div>
+              <div className="mt-2 break-all text-zinc-100">{resolvedFlowId}</div>
+            </div>
 
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Root event</div>
-            <div className="mt-2 break-all text-zinc-100">
-              {resolvedRootEventId || "—"}
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Root event</div>
+              <div className="mt-2 break-all text-zinc-100">
+                {resolvedRootEventId || "—"}
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Source record</div>
+              <div className="mt-2 break-all text-zinc-100">
+                {resolvedSourceRecordId || "—"}
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Incidents</div>
+              <div className="mt-2 text-zinc-100">{incidentLabel(incidentCount, hasIncident)}</div>
             </div>
           </div>
+        </SectionCard>
+      </div>
 
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Source record</div>
-            <div className="mt-2 break-all text-zinc-100">
-              {resolvedSourceRecordId || "—"}
-            </div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Incidents</div>
-            <div className="mt-2 text-zinc-100">{incidentLabel(incidentCount, hasIncident)}</div>
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        title="Navigation"
-        description="Navigation croisée depuis ce flow vers les objets liés."
-        tone="neutral"
-      >
-        <div className="flex flex-col gap-3">
-          <Link href="/flows" className={actionLinkClassName("soft")}>
-            Retour aux flows
-          </Link>
-
-          {hasIncident ? (
-            <Link href={incidentsHref} className={actionLinkClassName("danger")}>
-              Voir les incidents
+      <div className="hidden xl:block">
+        <SectionCard
+          title="Navigation"
+          description="Navigation croisée depuis ce flow vers les objets liés."
+          tone="neutral"
+          className={blueSectionClassName()}
+        >
+          <div className="flex flex-col gap-3">
+            <Link href="/flows" className={actionLinkClassName("soft")}>
+              Retour aux flows
             </Link>
-          ) : (
-            <span className={actionLinkClassName("danger", true)}>
-              Voir les incidents
-            </span>
-          )}
 
-          {sourceEventHref ? (
-            <Link href={sourceEventHref} className={actionLinkClassName("soft")}>
-              Ouvrir l’event source
-            </Link>
-          ) : (
-            <span className={actionLinkClassName("soft", true)}>
-              Ouvrir l’event source
-            </span>
-          )}
-        </div>
-      </SectionCard>
+            {hasIncident ? (
+              <Link href={incidentsHref} className={actionLinkClassName("danger")}>
+                Voir les incidents
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("danger", true)}>
+                Voir les incidents
+              </span>
+            )}
+
+            {sourceEventHref ? (
+              <Link href={sourceEventHref} className={actionLinkClassName("soft")}>
+                Ouvrir l’event source
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir l’event source
+              </span>
+            )}
+          </div>
+        </SectionCard>
+      </div>
     </ControlPlaneShell>
   );
 }
