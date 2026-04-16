@@ -41,7 +41,7 @@ export function dashboardRowCardClassName(): string {
 }
 
 export function dashboardSectionLabelClassName(): string {
-  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
+  return "text-[11px] uppercase tracking-[0.24em] text-zinc-500 sm:text-xs";
 }
 
 export function dashboardMetaLabelClassName(): string {
@@ -182,27 +182,27 @@ export function DashboardPageHeader({
 }) {
   return (
     <section
-      className={["space-y-4 border-b border-white/10 pb-6", className]
+      className={["space-y-4 border-b border-white/10 pb-5 sm:pb-6", className]
         .filter(Boolean)
         .join(" ")}
     >
       <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
 
       <div className="space-y-4 xl:flex xl:items-end xl:justify-between xl:gap-8 xl:space-y-0">
-        <div className="max-w-4xl">
-          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+        <div className="max-w-4xl min-w-0">
+          <h1 className="max-w-full break-words text-[clamp(2rem,9vw,3.75rem)] font-semibold leading-[0.95] tracking-tight text-white [overflow-wrap:anywhere]">
             {title}
           </h1>
 
           {description ? (
-            <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
+            <p className="mt-3 max-w-3xl text-[15px] leading-8 text-zinc-400 sm:text-lg sm:leading-8">
               {description}
             </p>
           ) : null}
         </div>
 
         {actions ? (
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap xl:justify-end">
+          <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-row sm:flex-wrap xl:justify-end">
             {actions}
           </div>
         ) : null}
@@ -231,19 +231,21 @@ export function DashboardSection({
   return (
     <section className={["space-y-4", className].filter(Boolean).join(" ")}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-0">
           {eyebrow ? (
             <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
           ) : null}
 
           {title ? (
-            <div className="text-2xl font-semibold tracking-tight text-white">
+            <div className="break-words text-[1.65rem] font-semibold tracking-tight text-white [overflow-wrap:anywhere] sm:text-2xl">
               {title}
             </div>
           ) : null}
 
           {description ? (
-            <p className="max-w-3xl text-base text-zinc-400">{description}</p>
+            <p className="max-w-3xl text-[15px] leading-8 text-zinc-400 sm:text-base">
+              {description}
+            </p>
           ) : null}
         </div>
 
@@ -265,7 +267,7 @@ export function DashboardCard({
   padding?: "none" | "sm" | "md";
 }) {
   const paddingClass =
-    padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-5 md:p-6";
+    padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-4 md:p-5 lg:p-6";
 
   return (
     <div
@@ -292,7 +294,7 @@ export function DashboardMetricCard({
   return (
     <DashboardCard>
       <div className="text-sm text-zinc-400">{label}</div>
-      <div className={`mt-3 text-4xl font-semibold tracking-tight ${toneClass}`}>
+      <div className={`mt-3 text-3xl font-semibold tracking-tight sm:text-4xl ${toneClass}`}>
         {value}
       </div>
       {helper ? <div className="mt-3 text-sm text-zinc-300">{helper}</div> : null}
@@ -333,7 +335,7 @@ export function DashboardLaneCard({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className={dashboardMetaLabelClassName()}>{eyebrow}</div>
-          <div className="mt-2 text-lg font-semibold tracking-tight text-white">
+          <div className="mt-2 break-words text-lg font-semibold tracking-tight text-white [overflow-wrap:anywhere]">
             {title}
           </div>
           <div className="mt-2 text-sm text-zinc-400">{subtitle}</div>
@@ -379,28 +381,28 @@ export function ControlPlaneShell({
     Boolean(metrics?.length);
 
   const header = hasHeader ? (
-    <section className="space-y-5 border-b border-white/10 pb-6">
+    <section className="space-y-5 border-b border-white/10 pb-5 sm:pb-6">
       {eyebrow ? (
         <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
       ) : null}
 
       <div className="space-y-4 xl:flex xl:items-end xl:justify-between xl:gap-8 xl:space-y-0">
-        <div className="max-w-4xl">
+        <div className="max-w-4xl min-w-0">
           {title ? (
-            <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+            <h1 className="max-w-full break-words text-[clamp(2.1rem,9vw,4rem)] font-semibold leading-[0.95] tracking-tight text-white [overflow-wrap:anywhere]">
               {title}
             </h1>
           ) : null}
 
           {description ? (
-            <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
+            <p className="mt-3 max-w-3xl text-[15px] leading-8 text-zinc-400 sm:text-lg sm:leading-8">
               {description}
             </p>
           ) : null}
         </div>
 
         {actions ? (
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap xl:justify-end">
+          <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-row sm:flex-wrap xl:justify-end">
             {actions}
           </div>
         ) : null}
@@ -412,18 +414,18 @@ export function ControlPlaneShell({
             <span
               key={`${badge.label}-${index}`}
               className={[
-                "inline-flex rounded-full border px-3 py-1.5 text-sm font-medium",
+                "inline-flex max-w-full rounded-full border px-3 py-1.5 text-sm font-medium",
                 sectionCountToneClass(normalizeTone(badge.tone)),
               ].join(" ")}
             >
-              {badge.label}
+              <span className="truncate">{badge.label}</span>
             </span>
           ))}
         </div>
       ) : null}
 
       {metrics && metrics.length > 0 ? (
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           {metrics.map((metric, index) => (
             <DashboardMetricCard
               key={`${metric.label}-${index}`}
@@ -442,24 +444,24 @@ export function ControlPlaneShell({
     return (
       <div
         className={[
-          "grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px]",
+          "grid gap-6 lg:gap-8 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_340px]",
           className,
         ]
           .filter(Boolean)
           .join(" ")}
       >
-        <div className="space-y-8">
+        <div className="min-w-0 space-y-6 lg:space-y-8">
           {header}
           {children}
         </div>
 
-        <div className="space-y-6">{aside}</div>
+        <div className="space-y-5 lg:space-y-6">{aside}</div>
       </div>
     );
   }
 
   return (
-    <div className={["space-y-8", className].filter(Boolean).join(" ")}>
+    <div className={["space-y-6 lg:space-y-8", className].filter(Boolean).join(" ")}>
       {header}
       {children}
     </div>
@@ -495,7 +497,7 @@ export function SectionCard({
 }: LegacyCardProps) {
   const resolvedDescription = description ?? subtitle;
   const paddingClass =
-    padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-5 md:p-6";
+    padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-4 md:p-5 lg:p-6";
 
   return (
     <div
@@ -510,19 +512,19 @@ export function SectionCard({
     >
       {title || resolvedDescription || eyebrow || action ? (
         <div className="mb-5 flex flex-col gap-3 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             {eyebrow ? (
               <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
             ) : null}
 
             {title ? (
-              <div className="text-2xl font-semibold tracking-tight text-white">
+              <div className="break-words text-[1.9rem] font-semibold leading-[1] tracking-tight text-white [overflow-wrap:anywhere] sm:text-2xl">
                 {title}
               </div>
             ) : null}
 
             {resolvedDescription ? (
-              <p className="max-w-3xl text-base text-zinc-400">
+              <p className="max-w-3xl text-[15px] leading-8 text-zinc-400 sm:text-base">
                 {resolvedDescription}
               </p>
             ) : null}
@@ -550,7 +552,7 @@ export function SidePanelCard({
 }: LegacyCardProps) {
   const resolvedDescription = description ?? subtitle;
   const paddingClass =
-    padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-5 md:p-6";
+    padding === "none" ? "" : padding === "sm" ? "p-4 md:p-5" : "p-4 md:p-5 lg:p-6";
 
   return (
     <aside
@@ -565,13 +567,13 @@ export function SidePanelCard({
     >
       {title || resolvedDescription || eyebrow || action ? (
         <div className="mb-5 flex flex-col gap-3 border-b border-white/10 pb-5">
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             {eyebrow ? (
               <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
             ) : null}
 
             {title ? (
-              <div className="text-xl font-semibold tracking-tight text-white">
+              <div className="break-words text-[1.8rem] font-semibold leading-[1] tracking-tight text-white [overflow-wrap:anywhere] sm:text-xl">
                 {title}
               </div>
             ) : null}
