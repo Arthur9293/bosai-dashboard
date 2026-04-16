@@ -66,10 +66,6 @@ function metaLabelClassName() {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
-function sectionLabelClassName() {
-  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
-}
-
 function actionLinkClassName(
   variant: "default" | "primary" | "soft" | "danger" = "default",
   disabled = false
@@ -204,10 +200,6 @@ function formatDuration(ms?: number): string {
 
 function isRecordIdLike(value: string): boolean {
   return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
-}
-
-function uniq(values: string[]): string[] {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
 function flowStatusBadgeKind(status?: string): DashboardStatusKind {
@@ -976,6 +968,10 @@ function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string)
   return flowId || sourceRecordId || rootEventId || id || "Flow";
 }
 
+function makeWrapFriendlyTitle(value: string): string {
+  return value.replace(/([/_\-.])/g, "$1\u200B");
+}
+
 function buildSafeEventHref(sourceEvent: EventItem | null): string {
   if (!sourceEvent?.id) {
     return "";
@@ -992,10 +988,13 @@ function TimelineCard({
   resolvedFlowId: string;
 }) {
   return (
-    <article className={cardClassName()}>
+    <article
+      id={`cmd-${item.id}`}
+      className={`${cardClassName()} min-w-0 scroll-mt-24 overflow-hidden`}
+    >
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="break-words text-xl font-semibold text-white">
+          <h3 className="break-words text-xl font-semibold text-white [overflow-wrap:anywhere]">
             {item.capability}
           </h3>
 
@@ -1232,7 +1231,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   const isPartialObservability = !hasDetailedCommands;
 
-  const title = buildTitle(flow, sourceEvent, id);
+  const title = makeWrapFriendlyTitle(buildTitle(flow, sourceEvent, id));
   const resolvedStatus = resolveFlowStatus(flow, sortedTimeline, sourceEvent);
   const durationMs = getDurationMs(sortedTimeline);
   const lastActivityTs = getLastKnownTimestamp(sortedTimeline, sourceEvent);
