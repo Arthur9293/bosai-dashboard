@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import {
   fetchIncidents,
   type IncidentItem,
@@ -16,12 +17,19 @@ import {
   DashboardStatusBadge,
   type DashboardStatusKind,
 } from "@/components/dashboard/StatusBadge";
+import {
+  appendWorkspaceIdToHref,
+  resolveWorkspaceContext,
+  workspaceMatchesOrUnscoped,
+} from "@/lib/workspace";
 
 type SearchParams = {
   flow_id?: string | string[];
   root_event_id?: string | string[];
   source_record_id?: string | string[];
   from?: string | string[];
+  workspace_id?: string | string[];
+  workspaceId?: string | string[];
 };
 
 type PageProps = {
@@ -136,6 +144,10 @@ function getIncidentStatusRaw(incident: IncidentItem): string {
 
 function getIncidentSeverityRaw(incident: IncidentItem): string {
   return (incident.severity || "").trim();
+}
+
+function getIncidentWorkspaceId(incident: IncidentItem): string {
+  return incident.workspace_id || incident.workspace || "";
 }
 
 function getIncidentStatusNormalized(incident: IncidentItem): string {
@@ -448,13 +460,17 @@ function getBestFlowTargetFromFilters(filters: {
   return filters.flowId || filters.sourceRecordId || filters.rootEventId || "";
 }
 
-function getBackToFlowsHref(filters: {
-  flowId: string;
-  rootEventId: string;
-  sourceRecordId: string;
-}): string {
+function getBackToFlowsHref(
+  filters: {
+    flowId: string;
+    rootEventId: string;
+    sourceRecordId: string;
+  },
+  activeWorkspaceId?: string
+): string {
   const target = getBestFlowTargetFromFilters(filters);
-  return target ? `/flows/${encodeURIComponent(target)}` : "/flows";
+  const baseHref = target ? `/flows/${encodeURIComponent(target)}` : "/flows";
+  return appendWorkspaceIdToHref(baseHref, activeWorkspaceId);
 }
 
 function getIncidentStatusBadgeKind(
@@ -517,19 +533,39 @@ function getDecisionBadgeKind(
   return "unknown";
 }
 
-function getIncidentHref(incident: IncidentItem): string {
-  return `/incidents/${encodeURIComponent(incident.id)}`;
+function getIncidentHref(
+  incident: IncidentItem,
+  activeWorkspaceId?: string
+): string {
+  return appendWorkspaceIdToHref(
+    `/incidents/${encodeURIComponent(incident.id)}`,
+    activeWorkspaceId || getIncidentWorkspaceId(incident)
+  );
 }
 
-function getFlowHref(incident: IncidentItem): string {
+function getFlowHref(
+  incident: IncidentItem,
+  activeWorkspaceId?: string
+): string {
   const flowTarget = getBestFlowTargetFromIncident(incident);
-  return flowTarget ? `/flows/${encodeURIComponent(flowTarget)}` : "";
+  return flowTarget
+    ? appendWorkspaceIdToHref(
+        `/flows/${encodeURIComponent(flowTarget)}`,
+        activeWorkspaceId || getIncidentWorkspaceId(incident)
+      )
+    : "";
 }
 
-function getCommandHref(incident: IncidentItem): string {
+function getCommandHref(
+  incident: IncidentItem,
+  activeWorkspaceId?: string
+): string {
   const commandRecord = getCommandRecord(incident);
   return commandRecord && commandRecord !== "—"
-    ? `/commands/${encodeURIComponent(commandRecord)}`
+    ? appendWorkspaceIdToHref(
+        `/commands/${encodeURIComponent(commandRecord)}`,
+        activeWorkspaceId || getIncidentWorkspaceId(incident)
+      )
     : "";
 }
 
@@ -550,7 +586,13 @@ function MetaItem({
   );
 }
 
-function IncidentListCard({ incident }: { incident: IncidentItem }) {
+function IncidentListCard({
+  incident,
+  activeWorkspaceId,
+}: {
+  incident: IncidentItem;
+  activeWorkspaceId?: string;
+}) {
   const title = getIncidentTitle(incident);
   const statusLabel = getIncidentStatusLabel(incident);
   const severityLabel = getIncidentSeverityLabel(incident);
@@ -561,8 +603,8 @@ function IncidentListCard({ incident }: { incident: IncidentItem }) {
   const rootEventId = getRootEventId(incident);
   const runRecord = getRunRecord(incident);
   const suggestedAction = getSuggestedAction(incident);
-  const flowHref = getFlowHref(incident);
-  const commandHref = getCommandHref(incident);
+  const flowHref = getFlowHref(incident, activeWorkspaceId);
+  const commandHref = getCommandHref(incident, activeWorkspaceId);
 
   return (
     <article className={cardClassName()}>
@@ -574,7 +616,7 @@ function IncidentListCard({ incident }: { incident: IncidentItem }) {
 
           <div className="space-y-3">
             <Link
-              href={getIncidentHref(incident)}
+              href={getIncidentHref(incident, activeWorkspaceId)}
               className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
             >
               {title}
@@ -702,7 +744,10 @@ function IncidentListCard({ incident }: { incident: IncidentItem }) {
         </div>
 
         <div className="mt-auto flex flex-col gap-2.5 pt-1">
-          <Link href={getIncidentHref(incident)} className={actionLinkClassName("primary")}>
+          <Link
+            href={getIncidentHref(incident, activeWorkspaceId)}
+            className={actionLinkClassName("primary")}
+          >
             Ouvrir le détail
           </Link>
 
@@ -755,6 +800,24 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     ? await Promise.resolve(searchParams)
     : {};
 
+  const cookieStore = await cookies();
+
+  const workspace = resolveWorkspaceContext({
+    searchParams: resolvedSearchParams,
+    cookieValues: {
+      bosai_active_workspace_id:
+        cookieStore.get("bosai_active_workspace_id")?.value,
+      bosai_workspace_id: cookieStore.get("bosai_workspace_id")?.value,
+      workspace_id: cookieStore.get("workspace_id")?.value,
+      bosai_allowed_workspace_ids:
+        cookieStore.get("bosai_allowed_workspace_ids")?.value,
+      allowed_workspace_ids:
+        cookieStore.get("allowed_workspace_ids")?.value,
+    },
+  });
+
+  const activeWorkspaceId = workspace.activeWorkspaceId || "";
+
   const flowId = firstParam(resolvedSearchParams.flow_id).trim();
   const rootEventId = firstParam(resolvedSearchParams.root_event_id).trim();
   const sourceRecordId = firstParam(
@@ -765,16 +828,22 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   let data: IncidentsResponse | null = null;
 
   try {
-    data = await fetchIncidents();
+    data = await fetchIncidents({
+      workspaceId: activeWorkspaceId || undefined,
+    });
   } catch {
     data = null;
   }
 
-  const incidents: IncidentItem[] = Array.isArray(data?.incidents)
+  const incidentsUnfiltered: IncidentItem[] = Array.isArray(data?.incidents)
     ? data.incidents
     : [];
 
-  const cleanNormalized = incidents.filter(
+  const workspaceScoped = incidentsUnfiltered.filter((item) =>
+    workspaceMatchesOrUnscoped(getIncidentWorkspaceId(item), activeWorkspaceId)
+  );
+
+  const cleanNormalized = workspaceScoped.filter(
     (item) => !isLegacyNoiseIncident(item)
   );
 
@@ -812,8 +881,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
   const backToFlowsHref =
     from === "flows" || from === "flow_detail"
-      ? getBackToFlowsHref({ flowId, rootEventId, sourceRecordId })
-      : "/flows";
+      ? getBackToFlowsHref({ flowId, rootEventId, sourceRecordId }, activeWorkspaceId)
+      : appendWorkspaceIdToHref("/flows", activeWorkspaceId);
+
+  const commandsHref = appendWorkspaceIdToHref("/commands", activeWorkspaceId);
+  const allIncidentsHref = appendWorkspaceIdToHref("/incidents", activeWorkspaceId);
 
   const focusIncident =
     activeIncidents[0] ?? sortedResolvedIncidents[0] ?? visibleIncidents[0] ?? null;
@@ -853,12 +925,15 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
               Retour au flow
             </Link>
           ) : (
-            <Link href="/flows" className={actionLinkClassName("soft")}>
+            <Link
+              href={appendWorkspaceIdToHref("/flows", activeWorkspaceId)}
+              className={actionLinkClassName("soft")}
+            >
               Ouvrir Flows
             </Link>
           )}
 
-          <Link href="/commands" className={actionLinkClassName("primary")}>
+          <Link href={commandsHref} className={actionLinkClassName("primary")}>
             Voir Commands
           </Link>
         </>
@@ -945,15 +1020,15 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
                 <div className="flex flex-col gap-2">
                   <Link
-                    href={getIncidentHref(focusIncident)}
+                    href={getIncidentHref(focusIncident, activeWorkspaceId)}
                     className={actionLinkClassName("primary")}
                   >
                     Ouvrir le détail
                   </Link>
 
-                  {getFlowHref(focusIncident) ? (
+                  {getFlowHref(focusIncident, activeWorkspaceId) ? (
                     <Link
-                      href={getFlowHref(focusIncident)}
+                      href={getFlowHref(focusIncident, activeWorkspaceId)}
                       className={actionLinkClassName("soft")}
                     >
                       Ouvrir le flow lié
@@ -993,7 +1068,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 Retour aux flows
               </Link>
 
-              <Link href="/incidents" className={actionLinkClassName("primary")}>
+              <Link href={allIncidentsHref} className={actionLinkClassName("primary")}>
                 Voir tous les incidents
               </Link>
             </div>
@@ -1023,7 +1098,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
             ) : (
               <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
                 {activeIncidents.map((incident) => (
-                  <IncidentListCard key={incident.id} incident={incident} />
+                  <IncidentListCard
+                    key={incident.id}
+                    incident={incident}
+                    activeWorkspaceId={activeWorkspaceId}
+                  />
                 ))}
               </div>
             )}
@@ -1044,7 +1123,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
             ) : (
               <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
                 {sortedResolvedIncidents.map((incident) => (
-                  <IncidentListCard key={incident.id} incident={incident} />
+                  <IncidentListCard
+                    key={incident.id}
+                    incident={incident}
+                    activeWorkspaceId={activeWorkspaceId}
+                  />
                 ))}
               </div>
             )}
