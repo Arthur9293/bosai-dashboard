@@ -266,13 +266,9 @@ function flowStatusLabel(status?: string): string {
   return normalized ? normalized.toUpperCase() : "UNKNOWN";
 }
 
-function flowStatusTone(status?: string):
-  | "default"
-  | "info"
-  | "success"
-  | "warning"
-  | "danger"
-  | "muted" {
+function flowStatusTone(
+  status?: string
+): "default" | "info" | "success" | "warning" | "danger" | "muted" {
   const normalized = (status || "").trim().toLowerCase();
 
   if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
@@ -294,23 +290,15 @@ function flowStatusTone(status?: string):
   return "muted";
 }
 
-function modeTone(mode: "registry-only" | "enriched"):
-  | "default"
-  | "info"
-  | "success"
-  | "warning"
-  | "danger"
-  | "muted" {
+function modeTone(
+  mode: "registry-only" | "enriched"
+): "default" | "info" | "success" | "warning" | "danger" | "muted" {
   return mode === "registry-only" ? "warning" : "info";
 }
 
-function incidentTone(hasIncident: boolean):
-  | "default"
-  | "info"
-  | "success"
-  | "warning"
-  | "danger"
-  | "muted" {
+function incidentTone(
+  hasIncident: boolean
+): "default" | "info" | "success" | "warning" | "danger" | "muted" {
   return hasIncident ? "danger" : "muted";
 }
 
@@ -972,26 +960,33 @@ function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string)
   return flowId || sourceRecordId || rootEventId || id || "Flow";
 }
 
-function toTitleCaseWord(word: string): string {
-  const lower = word.toLowerCase();
-  if (!lower) return "";
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
+function capitalizeToken(value: string): string {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
 
 function buildHeroTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string): string {
   const rawTitle = buildTitle(flow, sourceEvent, id);
 
   if (rawTitle.startsWith("flow_")) {
-    const cleaned = rawTitle.replace(/^flow_/, "");
-    const parts = cleaned
+    const tokens = rawTitle
+      .replace(/^flow_/, "")
       .split("_")
       .filter(Boolean)
-      .map((part) => (/^\d+$/.test(part) ? part : toTitleCaseWord(part)));
+      .map((token) => {
+        if (/^\d+$/.test(token)) return token;
+        if (token.toLowerCase() === "http") return "HTTP";
+        return capitalizeToken(token);
+      });
 
-    return `Flow · ${parts.join(" · ")}`;
+    return `Flow · ${tokens.join(" · ")}`;
   }
 
   return rawTitle;
+}
+
+function makeWrapFriendlyTitle(value: string): string {
+  return value.replace(/([·/_\-.])/g, "$1\u200B");
 }
 
 function buildSafeEventHref(sourceEvent: EventItem | null): string {
@@ -1139,8 +1134,8 @@ export default async function FlowDetailPage({ params }: PageProps) {
     const allCommands = Array.isArray((commandsData as { commands?: CommandItem[] })?.commands)
       ? ((commandsData as { commands?: CommandItem[] }).commands as CommandItem[])
       : Array.isArray(commandsData)
-        ? (commandsData as CommandItem[])
-        : [];
+      ? (commandsData as CommandItem[])
+      : [];
 
     const identifiers = [id, flowId, rootEventId, sourceRecordId].filter(Boolean);
 
@@ -1253,7 +1248,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
   const isPartialObservability = !hasDetailedCommands;
 
-  const title = buildHeroTitle(flow, sourceEvent, id);
+  const title = makeWrapFriendlyTitle(buildHeroTitle(flow, sourceEvent, id));
   const resolvedStatus = resolveFlowStatus(flow, sortedTimeline, sourceEvent);
   const durationMs = getDurationMs(sortedTimeline);
   const lastActivityTs = getLastKnownTimestamp(sortedTimeline, sourceEvent);
@@ -1314,15 +1309,15 @@ export default async function FlowDetailPage({ params }: PageProps) {
     sortedTimeline.length === 0
       ? "Aucune étape détaillée disponible."
       : readingMode === "registry-only"
-        ? `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""} reconstituée${sortedTimeline.length > 1 ? "s" : ""}`
-        : `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""}`;
+      ? `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""} reconstituée${sortedTimeline.length > 1 ? "s" : ""}`
+      : `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""}`;
 
   const graphSummaryText =
     readingMode === "registry-only"
       ? "Indisponible en lecture registre uniquement."
       : graphCommands.length > 0
-        ? "Disponible"
-        : "Indisponible pour ce flow pour le moment.";
+      ? "Disponible"
+      : "Indisponible pour ce flow pour le moment.";
 
   return (
     <ControlPlaneShell
@@ -1355,10 +1350,22 @@ export default async function FlowDetailPage({ params }: PageProps) {
           <Link href="/flows" className={actionLinkClassName("soft")}>
             Retour aux flows
           </Link>
+
+          {sourceEventHref ? (
+            <Link href={sourceEventHref} className={actionLinkClassName("soft")}>
+              Retour à l’event source
+            </Link>
+          ) : null}
+
+          {hasIncident ? (
+            <Link href={incidentsHref} className={actionLinkClassName("danger")}>
+              Voir les incidents
+            </Link>
+          ) : null}
         </>
       }
       aside={
-        <div className="hidden xl:block xl:space-y-6">
+        <>
           <SidePanelCard title="Lecture flow">
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
@@ -1378,8 +1385,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
               <div className="space-y-2 text-sm leading-6 text-white/65">
                 <div>
-                  Workspace :{" "}
-                  <span className="text-white/90">{resolvedWorkspaceId}</span>
+                  Workspace : <span className="text-white/90">{resolvedWorkspaceId}</span>
                 </div>
                 <div>
                   Root :{" "}
@@ -1394,8 +1400,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
                   </span>
                 </div>
                 <div>
-                  Durée :{" "}
-                  <span className="text-white/90">{formatDuration(durationMs)}</span>
+                  Durée : <span className="text-white/90">{formatDuration(durationMs)}</span>
                 </div>
               </div>
             </div>
@@ -1417,7 +1422,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
               </div>
             </div>
           </SidePanelCard>
-        </div>
+        </>
       }
     >
       {isPartialObservability ? (
@@ -1425,6 +1430,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
           title="Observabilité partielle"
           description="Ce flow est présent dans le registre BOSAI mais sa chaîne détaillée n’a pas encore été complètement reconstruite."
           tone="attention"
+          className={blueSectionClassName()}
         >
           <div className="space-y-3 text-sm leading-6 text-zinc-300">
             <p>
@@ -1513,6 +1519,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
           title="Event source"
           description="Event d’origine utilisé pour ancrer la lecture du flow et ses liens de navigation."
           tone="neutral"
+          className={blueSectionClassName()}
         >
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className={metaBoxClassName()}>
@@ -1606,6 +1613,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
         title="Résumé pipeline"
         description="Cibles BOSAI utiles et objets liés pour la navigation croisée."
         tone="neutral"
+        className={blueSectionClassName()}
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className={metaBoxClassName()}>
@@ -1629,9 +1637,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
 
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Incidents</div>
-            <div className="mt-2 text-zinc-100">
-              {incidentLabel(incidentCount, hasIncident)}
-            </div>
+            <div className="mt-2 text-zinc-100">{incidentLabel(incidentCount, hasIncident)}</div>
           </div>
         </div>
       </SectionCard>
@@ -1640,6 +1646,7 @@ export default async function FlowDetailPage({ params }: PageProps) {
         title="Navigation"
         description="Navigation croisée depuis ce flow vers les objets liés."
         tone="neutral"
+        className={blueSectionClassName()}
       >
         <div className="flex flex-col gap-3">
           <Link href="/flows" className={actionLinkClassName("soft")}>
