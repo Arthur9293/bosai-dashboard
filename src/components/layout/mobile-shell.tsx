@@ -39,7 +39,7 @@ export function MobileShell({ title = "BOSAI Dashboard" }: MobileShellProps) {
 
   return (
     <>
-      <div className="sticky top-0 z-30 border-b border-white/10 bg-[#050816]/90 backdrop-blur-lg lg:hidden">
+      <div className="sticky top-0 z-30 border-b border-white/10 bg-[#040816]/70 backdrop-blur-xl xl:hidden">
         <div className="flex items-center justify-between px-4 py-4">
           <button
             type="button"
@@ -64,7 +64,7 @@ export function MobileShell({ title = "BOSAI Dashboard" }: MobileShellProps) {
       </div>
 
       <div
-        className={`fixed inset-0 z-50 lg:hidden ${
+        className={`fixed inset-0 z-50 xl:hidden ${
           open ? "pointer-events-auto" : "pointer-events-none"
         }`}
         aria-hidden={!open}
@@ -83,7 +83,7 @@ export function MobileShell({ title = "BOSAI Dashboard" }: MobileShellProps) {
           role="dialog"
           aria-modal="true"
           aria-label="BOSAI mobile navigation"
-          className={`relative z-10 flex h-full w-[88%] max-w-[320px] flex-col border-r border-white/10 bg-[#050816]/95 shadow-[0_20px_80px_rgba(0,0,0,0.6)] backdrop-blur-xl transition-transform duration-200 ease-out ${
+          className={`relative z-10 flex h-full w-[88%] max-w-[320px] flex-col border-r border-white/10 bg-[#040816]/95 shadow-[0_20px_80px_rgba(0,0,0,0.6)] backdrop-blur-2xl transition-transform duration-200 ease-out ${
             open ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -110,7 +110,7 @@ export function MobileShell({ title = "BOSAI Dashboard" }: MobileShellProps) {
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <Sidebar />
+            <Sidebar variant="drawer" onNavigate={() => setOpen(false)} />
           </div>
 
           <div className="border-t border-white/10 px-4 py-4">
