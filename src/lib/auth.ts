@@ -4,11 +4,13 @@ export type SessionPayload = {
 };
 
 export const AUTH_COOKIE_NAME =
-  (process.env.AUTH_COOKIE_NAME ||
+  (
+    process.env.AUTH_COOKIE_NAME ||
     process.env.BOSAI_AUTH_COOKIE_NAME ||
-    "bosai_session").trim() || "bosai_session";
+    "bosai_session"
+  ).trim() || "bosai_session";
 
-export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 jours
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 function getSessionSecret(): string {
   return (
