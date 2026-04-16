@@ -48,34 +48,15 @@ type NormalizedCommand = {
   startTs: number;
 };
 
-function sectionPanelClassName(
-  tone: "default" | "attention" | "neutral" = "default"
-) {
-  if (tone === "attention") {
-    return "border-amber-500/20 bg-[radial-gradient(110%_120%_at_100%_0%,rgba(251,191,36,0.08),transparent_46%),radial-gradient(120%_120%_at_0%_100%,rgba(14,165,233,0.07),transparent_52%),linear-gradient(180deg,rgba(7,14,28,0.96)_0%,rgba(4,8,18,0.92)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-  }
-
-  if (tone === "neutral") {
-    return "border-cyan-500/12 bg-[radial-gradient(110%_120%_at_100%_0%,rgba(14,165,233,0.08),transparent_46%),linear-gradient(180deg,rgba(7,13,26,0.94)_0%,rgba(4,8,18,0.92)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]";
-  }
-
-  return "border-cyan-500/14 bg-[radial-gradient(120%_130%_at_100%_0%,rgba(14,165,233,0.11),transparent_44%),radial-gradient(120%_130%_at_0%_100%,rgba(59,130,246,0.06),transparent_50%),linear-gradient(180deg,rgba(6,13,27,0.96)_0%,rgba(3,8,18,0.92)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
-
-function sidePanelClassName() {
-  return "border-cyan-500/14 bg-[radial-gradient(110%_120%_at_100%_0%,rgba(14,165,233,0.09),transparent_44%),linear-gradient(180deg,rgba(7,13,26,0.94)_0%,rgba(4,8,18,0.92)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
-
 function cardClassName(isActive: boolean, compact = false) {
   const base = compact
-    ? "rounded-[28px] border p-5 md:p-5 xl:px-5 xl:py-4 min-h-[360px] xl:min-h-[280px] 2xl:min-h-[270px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition"
-    : "rounded-[28px] border p-5 md:p-6 xl:px-5 xl:py-4 min-h-[390px] xl:min-h-[300px] 2xl:min-h-[290px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
+    ? "rounded-[28px] border bg-white/[0.04] p-4 md:p-5 xl:px-4 xl:py-4 min-h-[300px] xl:min-h-[248px] 2xl:min-h-[238px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition"
+    : "rounded-[28px] border bg-white/[0.04] p-4 md:p-5 xl:px-4 xl:py-4 min-h-[338px] xl:min-h-[270px] 2xl:min-h-[258px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition";
 
   const inactive =
-    "border-cyan-500/14 bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.10),transparent_46%),linear-gradient(180deg,rgba(6,16,38,0.82)_0%,rgba(4,10,24,0.66)_100%)] hover:border-cyan-400/22 hover:bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.12),transparent_46%),linear-gradient(180deg,rgba(7,18,42,0.86)_0%,rgba(4,10,24,0.70)_100%)]";
-
+    "border-white/10 hover:border-white/15 hover:bg-white/[0.05]";
   const active =
-    "border-emerald-500/34 bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.11),transparent_42%),radial-gradient(120%_120%_at_0%_100%,rgba(16,185,129,0.09),transparent_48%),linear-gradient(180deg,rgba(8,24,44,0.88)_0%,rgba(5,13,28,0.76)_100%)] shadow-[0_0_0_1px_rgba(16,185,129,0.06),0_0_36px_rgba(16,185,129,0.08),inset_0_1px_0_rgba(255,255,255,0.04)]";
+    "border-emerald-500/35 bg-emerald-500/[0.08] shadow-[0_0_0_1px_rgba(16,185,129,0.06),0_0_40px_rgba(16,185,129,0.08)]";
 
   return `${base} ${isActive ? active : inactive}`;
 }
@@ -84,36 +65,36 @@ function actionLinkClassName(
   variant: "default" | "primary" | "danger" | "active" = "default"
 ) {
   if (variant === "primary") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
   if (variant === "danger") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
+    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 xl:py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
   }
 
   if (variant === "active") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-1.5 text-sm font-medium text-emerald-300";
+    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-2 text-sm font-medium text-emerald-300";
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04)_0%,rgba(255,255,255,0.02)_100%)] px-4 py-2.5 xl:py-1.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 xl:py-2 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
 function metaBoxClassName(compact = false) {
-  return `rounded-[22px] border border-cyan-500/12 bg-[radial-gradient(110%_110%_at_100%_0%,rgba(14,165,233,0.07),transparent_52%),linear-gradient(180deg,rgba(4,13,34,0.78)_0%,rgba(3,9,22,0.60)_100%)] px-4 ${
-    compact ? "py-3" : "py-4"
+  return `rounded-[22px] border border-white/10 bg-black/20 px-3.5 ${
+    compact ? "py-2.5" : "py-4"
   }`;
 }
 
 function metaLabelClassName() {
-  return "text-xs uppercase tracking-[0.22em] text-white/35";
+  return "text-[11px] uppercase tracking-[0.2em] text-white/35";
 }
 
 function titleClassName(isRegistryOnly: boolean) {
   if (isRegistryOnly) {
-    return "break-words text-[1.45rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.65rem] xl:text-[1.25rem] 2xl:text-[1.35rem]";
+    return "break-words text-[1.34rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.55rem] xl:text-[1.12rem] 2xl:text-[1.2rem]";
   }
 
-  return "break-words text-[1.5rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.72rem] xl:text-[1.3rem] 2xl:text-[1.4rem]";
+  return "break-words text-[1.42rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.62rem] xl:text-[1.18rem] 2xl:text-[1.26rem]";
 }
 
 function text(value: unknown): string {
@@ -1034,7 +1015,7 @@ function matchesActiveSelection(flow: FlowCard, selected: string): boolean {
 
 function CountPill({ value }: { value: number }) {
   return (
-    <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-sky-500/25 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-300">
+    <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-white/80">
       {value}
     </span>
   );
@@ -1058,8 +1039,8 @@ function FlowListCard({
 
   return (
     <article className={cardClassName(isActive, isRegistryOnly)}>
-      <div className="flex h-full flex-col gap-4 xl:gap-3">
-        <div className="space-y-3 xl:space-y-3">
+      <div className="flex h-full flex-col gap-3.5 xl:gap-3">
+        <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <DashboardStatusBadge
               label={humanStatusLabel(flow.status).toUpperCase()}
@@ -1074,8 +1055,8 @@ function FlowListCard({
             />
           </div>
 
-          <div className="space-y-2.5">
-            <div className="text-xs uppercase tracking-[0.2em] text-white/35">
+          <div className="space-y-2">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-white/35">
               {flow.readingMode === "enriched"
                 ? "Flow enrichi"
                 : "Flow registre uniquement"}
@@ -1096,29 +1077,29 @@ function FlowListCard({
             <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:gap-3">
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Activité</div>
-                <div className="mt-2 text-zinc-100">{flowActivityLabel(flow)}</div>
+                <div className="mt-1.5 text-zinc-100">{flowActivityLabel(flow)}</div>
               </div>
 
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Incident</div>
-                <div className="mt-2 text-zinc-100">{incidentLabel(flow)}</div>
+                <div className="mt-1.5 text-zinc-100">{incidentLabel(flow)}</div>
               </div>
 
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Workspace</div>
-                <div className="mt-2 text-zinc-100">
+                <div className="mt-1.5 text-zinc-100">
                   {flow.workspaceId || "production"}
                 </div>
               </div>
 
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Étapes</div>
-                <div className="mt-2 text-zinc-100">{flow.steps}</div>
+                <div className="mt-1.5 text-zinc-100">{flow.steps}</div>
               </div>
 
               <div className={`${metaBoxClassName(true)} md:col-span-2`}>
                 <div className={metaLabelClassName()}>Chaîne</div>
-                <div className="mt-2 text-zinc-100">
+                <div className="mt-1.5 text-zinc-100">
                   {cleanCapabilityLabel(flow.rootCapability)}
                   {flow.rootCapability !== flow.terminalCapability
                     ? ` → ${cleanCapabilityLabel(flow.terminalCapability)}`
@@ -1130,32 +1111,32 @@ function FlowListCard({
             <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:gap-3">
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Source / Root</div>
-                <div className="mt-2 break-all text-zinc-100">
+                <div className="mt-1.5 break-all text-zinc-100">
                   {technicalSubtitle}
                 </div>
               </div>
 
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Activité</div>
-                <div className="mt-2 text-zinc-100">{flowActivityLabel(flow)}</div>
+                <div className="mt-1.5 text-zinc-100">{flowActivityLabel(flow)}</div>
               </div>
 
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Workspace</div>
-                <div className="mt-2 text-zinc-100">
+                <div className="mt-1.5 text-zinc-100">
                   {flow.workspaceId || "production"}
                 </div>
               </div>
 
               <div className={metaBoxClassName(true)}>
                 <div className={metaLabelClassName()}>Incident</div>
-                <div className="mt-2 text-zinc-100">{incidentLabel(flow)}</div>
+                <div className="mt-1.5 text-zinc-100">{incidentLabel(flow)}</div>
               </div>
             </div>
           )}
         </div>
 
-        <div className="mt-auto flex flex-col gap-2.5 pt-1">
+        <div className="mt-auto flex flex-col gap-2 pt-1">
           <Link
             href={selectHref}
             className={actionLinkClassName(isActive ? "active" : "default")}
@@ -1198,10 +1179,9 @@ function SectionBlock({
       title={title}
       description={description}
       tone={tone}
-      className={sectionPanelClassName(tone)}
       action={<CountPill value={flows.length} />}
     >
-      <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
+      <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-3 xl:gap-4 2xl:gap-5">
         {flows.map((flow) => (
           <FlowListCard key={flow.key} flow={flow} activeKey={activeKey} />
         ))}
@@ -1216,7 +1196,6 @@ function EmptyFlowsState() {
       title="Aucun flow"
       description="Le Dashboard n’a remonté aucun flow sur la source actuelle."
       tone="neutral"
-      className={sectionPanelClassName("neutral")}
     >
       <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-10 text-sm text-white/55">
         Aucun flow disponible pour le moment.
@@ -1363,7 +1342,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
       ]}
       aside={
         <>
-          <SidePanelCard title="Lecture opérationnelle" className={sidePanelClassName()}>
+          <SidePanelCard title="Lecture opérationnelle">
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 <DashboardStatusBadge kind="running" />
@@ -1389,7 +1368,7 @@ export default async function FlowsPage({ searchParams }: PageProps) {
             </div>
           </SidePanelCard>
 
-          <SidePanelCard title="Flow actif" className={sidePanelClassName()}>
+          <SidePanelCard title="Flow actif">
             {activeFlow ? (
               <div className="space-y-4">
                 <div>
