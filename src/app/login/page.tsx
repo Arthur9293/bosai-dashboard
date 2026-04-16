@@ -47,7 +47,7 @@ export default function LoginPage() {
           </div>
 
           <form action={formAction} className="mt-10 space-y-7">
-            <input type="hidden" name="next" value="/" />
+            <input type="hidden" name="next" value="/auth-check" />
 
             <div className="space-y-3">
               <label
