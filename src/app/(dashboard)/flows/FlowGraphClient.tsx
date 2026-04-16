@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type GraphCommand = {
   id: string;
@@ -113,15 +113,20 @@ function buildDisplayOrder(commands: GraphCommand[]): GraphCommand[] {
   return ordered;
 }
 
-function buildGraph(commands: GraphCommand[]) {
+function buildGraph(commands: GraphCommand[], availableWidth: number) {
   const ordered = buildDisplayOrder(commands);
 
-  const graphWidth = 920;
-  const nodeWidth = 360;
-  const nodeHeight = 156;
-  const topPadding = 56;
-  const bottomPadding = 56;
-  const gapY = 110;
+  const safeWidth = Math.max(280, availableWidth || 320);
+  const compact = safeWidth < 640;
+
+  const horizontalPadding = compact ? 18 : 32;
+  const topPadding = compact ? 28 : 56;
+  const bottomPadding = compact ? 28 : 56;
+  const gapY = compact ? 72 : 110;
+
+  const nodeWidth = Math.min(360, Math.max(232, safeWidth - horizontalPadding * 2));
+  const nodeHeight = compact ? 144 : 156;
+  const graphWidth = Math.max(safeWidth, nodeWidth + horizontalPadding * 2);
   const centerX = Math.round((graphWidth - nodeWidth) / 2);
 
   const nodes: PositionedNode[] = ordered.map((cmd, index) => ({
@@ -158,18 +163,18 @@ function buildGraph(commands: GraphCommand[]) {
   const graphHeight =
     nodes.length > 0
       ? nodes[nodes.length - 1].y + nodeHeight + bottomPadding
-      : 520;
+      : 440;
 
   return {
     width: graphWidth,
-    height: Math.max(520, graphHeight),
+    height: Math.max(compact ? 440 : 520, graphHeight),
     nodes,
     edges,
   };
 }
 
 function edgePath(edge: GraphEdge) {
-  const midOffset = Math.max(36, Math.floor((edge.y2 - edge.y1) / 2));
+  const midOffset = Math.max(28, Math.floor((edge.y2 - edge.y1) / 2));
 
   return [
     `M ${edge.x1} ${edge.y1}`,
@@ -183,7 +188,31 @@ export default function FlowGraphClient({
   commands,
   anchorPrefix = "cmd-",
 }: Props) {
-  const graph = useMemo(() => buildGraph(commands), [commands]);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+
+    const update = () => {
+      setContainerWidth(node.clientWidth);
+    };
+
+    update();
+
+    const observer = new ResizeObserver(() => update());
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  const graph = useMemo(
+    () => buildGraph(commands, containerWidth),
+    [commands, containerWidth]
+  );
 
   const jumpToTimelineCard = useCallback(
     (commandId: string) => {
@@ -223,87 +252,87 @@ export default function FlowGraphClient({
   }
 
   return (
-    <div className="w-full overflow-hidden rounded-[28px] border border-white/10 bg-[#03102a]">
-      <div className="overflow-x-auto overflow-y-hidden">
-        <div
-          className="relative mx-auto"
-          style={{
-            width: `${graph.width}px`,
-            height: `${graph.height}px`,
-          }}
+    <div
+      ref={containerRef}
+      className="w-full overflow-hidden rounded-[28px] border border-white/10 bg-[#03102a]"
+    >
+      <div
+        className="relative mx-auto w-full max-w-full overflow-hidden"
+        style={{
+          height: `${graph.height}px`,
+        }}
+      >
+        <svg
+          viewBox={`0 0 ${graph.width} ${graph.height}`}
+          className="absolute inset-0 h-full w-full"
+          preserveAspectRatio="none"
+          aria-hidden="true"
         >
-          <svg
-            width={graph.width}
-            height={graph.height}
-            className="absolute inset-0"
-            aria-hidden="true"
-          >
-            <defs>
-              <marker
-                id="flow-arrow"
-                markerWidth="10"
-                markerHeight="10"
-                refX="8"
-                refY="5"
-                orient="auto"
-                markerUnits="strokeWidth"
-              >
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(203,213,225,0.9)" />
-              </marker>
-            </defs>
-
-            {graph.edges.map((edge) => (
-              <path
-                key={edge.id}
-                d={edgePath(edge)}
-                fill="none"
-                stroke="rgba(203,213,225,0.88)"
-                strokeWidth="2.5"
-                strokeDasharray="8 8"
-                markerEnd="url(#flow-arrow)"
-              />
-            ))}
-          </svg>
-
-          {graph.nodes.map((node) => (
-            <button
-              key={node.id}
-              type="button"
-              onClick={() => jumpToTimelineCard(node.id)}
-              className="absolute rounded-[28px] border border-cyan-400/80 bg-[#07142c] px-6 py-5 text-left text-white shadow-[0_20px_50px_rgba(0,0,0,0.35)] transition hover:scale-[1.01] hover:border-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
-              style={{
-                left: `${node.x}px`,
-                top: `${node.y}px`,
-                width: `${node.width}px`,
-                minHeight: `${node.height}px`,
-              }}
+          <defs>
+            <marker
+              id="flow-arrow"
+              markerWidth="10"
+              markerHeight="10"
+              refX="8"
+              refY="5"
+              orient="auto"
+              markerUnits="strokeWidth"
             >
-              <div className="flex items-center justify-center">
-                <div className="h-3 w-3 rounded-full border-2 border-white bg-[#07142c]" />
-              </div>
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(203,213,225,0.9)" />
+            </marker>
+          </defs>
 
-              <div className="mt-3 text-[12px] uppercase tracking-[0.22em] text-white/55">
-                {node.capability.toUpperCase()}
-              </div>
-
-              <div className="mt-2 break-all text-[20px] font-semibold tracking-tight text-white">
-                {node.capability}
-              </div>
-
-              <div
-                className={`mt-4 inline-flex rounded-full px-4 py-1.5 text-sm font-semibold ${statusTone(
-                  node.status
-                )}`}
-              >
-                {node.status.toUpperCase()}
-              </div>
-
-              <div className="mt-4 flex items-center justify-center">
-                <div className="h-3 w-3 rounded-full border-2 border-white bg-[#07142c]" />
-              </div>
-            </button>
+          {graph.edges.map((edge) => (
+            <path
+              key={edge.id}
+              d={edgePath(edge)}
+              fill="none"
+              stroke="rgba(203,213,225,0.88)"
+              strokeWidth="2.5"
+              strokeDasharray="8 8"
+              markerEnd="url(#flow-arrow)"
+            />
           ))}
-        </div>
+        </svg>
+
+        {graph.nodes.map((node) => (
+          <button
+            key={node.id}
+            type="button"
+            onClick={() => jumpToTimelineCard(node.id)}
+            className="absolute overflow-hidden rounded-[28px] border border-cyan-400/80 bg-[#07142c] px-5 py-5 text-left text-white shadow-[0_20px_50px_rgba(0,0,0,0.35)] transition hover:scale-[1.01] hover:border-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+            style={{
+              left: `${node.x}px`,
+              top: `${node.y}px`,
+              width: `${node.width}px`,
+              minHeight: `${node.height}px`,
+            }}
+          >
+            <div className="flex items-center justify-center">
+              <div className="h-3 w-3 rounded-full border-2 border-white bg-[#07142c]" />
+            </div>
+
+            <div className="mt-3 break-words text-[11px] uppercase tracking-[0.2em] text-white/55 [overflow-wrap:anywhere]">
+              {node.capability}
+            </div>
+
+            <div className="mt-2 break-words text-[18px] font-semibold tracking-tight text-white [overflow-wrap:anywhere] sm:text-[20px]">
+              {node.capability}
+            </div>
+
+            <div
+              className={`mt-4 inline-flex rounded-full px-4 py-1.5 text-sm font-semibold ${statusTone(
+                node.status
+              )}`}
+            >
+              {node.status.toUpperCase()}
+            </div>
+
+            <div className="mt-4 flex items-center justify-center">
+              <div className="h-3 w-3 rounded-full border-2 border-white bg-[#07142c]" />
+            </div>
+          </button>
+        ))}
       </div>
     </div>
   );
