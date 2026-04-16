@@ -17,53 +17,60 @@ const AUTH_COOKIE_NAME =
 const AUTH_COOKIE_VALUE =
   process.env.BOSAI_AUTH_COOKIE_VALUE?.trim() || "authenticated";
 
-const ADMIN_EMAIL =
-  process.env.BOSAI_ADMIN_EMAIL?.trim().toLowerCase() || "";
-
-const ADMIN_PASSWORD =
-  process.env.BOSAI_ADMIN_PASSWORD?.trim() || "";
-
 export async function loginAction(
   _prevState: LoginActionState,
   formData: FormData
 ): Promise<LoginActionState> {
-  try {
-    const email = String(formData.get("email") || "")
-      .trim()
-      .toLowerCase();
+  const email = String(formData.get("email") || "")
+    .trim()
+    .toLowerCase();
 
-    const password = String(formData.get("password") || "");
+  const password = String(formData.get("password") || "").trim();
 
-    if (!email || !password) {
-      return { error: "Email et mot de passe requis." };
-    }
+  const expectedEmail = process.env.BOSAI_AUTH_EMAIL?.trim().toLowerCase();
+  const expectedPassword = process.env.BOSAI_AUTH_PASSWORD?.trim();
 
-    if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-      return {
-        error:
-          "Variables d’authentification manquantes sur Vercel.",
-      };
-    }
-
-    if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
-      return { error: "Identifiants invalides." };
-    }
-
-    const cookieStore = await cookies();
-
-    cookieStore.set({
-      name: AUTH_COOKIE_NAME,
-      value: AUTH_COOKIE_VALUE,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
-  } catch (error) {
-    console.error("BOSAI loginAction error:", error);
-    return { error: "Erreur interne côté serveur." };
+  if (!email || !password) {
+    return {
+      error: "Renseigne ton email et ton mot de passe.",
+    };
   }
 
-  redirect("/");
+  if (!expectedEmail || !expectedPassword) {
+    return {
+      error: "Configuration auth incomplète côté serveur.",
+    };
+  }
+
+  if (email !== expectedEmail || password !== expectedPassword) {
+    return {
+      error: "Identifiants invalides.",
+    };
+  }
+
+  const cookieStore = await cookies();
+
+  cookieStore.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  });
+
+  redirect("/commands");
+}
+
+export async function logoutAction() {
+  const cookieStore = await cookies();
+
+  cookieStore.set(AUTH_COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+
+  redirect("/login");
 }
