@@ -1,8 +1,7 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { useRouter } from "next/navigation";
 import { initialLoginActionState, loginAction } from "./actions";
 
 function SubmitButton() {
@@ -24,19 +23,10 @@ function SubmitButton() {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
-
   const [state, formAction] = useActionState(
     loginAction,
     initialLoginActionState
   );
-
-  useEffect(() => {
-    if (state.ok && state.next) {
-      router.replace(state.next);
-      router.refresh();
-    }
-  }, [state.ok, state.next, router]);
 
   return (
     <main className="min-h-screen bg-black px-4 py-10 text-white antialiased sm:px-6">
@@ -48,17 +38,15 @@ export default function LoginPage() {
             </div>
 
             <h1 className="text-5xl font-semibold tracking-tight text-white sm:text-6xl">
-              Connexion
+              Connexion test
             </h1>
 
             <p className="max-w-xl text-lg leading-9 text-zinc-400">
-              Accède au cockpit BOSAI avec ton compte sécurisé.
+              Test de server action sans cookie ni redirection.
             </p>
           </div>
 
           <form action={formAction} className="mt-10 space-y-7">
-            <input type="hidden" name="next" value="/auth-check" />
-
             <div className="space-y-3">
               <label
                 htmlFor="email"
@@ -105,7 +93,7 @@ export default function LoginPage() {
 
             {state.ok ? (
               <div className="rounded-[24px] border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-200">
-                Connexion validée. Redirection en cours...
+                Server action OK. Aucun cookie écrit. Aucune redirection.
               </div>
             ) : null}
 
