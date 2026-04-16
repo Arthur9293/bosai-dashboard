@@ -1,133 +1,101 @@
-const AUTH_COOKIE_NAME = "bosai_session"
-const LOGIN_PATH = "/login"
+import { webcrypto } from "node:crypto";
+
+export type SessionPayload = {
+  email: string;
+  exp: number;
+};
+
+export const AUTH_COOKIE_NAME =
+  (process.env.AUTH_COOKIE_NAME || "bosai_session").trim() || "bosai_session";
+
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 jours
+
+const subtle = globalThis.crypto?.subtle ?? webcrypto.subtle;
 
 function getSessionSecret(): string {
-  return process.env.BOSAI_SESSION_SECRET || ""
+  return (process.env.AUTH_SESSION_SECRET || "").trim();
 }
 
-function getLoginUsername(): string {
-  return process.env.BOSAI_LOGIN_USERNAME || ""
-}
-
-function getLoginPassword(): string {
-  return process.env.BOSAI_LOGIN_PASSWORD || ""
-}
-
-function bytesToBase64Url(bytes: Uint8Array): string {
-  let binary = ""
-
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
+function requireSessionSecret(): string {
+  const secret = getSessionSecret();
+  if (!secret) {
+    throw new Error("Missing AUTH_SESSION_SECRET");
   }
-
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
+  return secret;
 }
 
-function textToBase64Url(value: string): string {
-  return bytesToBase64Url(new TextEncoder().encode(value))
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8").toString("base64url");
 }
 
-async function sign(value: string, secret: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
+function base64UrlDecode(input: string): string {
+  return Buffer.from(input, "base64url").toString("utf8");
+}
+
+async function signValue(value: string, secret: string): Promise<string> {
+  const key = await subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"]
-  )
+  );
 
-  const signature = await crypto.subtle.sign(
+  const signature = await subtle.sign(
     "HMAC",
     key,
     new TextEncoder().encode(value)
-  )
+  );
 
-  return bytesToBase64Url(new Uint8Array(signature))
+  return Buffer.from(signature).toString("base64url");
 }
 
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
+export function normalizeNextPath(value?: string | null): string {
+  const raw = (value || "").trim();
 
-  let out = 0
+  if (!raw) return "/";
+  if (!raw.startsWith("/")) return "/";
+  if (raw.startsWith("//")) return "/";
+  if (raw.startsWith("/login")) return "/";
 
-  for (let i = 0; i < a.length; i += 1) {
-    out |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  }
-
-  return out === 0
+  return raw;
 }
 
-export function isAuthConfigured(): boolean {
-  return Boolean(getSessionSecret() && getLoginUsername() && getLoginPassword())
-}
+export async function createSessionToken(email: string): Promise<string> {
+  const secret = requireSessionSecret();
 
-export function getExpectedUsername(): string {
-  return getLoginUsername()
-}
+  const payload: SessionPayload = {
+    email,
+    exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
+  };
 
-export function getExpectedPassword(): string {
-  return getLoginPassword()
-}
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signature = await signValue(encodedPayload, secret);
 
-export async function createSessionToken(username: string): Promise<string> {
-  const secret = getSessionSecret()
-
-  if (!secret) {
-    throw new Error("missing_session_secret")
-  }
-
-  const payload = textToBase64Url(
-    JSON.stringify({
-      username,
-      iat: Date.now(),
-    })
-  )
-
-  const signature = await sign(payload, secret)
-
-  return `${payload}.${signature}`
+  return `${encodedPayload}.${signature}`;
 }
 
 export async function verifySessionToken(
   token?: string | null
-): Promise<{ valid: boolean; username: string | null }> {
-  if (!token) {
-    return { valid: false, username: null }
-  }
+): Promise<SessionPayload | null> {
+  const secret = getSessionSecret();
 
-  const secret = getSessionSecret()
+  if (!secret || !token) return null;
 
-  if (!secret) {
-    return { valid: false, username: null }
-  }
+  const [encodedPayload, signature] = token.split(".");
+  if (!encodedPayload || !signature) return null;
 
-  const [payload, signature] = token.split(".")
-
-  if (!payload || !signature) {
-    return { valid: false, username: null }
-  }
-
-  const expected = await sign(payload, secret)
-
-  if (!safeEqual(signature, expected)) {
-    return { valid: false, username: null }
-  }
+  const expectedSignature = await signValue(encodedPayload, secret);
+  if (signature !== expectedSignature) return null;
 
   try {
-    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")))
-    const username =
-      decoded && typeof decoded === "object" && typeof decoded.username === "string"
-        ? decoded.username
-        : null
+    const parsed = JSON.parse(base64UrlDecode(encodedPayload)) as SessionPayload;
 
-    if (!username) {
-      return { valid: false, username: null }
-    }
+    if (!parsed?.email || !parsed?.exp) return null;
+    if (parsed.exp < Math.floor(Date.now() / 1000)) return null;
 
-    return { valid: true, username }
+    return parsed;
   } catch {
-    return { valid: false, username: null }
+    return null;
   }
 }
-
-export { AUTH_COOKIE_NAME, LOGIN_PATH }
