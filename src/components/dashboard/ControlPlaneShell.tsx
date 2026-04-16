@@ -231,7 +231,7 @@ export function DashboardSection({
   return (
     <section className={["space-y-4", className].filter(Boolean).join(" ")}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0 space-y-2">
+        <div className="space-y-2 min-w-0">
           {eyebrow ? (
             <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
           ) : null}
@@ -347,6 +347,10 @@ export function DashboardLaneCard({
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* CONTROL PLANE SHELL                                                        */
+/* -------------------------------------------------------------------------- */
+
 export function ControlPlaneShell({
   children,
   className = "",
@@ -451,7 +455,7 @@ export function ControlPlaneShell({
           {children}
         </div>
 
-        <div className="min-w-0 space-y-5 lg:space-y-6">{aside}</div>
+        <div className="space-y-5 lg:space-y-6">{aside}</div>
       </div>
     );
   }
@@ -463,6 +467,10 @@ export function ControlPlaneShell({
     </div>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* LEGACY COMPAT EXPORTS                                                      */
+/* -------------------------------------------------------------------------- */
 
 type LegacyCardProps = {
   title?: string;
@@ -504,7 +512,7 @@ export function SectionCard({
     >
       {title || resolvedDescription || eyebrow || action ? (
         <div className="mb-5 flex flex-col gap-3 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div className="min-w-0 space-y-2">
+          <div className="space-y-2 min-w-0">
             {eyebrow ? (
               <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
             ) : null}
@@ -559,7 +567,7 @@ export function SidePanelCard({
     >
       {title || resolvedDescription || eyebrow || action ? (
         <div className="mb-5 flex flex-col gap-3 border-b border-white/10 pb-5">
-          <div className="min-w-0 space-y-2">
+          <div className="space-y-2 min-w-0">
             {eyebrow ? (
               <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
             ) : null}
