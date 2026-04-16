@@ -32,6 +32,18 @@ function normalizeTone(value?: string): SectionCountTone {
   return "default";
 }
 
+function dashboardPageTitleClassName(): string {
+  return "max-w-full break-words text-[clamp(2.15rem,9vw,4.4rem)] font-semibold leading-[0.92] tracking-[-0.03em] text-white [overflow-wrap:anywhere]";
+}
+
+function dashboardSectionTitleClassName(): string {
+  return "break-words text-[clamp(1.75rem,6.5vw,2.2rem)] font-semibold leading-[0.98] tracking-tight text-white [overflow-wrap:anywhere]";
+}
+
+function dashboardSideTitleClassName(): string {
+  return "break-words text-[clamp(1.55rem,5.4vw,1.95rem)] font-semibold leading-[0.98] tracking-tight text-white [overflow-wrap:anywhere]";
+}
+
 export function dashboardCardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
@@ -190,9 +202,7 @@ export function DashboardPageHeader({
 
       <div className="space-y-4 xl:flex xl:items-end xl:justify-between xl:gap-8 xl:space-y-0">
         <div className="max-w-4xl min-w-0">
-          <h1 className="max-w-full break-words text-[clamp(2rem,9vw,3.75rem)] font-semibold leading-[0.95] tracking-tight text-white [overflow-wrap:anywhere]">
-            {title}
-          </h1>
+          <h1 className={dashboardPageTitleClassName()}>{title}</h1>
 
           {description ? (
             <p className="mt-3 max-w-3xl text-[15px] leading-8 text-zinc-400 sm:text-lg sm:leading-8">
@@ -231,16 +241,12 @@ export function DashboardSection({
   return (
     <section className={["space-y-4", className].filter(Boolean).join(" ")}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-2 min-w-0">
+        <div className="min-w-0 space-y-2">
           {eyebrow ? (
             <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
           ) : null}
 
-          {title ? (
-            <div className="break-words text-[1.65rem] font-semibold tracking-tight text-white [overflow-wrap:anywhere] sm:text-2xl">
-              {title}
-            </div>
-          ) : null}
+          {title ? <div className={dashboardSectionTitleClassName()}>{title}</div> : null}
 
           {description ? (
             <p className="max-w-3xl text-[15px] leading-8 text-zinc-400 sm:text-base">
@@ -292,7 +298,7 @@ export function DashboardMetricCard({
   helper?: string;
 }) {
   return (
-    <DashboardCard>
+    <DashboardCard className="min-h-[150px]">
       <div className="text-sm text-zinc-400">{label}</div>
       <div className={`mt-3 text-3xl font-semibold tracking-tight sm:text-4xl ${toneClass}`}>
         {value}
@@ -388,11 +394,7 @@ export function ControlPlaneShell({
 
       <div className="space-y-4 xl:flex xl:items-end xl:justify-between xl:gap-8 xl:space-y-0">
         <div className="max-w-4xl min-w-0">
-          {title ? (
-            <h1 className="max-w-full break-words text-[clamp(2.1rem,9vw,4rem)] font-semibold leading-[0.95] tracking-tight text-white [overflow-wrap:anywhere]">
-              {title}
-            </h1>
-          ) : null}
+          {title ? <h1 className={dashboardPageTitleClassName()}>{title}</h1> : null}
 
           {description ? (
             <p className="mt-3 max-w-3xl text-[15px] leading-8 text-zinc-400 sm:text-lg sm:leading-8">
@@ -418,7 +420,7 @@ export function ControlPlaneShell({
                 sectionCountToneClass(normalizeTone(badge.tone)),
               ].join(" ")}
             >
-              <span className="truncate">{badge.label}</span>
+              <span className="whitespace-normal break-words">{badge.label}</span>
             </span>
           ))}
         </div>
@@ -455,7 +457,7 @@ export function ControlPlaneShell({
           {children}
         </div>
 
-        <div className="space-y-5 lg:space-y-6">{aside}</div>
+        <div className="hidden space-y-5 lg:space-y-6 xl:block">{aside}</div>
       </div>
     );
   }
@@ -512,16 +514,12 @@ export function SectionCard({
     >
       {title || resolvedDescription || eyebrow || action ? (
         <div className="mb-5 flex flex-col gap-3 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-2 min-w-0">
+          <div className="min-w-0 space-y-2">
             {eyebrow ? (
               <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
             ) : null}
 
-            {title ? (
-              <div className="break-words text-[1.9rem] font-semibold leading-[1] tracking-tight text-white [overflow-wrap:anywhere] sm:text-2xl">
-                {title}
-              </div>
-            ) : null}
+            {title ? <div className={dashboardSectionTitleClassName()}>{title}</div> : null}
 
             {resolvedDescription ? (
               <p className="max-w-3xl text-[15px] leading-8 text-zinc-400 sm:text-base">
@@ -567,16 +565,12 @@ export function SidePanelCard({
     >
       {title || resolvedDescription || eyebrow || action ? (
         <div className="mb-5 flex flex-col gap-3 border-b border-white/10 pb-5">
-          <div className="space-y-2 min-w-0">
+          <div className="min-w-0 space-y-2">
             {eyebrow ? (
               <div className={dashboardSectionLabelClassName()}>{eyebrow}</div>
             ) : null}
 
-            {title ? (
-              <div className="break-words text-[1.8rem] font-semibold leading-[1] tracking-tight text-white [overflow-wrap:anywhere] sm:text-xl">
-                {title}
-              </div>
-            ) : null}
+            {title ? <div className={dashboardSideTitleClassName()}>{title}</div> : null}
 
             {resolvedDescription ? (
               <p className="text-sm text-zinc-400">{resolvedDescription}</p>
