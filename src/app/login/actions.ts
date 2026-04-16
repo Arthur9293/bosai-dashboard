@@ -20,10 +20,10 @@ const AUTH_COOKIE_VALUE =
 function normalizeNextPath(value?: string | null): string {
   const raw = (value || "").trim();
 
-  if (!raw) return "/auth-check";
-  if (!raw.startsWith("/")) return "/auth-check";
-  if (raw.startsWith("//")) return "/auth-check";
-  if (raw.startsWith("/login")) return "/auth-check";
+  if (!raw) return "/";
+  if (!raw.startsWith("/")) return "/";
+  if (raw.startsWith("//")) return "/";
+  if (raw.startsWith("/login")) return "/";
 
   return raw;
 }
@@ -38,7 +38,7 @@ export async function loginAction(
 
   const password = String(formData.get("password") || "").trim();
 
-  const nextPath = normalizeNextPath(String(formData.get("next") || "/auth-check"));
+  const nextPath = normalizeNextPath(String(formData.get("next") || "/"));
 
   const expectedEmail = (process.env.BOSAI_AUTH_EMAIL || "").trim().toLowerCase();
   const expectedPassword = (process.env.BOSAI_AUTH_PASSWORD || "").trim();
