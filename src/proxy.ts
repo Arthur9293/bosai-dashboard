@@ -1,45 +1,47 @@
-import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import {
-  AUTH_COOKIE_NAME,
-  normalizeNextPath,
-  verifySessionToken,
-} from "@/lib/auth";
+import type { NextRequest } from "next/server";
 
-const PUBLIC_PATHS = new Set<string>(["/login"]);
+const AUTH_COOKIE_NAME =
+  process.env.BOSAI_AUTH_COOKIE_NAME?.trim() || "bosai_auth";
 
-export async function proxy(request: NextRequest) {
-  const { pathname, search } = request.nextUrl;
+const AUTH_COOKIE_VALUE =
+  process.env.BOSAI_AUTH_COOKIE_VALUE?.trim() || "authenticated";
 
-  if (PUBLIC_PATHS.has(pathname)) {
+function isPublicPath(pathname: string) {
+  return pathname === "/login" || pathname.startsWith("/login/");
+}
+
+export function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/api") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/robots.txt" ||
+    pathname === "/sitemap.xml"
+  ) {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  const session = await verifySessionToken(token);
+  const authCookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const isAuthenticated = authCookie === AUTH_COOKIE_VALUE;
 
-  if (session) {
+  if (isPublicPath(pathname)) {
+    if (isAuthenticated) {
+      return NextResponse.redirect(new URL("/commands", request.url));
+    }
+
     return NextResponse.next();
   }
 
-  const loginUrl = new URL("/login", request.url);
-  loginUrl.searchParams.set(
-    "next",
-    normalizeNextPath(`${pathname}${search}`)
-  );
+  if (!isAuthenticated) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
 
-  const response = NextResponse.redirect(loginUrl);
-
-  response.cookies.set(AUTH_COOKIE_NAME, "", {
-    path: "/",
-    maxAge: 0,
-  });
-
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\..*).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
