@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import { initialLoginActionState, loginAction } from "./actions";
 
 function SubmitButton() {
@@ -23,10 +24,19 @@ function SubmitButton() {
 }
 
 export default function LoginPage() {
+  const router = useRouter();
+
   const [state, formAction] = useActionState(
     loginAction,
     initialLoginActionState
   );
+
+  useEffect(() => {
+    if (state.ok && state.next) {
+      router.replace(state.next);
+      router.refresh();
+    }
+  }, [state.ok, state.next, router]);
 
   return (
     <main className="min-h-screen bg-black px-4 py-10 text-white antialiased sm:px-6">
@@ -90,6 +100,12 @@ export default function LoginPage() {
             {state.error ? (
               <div className="rounded-[24px] border border-rose-500/20 bg-rose-500/10 px-5 py-4 text-sm text-rose-200">
                 {state.error}
+              </div>
+            ) : null}
+
+            {state.ok ? (
+              <div className="rounded-[24px] border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-200">
+                Connexion validée. Redirection en cours...
               </div>
             ) : null}
 
