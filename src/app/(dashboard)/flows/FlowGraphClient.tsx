@@ -36,6 +36,16 @@ type GraphEdge = {
   y2: number;
 };
 
+type TransformState = {
+  x: number;
+  y: number;
+  scale: number;
+};
+
+const MIN_ZOOM = 0.45;
+const MAX_ZOOM = 1.8;
+const FIT_PADDING = 24;
+
 function normalizeText(value?: string) {
   return (value || "").trim();
 }
@@ -43,23 +53,27 @@ function normalizeText(value?: string) {
 function statusTone(status: string) {
   const s = status.toLowerCase();
 
-  if (["done", "success", "resolved", "ok"].includes(s)) {
+  if (["done", "success", "resolved", "ok", "processed", "completed"].includes(s)) {
     return "bg-emerald-500 text-white";
   }
 
-  if (["retry"].includes(s)) {
+  if (["retry", "retriable"].includes(s)) {
     return "bg-violet-500 text-white";
   }
 
-  if (["running", "queued", "pending"].includes(s)) {
+  if (["running", "queued", "pending", "processing", "new"].includes(s)) {
     return "bg-sky-500 text-white";
   }
 
-  if (["failed", "error", "dead"].includes(s)) {
+  if (["failed", "error", "dead", "blocked"].includes(s)) {
     return "bg-rose-500 text-white";
   }
 
   return "bg-zinc-700 text-zinc-100";
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function buildDisplayOrder(commands: GraphCommand[]): GraphCommand[] {
@@ -119,13 +133,13 @@ function buildGraph(commands: GraphCommand[], availableWidth: number) {
   const safeWidth = Math.max(280, availableWidth || 320);
   const compact = safeWidth < 640;
 
-  const horizontalPadding = compact ? 18 : 32;
-  const topPadding = compact ? 28 : 56;
-  const bottomPadding = compact ? 28 : 56;
-  const gapY = compact ? 72 : 110;
+  const horizontalPadding = compact ? 18 : 28;
+  const topPadding = compact ? 20 : 28;
+  const bottomPadding = compact ? 20 : 28;
+  const gapY = compact ? 44 : 56;
 
-  const nodeWidth = Math.min(360, Math.max(232, safeWidth - horizontalPadding * 2));
-  const nodeHeight = compact ? 144 : 156;
+  const nodeWidth = Math.min(350, Math.max(220, safeWidth - horizontalPadding * 2));
+  const nodeHeight = compact ? 138 : 148;
   const graphWidth = Math.max(safeWidth, nodeWidth + horizontalPadding * 2);
   const centerX = Math.round((graphWidth - nodeWidth) / 2);
 
@@ -163,18 +177,21 @@ function buildGraph(commands: GraphCommand[], availableWidth: number) {
   const graphHeight =
     nodes.length > 0
       ? nodes[nodes.length - 1].y + nodeHeight + bottomPadding
-      : 440;
+      : compact
+        ? 320
+        : 380;
 
   return {
     width: graphWidth,
-    height: Math.max(compact ? 440 : 520, graphHeight),
+    height: Math.max(compact ? 320 : 380, graphHeight),
     nodes,
     edges,
   };
 }
 
 function edgePath(edge: GraphEdge) {
-  const midOffset = Math.max(28, Math.floor((edge.y2 - edge.y1) / 2));
+  const verticalGap = edge.y2 - edge.y1;
+  const midOffset = Math.max(22, Math.floor(verticalGap / 2));
 
   return [
     `M ${edge.x1} ${edge.y1}`,
@@ -184,19 +201,65 @@ function edgePath(edge: GraphEdge) {
   ].join(" ");
 }
 
+function computeFitTransform(
+  sceneWidth: number,
+  sceneHeight: number,
+  viewportWidth: number,
+  viewportHeight: number
+): TransformState {
+  const safeViewportWidth = Math.max(1, viewportWidth);
+  const safeViewportHeight = Math.max(1, viewportHeight);
+  const paddedWidth = Math.max(1, safeViewportWidth - FIT_PADDING * 2);
+  const paddedHeight = Math.max(1, safeViewportHeight - FIT_PADDING * 2);
+
+  const fitScale = clamp(
+    Math.min(paddedWidth / sceneWidth, paddedHeight / sceneHeight),
+    MIN_ZOOM,
+    1.05
+  );
+
+  const x = Math.round((safeViewportWidth - sceneWidth * fitScale) / 2);
+  const y = Math.round((safeViewportHeight - sceneHeight * fitScale) / 2);
+
+  return { x, y, scale: fitScale };
+}
+
 export default function FlowGraphClient({
   commands,
   anchorPrefix = "cmd-",
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
+
+  const dragRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  }>({
+    active: false,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+  });
+
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const [transform, setTransform] = useState<TransformState>({
+    x: 0,
+    y: 0,
+    scale: 1,
+  });
 
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
 
     const update = () => {
-      setContainerWidth(node.clientWidth);
+      setViewportSize({
+        width: node.clientWidth,
+        height: node.clientHeight,
+      });
     };
 
     update();
@@ -210,9 +273,24 @@ export default function FlowGraphClient({
   }, []);
 
   const graph = useMemo(
-    () => buildGraph(commands, containerWidth),
-    [commands, containerWidth]
+    () => buildGraph(commands, viewportSize.width),
+    [commands, viewportSize.width]
   );
+
+  const fitTransform = useMemo(
+    () =>
+      computeFitTransform(
+        graph.width,
+        graph.height,
+        viewportSize.width || graph.width,
+        viewportSize.height || graph.height
+      ),
+    [graph.width, graph.height, viewportSize.width, viewportSize.height]
+  );
+
+  useEffect(() => {
+    setTransform(fitTransform);
+  }, [fitTransform, commands]);
 
   const jumpToTimelineCard = useCallback(
     (commandId: string) => {
@@ -243,6 +321,103 @@ export default function FlowGraphClient({
     [anchorPrefix]
   );
 
+  const zoomAtPoint = useCallback(
+    (nextScale: number, clientX?: number, clientY?: number) => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const clampedScale = clamp(nextScale, MIN_ZOOM, MAX_ZOOM);
+      const rect = container.getBoundingClientRect();
+
+      const px =
+        clientX !== undefined ? clientX - rect.left : rect.width / 2;
+      const py =
+        clientY !== undefined ? clientY - rect.top : rect.height / 2;
+
+      setTransform((prev) => {
+        const worldX = (px - prev.x) / prev.scale;
+        const worldY = (py - prev.y) / prev.scale;
+
+        return {
+          scale: clampedScale,
+          x: px - worldX * clampedScale,
+          y: py - worldY * clampedScale,
+        };
+      });
+    },
+    []
+  );
+
+  const handleWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      event.preventDefault();
+
+      const delta = event.deltaY;
+      const factor = delta > 0 ? 0.92 : 1.08;
+      zoomAtPoint(transform.scale * factor, event.clientX, event.clientY);
+    },
+    [transform.scale, zoomAtPoint]
+  );
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-graph-node='true']")) {
+        return;
+      }
+
+      const node = containerRef.current;
+      if (!node) return;
+
+      dragRef.current = {
+        active: true,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: transform.x,
+        originY: transform.y,
+      };
+
+      node.setPointerCapture?.(event.pointerId);
+    },
+    [transform.x, transform.y]
+  );
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!dragRef.current.active) return;
+
+      const dx = event.clientX - dragRef.current.startX;
+      const dy = event.clientY - dragRef.current.startY;
+
+      setTransform((prev) => ({
+        ...prev,
+        x: dragRef.current.originX + dx,
+        y: dragRef.current.originY + dy,
+      }));
+    },
+    []
+  );
+
+  const handlePointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      dragRef.current.active = false;
+      containerRef.current?.releasePointerCapture?.(event.pointerId);
+    },
+    []
+  );
+
+  const handleFit = useCallback(() => {
+    setTransform(fitTransform);
+  }, [fitTransform]);
+
+  const handleZoomIn = useCallback(() => {
+    zoomAtPoint(transform.scale * 1.12);
+  }, [transform.scale, zoomAtPoint]);
+
+  const handleZoomOut = useCallback(() => {
+    zoomAtPoint(transform.scale * 0.9);
+  }, [transform.scale, zoomAtPoint]);
+
   if (!graph.nodes.length) {
     return (
       <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-zinc-500">
@@ -252,87 +427,131 @@ export default function FlowGraphClient({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full overflow-hidden rounded-[28px] border border-white/10 bg-[#03102a]"
-    >
-      <div
-        className="relative mx-auto w-full max-w-full overflow-hidden"
-        style={{
-          height: `${graph.height}px`,
-        }}
-      >
-        <svg
-          viewBox={`0 0 ${graph.width} ${graph.height}`}
-          className="absolute inset-0 h-full w-full"
-          preserveAspectRatio="none"
-          aria-hidden="true"
+    <div className="relative h-full w-full overflow-hidden rounded-[28px] border border-white/10 bg-[#03102a]">
+      <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleZoomOut}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/35 text-sm font-semibold text-white transition hover:bg-black/55"
+          aria-label="Dézoomer"
         >
-          <defs>
-            <marker
-              id="flow-arrow"
-              markerWidth="10"
-              markerHeight="10"
-              refX="8"
-              refY="5"
-              orient="auto"
-              markerUnits="strokeWidth"
-            >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(203,213,225,0.9)" />
-            </marker>
-          </defs>
+          −
+        </button>
 
-          {graph.edges.map((edge) => (
-            <path
-              key={edge.id}
-              d={edgePath(edge)}
-              fill="none"
-              stroke="rgba(203,213,225,0.88)"
-              strokeWidth="2.5"
-              strokeDasharray="8 8"
-              markerEnd="url(#flow-arrow)"
-            />
-          ))}
-        </svg>
+        <button
+          type="button"
+          onClick={handleFit}
+          className="inline-flex h-9 items-center justify-center rounded-full border border-white/10 bg-black/35 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-black/55"
+        >
+          Fit
+        </button>
 
-        {graph.nodes.map((node) => (
-          <button
-            key={node.id}
-            type="button"
-            onClick={() => jumpToTimelineCard(node.id)}
-            className="absolute overflow-hidden rounded-[28px] border border-cyan-400/80 bg-[#07142c] px-5 py-5 text-left text-white shadow-[0_20px_50px_rgba(0,0,0,0.35)] transition hover:scale-[1.01] hover:border-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
-            style={{
-              left: `${node.x}px`,
-              top: `${node.y}px`,
-              width: `${node.width}px`,
-              minHeight: `${node.height}px`,
-            }}
+        <button
+          type="button"
+          onClick={handleZoomIn}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/35 text-sm font-semibold text-white transition hover:bg-black/55"
+          aria-label="Zoomer"
+        >
+          +
+        </button>
+      </div>
+
+      <div className="absolute left-3 top-3 z-20 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-white/70">
+        Glisser • Zoomer
+      </div>
+
+      <div
+        ref={containerRef}
+        className="relative h-full w-full cursor-grab overflow-hidden active:cursor-grabbing select-none touch-none"
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        <div
+          className="absolute left-0 top-0"
+          style={{
+            width: `${graph.width}px`,
+            height: `${graph.height}px`,
+            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+            transformOrigin: "0 0",
+            willChange: "transform",
+          }}
+        >
+          <svg
+            viewBox={`0 0 ${graph.width} ${graph.height}`}
+            className="absolute inset-0 h-full w-full"
+            preserveAspectRatio="xMinYMin meet"
+            aria-hidden="true"
           >
-            <div className="flex items-center justify-center">
-              <div className="h-3 w-3 rounded-full border-2 border-white bg-[#07142c]" />
-            </div>
+            <defs>
+              <marker
+                id="flow-arrow"
+                markerWidth="10"
+                markerHeight="10"
+                refX="8"
+                refY="5"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(203,213,225,0.9)" />
+              </marker>
+            </defs>
 
-            <div className="mt-3 break-words text-[11px] uppercase tracking-[0.2em] text-white/55 [overflow-wrap:anywhere]">
-              {node.capability}
-            </div>
+            {graph.edges.map((edge) => (
+              <path
+                key={edge.id}
+                d={edgePath(edge)}
+                fill="none"
+                stroke="rgba(203,213,225,0.88)"
+                strokeWidth="2.5"
+                strokeDasharray="8 8"
+                markerEnd="url(#flow-arrow)"
+              />
+            ))}
+          </svg>
 
-            <div className="mt-2 break-words text-[18px] font-semibold tracking-tight text-white [overflow-wrap:anywhere] sm:text-[20px]">
-              {node.capability}
-            </div>
-
-            <div
-              className={`mt-4 inline-flex rounded-full px-4 py-1.5 text-sm font-semibold ${statusTone(
-                node.status
-              )}`}
+          {graph.nodes.map((node) => (
+            <button
+              key={node.id}
+              type="button"
+              data-graph-node="true"
+              onClick={() => jumpToTimelineCard(node.id)}
+              className="absolute overflow-hidden rounded-[28px] border border-cyan-400/80 bg-[#07142c] px-5 py-4 text-left text-white shadow-[0_20px_50px_rgba(0,0,0,0.35)] transition hover:scale-[1.01] hover:border-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+              style={{
+                left: `${node.x}px`,
+                top: `${node.y}px`,
+                width: `${node.width}px`,
+                minHeight: `${node.height}px`,
+              }}
             >
-              {node.status.toUpperCase()}
-            </div>
+              <div className="flex items-center justify-center">
+                <div className="h-3 w-3 rounded-full border-2 border-white bg-[#07142c]" />
+              </div>
 
-            <div className="mt-4 flex items-center justify-center">
-              <div className="h-3 w-3 rounded-full border-2 border-white bg-[#07142c]" />
-            </div>
-          </button>
-        ))}
+              <div className="mt-3 break-words text-[11px] uppercase tracking-[0.2em] text-white/55 [overflow-wrap:anywhere]">
+                {node.capability}
+              </div>
+
+              <div className="mt-2 break-words text-[18px] font-semibold tracking-tight text-white [overflow-wrap:anywhere] sm:text-[20px]">
+                {node.capability}
+              </div>
+
+              <div
+                className={`mt-4 inline-flex rounded-full px-4 py-1.5 text-sm font-semibold ${statusTone(
+                  node.status
+                )}`}
+              >
+                {node.status.toUpperCase()}
+              </div>
+
+              <div className="mt-4 flex items-center justify-center">
+                <div className="h-3 w-3 rounded-full border-2 border-white bg-[#07142c]" />
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
