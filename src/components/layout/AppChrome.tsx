@@ -1,38 +1,44 @@
-"use client"
+"use client";
 
-import type { ReactNode } from "react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { LogoutButton } from "./LogoutButton"
+import type { ReactNode } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { LogoutButton } from "./LogoutButton";
 
 const navItems = [
   { href: "/", label: "Overview" },
-  { href: "/commands", label: "Commands" },
+  { href: "/flows", label: "Flows" },
   { href: "/runs", label: "Runs" },
-  { href: "/incidents", label: "Incidents" },
+  { href: "/commands", label: "Commands" },
   { href: "/events", label: "Events" },
-]
+  { href: "/incidents", label: "Incidents" },
+  { href: "/sla", label: "SLA" },
+  { href: "/policies", label: "Policies" },
+  { href: "/tools", label: "Tools" },
+  { href: "/workspaces", label: "Workspaces" },
+  { href: "/settings", label: "Settings" },
+];
 
 type AppChromeProps = {
-  children: ReactNode
-}
+  children: ReactNode;
+};
 
 export function AppChrome({ children }: AppChromeProps) {
-  const pathname = usePathname()
-  const isLoginPage = pathname === "/login"
+  const pathname = usePathname();
+  const isLoginPage = pathname === "/login";
 
   if (isLoginPage) {
-    return <div className="min-h-screen bg-black text-white antialiased">{children}</div>
+    return <div className="min-h-screen bg-black text-white antialiased">{children}</div>;
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex bg-black text-white">
       <aside className="hidden w-64 border-r border-white/10 p-4 md:block">
         <div className="mb-6 text-xl font-bold">BOSAI</div>
 
         <nav className="flex flex-col gap-3 text-sm">
           {navItems.map((item) => {
-            const active = pathname === item.href
+            const active = pathname === item.href;
 
             return (
               <Link
@@ -46,7 +52,7 @@ export function AppChrome({ children }: AppChromeProps) {
               >
                 {item.label}
               </Link>
-            )
+            );
           })}
         </nav>
 
@@ -67,5 +73,5 @@ export function AppChrome({ children }: AppChromeProps) {
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </div>
     </div>
-  )
+  );
 }
