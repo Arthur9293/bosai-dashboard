@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { AUTH_COOKIE_NAME } from "@/lib/auth";
 
 export async function POST() {
-  const response = NextResponse.json({ ok: true });
+  const cookieStore = await cookies();
 
-  response.cookies.set(AUTH_COOKIE_NAME, "", {
+  cookieStore.set(AUTH_COOKIE_NAME, "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -12,5 +13,5 @@ export async function POST() {
     maxAge: 0,
   });
 
-  return response;
+  return NextResponse.json({ ok: true });
 }
