@@ -15,6 +15,7 @@ type NavSection = {
 
 type SidebarProps = {
   onNavigate?: () => void;
+  variant?: "desktop" | "drawer";
 };
 
 const navSections: NavSection[] = [
@@ -57,20 +58,32 @@ function navLinkClassName(active: boolean): string {
   return "group flex items-center justify-between rounded-2xl border border-transparent px-4 py-3 text-sm font-medium text-zinc-300 transition hover:border-white/10 hover:bg-white/[0.04] hover:text-white";
 }
 
-export function Sidebar({ onNavigate }: SidebarProps) {
+export function Sidebar({
+  onNavigate,
+  variant = "desktop",
+}: SidebarProps) {
   const pathname = usePathname();
+  const isDesktop = variant === "desktop";
 
   return (
-    <aside className="h-full w-full border-r border-white/10 bg-[#050816] text-white">
+    <aside
+      className={
+        isDesktop
+          ? "h-screen w-[300px] border-r border-white/10 bg-[#040816]/55 text-white backdrop-blur-xl"
+          : "h-full w-full bg-transparent text-white"
+      }
+    >
       <div className="flex h-full min-h-0 flex-col">
-        <div className="hidden border-b border-white/10 px-6 py-7 lg:block">
-          <div className="text-3xl font-semibold tracking-tight text-white">
-            BOSAI
+        {isDesktop ? (
+          <div className="border-b border-white/10 px-6 py-7">
+            <div className="text-3xl font-semibold tracking-tight text-white">
+              BOSAI
+            </div>
+            <div className="mt-2 text-sm text-zinc-400">
+              Anti-Chaos AI Ops Layer
+            </div>
           </div>
-          <div className="mt-2 text-sm text-zinc-400">
-            Anti-Chaos AI Ops Layer
-          </div>
-        </div>
+        ) : null}
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-5">
           <nav className="space-y-6">
@@ -111,27 +124,29 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           </nav>
         </div>
 
-        <div className="hidden border-t border-white/10 px-5 py-5 lg:block">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-white/30">
-              Status
-            </div>
+        {isDesktop ? (
+          <div className="border-t border-white/10 px-5 py-5">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-white/30">
+                Status
+              </div>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/12 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                Worker healthy
-              </span>
-              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
-                Stable
-              </span>
-            </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/12 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                  Worker healthy
+                </span>
+                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
+                  Stable
+                </span>
+              </div>
 
-            <div className="mt-4 space-y-1 text-xs text-zinc-500">
-              <div>Version: v2.5.5-rebuild</div>
-              <div>Workspace: production</div>
+              <div className="mt-4 space-y-1 text-xs text-zinc-500">
+                <div>Version: v2.5.5-rebuild</div>
+                <div>Workspace: production</div>
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </aside>
   );
