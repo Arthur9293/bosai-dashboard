@@ -1,35 +1,36 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { AUTH_COOKIE_NAME, verifySessionToken } from "@/lib/auth";
+import {
+  AUTH_COOKIE_NAME,
+  normalizeNextPath,
+  verifySessionToken,
+} from "@/lib/auth";
 
 function isPublicPath(pathname: string) {
   return pathname === "/login" || pathname.startsWith("/login/");
 }
 
-function isIgnoredPath(pathname: string) {
-  return (
+export async function proxy(request: NextRequest) {
+  const { pathname, search } = request.nextUrl;
+
+  if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
     pathname === "/favicon.ico" ||
     pathname === "/robots.txt" ||
     pathname === "/sitemap.xml"
-  );
-}
-
-export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  if (isIgnoredPath(pathname)) {
+  ) {
     return NextResponse.next();
   }
 
-  const rawToken = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  const session = await verifySessionToken(rawToken);
+  const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const session = await verifySessionToken(token);
   const isAuthenticated = Boolean(session);
 
   if (isPublicPath(pathname)) {
     if (isAuthenticated) {
-      return NextResponse.redirect(new URL("/commands", request.url));
+      const next = normalizeNextPath(request.nextUrl.searchParams.get("next"));
+      return NextResponse.redirect(new URL(next || "/commands", request.url));
     }
 
     return NextResponse.next();
@@ -37,6 +38,7 @@ export async function proxy(request: NextRequest) {
 
   if (!isAuthenticated) {
     const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", normalizeNextPath(`${pathname}${search}`));
     return NextResponse.redirect(loginUrl);
   }
 
