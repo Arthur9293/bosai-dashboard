@@ -4,13 +4,56 @@ const BASE_URL =
   "";
 
 type JsonRecord = Record<string, unknown>;
+type QueryPrimitive = string | number | boolean | null | undefined;
+type QueryValue = QueryPrimitive | QueryPrimitive[];
 
-async function safeFetch<T = unknown>(path: string): Promise<T> {
+export type WorkspaceScopeOptions = {
+  workspaceId?: string | null;
+  limit?: number;
+};
+
+type LimitOrWorkspaceOptions = number | WorkspaceScopeOptions | undefined;
+
+function buildPath(path: string, query?: Record<string, QueryValue>): string {
+  if (!query || Object.keys(query).length === 0) {
+    return path;
+  }
+
+  const [pathname, search = ""] = path.split("?");
+  const params = new URLSearchParams(search);
+
+  for (const [key, raw] of Object.entries(query)) {
+    if (Array.isArray(raw)) {
+      for (const item of raw) {
+        if (item !== undefined && item !== null && String(item).trim() !== "") {
+          params.append(key, String(item));
+        }
+      }
+      continue;
+    }
+
+    if (raw === undefined || raw === null || String(raw).trim() === "") {
+      continue;
+    }
+
+    params.set(key, String(raw));
+  }
+
+  const qs = params.toString();
+  return qs ? `${pathname}?${qs}` : pathname;
+}
+
+async function safeFetch<T = unknown>(
+  path: string,
+  query?: Record<string, QueryValue>
+): Promise<T> {
   if (!BASE_URL) {
     throw new Error("Missing BOSAI worker base URL");
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const finalPath = buildPath(path, query);
+
+  const res = await fetch(`${BASE_URL}${finalPath}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
@@ -23,6 +66,32 @@ async function safeFetch<T = unknown>(path: string): Promise<T> {
   }
 
   return res.json() as Promise<T>;
+}
+
+function normalizeScopeOptions(
+  input: LimitOrWorkspaceOptions,
+  defaultLimit: number
+): { limit: number; workspaceId?: string } {
+  if (typeof input === "number") {
+    const safeLimit = Number.isFinite(input)
+      ? Math.max(1, Math.trunc(input))
+      : defaultLimit;
+
+    return { limit: safeLimit };
+  }
+
+  const rawLimit = input?.limit;
+  const safeLimit =
+    typeof rawLimit === "number" && Number.isFinite(rawLimit)
+      ? Math.max(1, Math.trunc(rawLimit))
+      : defaultLimit;
+
+  const workspaceId =
+    typeof input?.workspaceId === "string" && input.workspaceId.trim()
+      ? input.workspaceId.trim()
+      : undefined;
+
+  return { limit: safeLimit, workspaceId };
 }
 
 function toRecord(value: unknown): JsonRecord {
@@ -1636,8 +1705,12 @@ function enrichEventsFromCommands(
   });
 }
 
-export async function fetchHealthScore(): Promise<HealthScoreResponse> {
-  const data = await safeFetch<JsonRecord>("/health/score");
+export async function fetchHealthScore(
+  options?: WorkspaceScopeOptions
+): Promise<HealthScoreResponse> {
+  const data = await safeFetch<JsonRecord>("/health/score", {
+    workspace_id: options?.workspaceId || undefined,
+  });
 
   return {
     ...data,
@@ -1647,8 +1720,16 @@ export async function fetchHealthScore(): Promise<HealthScoreResponse> {
   };
 }
 
-export async function fetchRuns(): Promise<RunsResponse> {
-  const data = await safeFetch<JsonRecord>("/runs");
+export async function fetchRuns(
+  options?: WorkspaceScopeOptions
+): Promise<RunsResponse> {
+  const scope = normalizeScopeOptions(options, 100);
+
+  const data = await safeFetch<JsonRecord>("/runs", {
+    limit: scope.limit,
+    workspace_id: scope.workspaceId,
+  });
+
   const runs = asArray(firstDefined(data, ["runs", "Runs"])).map((item) =>
     normalizeRunItem(item)
   );
@@ -1670,12 +1751,16 @@ export async function fetchRuns(): Promise<RunsResponse> {
   };
 }
 
-export async function fetchCommands(limit = 30): Promise<CommandsResponse> {
-  const safeLimit = Number.isFinite(limit)
-    ? Math.max(1, Math.trunc(limit))
-    : 30;
+export async function fetchCommands(
+  limitOrOptions: LimitOrWorkspaceOptions = 30
+): Promise<CommandsResponse> {
+  const scope = normalizeScopeOptions(limitOrOptions, 30);
 
-  const data = await safeFetch<JsonRecord>(`/commands?limit=${safeLimit}`);
+  const data = await safeFetch<JsonRecord>("/commands", {
+    limit: scope.limit,
+    workspace_id: scope.workspaceId,
+  });
+
   const commands = asArray(firstDefined(data, ["commands", "Commands"])).map(
     (item) => normalizeCommandItem(item)
   );
@@ -1691,28 +1776,35 @@ export async function fetchCommands(limit = 30): Promise<CommandsResponse> {
 
 export async function fetchCommandById(
   id: string,
-  limit = 500
+  limitOrOptions: LimitOrWorkspaceOptions = 500
 ): Promise<CommandItem | null> {
-  const data = await fetchCommands(limit);
+  const data = await fetchCommands(limitOrOptions);
   const commands = Array.isArray(data?.commands) ? data.commands : [];
 
   const match = commands.find((item) => String(item.id) === String(id));
   return match ?? null;
 }
 
-export async function fetchEvents(limit = 30): Promise<EventsResponse> {
-  const safeLimit = Number.isFinite(limit)
-    ? Math.max(1, Math.trunc(limit))
-    : 30;
+export async function fetchEvents(
+  limitOrOptions: LimitOrWorkspaceOptions = 30
+): Promise<EventsResponse> {
+  const scope = normalizeScopeOptions(limitOrOptions, 30);
 
-  const data = await safeFetch<JsonRecord>(`/events?limit=${safeLimit}`);
+  const data = await safeFetch<JsonRecord>("/events", {
+    limit: scope.limit,
+    workspace_id: scope.workspaceId,
+  });
+
   let events = asArray(firstDefined(data, ["events", "Events"])).map((item) =>
     normalizeEventItem(item)
   );
   const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
 
   try {
-    const commandsData = await fetchCommands(Math.max(safeLimit, 300));
+    const commandsData = await fetchCommands({
+      limit: Math.max(scope.limit, 300),
+      workspaceId: scope.workspaceId,
+    });
     const commands = Array.isArray(commandsData?.commands)
       ? commandsData.commands
       : [];
@@ -1729,19 +1821,26 @@ export async function fetchEvents(limit = 30): Promise<EventsResponse> {
   };
 }
 
-export async function fetchIncidents(limit = 30): Promise<IncidentsResponse> {
-  const safeLimit = Number.isFinite(limit)
-    ? Math.max(1, Math.trunc(limit))
-    : 30;
+export async function fetchIncidents(
+  limitOrOptions: LimitOrWorkspaceOptions = 30
+): Promise<IncidentsResponse> {
+  const scope = normalizeScopeOptions(limitOrOptions, 30);
 
-  const data = await safeFetch<JsonRecord>(`/incidents?limit=${safeLimit}`);
+  const data = await safeFetch<JsonRecord>("/incidents", {
+    limit: scope.limit,
+    workspace_id: scope.workspaceId,
+  });
+
   let incidents = asArray(firstDefined(data, ["incidents", "Incidents"])).map(
     (item) => normalizeIncidentItem(item)
   );
   const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
 
   try {
-    const commandsData = await fetchCommands(Math.max(safeLimit, 300));
+    const commandsData = await fetchCommands({
+      limit: Math.max(scope.limit, 300),
+      workspaceId: scope.workspaceId,
+    });
     const commands = Array.isArray(commandsData?.commands)
       ? commandsData.commands
       : [];
@@ -1759,12 +1858,15 @@ export async function fetchIncidents(limit = 30): Promise<IncidentsResponse> {
   };
 }
 
-export async function fetchSla(limit = 50): Promise<SlaResponse> {
-  const safeLimit = Number.isFinite(limit)
-    ? Math.max(1, Math.trunc(limit))
-    : 50;
+export async function fetchSla(
+  limitOrOptions: LimitOrWorkspaceOptions = 50
+): Promise<SlaResponse> {
+  const scope = normalizeScopeOptions(limitOrOptions, 50);
 
-  const data = await safeFetch<JsonRecord>(`/sla?limit=${safeLimit}`);
+  const data = await safeFetch<JsonRecord>("/sla", {
+    limit: scope.limit,
+    workspace_id: scope.workspaceId,
+  });
 
   const incidents = asArray(
     firstDefined(data, [
@@ -1797,8 +1899,13 @@ export async function fetchSla(limit = 50): Promise<SlaResponse> {
   };
 }
 
-export async function fetchTools(): Promise<ToolsResponse> {
-  const data = await safeFetch<JsonRecord>("/tools");
+export async function fetchTools(
+  options?: WorkspaceScopeOptions
+): Promise<ToolsResponse> {
+  const data = await safeFetch<JsonRecord>("/tools", {
+    workspace_id: options?.workspaceId || undefined,
+  });
+
   const tools = asArray(firstDefined(data, ["tools", "Tools"])).map((item) =>
     normalizeToolItem(item)
   );
@@ -1810,8 +1917,13 @@ export async function fetchTools(): Promise<ToolsResponse> {
   };
 }
 
-export async function fetchPolicies(): Promise<PoliciesResponse> {
-  const data = await safeFetch<JsonRecord>("/policies");
+export async function fetchPolicies(
+  options?: WorkspaceScopeOptions
+): Promise<PoliciesResponse> {
+  const data = await safeFetch<JsonRecord>("/policies", {
+    workspace_id: options?.workspaceId || undefined,
+  });
+
   const policies = asArray(firstDefined(data, ["policies", "Policies"])).map(
     (item) => normalizePolicyItem(item)
   );
@@ -1824,8 +1936,16 @@ export async function fetchPolicies(): Promise<PoliciesResponse> {
   };
 }
 
-export async function fetchFlows(): Promise<FlowsResponse> {
-  const data = await safeFetch<JsonRecord>("/flows");
+export async function fetchFlows(
+  options?: WorkspaceScopeOptions
+): Promise<FlowsResponse> {
+  const scope = normalizeScopeOptions(options, 100);
+
+  const data = await safeFetch<JsonRecord>("/flows", {
+    limit: scope.limit,
+    workspace_id: scope.workspaceId,
+  });
+
   const flows = asArray(firstDefined(data, ["flows", "Flows"])).map((item) =>
     normalizeFlowDetail(item)
   );
@@ -1837,11 +1957,14 @@ export async function fetchFlows(): Promise<FlowsResponse> {
   };
 }
 
-export async function fetchFlowById(id: string): Promise<FlowDetail | null> {
+export async function fetchFlowById(
+  id: string,
+  options?: WorkspaceScopeOptions
+): Promise<FlowDetail | null> {
   const target = String(id || "").trim();
   if (!target) return null;
 
-  const flowData = await fetchFlows();
+  const flowData = await fetchFlows(options);
   const flows = Array.isArray(flowData?.flows) ? flowData.flows : [];
 
   const directMatch = flows.find((item) => {
@@ -1866,10 +1989,12 @@ export async function fetchFlowById(id: string): Promise<FlowDetail | null> {
   }
 
   try {
+    const workspaceId = options?.workspaceId || undefined;
+
     const [commandsData, incidentsData, eventsData] = await Promise.all([
-      fetchCommands(500),
-      fetchIncidents(300),
-      fetchEvents(500),
+      fetchCommands({ limit: 500, workspaceId }),
+      fetchIncidents({ limit: 300, workspaceId }),
+      fetchEvents({ limit: 500, workspaceId }),
     ]);
 
     const commands = Array.isArray(commandsData?.commands)
@@ -1887,9 +2012,14 @@ export async function fetchFlowById(id: string): Promise<FlowDetail | null> {
 }
 
 export async function fetchIncidentsByFlowId(
-  flowId: string
+  flowId: string,
+  options?: WorkspaceScopeOptions
 ): Promise<IncidentItem[]> {
-  const data = await fetchIncidents(300);
+  const data = await fetchIncidents({
+    limit: options?.limit ?? 300,
+    workspaceId: options?.workspaceId,
+  });
+
   const incidents = Array.isArray(data?.incidents) ? data.incidents : [];
 
   return incidents.filter(
