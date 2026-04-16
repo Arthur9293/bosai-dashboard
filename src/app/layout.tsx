@@ -1,6 +1,6 @@
 import "./globals.css";
 import type { ReactNode } from "react";
-import { AppChrome } from "@/components/AppChrome";
+import { AppChrome } from "@/components/layout/AppChrome";
 
 export default function RootLayout({
   children,
