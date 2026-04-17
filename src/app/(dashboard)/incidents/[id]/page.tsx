@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import {
@@ -15,6 +16,13 @@ import {
   DashboardStatusBadge,
   type DashboardStatusKind,
 } from "@/components/dashboard/StatusBadge";
+import {
+  appendWorkspaceIdToHref,
+  resolveWorkspaceContext,
+  workspaceMatchesOrUnscoped,
+} from "@/lib/workspace";
+
+type SearchParams = Record<string, string | string[] | undefined>;
 
 type PageProps = {
   params:
@@ -24,7 +32,34 @@ type PageProps = {
     | {
         id: string;
       };
+  searchParams?: Promise<SearchParams> | SearchParams;
 };
+
+type ShellBadgeTone =
+  | "default"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger"
+  | "muted";
+
+function sectionFrameClassName(
+  tone: "default" | "attention" | "neutral" = "default"
+): string {
+  if (tone === "attention") {
+    return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(245,158,11,0.08),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
+  }
+
+  if (tone === "neutral") {
+    return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.06),transparent_46%),linear-gradient(180deg,rgba(7,18,43,0.68)_0%,rgba(3,8,22,0.54)_100%)]";
+  }
+
+  return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.08),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
+}
+
+function sidePanelClassName(): string {
+  return "bg-[radial-gradient(100%_120%_at_100%_0%,rgba(14,165,233,0.08),transparent_52%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
+}
 
 function actionLinkClassName(
   variant: "default" | "primary" | "soft" | "danger" = "default",
@@ -42,7 +77,7 @@ function actionLinkClassName(
   }
 
   if (variant === "danger") {
-    return `${base} border border-rose-500/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15`;
+    return `${base} border border-rose-500/25 bg-rose-500/12 text-rose-200 hover:bg-rose-500/18`;
   }
 
   if (variant === "soft") {
@@ -53,11 +88,15 @@ function actionLinkClassName(
 }
 
 function metaLabelClassName(): string {
-  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+  return "text-[11px] uppercase tracking-[0.18em] text-white/35";
 }
 
 function metaBoxClassName(): string {
-  return "rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+  return "min-w-0 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+}
+
+function wideBoxClassName(): string {
+  return "min-w-0 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
 }
 
 function compactTechnicalId(value: string, max = 34): string {
@@ -69,6 +108,10 @@ function compactTechnicalId(value: string, max = 34): string {
   const keepEnd = Math.max(8, max - keepStart - 3);
 
   return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
+}
+
+function makeWrapFriendly(value: string): string {
+  return value.replace(/([/_\-.|:])/g, "$1\u200B");
 }
 
 function toText(value: unknown, fallback = ""): string {
@@ -384,19 +427,37 @@ function getBestFlowTargetFromIncident(incident: IncidentItem): string {
   );
 }
 
-function getFlowHref(incident: IncidentItem): string {
+function getFlowHref(incident: IncidentItem, activeWorkspaceId?: string): string {
   const target = getBestFlowTargetFromIncident(incident);
-  return target ? `/flows/${encodeURIComponent(target)}` : "";
+  return target
+    ? appendWorkspaceIdToHref(
+        `/flows/${encodeURIComponent(target)}`,
+        activeWorkspaceId || getWorkspace(incident)
+      )
+    : "";
 }
 
-function getCommandHref(incident: IncidentItem): string {
+function getCommandHref(
+  incident: IncidentItem,
+  activeWorkspaceId?: string
+): string {
   const commandRecord = getCommandRecord(incident);
   if (!commandRecord || commandRecord === "—") return "";
-  return `/commands/${encodeURIComponent(commandRecord)}`;
+
+  return appendWorkspaceIdToHref(
+    `/commands/${encodeURIComponent(commandRecord)}`,
+    activeWorkspaceId || getWorkspace(incident)
+  );
 }
 
-function getIncidentHref(incident: IncidentItem): string {
-  return `/incidents/${encodeURIComponent(String(incident.id))}`;
+function getIncidentHref(
+  incident: IncidentItem,
+  activeWorkspaceId?: string
+): string {
+  return appendWorkspaceIdToHref(
+    `/incidents/${encodeURIComponent(String(incident.id))}`,
+    activeWorkspaceId || getWorkspace(incident)
+  );
 }
 
 function getSummaryLine(incident: IncidentItem): string {
@@ -452,7 +513,7 @@ function isLegacyNoiseIncident(incident: IncidentItem): boolean {
   );
 }
 
-function getShellBadgeToneFromStatus(incident: IncidentItem): string {
+function getShellBadgeToneFromStatus(incident: IncidentItem): ShellBadgeTone {
   const status = getIncidentStatusNormalized(incident);
   if (status === "resolved") return "success";
   if (status === "escalated") return "warning";
@@ -460,7 +521,7 @@ function getShellBadgeToneFromStatus(incident: IncidentItem): string {
   return "muted";
 }
 
-function getShellBadgeToneFromSeverity(incident: IncidentItem): string {
+function getShellBadgeToneFromSeverity(incident: IncidentItem): ShellBadgeTone {
   const severity = getIncidentSeverityNormalized(incident);
   if (severity === "critical" || severity === "high") return "danger";
   if (severity === "medium") return "warning";
@@ -468,7 +529,7 @@ function getShellBadgeToneFromSeverity(incident: IncidentItem): string {
   return "muted";
 }
 
-function getShellBadgeToneFromSla(incident: IncidentItem): string {
+function getShellBadgeToneFromSla(incident: IncidentItem): ShellBadgeTone {
   const sla = getSlaLabel(incident).toLowerCase();
   if (sla === "resolved" || sla === "ok") return "success";
   if (sla === "warning") return "warning";
@@ -490,7 +551,7 @@ function MetaValueLink({
   return (
     <Link
       href={href}
-      className="text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+      className="break-all text-zinc-200 underline decoration-white/20 underline-offset-4 transition hover:text-white"
     >
       {value}
     </Link>
@@ -507,38 +568,81 @@ function MetaItem({
   breakAll?: boolean;
 }) {
   return (
-    <div className={breakAll ? "break-all" : undefined}>
+    <div className={breakAll ? "min-w-0 break-all" : "min-w-0"}>
       <div className={metaLabelClassName()}>{label}</div>
-      <div className="mt-1 text-zinc-200">{value}</div>
-    </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-      <div className={metaLabelClassName()}>{label}</div>
-      <div className="mt-3 text-xl font-semibold tracking-tight text-white">
+      <div className="mt-1 min-w-0 text-zinc-200 [overflow-wrap:anywhere]">
         {value}
       </div>
     </div>
   );
 }
 
-export default async function IncidentDetailPage({ params }: PageProps) {
+function SignalCard({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "danger" | "success" | "warning" | "info";
+}) {
+  const valueTone =
+    tone === "danger"
+      ? "text-rose-200"
+      : tone === "success"
+        ? "text-emerald-200"
+        : tone === "warning"
+          ? "text-amber-200"
+          : tone === "info"
+            ? "text-sky-200"
+            : "text-white";
+
+  return (
+    <div className="min-w-0 rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
+      <div className={metaLabelClassName()}>{label}</div>
+      <div
+        className={`mt-2 min-w-0 text-base font-medium ${valueTone} [overflow-wrap:anywhere]`}
+      >
+        {value || "—"}
+      </div>
+    </div>
+  );
+}
+
+export default async function IncidentDetailPage({
+  params,
+  searchParams,
+}: PageProps) {
   const resolvedParams = await Promise.resolve(params);
+  const resolvedSearchParams = (await Promise.resolve(
+    searchParams ?? {}
+  )) as SearchParams;
+
+  const cookieStore = await cookies();
+
+  const workspaceContext = resolveWorkspaceContext({
+    searchParams: resolvedSearchParams,
+    cookieValues: {
+      bosai_active_workspace_id:
+        cookieStore.get("bosai_active_workspace_id")?.value,
+      bosai_workspace_id: cookieStore.get("bosai_workspace_id")?.value,
+      workspace_id: cookieStore.get("workspace_id")?.value,
+      bosai_allowed_workspace_ids:
+        cookieStore.get("bosai_allowed_workspace_ids")?.value,
+      allowed_workspace_ids:
+        cookieStore.get("allowed_workspace_ids")?.value,
+    },
+  });
+
+  const activeWorkspaceId = workspaceContext.activeWorkspaceId || "";
   const id = decodeURIComponent(resolvedParams.id);
 
   let data: IncidentsResponse | null = null;
 
   try {
-    data = await fetchIncidents();
+    data = await fetchIncidents({
+      workspaceId: activeWorkspaceId || undefined,
+    });
   } catch {
     data = null;
   }
@@ -547,7 +651,11 @@ export default async function IncidentDetailPage({ params }: PageProps) {
     ? data.incidents
     : [];
 
-  const cleanIncidents = incidents.filter(
+  const workspaceScoped = incidents.filter((item) =>
+    workspaceMatchesOrUnscoped(getWorkspace(item), activeWorkspaceId)
+  );
+
+  const cleanIncidents = workspaceScoped.filter(
     (item) => !isLegacyNoiseIncident(item)
   );
 
@@ -560,7 +668,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const title = getIncidentTitle(incident);
+  const title = makeWrapFriendly(getIncidentTitle(incident));
   const statusLabel = getIncidentStatusLabel(incident);
   const severityLabel = getIncidentSeverityLabel(incident);
   const openedAt = getOpenedAt(incident);
@@ -584,11 +692,14 @@ export default async function IncidentDetailPage({ params }: PageProps) {
   const nextAction = getNextAction(incident);
   const priorityScore = getPriorityScore(incident);
 
-  const flowHref = getFlowHref(incident);
-  const commandHref = getCommandHref(incident);
+  const flowHref = getFlowHref(incident, activeWorkspaceId);
+  const commandHref = getCommandHref(incident, activeWorkspaceId);
+  const incidentsHref = appendWorkspaceIdToHref("/incidents", activeWorkspaceId);
   const remainingMinutes = toNumber(incident.sla_remaining_minutes, Number.NaN);
 
-  const shellBadges: { label: string; tone?: string }[] = [
+  const flowTarget = flowId || sourceRecordId || rootEventId || "—";
+
+  const shellBadges: { label: string; tone?: ShellBadgeTone }[] = [
     { label: statusLabel, tone: getShellBadgeToneFromStatus(incident) },
     { label: severityLabel, tone: getShellBadgeToneFromSeverity(incident) },
     { label: `SLA ${slaLabel}`, tone: getShellBadgeToneFromSla(incident) },
@@ -622,7 +733,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
       ]}
       actions={
         <>
-          <Link href="/incidents" className={actionLinkClassName("soft")}>
+          <Link href={incidentsHref} className={actionLinkClassName("soft")}>
             Retour aux incidents
           </Link>
 
@@ -640,8 +751,11 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         </>
       }
       aside={
-        <>
-          <SidePanelCard title="Résumé incident">
+        <div className="space-y-6">
+          <SidePanelCard
+            title="Résumé incident"
+            className={sidePanelClassName()}
+          >
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 <DashboardStatusBadge
@@ -671,9 +785,7 @@ export default async function IncidentDetailPage({ params }: PageProps) {
                 <div>
                   Flow :{" "}
                   <span className="break-all text-white/90">
-                    {compactTechnicalId(
-                      flowId || sourceRecordId || rootEventId || "—"
-                    )}
+                    {compactTechnicalId(flowTarget)}
                   </span>
                 </div>
                 <div>
@@ -692,18 +804,20 @@ export default async function IncidentDetailPage({ params }: PageProps) {
 
               <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
                 <div className={metaLabelClassName()}>Action suggérée</div>
-                <div className="mt-1 text-zinc-200">{suggestedAction}</div>
+                <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
+                  {suggestedAction}
+                </div>
               </div>
             </div>
           </SidePanelCard>
 
-          <SidePanelCard title="Navigation">
+          <SidePanelCard title="Navigation" className={sidePanelClassName()}>
             <div className="space-y-3">
-              <Link href="/incidents" className={actionLinkClassName("soft")}>
+              <Link href={incidentsHref} className={actionLinkClassName("soft")}>
                 Retour à la liste incidents
               </Link>
 
-              <Link href="/incidents" className={actionLinkClassName("primary")}>
+              <Link href={incidentsHref} className={actionLinkClassName("primary")}>
                 Voir tous les incidents
               </Link>
 
@@ -728,39 +842,73 @@ export default async function IncidentDetailPage({ params }: PageProps) {
               )}
             </div>
           </SidePanelCard>
-        </>
+        </div>
       }
     >
       <SectionCard
+        title="Signal incident"
+        description="Lecture rapide du statut, de l’impact et de la priorité opérationnelle."
+        tone="attention"
+        className={sectionFrameClassName("attention")}
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <SignalCard label="Statut" value={statusLabel} tone="warning" />
+          <SignalCard label="Sévérité" value={severityLabel} tone="danger" />
+          <SignalCard label="SLA" value={slaLabel} tone="info" />
+          <SignalCard
+            label="Priorité"
+            value={String(priorityScore)}
+            tone="default"
+          />
+        </div>
+
+        <div className="mt-4 rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={metaLabelClassName()}>Résumé</div>
+          <div className="mt-2 text-sm leading-6 text-zinc-300 [overflow-wrap:anywhere]">
+            {getSummaryLine(incident)}
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
         title="Contexte incident"
         description="Contexte opérationnel, source et informations utiles pour comprendre l’incident."
+        className={sectionFrameClassName("default")}
       >
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-3">
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Catégorie</div>
-            <div className="mt-2 text-zinc-100">{category}</div>
+            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+              {category}
+            </div>
           </div>
 
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Raison</div>
-            <div className="mt-2 text-zinc-100">{reason}</div>
+            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+              {reason}
+            </div>
           </div>
 
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Workspace</div>
-            <div className="mt-2 text-zinc-100">{workspace}</div>
+            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+              {workspace}
+            </div>
           </div>
 
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Source</div>
-            <div className="mt-2 text-zinc-100">
+            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
               {toText(incident.source, "Incidents")}
             </div>
           </div>
 
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Worker</div>
-            <div className="mt-2 text-zinc-100">{toText(incident.worker, "—")}</div>
+            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+              {toText(incident.worker, "—")}
+            </div>
           </div>
 
           <div className={metaBoxClassName()}>
@@ -768,19 +916,25 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             <div className="mt-2 break-all text-zinc-100">{errorId}</div>
           </div>
 
-          <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={`${wideBoxClassName()} sm:col-span-2 xl:col-span-3`}>
             <div className={metaLabelClassName()}>Action suggérée</div>
-            <div className="mt-1 text-zinc-200">{suggestedAction}</div>
+            <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
+              {suggestedAction}
+            </div>
           </div>
 
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Dernière action</div>
-            <div className="mt-2 text-zinc-100">{lastAction}</div>
+            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+              {lastAction}
+            </div>
           </div>
 
-          <div className="md:col-span-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={`${wideBoxClassName()} sm:col-span-2`}>
             <div className={metaLabelClassName()}>Note de résolution</div>
-            <div className="mt-1 text-zinc-200">{resolutionNote}</div>
+            <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
+              {resolutionNote}
+            </div>
           </div>
         </div>
       </SectionCard>
@@ -789,11 +943,14 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         title="Décision & orchestration"
         description="Éléments de pilotage utilisés pour l’escalade, la résolution ou l’action suivante."
         tone="neutral"
+        className={sectionFrameClassName("neutral")}
       >
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-4">
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Décision</div>
-            <div className="mt-2 text-zinc-100">{decisionStatus || "—"}</div>
+            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+              {decisionStatus || "—"}
+            </div>
           </div>
 
           <div className={metaBoxClassName()}>
@@ -813,14 +970,18 @@ export default async function IncidentDetailPage({ params }: PageProps) {
             </div>
           </div>
 
-          <div className="md:col-span-2 xl:col-span-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={`${wideBoxClassName()} sm:col-span-2 xl:col-span-2`}>
             <div className={metaLabelClassName()}>Raison décision</div>
-            <div className="mt-1 text-zinc-200">{decisionReason || "—"}</div>
+            <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
+              {decisionReason || "—"}
+            </div>
           </div>
 
-          <div className="md:col-span-2 xl:col-span-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={`${wideBoxClassName()} sm:col-span-2 xl:col-span-2`}>
             <div className={metaLabelClassName()}>Next action</div>
-            <div className="mt-1 text-zinc-200">{nextAction || "—"}</div>
+            <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
+              {nextAction || "—"}
+            </div>
           </div>
         </div>
       </SectionCard>
@@ -829,15 +990,13 @@ export default async function IncidentDetailPage({ params }: PageProps) {
         title="Liens BOSAI"
         description="Objets liés pour naviguer entre l’incident, le flow, la command et les identifiants techniques."
         tone="neutral"
+        className={sectionFrameClassName("neutral")}
       >
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-3">
           <MetaItem
             label="Flow"
             value={
-              <MetaValueLink
-                href={flowHref}
-                value={flowId || sourceRecordId || rootEventId || "—"}
-              />
+              <MetaValueLink href={flowHref} value={flowTarget} />
             }
             breakAll
           />
