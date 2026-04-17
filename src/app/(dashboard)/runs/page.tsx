@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { fetchRuns } from "@/lib/api";
-import { PageHeader } from "@/components/ui/page-header";
+import { fetchRuns } from "../../../lib/api";
+import { PageHeader } from "../../../components/ui/page-header";
 import {
   appendWorkspaceIdToHref,
   resolveWorkspaceContext,
@@ -302,8 +302,7 @@ export default async function RunsPage({ searchParams }: PageProps) {
     runs.filter((run) => getRunStatus(run).toLowerCase() === "error").length;
   const unsupportedCount =
     stats.unsupported ??
-    runs.filter((run) => getRunStatus(run).toLowerCase() === "unsupported")
-      .length;
+    runs.filter((run) => getRunStatus(run).toLowerCase() === "unsupported").length;
   const otherCount =
     stats.other ??
     runs.filter((run) => {
