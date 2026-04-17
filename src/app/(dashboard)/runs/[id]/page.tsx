@@ -27,9 +27,6 @@ import {
   workspaceMatchesOrUnscoped,
 } from "@/lib/workspace";
 
-type SearchParams = Record<string, string | string[] | undefined>;
-type RunRecord = Record<string, unknown>;
-
 type PageProps = {
   params:
     | Promise<{
@@ -41,7 +38,10 @@ type PageProps = {
   searchParams?: Promise<SearchParams> | SearchParams;
 };
 
-type ShellBadgeTone =
+type SearchParams = Record<string, string | string[] | undefined>;
+type RunRecord = Record<string, unknown>;
+
+type ShellTone =
   | "default"
   | "info"
   | "success"
@@ -49,72 +49,14 @@ type ShellBadgeTone =
   | "danger"
   | "muted";
 
-type FlexibleRunsResponse = {
-  runs?: RunRecord[];
-};
-
-type FlexibleCommandsResponse = {
-  commands?: CommandItem[];
-};
-
-type FlexibleEventsResponse = {
-  events?: EventItem[];
-};
-
-type FlexibleIncidentsResponse = {
-  incidents?: IncidentItem[];
-};
-
-function sectionFrameClassName(
-  tone: "default" | "attention" | "neutral" = "default"
-): string {
-  if (tone === "attention") {
-    return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(245,158,11,0.08),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
+function firstDefined(record: RunRecord, keys: string[]): unknown {
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null) {
+      return record[key];
+    }
   }
 
-  if (tone === "neutral") {
-    return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.06),transparent_46%),linear-gradient(180deg,rgba(7,18,43,0.68)_0%,rgba(3,8,22,0.54)_100%)]";
-  }
-
-  return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.08),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
-}
-
-function sidePanelClassName(): string {
-  return "bg-[radial-gradient(100%_120%_at_100%_0%,rgba(14,165,233,0.08),transparent_52%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
-}
-
-function actionLinkClassName(
-  variant: "default" | "primary" | "danger" | "soft" = "default",
-  disabled = false
-): string {
-  const base =
-    "inline-flex w-full items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition";
-
-  if (disabled) {
-    return `${base} cursor-not-allowed border border-white/10 bg-white/[0.04] text-zinc-500 opacity-60`;
-  }
-
-  if (variant === "primary") {
-    return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
-  }
-
-  if (variant === "danger") {
-    return `${base} border border-rose-500/25 bg-rose-500/12 text-rose-200 hover:bg-rose-500/18`;
-  }
-
-  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
-}
-
-function metaLabelClassName(): string {
-  return "text-[11px] uppercase tracking-[0.18em] text-white/35";
-}
-
-function metaBoxClassName(): string {
-  return "min-w-0 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
-}
-
-function emptyStateClassName(): string {
-  return "rounded-[22px] border border-dashed border-white/10 bg-white/[0.03] px-5 py-8 text-sm leading-6 text-zinc-500";
+  return undefined;
 }
 
 function toText(value: unknown, fallback = ""): string {
@@ -125,6 +67,7 @@ function toText(value: unknown, fallback = ""): string {
       const candidate = toText(item, "");
       if (candidate) return candidate;
     }
+
     return fallback;
   }
 
@@ -137,16 +80,8 @@ function pickText(...values: unknown[]): string {
     const text = toText(value, "");
     if (text) return text;
   }
+
   return "";
-}
-
-function uniq(values: string[]): string[] {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
-}
-
-function intersects(left: string[], right: string[]): boolean {
-  const set = new Set(left.filter(Boolean));
-  return right.some((value) => Boolean(value) && set.has(value));
 }
 
 function toNumber(value: unknown, fallback = Number.NaN): number {
@@ -177,6 +112,15 @@ function toTs(value?: string | number | null): number {
   if (value === null || value === undefined || value === "") return 0;
   const ts = new Date(value).getTime();
   return Number.isNaN(ts) ? 0 : ts;
+}
+
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function intersects(left: string[], right: string[]): boolean {
+  const set = new Set(left.filter(Boolean));
+  return right.some((value) => Boolean(value) && set.has(value));
 }
 
 function parseMaybeJson(value: unknown): Record<string, unknown> {
@@ -233,64 +177,63 @@ function formatDuration(ms?: number): string {
   return `${seconds}s`;
 }
 
-function compactTechnicalId(value: string, max = 34): string {
-  const clean = value.trim();
-  if (!clean) return "—";
-  if (clean.length <= max) return clean;
-
-  const keepStart = Math.max(12, Math.floor((max - 3) / 2));
-  const keepEnd = Math.max(8, max - keepStart - 3);
-
-  return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
-}
-
 function makeWrapFriendly(value: string): string {
-  return value.replace(/([/_\-.|:])/g, "$1\u200B");
+  return value.replace(/([/_\-.])/g, "$1\u200B");
 }
 
-function statusBadgeKind(status?: string): DashboardStatusKind {
-  const s = (status || "").trim().toLowerCase();
-
-  if (["processed", "done", "success", "completed", "resolved"].includes(s)) {
-    return "success";
+function sectionFrameClassName(
+  tone: "default" | "attention" | "neutral" = "default"
+): string {
+  if (tone === "attention") {
+    return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(245,158,11,0.08),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
   }
 
-  if (["running", "processing"].includes(s)) {
-    return "running";
+  if (tone === "neutral") {
+    return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.06),transparent_46%),linear-gradient(180deg,rgba(7,18,43,0.68)_0%,rgba(3,8,22,0.54)_100%)]";
   }
 
-  if (["queued", "pending", "new"].includes(s)) {
-    return "queued";
-  }
-
-  if (["retry", "retriable"].includes(s)) {
-    return "retry";
-  }
-
-  if (["error", "failed", "dead", "blocked", "escalated"].includes(s)) {
-    return "failed";
-  }
-
-  return "unknown";
+  return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.08),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
 }
 
-function shellToneFromStatus(status?: string): ShellBadgeTone {
-  const s = (status || "").trim().toLowerCase();
-
-  if (["processed", "done", "success", "completed", "resolved"].includes(s)) {
-    return "success";
-  }
-
-  if (["running", "processing"].includes(s)) return "info";
-  if (["queued", "pending", "new", "retry", "retriable"].includes(s)) {
-    return "warning";
-  }
-  if (["error", "failed", "dead", "blocked", "escalated"].includes(s)) {
-    return "danger";
-  }
-
-  return "muted";
+function asidePanelClassName(): string {
+  return "bg-[radial-gradient(100%_120%_at_100%_0%,rgba(14,165,233,0.08),transparent_52%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
 }
+
+function metaBoxClassName(): string {
+  return "min-w-0 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+}
+
+function metaLabelClassName(): string {
+  return "text-[11px] uppercase tracking-[0.18em] text-white/35";
+}
+
+function actionLinkClassName(
+  variant: "default" | "primary" | "soft" | "danger" = "default",
+  disabled = false
+): string {
+  const base =
+    "inline-flex w-full items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition";
+
+  if (disabled) {
+    return `${base} cursor-not-allowed border border-white/10 bg-white/[0.04] text-zinc-500 opacity-60`;
+  }
+
+  if (variant === "primary") {
+    return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
+  }
+
+  if (variant === "danger") {
+    return `${base} border border-rose-500/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15`;
+  }
+
+  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+}
+
+function preClassName(): string {
+  return "max-h-[420px] overflow-x-auto rounded-[20px] border border-white/10 bg-black/30 p-4 text-xs leading-6 text-zinc-300";
+}
+
+/* Run */
 
 function getRunInputObj(run: RunRecord): Record<string, unknown> {
   return parseMaybeJson(
@@ -393,74 +336,41 @@ function getRunPriority(run: RunRecord): string {
 }
 
 function getRunCreatedAt(run: RunRecord): string {
-  const input = getRunInputObj(run);
-  const result = getRunResultObj(run);
-
-  return pickText(
-    run.created_at,
-    run.Created_At,
-    input.created_at,
-    input.Created_At,
-    result.created_at,
-    result.Created_At,
-    run.started_at,
-    run.Started_At
-  );
+  return pickText(run.created_at, run.Created_At, run.started_at, run.Started_At);
 }
 
 function getRunStartedAt(run: RunRecord): string {
-  const input = getRunInputObj(run);
-  const result = getRunResultObj(run);
-
-  return pickText(
-    run.started_at,
-    run.Started_At,
-    input.started_at,
-    input.Started_At,
-    result.started_at,
-    result.Started_At,
-    run.created_at,
-    run.Created_At
-  );
+  return pickText(run.started_at, run.Started_At, getRunCreatedAt(run));
 }
 
 function getRunFinishedAt(run: RunRecord): string {
+  return pickText(run.finished_at, run.Finished_At);
+}
+
+function getRunUpdatedAt(run: RunRecord): string {
+  return pickText(run.updated_at, run.Updated_At, getRunFinishedAt(run));
+}
+
+function getRunWorkspace(run: RunRecord): string {
   const input = getRunInputObj(run);
   const result = getRunResultObj(run);
 
-  return pickText(
-    run.finished_at,
-    run.Finished_At,
-    input.finished_at,
-    input.Finished_At,
-    result.finished_at,
-    result.Finished_At
+  return (
+    pickText(
+      run.workspace_id,
+      run.Workspace_ID,
+      run.workspace,
+      run.Workspace,
+      input.workspace_id,
+      input.workspaceId,
+      input.Workspace_ID,
+      input.workspace,
+      result.workspace_id,
+      result.workspaceId,
+      result.Workspace_ID,
+      result.workspace
+    ) || ""
   );
-}
-
-function getRunWorkspaceId(run: RunRecord): string {
-  const input = getRunInputObj(run);
-  const result = getRunResultObj(run);
-
-  return pickText(
-    run.workspace_id,
-    run.Workspace_ID,
-    run.workspaceId,
-    run.workspace,
-    run.Workspace,
-    input.workspace_id,
-    input.workspaceId,
-    input.Workspace_ID,
-    input.workspace,
-    result.workspace_id,
-    result.workspaceId,
-    result.Workspace_ID,
-    result.workspace
-  );
-}
-
-function getRunWorkspace(run: RunRecord, fallback = "—"): string {
-  return getRunWorkspaceId(run) || fallback;
 }
 
 function getRunAppName(run: RunRecord): string {
@@ -651,9 +561,7 @@ function getRunMatchKeys(run: RunRecord): string[] {
   ]);
 }
 
-function getCommandId(command: CommandItem): string {
-  return toText((command as Record<string, unknown>).id);
-}
+/* Commands */
 
 function getCommandInput(command: CommandItem): Record<string, unknown> {
   return parseMaybeJson(command.input);
@@ -663,22 +571,8 @@ function getCommandResult(command: CommandItem): Record<string, unknown> {
   return parseMaybeJson(command.result);
 }
 
-function getCommandWorkspaceId(command: CommandItem): string {
-  const input = getCommandInput(command);
-  const result = getCommandResult(command);
-  const record = command as Record<string, unknown>;
-
-  return pickText(
-    record.workspace_id,
-    record.Workspace_ID,
-    record.workspace,
-    input.workspace_id,
-    input.workspaceId,
-    input.workspace,
-    result.workspace_id,
-    result.workspaceId,
-    result.workspace
-  );
+function getCommandId(command: CommandItem): string {
+  return toText((command as Record<string, unknown>).id);
 }
 
 function getCommandRunRecordId(command: CommandItem): string {
@@ -688,6 +582,7 @@ function getCommandRunRecordId(command: CommandItem): string {
 
   return pickText(
     record.run_record_id,
+    record.Run_Record_ID,
     input.run_record_id,
     input.runRecordId,
     result.run_record_id,
@@ -702,6 +597,7 @@ function getCommandRunId(command: CommandItem): string {
 
   return pickText(
     record.linked_run,
+    record.Linked_Run,
     input.run_id,
     input.runId,
     result.run_id,
@@ -716,6 +612,7 @@ function getCommandFlowId(command: CommandItem): string {
 
   return pickText(
     record.flow_id,
+    record.Flow_ID,
     input.flow_id,
     input.flowId,
     result.flow_id,
@@ -730,6 +627,7 @@ function getCommandRootEventId(command: CommandItem): string {
 
   return pickText(
     record.root_event_id,
+    record.Root_Event_ID,
     input.root_event_id,
     input.rootEventId,
     result.root_event_id,
@@ -778,6 +676,21 @@ function getCommandStatus(command: CommandItem): string {
   );
 }
 
+function getCommandWorkspace(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
+
+  return pickText(
+    record.workspace_id,
+    record.Workspace_ID,
+    input.workspace_id,
+    input.workspaceId,
+    result.workspace_id,
+    result.workspaceId
+  );
+}
+
 function getCommandMatchKeys(command: CommandItem): string[] {
   return uniq([
     getCommandId(command),
@@ -791,6 +704,7 @@ function getCommandMatchKeys(command: CommandItem): string[] {
 
 function getCommandUpdatedTs(command: CommandItem): number {
   const record = command as Record<string, unknown>;
+
   return Math.max(
     toTs(record.finished_at as string | number | null | undefined),
     toTs(record.updated_at as string | number | null | undefined),
@@ -799,26 +713,14 @@ function getCommandUpdatedTs(command: CommandItem): number {
   );
 }
 
-function getEventId(event: EventItem): string {
-  return toText((event as Record<string, unknown>).id);
-}
+/* Events */
 
 function getEventPayload(event: EventItem): Record<string, unknown> {
   return parseMaybeJson(event.payload);
 }
 
-function getEventWorkspaceId(event: EventItem): string {
-  const payload = getEventPayload(event);
-  const record = event as Record<string, unknown>;
-
-  return pickText(
-    record.workspace_id,
-    record.Workspace_ID,
-    record.workspace,
-    payload.workspace_id,
-    payload.workspaceId,
-    payload.workspace
-  );
+function getEventId(event: EventItem): string {
+  return toText((event as Record<string, unknown>).id);
 }
 
 function getEventRunId(event: EventItem): string {
@@ -855,6 +757,7 @@ function getEventFlowId(event: EventItem): string {
 
   return pickText(
     record.flow_id,
+    record.Flow_ID,
     payload.flow_id,
     payload.flowId,
     payload.flowid
@@ -865,7 +768,12 @@ function getEventRootEventId(event: EventItem): string {
   const payload = getEventPayload(event);
   const record = event as Record<string, unknown>;
 
-  return pickText(record.root_event_id, payload.root_event_id, payload.rootEventId);
+  return pickText(
+    record.root_event_id,
+    record.Root_Event_ID,
+    payload.root_event_id,
+    payload.rootEventId
+  );
 }
 
 function getEventSourceRecordId(event: EventItem): string {
@@ -889,8 +797,11 @@ function getEventCapability(event: EventItem): string {
   const record = event as Record<string, unknown>;
 
   return (
-    pickText(record.mapped_capability, payload.mapped_capability, payload.capability) ||
-    "—"
+    pickText(
+      record.mapped_capability,
+      payload.mapped_capability,
+      payload.capability
+    ) || "—"
   );
 }
 
@@ -905,7 +816,19 @@ function getEventType(event: EventItem): string {
 }
 
 function getEventStatus(event: EventItem): string {
-  return toText((event as Record<string, unknown>).status) || "unknown";
+  return toText((event as Record<string, unknown>).status, "unknown");
+}
+
+function getEventWorkspace(event: EventItem): string {
+  const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
+
+  return pickText(
+    record.workspace_id,
+    record.Workspace_ID,
+    payload.workspace_id,
+    payload.workspaceId
+  );
 }
 
 function getEventMatchKeys(event: EventItem): string[] {
@@ -921,6 +844,7 @@ function getEventMatchKeys(event: EventItem): string[] {
 
 function getEventUpdatedTs(event: EventItem): number {
   const record = event as Record<string, unknown>;
+
   return Math.max(
     toTs(record.processed_at as string | number | null | undefined),
     toTs(record.updated_at as string | number | null | undefined),
@@ -928,13 +852,17 @@ function getEventUpdatedTs(event: EventItem): number {
   );
 }
 
+/* Incidents */
+
 function getIncidentId(incident: IncidentItem): string {
   return toText((incident as Record<string, unknown>).id);
 }
 
-function getIncidentWorkspaceId(incident: IncidentItem): string {
+function getIncidentTitle(incident: IncidentItem): string {
   const record = incident as Record<string, unknown>;
-  return pickText(record.workspace_id, record.Workspace_ID, record.workspace);
+  return (
+    pickText(record.title, record.name, record.error_id) || "Untitled incident"
+  );
 }
 
 function getIncidentRunRecordId(incident: IncidentItem): string {
@@ -976,6 +904,7 @@ function getIncidentSlaStatus(incident: IncidentItem): string {
 function getIncidentStatus(incident: IncidentItem): string {
   const record = incident as Record<string, unknown>;
   const direct = String(record.status || record.statut_incident || "").trim();
+
   if (direct) return direct;
 
   const sla = String(record.sla_status || "").trim().toLowerCase();
@@ -990,10 +919,14 @@ function getIncidentStatus(incident: IncidentItem): string {
   return "—";
 }
 
-function getIncidentTitle(incident: IncidentItem): string {
+function getIncidentWorkspace(incident: IncidentItem): string {
   const record = incident as Record<string, unknown>;
-  return (
-    pickText(record.title, record.name, record.error_id) || "Untitled incident"
+
+  return pickText(
+    record.workspace_id,
+    record.Workspace_ID,
+    record.workspace,
+    record.Workspace
   );
 }
 
@@ -1013,6 +946,7 @@ function getIncidentMatchKeys(incident: IncidentItem): string[] {
 
 function getIncidentUpdatedTs(incident: IncidentItem): number {
   const record = incident as Record<string, unknown>;
+
   return Math.max(
     toTs(record.resolved_at as string | number | null | undefined),
     toTs(record.updated_at as string | number | null | undefined),
@@ -1021,12 +955,111 @@ function getIncidentUpdatedTs(incident: IncidentItem): number {
   );
 }
 
+/* UI helpers */
+
+function statusBadgeKind(status?: string): DashboardStatusKind {
+  const s = (status || "").trim().toLowerCase();
+
+  if (["processed", "done", "success", "completed", "resolved"].includes(s)) {
+    return "success";
+  }
+
+  if (["running", "processing"].includes(s)) return "running";
+  if (["queued", "pending", "new"].includes(s)) return "queued";
+  if (["retry", "retriable"].includes(s)) return "retry";
+
+  if (["error", "failed", "dead", "blocked", "escalated"].includes(s)) {
+    return "failed";
+  }
+
+  return "unknown";
+}
+
+function statusTone(status?: string): ShellTone {
+  const s = (status || "").trim().toLowerCase();
+
+  if (["processed", "done", "success", "completed", "resolved"].includes(s)) {
+    return "success";
+  }
+
+  if (["running", "processing"].includes(s)) return "info";
+  if (["queued", "pending", "new", "retry", "retriable"].includes(s)) {
+    return "warning";
+  }
+
+  if (["error", "failed", "dead", "blocked", "escalated"].includes(s)) {
+    return "danger";
+  }
+
+  return "muted";
+}
+
+function InfoBox({
+  label,
+  value,
+  breakAll = false,
+}: {
+  label: string;
+  value: string;
+  breakAll?: boolean;
+}) {
+  return (
+    <div className={metaBoxClassName()}>
+      <div className={metaLabelClassName()}>{label}</div>
+      <div
+        className={`mt-2 text-zinc-100 ${breakAll ? "break-all" : ""}`}
+      >
+        {value || "—"}
+      </div>
+    </div>
+  );
+}
+
+function RelatedMiniCard({
+  title,
+  subtitle,
+  href,
+  status,
+}: {
+  title: string;
+  subtitle: string;
+  href: string;
+  status: string;
+}) {
+  const content = (
+    <div className="rounded-[22px] border border-white/10 bg-black/20 p-4 transition hover:border-white/15 hover:bg-white/[0.04]">
+      <div className="flex flex-wrap items-center gap-2">
+        <DashboardStatusBadge
+          kind={statusBadgeKind(status)}
+          label={toText(status, "unknown").toUpperCase()}
+        />
+      </div>
+
+      <div className="mt-3 break-words text-base font-semibold leading-6 text-white">
+        {title}
+      </div>
+
+      <div className="mt-2 break-all text-sm leading-6 text-zinc-400">
+        {subtitle || "—"}
+      </div>
+    </div>
+  );
+
+  if (!href) return content;
+
+  return (
+    <Link href={href} className="block">
+      {content}
+    </Link>
+  );
+}
+
 function buildFlowHref(
   run: RunRecord,
   relatedCommands: CommandItem[],
   relatedEvents: EventItem[],
   relatedIncidents: IncidentItem[],
-  activeWorkspaceId?: string
+  activeWorkspaceId: string
 ): string {
   const direct = pickText(
     getRunFlowId(run),
@@ -1092,9 +1125,10 @@ function buildFlowHref(
 function buildEventHref(
   run: RunRecord,
   relatedEvents: EventItem[],
-  activeWorkspaceId?: string
+  activeWorkspaceId: string
 ): string {
   const relatedId = relatedEvents[0] ? getEventId(relatedEvents[0]) : "";
+
   if (relatedId) {
     return appendWorkspaceIdToHref(
       `/events/${encodeURIComponent(relatedId)}`,
@@ -1103,6 +1137,7 @@ function buildEventHref(
   }
 
   const fallback = pickText(getRunRootEventId(run), getRunSourceEventId(run));
+
   if (fallback) {
     return appendWorkspaceIdToHref(
       `/events/${encodeURIComponent(fallback)}`,
@@ -1116,9 +1151,10 @@ function buildEventHref(
 function buildCommandHref(
   run: RunRecord,
   relatedCommands: CommandItem[],
-  activeWorkspaceId?: string
+  activeWorkspaceId: string
 ): string {
   const relatedId = relatedCommands[0] ? getCommandId(relatedCommands[0]) : "";
+
   if (relatedId) {
     return appendWorkspaceIdToHref(
       `/commands/${encodeURIComponent(relatedId)}`,
@@ -1127,6 +1163,7 @@ function buildCommandHref(
   }
 
   const fallback = getRunLinkedCommandId(run);
+
   if (fallback) {
     return appendWorkspaceIdToHref(
       `/commands/${encodeURIComponent(fallback)}`,
@@ -1139,128 +1176,30 @@ function buildCommandHref(
 
 function buildIncidentHref(
   relatedIncidents: IncidentItem[],
-  activeWorkspaceId?: string
+  activeWorkspaceId: string
 ): string {
-  const incidentId = relatedIncidents[0] ? getIncidentId(relatedIncidents[0]) : "";
-  return incidentId
-    ? appendWorkspaceIdToHref(
-        `/incidents/${encodeURIComponent(incidentId)}`,
-        activeWorkspaceId
-      )
+  const incidentId = relatedIncidents[0]
+    ? getIncidentId(relatedIncidents[0])
     : "";
-}
 
-function DetailBox({
-  label,
-  value,
-  breakAll = false,
-}: {
-  label: string;
-  value: string;
-  breakAll?: boolean;
-}) {
-  return (
-    <div className={metaBoxClassName()}>
-      <div className={metaLabelClassName()}>{label}</div>
-      <div
-        className={`mt-2 text-zinc-100 ${
-          breakAll ? "break-all [overflow-wrap:anywhere]" : ""
-        }`}
-      >
-        {value || "—"}
-      </div>
-    </div>
+  if (!incidentId) return "";
+
+  return appendWorkspaceIdToHref(
+    `/incidents/${encodeURIComponent(incidentId)}`,
+    activeWorkspaceId
   );
 }
 
-function RelatedCard({
-  href,
-  title,
-  status,
-  meta,
-}: {
-  href: string;
-  title: string;
-  status: string;
-  meta: { label: string; value: string }[];
-}) {
-  const content = (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="min-w-0 break-words text-base font-semibold text-white [overflow-wrap:anywhere]">
-          {title}
-        </div>
-
-        <DashboardStatusBadge
-          kind={statusBadgeKind(status)}
-          label={toText(status, "unknown").toUpperCase()}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 sm:grid-cols-2">
-        {meta.map((item) => (
-          <div key={`${item.label}-${item.value}`} className="min-w-0">
-            <div className={metaLabelClassName()}>{item.label}</div>
-            <div className="mt-1 break-all text-zinc-200 [overflow-wrap:anywhere]">
-              {item.value || "—"}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  if (!href) {
-    return (
-      <article className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-        {content}
-      </article>
-    );
-  }
-
-  return (
-    <Link
-      href={href}
-      className="block rounded-[22px] border border-white/10 bg-black/20 p-4 transition hover:border-white/15 hover:bg-white/[0.04]"
-    >
-      {content}
-    </Link>
-  );
-}
-
-function CodePanel({
-  title,
-  value,
-}: {
-  title: string;
-  value: string;
-}) {
-  return (
-    <SectionCard
-      title={title}
-      description="Aperçu technique conservé pour diagnostic sans casser la lecture opérationnelle."
-      tone="neutral"
-      className={sectionFrameClassName("neutral")}
-    >
-      <pre className="max-h-[420px] overflow-auto rounded-[20px] border border-white/10 bg-black/30 p-4 text-xs leading-6 text-zinc-300">
-{value}
-      </pre>
-    </SectionCard>
-  );
-}
-
-export default async function RunDetailPage({
-  params,
-  searchParams,
-}: PageProps) {
+export default async function RunDetailPage({ params, searchParams }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const resolvedSearchParams = (await Promise.resolve(
     searchParams ?? {}
   )) as SearchParams;
 
+  const id = decodeURIComponent(resolvedParams.id);
   const cookieStore = await cookies();
 
-  const workspaceContext = resolveWorkspaceContext({
+  const workspace = resolveWorkspaceContext({
     searchParams: resolvedSearchParams,
     cookieValues: {
       bosai_active_workspace_id:
@@ -1274,30 +1213,24 @@ export default async function RunDetailPage({
     },
   });
 
-  const activeWorkspaceId = workspaceContext.activeWorkspaceId || "";
-  const id = decodeURIComponent(resolvedParams.id);
+  const activeWorkspaceId = workspace.activeWorkspaceId || "";
 
   let run: RunRecord | null = null;
 
   try {
-    const fetchRunsFlexible = fetchRuns as unknown as (
-      arg?: unknown
-    ) => Promise<FlexibleRunsResponse>;
-
-    const runsData = await fetchRunsFlexible({
-      workspaceId: activeWorkspaceId || undefined,
-    });
-
-    const runs = Array.isArray(runsData?.runs) ? runsData.runs : [];
+    const runsData = await fetchRuns();
+    const runs = Array.isArray(runsData?.runs)
+      ? (runsData.runs as RunRecord[])
+      : [];
 
     const scopedRuns = runs.filter((item) =>
-      workspaceMatchesOrUnscoped(getRunWorkspaceId(item), activeWorkspaceId)
+      workspaceMatchesOrUnscoped(getRunWorkspace(item), activeWorkspaceId)
     );
 
     run =
-      scopedRuns.find((item) => {
-        return getRunRecordId(item) === id || getRunId(item) === id;
-      }) || null;
+      scopedRuns.find(
+        (item) => getRunRecordId(item) === id || getRunId(item) === id
+      ) || null;
   } catch {
     run = null;
   }
@@ -1312,7 +1245,7 @@ export default async function RunDetailPage({
   const status = getRunStatus(run);
   const worker = getRunWorker(run);
   const priority = getRunPriority(run);
-  const workspace = getRunWorkspace(run, activeWorkspaceId || "production");
+  const runWorkspace = getRunWorkspace(run) || activeWorkspaceId || "production";
   const appName = getRunAppName(run);
   const appVersion = getRunAppVersion(run);
   const idempotencyKey = getRunIdempotencyKey(run);
@@ -1320,6 +1253,7 @@ export default async function RunDetailPage({
   const createdAt = getRunCreatedAt(run);
   const startedAt = getRunStartedAt(run);
   const finishedAt = getRunFinishedAt(run);
+  const updatedAt = getRunUpdatedAt(run);
   const durationMs = getRunDurationMs(run);
   const flowId = getRunFlowId(run);
   const rootEventId = getRunRootEventId(run);
@@ -1327,7 +1261,6 @@ export default async function RunDetailPage({
   const linkedCommandId = getRunLinkedCommandId(run);
   const inputJson = stringifyPretty(getRunInput(run));
   const resultJson = stringifyPretty(getRunResult(run));
-
   const runMatchKeys = getRunMatchKeys(run);
 
   let relatedCommands: CommandItem[] = [];
@@ -1335,22 +1268,14 @@ export default async function RunDetailPage({
   let relatedIncidents: IncidentItem[] = [];
 
   try {
-    const fetchCommandsFlexible = fetchCommands as unknown as (
-      arg?: unknown
-    ) => Promise<FlexibleCommandsResponse>;
-
-    const commandsData = await fetchCommandsFlexible({
-      limit: 500,
-      workspaceId: activeWorkspaceId || undefined,
-    });
-
+    const commandsData = await fetchCommands(500);
     const commands = Array.isArray(commandsData?.commands)
       ? commandsData.commands
       : [];
 
     relatedCommands = commands
       .filter((command) =>
-        workspaceMatchesOrUnscoped(getCommandWorkspaceId(command), activeWorkspaceId)
+        workspaceMatchesOrUnscoped(getCommandWorkspace(command), activeWorkspaceId)
       )
       .filter((command) => {
         const commandKeys = getCommandMatchKeys(command);
@@ -1366,23 +1291,16 @@ export default async function RunDetailPage({
   }
 
   try {
-    const fetchEventsFlexible = fetchEvents as unknown as (
-      arg?: unknown
-    ) => Promise<FlexibleEventsResponse>;
-
-    const eventsData = await fetchEventsFlexible({
-      limit: 500,
-      workspaceId: activeWorkspaceId || undefined,
-    });
-
+    const eventsData = await fetchEvents(500);
     const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
+
     const relatedCommandIds = uniq(
       relatedCommands.map((item) => getCommandId(item)).filter(Boolean)
     );
 
     relatedEvents = events
       .filter((event) =>
-        workspaceMatchesOrUnscoped(getEventWorkspaceId(event), activeWorkspaceId)
+        workspaceMatchesOrUnscoped(getEventWorkspace(event), activeWorkspaceId)
       )
       .filter((event) => {
         const eventKeys = getEventMatchKeys(event);
@@ -1399,15 +1317,7 @@ export default async function RunDetailPage({
   }
 
   try {
-    const fetchIncidentsFlexible = fetchIncidents as unknown as (
-      arg?: unknown
-    ) => Promise<FlexibleIncidentsResponse>;
-
-    const incidentsData = await fetchIncidentsFlexible({
-      limit: 300,
-      workspaceId: activeWorkspaceId || undefined,
-    });
-
+    const incidentsData = await fetchIncidents(300);
     const incidents = Array.isArray(incidentsData?.incidents)
       ? incidentsData.incidents
       : [];
@@ -1419,7 +1329,7 @@ export default async function RunDetailPage({
     relatedIncidents = incidents
       .filter((incident) =>
         workspaceMatchesOrUnscoped(
-          getIncidentWorkspaceId(incident),
+          getIncidentWorkspace(incident),
           activeWorkspaceId
         )
       )
@@ -1450,41 +1360,36 @@ export default async function RunDetailPage({
   const eventHref = buildEventHref(run, relatedEvents, activeWorkspaceId);
   const commandHref = buildCommandHref(run, relatedCommands, activeWorkspaceId);
   const incidentHref = buildIncidentHref(relatedIncidents, activeWorkspaceId);
-  const runsHref = appendWorkspaceIdToHref("/runs", activeWorkspaceId);
 
-  const hasFlow = flowHref !== "";
-  const hasEvent = eventHref !== "";
-  const hasCommand = commandHref !== "";
-  const hasIncident = incidentHref !== "";
-
-  const shellBadges: { label: string; tone?: ShellBadgeTone }[] = [
-    {
-      label: toText(status, "unknown").toUpperCase(),
-      tone: shellToneFromStatus(status),
-    },
-    { label: "RUN DETAIL", tone: "info" },
-    { label: dryRun ? "DRY RUN" : "LIVE", tone: dryRun ? "warning" : "success" },
-  ];
+  const statusLabel = toText(status, "unknown").toUpperCase();
+  const modeLabel = dryRun ? "DRY RUN" : "LIVE";
+  const hasLinkedObjects =
+    relatedCommands.length > 0 ||
+    relatedEvents.length > 0 ||
+    relatedIncidents.length > 0;
 
   return (
     <ControlPlaneShell
       eyebrow="BOSAI Control Plane"
       title={makeWrapFriendly(capability)}
       description="Lecture détaillée d’un run BOSAI avec identité, objets liés, payloads techniques et navigation croisée."
-      badges={shellBadges}
+      badges={[
+        { label: statusLabel, tone: statusTone(status) },
+        { label: "RUN DETAIL", tone: "info" },
+        { label: modeLabel, tone: dryRun ? "warning" : "success" },
+      ]}
       metrics={[
         { label: "Created", value: formatDate(createdAt) },
         { label: "Started", value: formatDate(startedAt) },
         { label: "Finished", value: formatDate(finishedAt) },
-        {
-          label: "Duration",
-          value: formatDuration(durationMs),
-          toneClass: "text-white",
-        },
+        { label: "Duration", value: formatDuration(durationMs) },
       ]}
       actions={
         <>
-          <Link href={runsHref} className={actionLinkClassName("soft")}>
+          <Link
+            href={appendWorkspaceIdToHref("/runs", activeWorkspaceId)}
+            className={actionLinkClassName("soft")}
+          >
             Retour aux runs
           </Link>
 
@@ -1499,57 +1404,60 @@ export default async function RunDetailPage({
               Ouvrir la command liée
             </Link>
           ) : null}
+
+          {incidentHref ? (
+            <Link href={incidentHref} className={actionLinkClassName("danger")}>
+              Ouvrir l’incident lié
+            </Link>
+          ) : null}
         </>
       }
       aside={
-        <div className="space-y-6">
-          <SidePanelCard title="Résumé run" className={sidePanelClassName()}>
+        <div className="hidden xl:block xl:space-y-6">
+          <SidePanelCard title="Signal run" className={asidePanelClassName()}>
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 <DashboardStatusBadge
                   kind={statusBadgeKind(status)}
-                  label={toText(status, "unknown").toUpperCase()}
+                  label={statusLabel}
                 />
                 <DashboardStatusBadge
                   kind={dryRun ? "retry" : "success"}
-                  label={dryRun ? "DRY RUN" : "LIVE"}
+                  label={modeLabel}
                 />
               </div>
 
               <div className="space-y-2 text-sm leading-6 text-white/65">
                 <div>
-                  Workspace : <span className="text-white/90">{workspace}</span>
+                  Workspace :{" "}
+                  <span className="text-white/90">{runWorkspace}</span>
                 </div>
                 <div>
                   Worker : <span className="text-white/90">{worker}</span>
                 </div>
                 <div>
-                  Run :{" "}
-                  <span className="break-all text-white/90">
-                    {compactTechnicalId(runId || recordId)}
-                  </span>
+                  Priority : <span className="text-white/90">{priority}</span>
                 </div>
                 <div>
-                  Flow :{" "}
+                  Run ID :{" "}
                   <span className="break-all text-white/90">
-                    {compactTechnicalId(flowId || rootEventId || sourceEventId)}
+                    {runId || "—"}
                   </span>
                 </div>
               </div>
             </div>
           </SidePanelCard>
 
-          <SidePanelCard title="Navigation" className={sidePanelClassName()}>
+          <SidePanelCard title="Navigation" className={asidePanelClassName()}>
             <div className="space-y-3">
-              <Link href={runsHref} className={actionLinkClassName("soft")}>
-                Retour à la liste runs
+              <Link
+                href={appendWorkspaceIdToHref("/runs", activeWorkspaceId)}
+                className={actionLinkClassName("soft")}
+              >
+                Retour aux runs
               </Link>
 
-              <Link href={runsHref} className={actionLinkClassName("primary")}>
-                Voir tous les runs
-              </Link>
-
-              {hasFlow ? (
+              {flowHref ? (
                 <Link href={flowHref} className={actionLinkClassName("soft")}>
                   Ouvrir le flow lié
                 </Link>
@@ -1559,7 +1467,7 @@ export default async function RunDetailPage({
                 </span>
               )}
 
-              {hasEvent ? (
+              {eventHref ? (
                 <Link href={eventHref} className={actionLinkClassName("soft")}>
                   Ouvrir l’event lié
                 </Link>
@@ -1569,8 +1477,8 @@ export default async function RunDetailPage({
                 </span>
               )}
 
-              {hasCommand ? (
-                <Link href={commandHref} className={actionLinkClassName("soft")}>
+              {commandHref ? (
+                <Link href={commandHref} className={actionLinkClassName("primary")}>
                   Ouvrir la command liée
                 </Link>
               ) : (
@@ -1579,7 +1487,7 @@ export default async function RunDetailPage({
                 </span>
               )}
 
-              {hasIncident ? (
+              {incidentHref ? (
                 <Link href={incidentHref} className={actionLinkClassName("danger")}>
                   Ouvrir l’incident lié
                 </Link>
@@ -1597,13 +1505,12 @@ export default async function RunDetailPage({
         title="Signal run"
         description="Lecture rapide du statut, du mode et du contexte d’exécution."
         className={sectionFrameClassName("default")}
-        action={<SectionCountPill value={relatedCommands.length} tone="info" />}
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <DetailBox label="Status" value={toText(status, "unknown").toUpperCase()} />
-          <DetailBox label="Mode" value={dryRun ? "DRY RUN" : "LIVE"} />
-          <DetailBox label="Priority" value={priority} />
-          <DetailBox label="Workspace" value={workspace} />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <InfoBox label="Status" value={statusLabel} />
+          <InfoBox label="Mode" value={modeLabel} />
+          <InfoBox label="Priority" value={priority} />
+          <InfoBox label="Workspace" value={runWorkspace} />
         </div>
       </SectionCard>
 
@@ -1613,18 +1520,22 @@ export default async function RunDetailPage({
         tone="neutral"
         className={sectionFrameClassName("neutral")}
       >
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-3">
-          <DetailBox label="Record ID" value={recordId || "—"} breakAll />
-          <DetailBox label="Run ID" value={runId || "—"} breakAll />
-          <DetailBox label="Capability" value={capability} breakAll />
-          <DetailBox label="Worker" value={worker} />
-          <DetailBox label="App" value={appName} />
-          <DetailBox label="Version" value={appVersion} />
-          <DetailBox label="Flow ID" value={flowId || "—"} breakAll />
-          <DetailBox label="Root event" value={rootEventId || "—"} breakAll />
-          <DetailBox label="Source event" value={sourceEventId || "—"} breakAll />
-          <div className="sm:col-span-2 xl:col-span-3">
-            <DetailBox label="Idempotency key" value={idempotencyKey} breakAll />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <InfoBox label="Record ID" value={recordId || "—"} breakAll />
+          <InfoBox label="Run ID" value={runId || "—"} breakAll />
+          <InfoBox label="Capability" value={capability} />
+          <InfoBox label="Worker" value={worker} />
+          <InfoBox label="App" value={appName} />
+          <InfoBox label="Version" value={appVersion} />
+          <InfoBox label="Flow ID" value={flowId || "—"} breakAll />
+          <InfoBox label="Root event" value={rootEventId || "—"} breakAll />
+          <InfoBox label="Source event" value={sourceEventId || "—"} breakAll />
+          <div className="md:col-span-2 xl:col-span-3">
+            <InfoBox
+              label="Idempotency key"
+              value={idempotencyKey}
+              breakAll
+            />
           </div>
         </div>
       </SectionCard>
@@ -1632,27 +1543,34 @@ export default async function RunDetailPage({
       <SectionCard
         title="Objets liés"
         description="Commands, events et incidents détectés autour de ce run."
-        className={sectionFrameClassName("default")}
+        tone="neutral"
+        className={sectionFrameClassName("neutral")}
       >
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-lg font-semibold text-white">Related commands</h3>
+        <div className="space-y-7">
+          <div>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold text-white">
+                Related commands
+              </h3>
               <SectionCountPill value={relatedCommands.length} tone="info" />
             </div>
 
             {relatedCommands.length === 0 ? (
-              <div className={emptyStateClassName()}>
-                Aucune command liée détectée pour ce run.
-              </div>
+              <EmptyStatePanel
+                title="Aucune command liée"
+                description="Aucune command liée détectée pour ce run."
+              />
             ) : (
-              <div className="space-y-3">
-                {relatedCommands.slice(0, 5).map((command, index) => {
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                {relatedCommands.slice(0, 6).map((command, index) => {
                   const commandId = getCommandId(command);
 
                   return (
-                    <RelatedCard
+                    <RelatedMiniCard
                       key={commandId || `command-${index}`}
+                      title={getCommandCapability(command)}
+                      subtitle={commandId || "—"}
+                      status={getCommandStatus(command)}
                       href={
                         commandId
                           ? appendWorkspaceIdToHref(
@@ -1661,12 +1579,6 @@ export default async function RunDetailPage({
                             )
                           : ""
                       }
-                      title={getCommandCapability(command)}
-                      status={getCommandStatus(command)}
-                      meta={[
-                        { label: "ID", value: commandId || "—" },
-                        { label: "Flow", value: getCommandFlowId(command) || "—" },
-                      ]}
                     />
                   );
                 })}
@@ -1674,24 +1586,30 @@ export default async function RunDetailPage({
             )}
           </div>
 
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-lg font-semibold text-white">Related events</h3>
+          <div>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold text-white">
+                Related events
+              </h3>
               <SectionCountPill value={relatedEvents.length} tone="info" />
             </div>
 
             {relatedEvents.length === 0 ? (
-              <div className={emptyStateClassName()}>
-                Aucun event lié détecté pour ce run.
-              </div>
+              <EmptyStatePanel
+                title="Aucun event lié"
+                description="Aucun event lié détecté pour ce run."
+              />
             ) : (
-              <div className="space-y-3">
-                {relatedEvents.slice(0, 5).map((event, index) => {
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                {relatedEvents.slice(0, 6).map((event, index) => {
                   const eventId = getEventId(event);
 
                   return (
-                    <RelatedCard
+                    <RelatedMiniCard
                       key={eventId || `event-${index}`}
+                      title={getEventType(event)}
+                      subtitle={eventId || getEventCapability(event) || "—"}
+                      status={getEventStatus(event)}
                       href={
                         eventId
                           ? appendWorkspaceIdToHref(
@@ -1700,15 +1618,6 @@ export default async function RunDetailPage({
                             )
                           : ""
                       }
-                      title={getEventType(event)}
-                      status={getEventStatus(event)}
-                      meta={[
-                        { label: "ID", value: eventId || "—" },
-                        {
-                          label: "Capability",
-                          value: getEventCapability(event) || "—",
-                        },
-                      ]}
                     />
                   );
                 })}
@@ -1716,9 +1625,11 @@ export default async function RunDetailPage({
             )}
           </div>
 
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-lg font-semibold text-white">Related incidents</h3>
+          <div>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold text-white">
+                Related incidents
+              </h3>
               <SectionCountPill
                 value={relatedIncidents.length}
                 tone={relatedIncidents.length > 0 ? "danger" : "muted"}
@@ -1726,17 +1637,21 @@ export default async function RunDetailPage({
             </div>
 
             {relatedIncidents.length === 0 ? (
-              <div className={emptyStateClassName()}>
-                Aucun incident lié détecté pour ce run.
-              </div>
+              <EmptyStatePanel
+                title="Aucun incident lié"
+                description="Aucun incident lié détecté pour ce run."
+              />
             ) : (
-              <div className="space-y-3">
-                {relatedIncidents.slice(0, 5).map((incident, index) => {
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                {relatedIncidents.slice(0, 6).map((incident, index) => {
                   const incidentId = getIncidentId(incident);
 
                   return (
-                    <RelatedCard
+                    <RelatedMiniCard
                       key={incidentId || `incident-${index}`}
+                      title={getIncidentTitle(incident)}
+                      subtitle={incidentId || getIncidentSlaStatus(incident)}
+                      status={getIncidentStatus(incident)}
                       href={
                         incidentId
                           ? appendWorkspaceIdToHref(
@@ -1745,12 +1660,6 @@ export default async function RunDetailPage({
                             )
                           : ""
                       }
-                      title={getIncidentTitle(incident)}
-                      status={getIncidentStatus(incident)}
-                      meta={[
-                        { label: "ID", value: incidentId || "—" },
-                        { label: "SLA", value: getIncidentSlaStatus(incident) },
-                      ]}
                     />
                   );
                 })}
@@ -1766,23 +1675,47 @@ export default async function RunDetailPage({
         tone="neutral"
         className={sectionFrameClassName("neutral")}
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <DetailBox label="Commands détectées" value={String(relatedCommands.length)} />
-          <DetailBox label="Events détectés" value={String(relatedEvents.length)} />
-          <DetailBox label="Incidents détectés" value={String(relatedIncidents.length)} />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <InfoBox
+            label="Commands détectées"
+            value={String(relatedCommands.length)}
+          />
+          <InfoBox label="Events détectés" value={String(relatedEvents.length)} />
+          <InfoBox
+            label="Incidents détectés"
+            value={String(relatedIncidents.length)}
+          />
         </div>
       </SectionCard>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <CodePanel title="Input preview" value={stringifyPretty(getRunInput(run))} />
-        <CodePanel title="Result preview" value={stringifyPretty(getRunResult(run))} />
-      </div>
+      <SectionCard
+        title="Input preview"
+        description="Aperçu technique conservé pour diagnostic sans casser la lecture opérationnelle."
+        tone="neutral"
+        className={sectionFrameClassName("neutral")}
+      >
+        <pre className={preClassName()}>{inputJson}</pre>
+      </SectionCard>
 
-      {!hasCommand && !hasEvent && !hasIncident && !hasFlow ? (
-        <EmptyStatePanel
-          title="Aucun objet lié détecté"
-          description="Le run est lisible, mais aucun flow, event, command ou incident lié n’a été reconstruit pour le moment."
-        />
+      <SectionCard
+        title="Result preview"
+        description="Aperçu technique conservé pour diagnostic sans casser la lecture opérationnelle."
+        tone="neutral"
+        className={sectionFrameClassName("neutral")}
+      >
+        <pre className={preClassName()}>{resultJson}</pre>
+      </SectionCard>
+
+      {!hasLinkedObjects ? (
+        <div className="rounded-[28px] border border-dashed border-white/10 bg-white/[0.03] p-5 md:p-6">
+          <h3 className="text-xl font-semibold text-white">
+            Aucun objet lié détecté
+          </h3>
+          <p className="mt-3 text-sm leading-6 text-zinc-400">
+            Le run est lisible, mais aucun flow, event, command ou incident lié
+            n’a été reconstruit pour le moment.
+          </p>
+        </div>
       ) : null}
     </ControlPlaneShell>
   );
