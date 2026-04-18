@@ -104,6 +104,10 @@ function statCardClassName(): string {
   return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
+function compactCardClassName(): string {
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
 function sectionLabelClassName(): string {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
@@ -507,11 +511,6 @@ function isCriticalIncident(incident: IncidentItem): boolean {
   return getIncidentSeverity(incident) === "critical";
 }
 
-function isWarningIncident(incident: IncidentItem): boolean {
-  const severity = getIncidentSeverity(incident);
-  return severity === "warning" || severity === "medium";
-}
-
 function statusTone(status: string): string {
   const normalized = status.trim().toLowerCase();
 
@@ -592,9 +591,9 @@ function getCommandWorkspace(command: CommandItem): string {
   return (
     toText((command as Record<string, unknown>).workspace_id) ||
     toText(input.workspace_id) ||
-    toText(input.workspaceId) ||
+    toText((input as Record<string, unknown>).workspaceId) ||
     toText(result.workspace_id) ||
-    toText(result.workspaceId) ||
+    toText((result as Record<string, unknown>).workspaceId) ||
     "—"
   );
 }
@@ -614,9 +613,9 @@ function getCommandFlowId(command: CommandItem): string {
   return (
     toText((command as Record<string, unknown>).flow_id) ||
     toText(input.flow_id) ||
-    toText(input.flowId) ||
+    toText((input as Record<string, unknown>).flowId) ||
     toText(result.flow_id) ||
-    toText(result.flowId) ||
+    toText((result as Record<string, unknown>).flowId) ||
     ""
   );
 }
@@ -652,9 +651,9 @@ function getCommandFlowKey(command: CommandItem): string {
   return (
     toText(record.flow_id) ||
     toText(input.flow_id) ||
-    toText(input.flowId) ||
+    toText((input as Record<string, unknown>).flowId) ||
     toText(result.flow_id) ||
-    toText(result.flowId) ||
+    toText((result as Record<string, unknown>).flowId) ||
     toText(record.root_event_id) ||
     toText(input.root_event_id) ||
     toText((input as Record<string, unknown>).rootEventId) ||
@@ -731,21 +730,6 @@ function commandSummaryLine(command: CommandItem): string {
 }
 
 /* ---------------- UI blocks ---------------- */
-
-function MetricRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-2.5">
-      <span className="text-zinc-400">{label}</span>
-      <span className="font-medium text-white">{value}</span>
-    </div>
-  );
-}
 
 function StatCard({
   label,
@@ -954,6 +938,72 @@ function ControlPlaneSignalRow({
     <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
       <span className="text-sm text-zinc-400">{label}</span>
       <span className="text-sm font-medium text-white">{value}</span>
+    </div>
+  );
+}
+
+function SnapshotMetricCell({
+  label,
+  value,
+  toneClass = "text-white",
+}: {
+  label: string;
+  value: string;
+  toneClass?: string;
+}) {
+  return (
+    <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+      <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">{label}</div>
+      <div className={`mt-2 text-lg font-semibold tracking-tight ${toneClass}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function SnapshotCard({
+  title,
+  items,
+}: {
+  title: string;
+  items: Array<{
+    label: string;
+    value: string;
+    toneClass?: string;
+  }>;
+}) {
+  return (
+    <div className={compactCardClassName()}>
+      <div className="mb-4 text-xl font-medium text-white">{title}</div>
+      <div className="grid grid-cols-2 gap-3">
+        {items.map((item) => (
+          <SnapshotMetricCell
+            key={`${title}-${item.label}`}
+            label={item.label}
+            value={item.value}
+            toneClass={item.toneClass}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SlaCompactCard({
+  label,
+  value,
+  toneClass,
+}: {
+  label: string;
+  value: string;
+  toneClass: string;
+}) {
+  return (
+    <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className={`mt-3 text-3xl font-semibold tracking-tight ${toneClass}`}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -1410,64 +1460,65 @@ export default async function OverviewPage() {
         title="System snapshot"
         description="État synthétique des exécutions, commands, events et SLA."
       >
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-4">
-          <div className={cardClassName()}>
-            <div className="mb-5 text-lg font-medium text-white">System health</div>
-            <div className="space-y-3 text-sm">
-              <MetricRow
-                label="Health status"
-                value={
-                  <span className={systemStatusTone(healthLabel(healthScore, healthStatus))}>
-                    {healthLabel(healthScore, healthStatus)}
-                  </span>
-                }
-              />
-              <MetricRow
-                label="Worker"
-                value={<span className={systemStatusTone("healthy")}>Healthy</span>}
-              />
-              <MetricRow
-                label="Airtable"
-                value={<span className={systemStatusTone("ok")}>OK</span>}
-              />
-              <MetricRow
-                label="Policies"
-                value={<span className={systemStatusTone("loaded")}>Loaded</span>}
-              />
-            </div>
-          </div>
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-4">
+          <SnapshotCard
+            title="System health"
+            items={[
+              {
+                label: "Health",
+                value: healthLabel(healthScore, healthStatus),
+                toneClass: systemStatusTone(healthLabel(healthScore, healthStatus)),
+              },
+              {
+                label: "Worker",
+                value: "Healthy",
+                toneClass: systemStatusTone("healthy"),
+              },
+              {
+                label: "Airtable",
+                value: "OK",
+                toneClass: systemStatusTone("ok"),
+              },
+              {
+                label: "Policies",
+                value: "Loaded",
+                toneClass: systemStatusTone("loaded"),
+              },
+            ]}
+          />
 
-          <div className={cardClassName()}>
-            <div className="mb-5 text-lg font-medium text-white">Runs snapshot</div>
-            <div className="space-y-3 text-sm">
-              <MetricRow label="Running" value={formatNumber(runningRuns)} />
-              <MetricRow label="Done" value={formatNumber(doneRuns)} />
-              <MetricRow label="Error" value={formatNumber(errorRuns)} />
-              <MetricRow label="Total" value={formatNumber(totalRuns)} />
-            </div>
-          </div>
+          <SnapshotCard
+            title="Runs snapshot"
+            items={[
+              { label: "Running", value: formatNumber(runningRuns) },
+              { label: "Done", value: formatNumber(doneRuns) },
+              { label: "Error", value: formatNumber(errorRuns) },
+              { label: "Total", value: formatNumber(totalRuns) },
+            ]}
+          />
 
-          <div className={cardClassName()}>
-            <div className="mb-5 text-lg font-medium text-white">Commands snapshot</div>
-            <div className="space-y-3 text-sm">
-              <MetricRow label="Queued" value={formatNumber(queuedCommands)} />
-              <MetricRow label="Running" value={formatNumber(runningCommands)} />
-              <MetricRow label="Retry" value={formatNumber(retryCommands)} />
-              <MetricRow label="Done" value={formatNumber(doneCommands)} />
-              <MetricRow label="Failed/Dead" value={formatNumber(failedCommands)} />
-            </div>
-          </div>
+          <SnapshotCard
+            title="Commands snapshot"
+            items={[
+              { label: "Queued", value: formatNumber(queuedCommands) },
+              { label: "Running", value: formatNumber(runningCommands) },
+              { label: "Retry", value: formatNumber(retryCommands) },
+              { label: "Done", value: formatNumber(doneCommands) },
+              { label: "Failed", value: formatNumber(failedCommands) },
+              { label: "Total", value: formatNumber(totalCommands) },
+            ]}
+          />
 
-          <div className={cardClassName()}>
-            <div className="mb-5 text-lg font-medium text-white">Events snapshot</div>
-            <div className="space-y-3 text-sm">
-              <MetricRow label="New" value={formatNumber(newEvents)} />
-              <MetricRow label="Queued" value={formatNumber(queuedEvents)} />
-              <MetricRow label="Processed" value={formatNumber(processedEvents)} />
-              <MetricRow label="Errors" value={formatNumber(eventErrors)} />
-              <MetricRow label="Total" value={formatNumber(totalEvents)} />
-            </div>
-          </div>
+          <SnapshotCard
+            title="Events snapshot"
+            items={[
+              { label: "New", value: formatNumber(newEvents) },
+              { label: "Queued", value: formatNumber(queuedEvents) },
+              { label: "Processed", value: formatNumber(processedEvents) },
+              { label: "Errors", value: formatNumber(eventErrors) },
+              { label: "Total", value: formatNumber(totalEvents) },
+            ]}
+          />
         </div>
       </SectionBlock>
 
@@ -1475,53 +1526,42 @@ export default async function OverviewPage() {
         title="SLA snapshot"
         description="Répartition actuelle des signaux SLA."
         action={
-          <Link href="/sla" className={ctaClassName("primary")}>
+          <Link href="/sla" className={ctaCompactClassName()}>
             Ouvrir la vue SLA
           </Link>
         }
       >
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-6">
-          <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
-            <div className="text-sm text-zinc-400">OK</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-emerald-300">
-              {formatNumber(slaOk)}
-            </div>
-          </div>
-
-          <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
-            <div className="text-sm text-zinc-400">Warning</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-amber-300">
-              {formatNumber(slaWarning)}
-            </div>
-          </div>
-
-          <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
-            <div className="text-sm text-zinc-400">Breached</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-red-300">
-              {formatNumber(slaBreached)}
-            </div>
-          </div>
-
-          <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
-            <div className="text-sm text-zinc-400">Escalated</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-rose-300">
-              {formatNumber(slaEscalated)}
-            </div>
-          </div>
-
-          <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
-            <div className="text-sm text-zinc-400">Queued</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-violet-300">
-              {formatNumber(slaQueued)}
-            </div>
-          </div>
-
-          <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
-            <div className="text-sm text-zinc-400">Unknown</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-zinc-300">
-              {formatNumber(slaUnknown)}
-            </div>
-          </div>
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
+          <SlaCompactCard
+            label="OK"
+            value={formatNumber(slaOk)}
+            toneClass="text-emerald-300"
+          />
+          <SlaCompactCard
+            label="Warning"
+            value={formatNumber(slaWarning)}
+            toneClass="text-amber-300"
+          />
+          <SlaCompactCard
+            label="Breached"
+            value={formatNumber(slaBreached)}
+            toneClass="text-red-300"
+          />
+          <SlaCompactCard
+            label="Escalated"
+            value={formatNumber(slaEscalated)}
+            toneClass="text-rose-300"
+          />
+          <SlaCompactCard
+            label="Queued"
+            value={formatNumber(slaQueued)}
+            toneClass="text-violet-300"
+          />
+          <SlaCompactCard
+            label="Unknown"
+            value={formatNumber(slaUnknown)}
+            toneClass="text-zinc-300"
+          />
         </div>
       </SectionBlock>
 
