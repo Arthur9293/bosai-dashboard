@@ -8,10 +8,27 @@ type MobileShellProps = {
   title?: string;
 };
 
+function getPageTitle(pathname: string): string {
+  if (pathname === "/") return "Overview";
+  if (pathname.startsWith("/flows")) return "Flows";
+  if (pathname.startsWith("/runs")) return "Runs";
+  if (pathname.startsWith("/commands")) return "Commands";
+  if (pathname.startsWith("/events")) return "Events";
+  if (pathname.startsWith("/incidents")) return "Incidents";
+  if (pathname.startsWith("/sla")) return "SLA";
+  if (pathname.startsWith("/policies")) return "Policies";
+  if (pathname.startsWith("/tools")) return "Tools";
+  if (pathname.startsWith("/workspaces")) return "Workspaces";
+  if (pathname.startsWith("/settings")) return "Settings";
+  return "Dashboard";
+}
+
 export function MobileShell({ title = "BOSAI Dashboard" }: MobileShellProps) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const navId = useId();
+
+  const pageTitle = getPageTitle(pathname) || title;
 
   useEffect(() => {
     setOpen(false);
@@ -56,10 +73,14 @@ export function MobileShell({ title = "BOSAI Dashboard" }: MobileShellProps) {
             <p className="text-[11px] uppercase tracking-[0.24em] text-white/35">
               BOSAI
             </p>
-            <p className="truncate text-sm font-medium text-white/80">{title}</p>
+            <p className="truncate text-sm font-medium text-white/80">
+              {pageTitle}
+            </p>
           </div>
 
-          <div className="h-11 w-11 shrink-0" />
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+          </div>
         </div>
       </div>
 
@@ -96,6 +117,15 @@ export function MobileShell({ title = "BOSAI Dashboard" }: MobileShellProps) {
                 <p className="mt-1 text-sm text-white/55">
                   Anti-Chaos AI Ops Layer
                 </p>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="inline-flex rounded-full border border-sky-500/20 bg-sky-500/12 px-2.5 py-1 text-xs font-medium text-sky-300">
+                    Production
+                  </span>
+                  <span className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/12 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                    Stable
+                  </span>
+                </div>
               </div>
 
               <button
