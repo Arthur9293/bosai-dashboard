@@ -148,7 +148,7 @@ function cardClassName(): string {
 
 function statCardClassName(): string {
   return [
-    "rounded-[28px] border border-white/10 p-5 md:p-6",
+    "rounded-[24px] border border-white/10 p-4 md:p-5",
     "bg-[linear-gradient(180deg,rgba(8,20,48,0.72)_0%,rgba(3,9,24,0.54)_100%)]",
     "shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
   ].join(" ");
@@ -171,6 +171,10 @@ function actionLinkClassName(
 
   if (variant === "danger") {
     return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/25 bg-rose-500/12 px-4 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/18";
+  }
+
+  if (variant === "soft") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:bg-white/[0.06]";
   }
 
   return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.08]";
@@ -337,6 +341,10 @@ function getStatusTextTone(status?: string): string {
     return "text-rose-300";
   }
 
+  if (["unsupported"].includes(group)) {
+    return "text-amber-300";
+  }
+
   return "text-zinc-300";
 }
 
@@ -355,6 +363,47 @@ function buildStats(runs: RunRecord[]) {
   }
 
   return stats;
+}
+
+function getAttentionPriority(run: RunRecord): number {
+  const group = getRunStatusGroup(run);
+
+  if (group === "running") return 0;
+  if (group === "error") return 1;
+  if (group === "unsupported") return 2;
+  if (group === "other") return 3;
+  return 4;
+}
+
+function sortAttentionRuns(runs: RunRecord[]) {
+  return [...runs].sort((a, b) => {
+    const priorityDiff = getAttentionPriority(a) - getAttentionPriority(b);
+    if (priorityDiff !== 0) return priorityDiff;
+    return getRunLatestTs(b) - getRunLatestTs(a);
+  });
+}
+
+function sortRecentRuns(runs: RunRecord[]) {
+  return [...runs].sort((a, b) => getRunLatestTs(b) - getRunLatestTs(a));
+}
+
+function RunMiniStat({
+  label,
+  value,
+  toneClass,
+}: {
+  label: string;
+  value: number | string;
+  toneClass: string;
+}) {
+  return (
+    <div className={statCardClassName()}>
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className={`mt-3 text-3xl font-semibold tracking-tight ${toneClass}`}>
+        {value}
+      </div>
+    </div>
+  );
 }
 
 function RunListCard({
@@ -379,13 +428,12 @@ function RunListCard({
   const content = (
     <article className={cardClassName()}>
       <div className="space-y-5">
-        <div className="space-y-3">
+        <div className="space-y-3 border-b border-white/10 pb-4">
           <div className="flex flex-wrap items-center gap-2">
             <DashboardStatusBadge
               kind={statusBadgeKind(status)}
               label={status.toUpperCase()}
             />
-
             <DashboardStatusBadge
               kind={dryRun ? "retry" : "success"}
               label={dryRun ? "DRY RUN" : "LIVE"}
@@ -406,23 +454,20 @@ function RunListCard({
             </p>
           </div>
 
-          <div className="break-all text-sm leading-6 text-zinc-400">
-            ID :{" "}
-            <span className="text-zinc-200">{id || publicId || "—"}</span>
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
+              Workspace · {workspaceId}
+            </span>
+            <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
+              Worker · {getRunWorker(run)}
+            </span>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Run ID</div>
-            <div className="mt-1 break-all text-zinc-200">
-              {getRunRunId(run)}
-            </div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Worker</div>
-            <div className="mt-1 text-zinc-200">{getRunWorker(run)}</div>
+            <div className="mt-1 break-all text-zinc-200">{getRunRunId(run)}</div>
           </div>
 
           <div className={metaBoxClassName()}>
@@ -444,11 +489,21 @@ function RunListCard({
             <div className={metaLabelClassName()}>Duration</div>
             <div className="mt-1 text-zinc-200">{duration}</div>
           </div>
+
+          <div className="md:col-span-2 xl:col-span-3 rounded-[18px] border border-white/10 bg-black/20 px-3 py-3">
+            <div className={metaLabelClassName()}>Record ID</div>
+            <div className="mt-1 break-all text-zinc-200">
+              {id || publicId || "—"}
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-zinc-500">
-            Workspace : <span className="text-zinc-300">{workspaceId}</span>
+            Dernière activité :{" "}
+            <span className="text-zinc-300">
+              {formatDate(finishedAt || updatedAt || startedAt)}
+            </span>
           </div>
 
           <div className="text-sm font-medium text-zinc-300">
@@ -515,12 +570,34 @@ export default async function RunsPage({ searchParams }: PageProps) {
 
   const stats = buildStats(runs);
   const totalRuns = runs.length;
-  const visibleRuns = [...runs]
-    .sort((a, b) => getRunLatestTs(b) - getRunLatestTs(a))
-    .slice(0, 50);
+  const visibleRuns = sortRecentRuns(runs).slice(0, 50);
+
+  const attentionRuns = sortAttentionRuns(
+    visibleRuns.filter((run) =>
+      ["running", "error", "unsupported", "other"].includes(
+        getRunStatusGroup(run)
+      )
+    )
+  );
+
+  const completedRuns = sortRecentRuns(
+    visibleRuns.filter((run) => getRunStatusGroup(run) === "done")
+  );
 
   const latestRun = visibleRuns[0] ?? null;
   const workspaceLabel = activeWorkspaceId || "production";
+  const latestRunHref = latestRun
+    ? getRunHref(latestRun, activeWorkspaceId)
+    : "";
+
+  const quickRead =
+    stats.error > 0
+      ? "Priorité : vérifier les runs en erreur avant de lire l’historique terminé."
+      : stats.running > 0
+        ? "Priorité : suivre les runs actifs et confirmer leur durée d’exécution."
+        : totalRuns > 0
+          ? "Le workspace visible paraît globalement stable avec un historique lisible."
+          : "Aucun run visible sur le workspace actif.";
 
   return (
     <ControlPlaneShell
@@ -530,7 +607,7 @@ export default async function RunsPage({ searchParams }: PageProps) {
       badges={[
         { label: "Workspace scoped", tone: "info" },
         { label: "Execution history", tone: "muted" },
-        { label: "Mobile préservé", tone: "muted" },
+        { label: `${visibleRuns.length} visibles`, tone: "muted" },
       ]}
       metrics={[
         { label: "Total runs", value: totalRuns, toneClass: "text-white" },
@@ -585,6 +662,15 @@ export default async function RunsPage({ searchParams }: PageProps) {
                   au périmètre actif sans casser l’ancien comportement.
                 </p>
               </div>
+
+              <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                  Quick read
+                </div>
+                <div className="mt-2 text-sm leading-6 text-white/70">
+                  {quickRead}
+                </div>
+              </div>
             </div>
           </SidePanelCard>
 
@@ -628,14 +714,30 @@ export default async function RunsPage({ searchParams }: PageProps) {
                       {formatDate(getRunStartedAt(latestRun))}
                     </span>
                   </div>
+                  <div>
+                    Duration :{" "}
+                    <span className="text-white/90">
+                      {formatDuration(
+                        getRunStartedAt(latestRun),
+                        getRunFinishedAt(latestRun),
+                        getRunUpdatedAt(latestRun)
+                      )}
+                    </span>
+                  </div>
                 </div>
 
-                <Link
-                  href={getRunHref(latestRun, activeWorkspaceId)}
-                  className={actionLinkClassName("soft")}
-                >
-                  Ouvrir le dernier run
-                </Link>
+                {latestRunHref ? (
+                  <Link
+                    href={latestRunHref}
+                    className={actionLinkClassName("soft")}
+                  >
+                    Ouvrir le dernier run
+                  </Link>
+                ) : (
+                  <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-center text-sm font-medium text-zinc-400">
+                    Détail indisponible
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-sm text-white/55">Aucun run disponible.</div>
@@ -645,63 +747,86 @@ export default async function RunsPage({ searchParams }: PageProps) {
       }
     >
       <SectionCard
-        title="Statut des runs"
-        description="Vue rapide des volumes par état d’exécution sur le workspace actif."
+        title="Run posture"
+        description="Vue rapide de l’état d’exécution sur le workspace actif."
         className={sectionFrameClassName("default")}
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <div className={statCardClassName()}>
-            <div className="text-sm text-zinc-400">Total runs</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
-              {totalRuns}
-            </div>
-          </div>
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+          <RunMiniStat label="Total runs" value={totalRuns} toneClass="text-white" />
+          <RunMiniStat
+            label="Running"
+            value={stats.running}
+            toneClass="text-sky-300"
+          />
+          <RunMiniStat
+            label="Done"
+            value={stats.done}
+            toneClass="text-emerald-300"
+          />
+          <RunMiniStat
+            label="Error"
+            value={stats.error}
+            toneClass="text-rose-300"
+          />
+          <RunMiniStat
+            label="Other"
+            value={toNumber(stats.unsupported) + toNumber(stats.other)}
+            toneClass="text-zinc-300"
+          />
+        </div>
 
-          <div className={statCardClassName()}>
-            <div className="text-sm text-zinc-400">Running</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-sky-300">
-              {stats.running}
-            </div>
+        <div className="mt-4 rounded-[20px] border border-white/10 bg-black/20 px-4 py-3.5">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+            Quick read
           </div>
-
-          <div className={statCardClassName()}>
-            <div className="text-sm text-zinc-400">Done</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-emerald-300">
-              {stats.done}
-            </div>
-          </div>
-
-          <div className={statCardClassName()}>
-            <div className="text-sm text-zinc-400">Error</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-rose-300">
-              {stats.error}
-            </div>
-          </div>
-
-          <div className={statCardClassName()}>
-            <div className="text-sm text-zinc-400">Other</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-zinc-300">
-              {toNumber(stats.unsupported) + toNumber(stats.other)}
-            </div>
-          </div>
+          <div className="mt-2 text-sm leading-6 text-zinc-300">{quickRead}</div>
         </div>
       </SectionCard>
 
       <SectionCard
-        title="System runs"
-        description="Historique récent des exécutions BOSAI, triées par dernière activité."
+        title="Needs attention"
+        description="Runs actifs, en erreur ou atypiques à vérifier en priorité."
         tone="neutral"
-        className={sectionFrameClassName("neutral")}
-        action={<SectionCountPill value={visibleRuns.length} tone="info" />}
+        className={sectionFrameClassName("attention")}
+        action={<SectionCountPill value={attentionRuns.length} tone="warning" />}
       >
-        {visibleRuns.length === 0 ? (
+        {attentionRuns.length === 0 ? (
           <EmptyStatePanel
-            title="Aucun run visible"
-            description="Aucun run n’est disponible sur la vue actuelle."
+            title="Aucun run sous attention"
+            description="Aucun run actif ou en erreur n’est visible sur la vue actuelle."
           />
         ) : (
           <div className="grid grid-cols-1 gap-5">
-            {visibleRuns.map((run) => (
+            {attentionRuns.map((run) => (
+              <RunListCard
+                key={
+                  getRunId(run) ||
+                  getRunPublicId(run) ||
+                  `${getRunCapability(run)}-${getRunStartedAt(run)}`
+                }
+                run={run}
+                activeWorkspaceId={activeWorkspaceId}
+              />
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Completed runs"
+        description="Historique récent des runs terminés, triés par dernière activité."
+        tone="neutral"
+        className={sectionFrameClassName("neutral")}
+        action={<SectionCountPill value={completedRuns.length} tone="success" />}
+      >
+        {completedRuns.length === 0 ? (
+          <EmptyStatePanel
+            title="Aucun run terminé"
+            description="Aucun run terminé n’est visible sur la vue actuelle."
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-5">
+            {completedRuns.map((run) => (
               <RunListCard
                 key={
                   getRunId(run) ||
