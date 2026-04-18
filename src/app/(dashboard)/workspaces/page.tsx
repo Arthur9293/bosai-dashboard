@@ -164,12 +164,26 @@ function workspaceStatusVariant(item: WorkspaceListItem) {
   return "warning" as const;
 }
 
+function workspaceStatusLabel(item: WorkspaceListItem): string {
+  if (item.blocked) return "BLOCKED";
+  if (item.is_active) return "ACTIVE";
+  return "INACTIVE";
+}
+
 function sectionLabelClassName(): string {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
 
 function metaLabelClassName(): string {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function metaBoxClassName(): string {
+  return "rounded-[18px] border border-white/10 bg-black/20 px-4 py-4";
+}
+
+function statCardClassName(): string {
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function parseWorkspaceFilters(
@@ -276,22 +290,105 @@ async function fetchWorkspaces(): Promise<WorkspacesResponse | null> {
   }
 }
 
+function getQuickRead(params: {
+  visibleCount: number;
+  activeCount: number;
+  blockedCount: number;
+  warningCount: number;
+  hasActiveFilters: boolean;
+}): string {
+  const { visibleCount, activeCount, blockedCount, warningCount, hasActiveFilters } =
+    params;
+
+  if (blockedCount > 0) {
+    return "Priorité : ouvrir les workspaces bloqués puis vérifier leurs signaux quota et leur état de reset.";
+  }
+
+  if (warningCount > 0) {
+    return "Lecture bleue : certains tenants approchent des seuils et méritent une vérification avant blocage.";
+  }
+
+  if (activeCount > 0 && visibleCount > 0) {
+    return hasActiveFilters
+      ? "Le sous-ensemble filtré paraît globalement stable sur le registre visible."
+      : "Le registre visible paraît majoritairement stable sur les tenants actifs.";
+  }
+
+  if (visibleCount > 0) {
+    return "Les workspaces visibles restent lisibles, mais sans signal actif dominant.";
+  }
+
+  return "Aucun workspace ne correspond aux filtres actuels.";
+}
+
+function getUsageTone(current?: number, hard?: number): string {
+  const currentValue = typeof current === "number" ? current : 0;
+  const hardValue = typeof hard === "number" ? hard : 0;
+
+  if (hardValue > 0 && currentValue >= hardValue) return "text-red-300";
+  if (hardValue > 0 && currentValue >= hardValue * 0.8) return "text-amber-300";
+  return "text-white";
+}
+
+function getWorkspacePeriodLabel(item: WorkspaceListItem): string {
+  return item.current_usage_period_key?.trim() || "Période inconnue";
+}
+
 function StatTile({
   label,
   value,
   helper,
+  toneClass = "text-white",
 }: {
   label: string;
   value: string;
   helper?: string;
+  toneClass?: string;
 }) {
   return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+    <div className={statCardClassName()}>
       <div className="text-sm text-zinc-400">{label}</div>
-      <div className="mt-3 text-3xl font-semibold tracking-tight text-white">
+      <div className={`mt-3 text-3xl font-semibold tracking-tight ${toneClass}`}>
         {value}
       </div>
-      {helper ? <div className="mt-3 text-sm text-zinc-300">{helper}</div> : null}
+      {helper ? <div className="mt-2 text-sm text-zinc-300">{helper}</div> : null}
+    </div>
+  );
+}
+
+function RegistryInfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+      <span className="text-sm text-zinc-400">{label}</span>
+      <span className="text-sm font-medium text-zinc-200">{value}</span>
+    </div>
+  );
+}
+
+function UsageMiniStat({
+  label,
+  current,
+  hard,
+}: {
+  label: string;
+  current?: number;
+  hard?: number;
+}) {
+  return (
+    <div className={metaBoxClassName()}>
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className={`mt-2 text-lg font-semibold ${getUsageTone(current, hard)}`}>
+        {formatNumber(current)}
+      </div>
+      <div className="mt-1 text-sm text-zinc-400">
+        / {formatNumber(hard)}
+      </div>
     </div>
   );
 }
@@ -306,7 +403,7 @@ function WorkspaceCard({ item }: { item: WorkspaceListItem }) {
     <DashboardCard
       rightSlot={
         <span className={badgeClassName(workspaceStatusVariant(item))}>
-          {item.blocked ? "BLOCKED" : item.is_active ? "ACTIVE" : "INACTIVE"}
+          {workspaceStatusLabel(item)}
         </span>
       }
     >
@@ -338,9 +435,25 @@ function WorkspaceCard({ item }: { item: WorkspaceListItem }) {
         {item.name || item.workspace_id}
       </div>
 
-      <p className="mt-2 break-all text-sm text-zinc-400">
-        {item.workspace_id}
-      </p>
+      <p className="mt-2 break-all text-sm text-zinc-400">{item.workspace_id}</p>
+
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <UsageMiniStat
+          label="Runs"
+          current={usage.runs_month}
+          hard={limits.hard_runs_month}
+        />
+        <UsageMiniStat
+          label="HTTP"
+          current={usage.http_calls_month}
+          hard={limits.hard_http_calls_month}
+        />
+        <UsageMiniStat
+          label="Tokens"
+          current={usage.tokens_month}
+          hard={limits.hard_tokens_month}
+        />
+      </div>
 
       <div className="mt-5 grid grid-cols-1 gap-4 border-t border-white/10 pt-5 text-sm text-zinc-400 md:grid-cols-2">
         <div>
@@ -361,32 +474,14 @@ function WorkspaceCard({ item }: { item: WorkspaceListItem }) {
         </div>
 
         <div>
+          <div className={metaLabelClassName()}>Usage period</div>
+          <div className="mt-1 text-zinc-200">{getWorkspacePeriodLabel(item)}</div>
+        </div>
+
+        <div>
           <div className={metaLabelClassName()}>Last usage reset</div>
           <div className="mt-1 text-zinc-200">
             {formatDate(item.last_usage_reset_at)}
-          </div>
-        </div>
-
-        <div>
-          <div className={metaLabelClassName()}>Runs</div>
-          <div className="mt-1 text-zinc-200">
-            {formatNumber(usage.runs_month)} / {formatNumber(limits.hard_runs_month)}
-          </div>
-        </div>
-
-        <div>
-          <div className={metaLabelClassName()}>HTTP</div>
-          <div className="mt-1 text-zinc-200">
-            {formatNumber(usage.http_calls_month)} /{" "}
-            {formatNumber(limits.hard_http_calls_month)}
-          </div>
-        </div>
-
-        <div>
-          <div className={metaLabelClassName()}>Tokens</div>
-          <div className="mt-1 text-zinc-200">
-            {formatNumber(usage.tokens_month)} /{" "}
-            {formatNumber(limits.hard_tokens_month)}
           </div>
         </div>
 
@@ -462,6 +557,14 @@ export default async function WorkspacesPage({
     filters.status || filters.plan || filters.period_key
   );
 
+  const quickRead = getQuickRead({
+    visibleCount: filteredItems.length,
+    activeCount,
+    blockedCount,
+    warningCount,
+    hasActiveFilters,
+  });
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -488,65 +591,86 @@ export default async function WorkspacesPage({
 
       {envReady ? (
         <>
-          <WorkspacesFilters initialFilters={filters} />
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.3fr_0.9fr]">
+            <DashboardCard
+              title="Workspace posture"
+              subtitle="Lecture rapide du registre visible avec focus quotas, blocages et stabilité."
+            >
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <StatTile
+                  label="Visible"
+                  value={formatNumber(filteredItems.length)}
+                  toneClass="text-sky-300"
+                  helper={
+                    hasActiveFilters
+                      ? `Filtrés sur ${formatNumber(items.length)}`
+                      : "Registre courant"
+                  }
+                />
+                <StatTile
+                  label="Active"
+                  value={formatNumber(activeCount)}
+                  toneClass="text-emerald-300"
+                  helper="Tenants actifs"
+                />
+                <StatTile
+                  label="Blocked"
+                  value={formatNumber(blockedCount)}
+                  toneClass="text-red-300"
+                  helper="Blocages visibles"
+                />
+                <StatTile
+                  label="Warnings"
+                  value={formatNumber(warningCount)}
+                  toneClass="text-amber-300"
+                  helper="Soft limits visibles"
+                />
+              </div>
 
-          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile
-              label="Visible workspaces"
-              value={formatNumber(filteredItems.length)}
-              helper={
-                hasActiveFilters
-                  ? `Filtrés sur ${formatNumber(items.length)}`
-                  : `Source: ${data?.source?.table || "Workspaces"}`
-              }
-            />
-            <StatTile
-              label="Active"
-              value={formatNumber(activeCount)}
-              helper="Workspaces actifs visibles"
-            />
-            <StatTile
-              label="Blocked"
-              value={formatNumber(blockedCount)}
-              helper="Blocages quota / état visibles"
-            />
-            <StatTile
-              label="Warnings"
-              value={formatNumber(warningCount)}
-              helper="Signaux soft limits visibles"
-            />
+              <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                <div className={metaLabelClassName()}>Quick read</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-300">
+                  {quickRead}
+                </div>
+              </div>
+            </DashboardCard>
+
+            <DashboardCard
+              title="Registry status"
+              subtitle="Lecture backend depuis le worker BOSAI."
+            >
+              <div className="space-y-3">
+                <RegistryInfoRow
+                  label="Source table"
+                  value={data?.source?.table || "—"}
+                />
+                <RegistryInfoRow
+                  label="View"
+                  value={data?.source?.view?.trim() ? data.source.view : "Default"}
+                />
+                <RegistryInfoRow
+                  label="Limit"
+                  value={formatNumber(data?.source?.limit)}
+                />
+                <RegistryInfoRow
+                  label="Fetched"
+                  value={formatNumber(data?.count)}
+                />
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className={badgeClassName("info")}>Registry linked</span>
+                <span className={badgeClassName("default")}>
+                  {hasActiveFilters ? "Filtered view" : "Full view"}
+                </span>
+                {blockedCount > 0 ? (
+                  <span className={badgeClassName("danger")}>Blocked visible</span>
+                ) : null}
+              </div>
+            </DashboardCard>
           </section>
 
-          <DashboardCard
-            title="Registry status"
-            subtitle="Lecture backend depuis le worker BOSAI."
-          >
-            <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
-              <div className="flex justify-between gap-4">
-                <span>Source table</span>
-                <span className="text-zinc-200">{data?.source?.table || "—"}</span>
-              </div>
-
-              <div className="flex justify-between gap-4">
-                <span>View</span>
-                <span className="text-zinc-200">
-                  {data?.source?.view?.trim() ? data.source.view : "Default"}
-                </span>
-              </div>
-
-              <div className="flex justify-between gap-4">
-                <span>Limit</span>
-                <span className="text-zinc-200">
-                  {formatNumber(data?.source?.limit)}
-                </span>
-              </div>
-
-              <div className="flex justify-between gap-4">
-                <span>Fetched</span>
-                <span className="text-zinc-200">{formatNumber(data?.count)}</span>
-              </div>
-            </div>
-          </DashboardCard>
+          <WorkspacesFilters initialFilters={filters} />
 
           {!data?.ok ? (
             <DashboardCard
@@ -561,7 +685,12 @@ export default async function WorkspacesPage({
 
           {data?.ok ? (
             <section className="space-y-4">
-              <div className={sectionLabelClassName()}>Workspace cards</div>
+              <div className="flex items-center justify-between gap-3">
+                <div className={sectionLabelClassName()}>Workspace cards</div>
+                <span className={badgeClassName("info")}>
+                  {formatNumber(filteredItems.length)} visible(s)
+                </span>
+              </div>
 
               {filteredItems.length === 0 ? (
                 <DashboardCard
