@@ -52,7 +52,7 @@ function isActivePath(pathname: string, href: string): boolean {
 
 function navLinkClassName(active: boolean): string {
   if (active) {
-    return "group flex items-center justify-between rounded-2xl border border-emerald-500/25 bg-emerald-500/12 px-4 py-3 text-sm font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
+    return "group flex items-center justify-between rounded-2xl border border-sky-500/25 bg-sky-500/10 px-4 py-3 text-sm font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
   }
 
   return "group flex items-center justify-between rounded-2xl border border-transparent px-4 py-3 text-sm font-medium text-zinc-300 transition hover:border-white/10 hover:bg-white/[0.04] hover:text-white";
@@ -69,18 +69,34 @@ export function Sidebar({
     <aside
       className={
         isDesktop
-          ? "h-screen w-[300px] border-r border-white/10 bg-[#040816]/55 text-white backdrop-blur-xl"
+          ? "h-screen w-[312px] border-r border-white/10 bg-[#040816]/55 text-white backdrop-blur-xl"
           : "h-full w-full bg-transparent text-white"
       }
     >
       <div className="flex h-full min-h-0 flex-col">
         {isDesktop ? (
-          <div className="border-b border-white/10 px-6 py-7">
-            <div className="text-3xl font-semibold tracking-tight text-white">
-              BOSAI
-            </div>
-            <div className="mt-2 text-sm text-zinc-400">
-              Anti-Chaos AI Ops Layer
+          <div className="border-b border-white/10 px-6 py-6">
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+              <div className="text-[11px] uppercase tracking-[0.24em] text-white/35">
+                BOSAI
+              </div>
+
+              <div className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                Control Plane
+              </div>
+
+              <div className="mt-2 text-sm leading-6 text-zinc-400">
+                Anti-Chaos AI Ops Layer
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="inline-flex rounded-full border border-sky-500/20 bg-sky-500/12 px-2.5 py-1 text-xs font-medium text-sky-300">
+                  Workspace · Production
+                </span>
+                <span className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/12 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                  Stable
+                </span>
+              </div>
             </div>
           </div>
         ) : null}
@@ -107,7 +123,7 @@ export function Sidebar({
                         <span>{item.label}</span>
 
                         {active ? (
-                          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-emerald-300">
+                          <span className="rounded-full border border-sky-500/20 bg-sky-500/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-sky-300">
                             Active
                           </span>
                         ) : (
@@ -128,7 +144,7 @@ export function Sidebar({
           <div className="border-t border-white/10 px-5 py-5">
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
               <div className="text-[11px] uppercase tracking-[0.2em] text-white/30">
-                Status
+                Control plane status
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
@@ -136,7 +152,7 @@ export function Sidebar({
                   Worker healthy
                 </span>
                 <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
-                  Stable
+                  Core stable
                 </span>
               </div>
 
