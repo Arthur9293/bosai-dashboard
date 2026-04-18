@@ -26,6 +26,10 @@ function cardClassName() {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
+function statCardClassName() {
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
 function actionLinkClassName(
   variant: "default" | "primary" | "soft" = "default",
   disabled = false
@@ -42,7 +46,7 @@ function actionLinkClassName(
   }
 
   if (variant === "soft") {
-    return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+    return `${base} border border-white/10 bg-black/20 text-zinc-200 hover:bg-white/[0.06]`;
   }
 
   return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
@@ -57,7 +61,7 @@ function metaLabelClassName() {
 }
 
 function metaBoxClassName() {
-  return "rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+  return "rounded-[18px] border border-white/10 bg-black/20 px-4 py-4";
 }
 
 function compactTechnicalId(value: string, max = 34): string {
@@ -293,12 +297,33 @@ function latestByBucket(events: EventItem[], bucket: string): EventItem | null {
   return filtered[0] || null;
 }
 
+function getAttentionPriority(event: EventItem): number {
+  const bucket = getEventStatusBucket(event);
+
+  if (bucket === "error") return 0;
+  if (bucket === "queued") return 1;
+  if (bucket === "new") return 2;
+  return 3;
+}
+
 function sortEvents(events: EventItem[]): EventItem[] {
   return [...events].sort(
     (a, b) =>
       new Date(getEventDate(b) || 0).getTime() -
       new Date(getEventDate(a) || 0).getTime()
   );
+}
+
+function sortAttentionEvents(events: EventItem[]): EventItem[] {
+  return [...events].sort((a, b) => {
+    const priorityDiff = getAttentionPriority(a) - getAttentionPriority(b);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    return (
+      new Date(getEventDate(b) || 0).getTime() -
+      new Date(getEventDate(a) || 0).getTime()
+    );
+  });
 }
 
 function buildEventFlowHref(event: EventItem): string {
@@ -331,6 +356,25 @@ function buildEventCommandsHref(event: EventItem): string {
   return `/commands?${params.toString()}`;
 }
 
+function EventMiniStat({
+  label,
+  value,
+  toneClass,
+}: {
+  label: string;
+  value: number | string;
+  toneClass: string;
+}) {
+  return (
+    <div className={statCardClassName()}>
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className={`mt-3 text-3xl font-semibold tracking-tight ${toneClass}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function EventListCard({ event }: { event: EventItem }) {
   const statusLabel = getEventStatusLabel(event);
   const capability = getEventCapability(event);
@@ -347,19 +391,29 @@ function EventListCard({ event }: { event: EventItem }) {
           </div>
 
           <div className="space-y-3">
-            <Link
-              href={`/events/${encodeURIComponent(String(event.id))}`}
-              className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
-            >
-              {getEventType(event)}
-            </Link>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <Link
+                  href={`/events/${encodeURIComponent(String(event.id))}`}
+                  className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
+                >
+                  {getEventType(event)}
+                </Link>
+
+                <div className="mt-2 text-sm text-zinc-400">
+                  {getWorkspace(event)} · {getSource(event)}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <DashboardStatusBadge
+                  kind={getEventStatusBadgeKind(event)}
+                  label={statusLabel}
+                />
+              </div>
+            </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <DashboardStatusBadge
-                kind={getEventStatusBadgeKind(event)}
-                label={statusLabel}
-              />
-
               {capability !== "—" ? (
                 <span className={chipClassName()}>{capability}</span>
               ) : null}
@@ -367,15 +421,15 @@ function EventListCard({ event }: { event: EventItem }) {
               {hasCommandCreated(event) ? (
                 <DashboardStatusBadge kind="success" label="COMMAND CREATED" />
               ) : null}
-            </div>
 
-            <div className="text-sm text-zinc-400">
-              {getWorkspace(event)} · {getSource(event)}
+              <span className={chipClassName()}>
+                Workspace · {getWorkspace(event)}
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Updated</div>
             <div className="mt-2 text-zinc-100">{formatDate(event.updated_at)}</div>
@@ -392,48 +446,36 @@ function EventListCard({ event }: { event: EventItem }) {
           </div>
 
           <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Workspace</div>
-            <div className="mt-2 text-zinc-100">{getWorkspace(event)}</div>
-          </div>
-        </div>
-
-        <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            <div className={metaLabelClassName()}>Event ID</div>
-            <div className="mt-1 break-all text-zinc-200">{String(event.id)}</div>
-          </div>
-
-          <div>
-            <div className={metaLabelClassName()}>Flow</div>
-            <div className="mt-1 break-all text-zinc-200">
-              {getFlowId(event) || "—"}
-            </div>
-          </div>
-
-          <div>
-            <div className={metaLabelClassName()}>Root event</div>
-            <div className="mt-1 break-all text-zinc-200">
-              {getRootEventId(event) || "—"}
-            </div>
-          </div>
-
-          <div>
-            <div className={metaLabelClassName()}>Source record</div>
-            <div className="mt-1 break-all text-zinc-200">
-              {getSourceRecordId(event) || "—"}
-            </div>
-          </div>
-
-          <div>
             <div className={metaLabelClassName()}>Linked command</div>
-            <div className="mt-1 break-all text-zinc-200">
+            <div className="mt-2 break-all text-zinc-100">
               {linkedCommand || "—"}
             </div>
           </div>
 
-          <div>
-            <div className={metaLabelClassName()}>Source</div>
-            <div className="mt-1 text-zinc-200">{getSource(event)}</div>
+          <div className="md:col-span-2 xl:col-span-2 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Flow</div>
+            <div className="mt-2 break-all text-zinc-100">
+              {getFlowId(event) || "—"}
+            </div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Root event</div>
+            <div className="mt-2 break-all text-zinc-100">
+              {getRootEventId(event) || "—"}
+            </div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Source record</div>
+            <div className="mt-2 break-all text-zinc-100">
+              {getSourceRecordId(event) || "—"}
+            </div>
+          </div>
+
+          <div className="md:col-span-2 xl:col-span-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Event ID</div>
+            <div className="mt-2 break-all text-zinc-100">{String(event.id)}</div>
           </div>
         </div>
 
@@ -550,13 +592,24 @@ export default async function EventsPage() {
     (event) => getEventStatusBucket(event) === "other"
   );
 
-  const attentionEvents = sortEvents([...newEvents, ...queuedEvents, ...errorEvents]);
-  const stableEvents = sortEvents([...processedEvents, ...ignoredEvents, ...otherEvents]);
+  const attentionEvents = sortAttentionEvents([
+    ...newEvents,
+    ...queuedEvents,
+    ...errorEvents,
+  ]);
+
+  const stableEvents = sortEvents([
+    ...processedEvents,
+    ...ignoredEvents,
+    ...otherEvents,
+  ]);
 
   const newCount = stats.new ?? newEvents.length;
   const queuedCount = stats.queued ?? queuedEvents.length;
   const processedCount = stats.processed ?? processedEvents.length;
   const errorCount = stats.error ?? errorEvents.length;
+  const ignoredCount = stats.ignored ?? ignoredEvents.length;
+  const otherCount = stats.other ?? otherEvents.length;
 
   const latestProcessed = latestByBucket(sortedEvents, "processed");
   const latestQueued = latestByBucket(sortedEvents, "queued");
@@ -571,6 +624,15 @@ export default async function EventsPage() {
 
   const focusEventCommandsHref = focusEvent ? buildEventCommandsHref(focusEvent) : "";
   const focusEventFlowHref = focusEvent ? buildEventFlowHref(focusEvent) : "";
+
+  const quickRead =
+    errorCount > 0
+      ? "Priorité : vérifier les events en erreur avant d’ouvrir les flows liés."
+      : queuedCount > 0 || newCount > 0
+        ? "Priorité : suivre les events actifs et confirmer la création de commands."
+        : processedCount > 0
+          ? "Le pipeline visible paraît principalement traité et stable."
+          : "Aucune activité event significative n’est visible pour le moment.";
 
   return (
     <ControlPlaneShell
@@ -653,6 +715,15 @@ export default async function EventsPage() {
                   <span className="text-white/90">
                     {formatDate(latestError ? getEventDate(latestError) : "")}
                   </span>
+                </div>
+              </div>
+
+              <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                  Quick read
+                </div>
+                <div className="mt-2 text-sm leading-6 text-white/70">
+                  {quickRead}
                 </div>
               </div>
             </div>
@@ -747,11 +818,39 @@ export default async function EventsPage() {
       ) : (
         <>
           <SectionCard
-            title="Event stream"
+            title="Pipeline posture"
             description="Lecture rapide de l’activité récente du pipeline Events."
             action={<SectionCountPill value={sortedEvents.length} tone="info" />}
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+              <EventMiniStat
+                label="New"
+                value={newCount}
+                toneClass="text-amber-300"
+              />
+              <EventMiniStat
+                label="Queued"
+                value={queuedCount}
+                toneClass="text-sky-300"
+              />
+              <EventMiniStat
+                label="Processed"
+                value={processedCount}
+                toneClass="text-emerald-300"
+              />
+              <EventMiniStat
+                label="Errors"
+                value={errorCount}
+                toneClass="text-red-300"
+              />
+              <EventMiniStat
+                label="Commands"
+                value={commandsCreatedCount}
+                toneClass="text-white"
+              />
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div className={metaBoxClassName()}>
                 <div className={metaLabelClassName()}>Latest processed</div>
                 <div className="mt-2 text-zinc-100">
@@ -774,8 +873,17 @@ export default async function EventsPage() {
               </div>
 
               <div className={metaBoxClassName()}>
-                <div className={metaLabelClassName()}>Commands created</div>
-                <div className="mt-2 text-zinc-100">{commandsCreatedCount}</div>
+                <div className={metaLabelClassName()}>Stable states</div>
+                <div className="mt-2 text-zinc-100">
+                  {ignoredCount + otherCount}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+              <div className={metaLabelClassName()}>Quick read</div>
+              <div className="mt-2 text-sm leading-6 text-zinc-300">
+                {quickRead}
               </div>
             </div>
           </SectionCard>
