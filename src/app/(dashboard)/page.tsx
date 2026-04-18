@@ -17,6 +17,14 @@ import {
   type CommandItem,
 } from "@/lib/api";
 
+type BadgeVariant =
+  | "default"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  | "violet";
+
 function formatNumber(value?: number): string {
   return typeof value === "number" && Number.isFinite(value)
     ? value.toString()
@@ -110,15 +118,7 @@ function rowCardClassName(): string {
   return "block w-full overflow-hidden rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 transition hover:border-white/15 hover:bg-white/[0.04]";
 }
 
-function badgeClassName(
-  variant:
-    | "default"
-    | "success"
-    | "warning"
-    | "danger"
-    | "info"
-    | "violet" = "default"
-): string {
+function badgeClassName(variant: BadgeVariant = "default"): string {
   if (variant === "success") {
     return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
   }
@@ -151,6 +151,10 @@ function ctaClassName(
 
   if (variant === "danger") {
     return "inline-flex items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15";
+  }
+
+  if (variant === "soft") {
+    return "inline-flex items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm font-medium text-zinc-200 transition hover:bg-white/[0.06]";
   }
 
   return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
@@ -193,6 +197,93 @@ function parseMaybeJson(value: unknown): Record<string, unknown> {
   }
 
   return {};
+}
+
+function overviewPostureTone(params: {
+  criticalSlaSignals: number;
+  escalatedIncidents: number;
+  openIncidents: number;
+  failedCommands: number;
+  retryCommands: number;
+  activeCommands: number;
+  flowsUnderAttention: number;
+  healthScore: number;
+}): BadgeVariant {
+  const {
+    criticalSlaSignals,
+    escalatedIncidents,
+    openIncidents,
+    failedCommands,
+    retryCommands,
+    activeCommands,
+    flowsUnderAttention,
+    healthScore,
+  } = params;
+
+  if (criticalSlaSignals > 0 || escalatedIncidents > 0) return "danger";
+  if (openIncidents > 0 || failedCommands > 0 || retryCommands > 0) return "warning";
+  if (activeCommands > 0 || flowsUnderAttention > 0) return "info";
+  if (healthScore >= 80) return "success";
+  if (healthScore >= 50) return "warning";
+  return "danger";
+}
+
+function overviewPostureLabel(params: {
+  criticalSlaSignals: number;
+  escalatedIncidents: number;
+  openIncidents: number;
+  failedCommands: number;
+  retryCommands: number;
+  activeCommands: number;
+  flowsUnderAttention: number;
+  healthScore: number;
+}): string {
+  const tone = overviewPostureTone(params);
+
+  if (tone === "danger") return "Pression critique";
+  if (tone === "warning") return "Sous surveillance";
+  if (tone === "info") return "Activité en cours";
+  return "Stable";
+}
+
+function overviewPostureSummary(params: {
+  criticalSlaSignals: number;
+  escalatedIncidents: number;
+  openIncidents: number;
+  failedCommands: number;
+  retryCommands: number;
+  activeCommands: number;
+  flowsUnderAttention: number;
+  healthScore: number;
+}): string {
+  const {
+    criticalSlaSignals,
+    escalatedIncidents,
+    openIncidents,
+    failedCommands,
+    retryCommands,
+    activeCommands,
+    flowsUnderAttention,
+    healthScore,
+  } = params;
+
+  if (criticalSlaSignals > 0 || escalatedIncidents > 0) {
+    return "Le cockpit remonte des signaux critiques à ouvrir en priorité côté incidents et SLA.";
+  }
+
+  if (openIncidents > 0 || failedCommands > 0 || retryCommands > 0) {
+    return "Le système reste exploitable mais demande une lecture rapide des signaux actifs et des commandes à risque.";
+  }
+
+  if (activeCommands > 0 || flowsUnderAttention > 0) {
+    return "L’activité est présente sans alerte majeure immédiate. Le cockpit sert surtout à piloter et confirmer l’état courant.";
+  }
+
+  if (healthScore >= 80) {
+    return "Le plan de contrôle paraît stable sur les surfaces visibles du dashboard.";
+  }
+
+  return "L’état global mérite une surveillance légère même si aucune alerte prioritaire n’est dominante.";
 }
 
 /* ---------------- Incident helpers ---------------- */
@@ -848,6 +939,21 @@ function RecentRunCard({
   );
 }
 
+function ControlPlaneSignalRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+      <span className="text-sm text-zinc-400">{label}</span>
+      <span className="text-sm font-medium text-white">{value}</span>
+    </div>
+  );
+}
+
 export default async function OverviewPage() {
   let health: HealthScoreResponse | null = null;
   let runs: RunsResponse | null = null;
@@ -1014,23 +1120,70 @@ export default async function OverviewPage() {
   const totalSlaSignals = slaItems.length;
   const criticalSlaSignals = slaBreached + slaEscalated;
 
+  const postureTone = overviewPostureTone({
+    criticalSlaSignals,
+    escalatedIncidents,
+    openIncidents,
+    failedCommands,
+    retryCommands,
+    activeCommands,
+    flowsUnderAttention,
+    healthScore,
+  });
+
+  const postureLabel = overviewPostureLabel({
+    criticalSlaSignals,
+    escalatedIncidents,
+    openIncidents,
+    failedCommands,
+    retryCommands,
+    activeCommands,
+    flowsUnderAttention,
+    healthScore,
+  });
+
+  const postureSummary = overviewPostureSummary({
+    criticalSlaSignals,
+    escalatedIncidents,
+    openIncidents,
+    failedCommands,
+    retryCommands,
+    activeCommands,
+    flowsUnderAttention,
+    healthScore,
+  });
+
   return (
     <div className="space-y-8">
-      <section className="space-y-4 border-b border-white/10 pb-6">
-        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.45fr_0.95fr]">
+        <div className="rounded-[32px] border border-white/10 bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-8">
+          <div className={sectionLabelClassName()}>BOSAI Control Plane</div>
 
-        <div className="space-y-4 xl:flex xl:items-end xl:justify-between xl:gap-8 xl:space-y-0">
-          <div className="max-w-4xl">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className={badgeClassName(postureTone)}>{postureLabel}</span>
+            <span className={badgeClassName("info")}>
+              {formatNumber(flowsUnderAttention)} flow(s) sous attention
+            </span>
+            <span className={badgeClassName("violet")}>
+              {formatNumber(activeCommands)} command(s) actives
+            </span>
+          </div>
+
+          <div className="mt-5 max-w-4xl">
             <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
               Overview
             </h1>
-            <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
-              Cockpit principal BOSAI avec santé système, exécutions en cours,
-              signaux critiques et accès rapide aux lanes métier.
+            <p className="mt-3 max-w-3xl text-base text-zinc-400 sm:text-lg">
+              Point d’entrée cockpit BOSAI pour lire la posture actuelle du système,
+              ouvrir rapidement les lanes critiques et garder une hiérarchie claire
+              côté control plane.
+            </p>
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-500">
+              {postureSummary}
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap xl:justify-end">
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link href="/flows" className={ctaClassName("soft")}>
               Ouvrir Flows
             </Link>
@@ -1040,6 +1193,60 @@ export default async function OverviewPage() {
             <Link href="/commands" className={ctaClassName("primary")}>
               Voir Commands
             </Link>
+            <Link href="/runs" className={ctaClassName("default")}>
+              Voir Runs
+            </Link>
+          </div>
+        </div>
+
+        <div className="rounded-[32px] border border-white/10 bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-8">
+          <div className={sectionLabelClassName()}>Current posture</div>
+
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <div>
+              <div className="text-2xl font-semibold tracking-tight text-white">
+                {postureLabel}
+              </div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Lecture rapide avant d’ouvrir les vues détaillées.
+              </div>
+            </div>
+            <span className={badgeClassName(postureTone)}>{healthLabel(healthScore, healthStatus)}</span>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <ControlPlaneSignalRow
+              label="Health score"
+              value={<span className={healthTone(healthScore)}>{healthScore}</span>}
+            />
+            <ControlPlaneSignalRow
+              label="Flows sous attention"
+              value={formatNumber(flowsUnderAttention)}
+            />
+            <ControlPlaneSignalRow
+              label="Incidents ouverts"
+              value={formatNumber(openIncidents)}
+            />
+            <ControlPlaneSignalRow
+              label="Commands actives"
+              value={formatNumber(activeCommands)}
+            />
+            <ControlPlaneSignalRow
+              label="SLA critiques"
+              value={formatNumber(criticalSlaSignals)}
+            />
+          </div>
+
+          <div className="mt-6 rounded-[24px] border border-white/10 bg-black/20 p-4">
+            <div className={metaLabelClassName()}>Quick read</div>
+            <div className="mt-2 text-sm leading-6 text-zinc-400">
+              Priorité immédiate :
+              {criticalSlaSignals > 0 || escalatedIncidents > 0
+                ? " ouvrir Incidents et SLA."
+                : openIncidents > 0 || failedCommands > 0 || retryCommands > 0
+                  ? " vérifier Incidents puis Commands."
+                  : " confirmer Flows et Commands sans urgence forte."}
+            </div>
           </div>
         </div>
       </section>
@@ -1150,7 +1357,7 @@ export default async function OverviewPage() {
       </SectionBlock>
 
       <SectionBlock
-        title="System lanes"
+        title="Operational lanes"
         description="Accès rapide aux vues principales du control plane BOSAI."
       >
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-4">
