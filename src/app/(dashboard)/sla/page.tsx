@@ -1,34 +1,62 @@
 import Link from "next/link";
-import { fetchSla, type SlaItem, type SlaResponse } from "@/lib/api";
+import type { ReactNode } from "react";
+import { fetchSla, type SlaItem } from "@/lib/api";
+import {
+  ControlPlaneShell,
+  SectionCard,
+  SidePanelCard,
+  SectionCountPill,
+  EmptyStatePanel,
+} from "@/components/dashboard/ControlPlaneShell";
+import {
+  DashboardStatusBadge,
+  type DashboardStatusKind,
+} from "@/components/dashboard/StatusBadge";
 
 function cardClassName() {
-  return "rounded-2xl border border-white/10 bg-white/5 p-5";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function statCardClassName() {
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function metaLabelClassName() {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function metaBoxClassName() {
+  return "rounded-[18px] border border-white/10 bg-black/20 px-4 py-4";
 }
 
 function actionLinkClassName(
-  variant: "default" | "primary" | "soft" = "default",
+  variant: "default" | "primary" | "soft" | "danger" = "default",
   disabled = false
 ) {
   const base =
-    "inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
+    "inline-flex items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition";
 
   if (disabled) {
-    return `${base} cursor-not-allowed border border-white/10 bg-white/5 text-zinc-500 opacity-60`;
+    return `${base} cursor-not-allowed border border-white/10 bg-white/[0.04] text-zinc-500 opacity-60`;
   }
 
   if (variant === "primary") {
     return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
   }
 
-  return `${base} border border-white/10 bg-white/5 text-white hover:bg-white/10`;
+  if (variant === "danger") {
+    return `${base} border border-rose-500/25 bg-rose-500/12 text-rose-200 hover:bg-rose-500/18`;
+  }
+
+  if (variant === "soft") {
+    return `${base} border border-white/10 bg-black/20 text-zinc-200 hover:bg-white/[0.06]`;
+  }
+
+  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
 }
 
-function sectionLabelClassName() {
-  return "text-xs uppercase tracking-[0.22em] text-zinc-500";
-}
-
-function metaLabelClassName() {
-  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+function chipClassName() {
+  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200";
 }
 
 function formatDate(value?: string | null): string {
@@ -71,6 +99,10 @@ function toNumber(value: unknown, fallback = Number.NaN): number {
   }
 
   return fallback;
+}
+
+function statValue(value?: number): number {
+  return typeof value === "number" ? value : 0;
 }
 
 function getSlaTitle(item: SlaItem): string {
@@ -128,10 +160,19 @@ function getSlaTone(item: SlaItem): string {
 }
 
 function getRemainingMinutes(item: SlaItem): string {
-  const value =
-    toNumber(item.sla_remaining_minutes) || toNumber(item.remaining_minutes);
+  const primary = toNumber(item.sla_remaining_minutes);
+  const fallback = toNumber(item.remaining_minutes);
+  const value = Number.isFinite(primary) ? primary : fallback;
 
   return Number.isFinite(value) ? `${value} min` : "—";
+}
+
+function getRemainingMinutesValue(item: SlaItem): number | null {
+  const primary = toNumber(item.sla_remaining_minutes);
+  const fallback = toNumber(item.remaining_minutes);
+  const value = Number.isFinite(primary) ? primary : fallback;
+
+  return Number.isFinite(value) ? value : null;
 }
 
 function getLastCheck(item: SlaItem): string {
@@ -173,12 +214,269 @@ function getRunTarget(item: SlaItem): string {
   );
 }
 
-function statValue(value?: number): number {
-  return typeof value === "number" ? value : 0;
+function getSlaCategory(item: SlaItem): string {
+  return toText(item.category, "—");
+}
+
+function getSlaReason(item: SlaItem): string {
+  return toText(item.reason, "—");
+}
+
+function getSlaLatestTs(item: SlaItem): number {
+  const ts = new Date(getLastCheck(item) || 0).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function getAttentionPriority(item: SlaItem): number {
+  const status = getSlaStatusNormalized(item);
+
+  if (status === "escalated") return 0;
+  if (status === "breached") return 1;
+  if (item.escalation_queued) return 2;
+  if (status === "warning") return 3;
+  if (status === "unknown") return 4;
+  return 5;
+}
+
+function sortAttentionItems(items: SlaItem[]): SlaItem[] {
+  return [...items].sort((a, b) => {
+    const priorityDiff = getAttentionPriority(a) - getAttentionPriority(b);
+    if (priorityDiff !== 0) return priorityDiff;
+    return getSlaLatestTs(b) - getSlaLatestTs(a);
+  });
+}
+
+function sortStableItems(items: SlaItem[]): SlaItem[] {
+  return [...items].sort((a, b) => getSlaLatestTs(b) - getSlaLatestTs(a));
+}
+
+function getStatusBadgeKind(item: SlaItem): DashboardStatusKind {
+  const status = getSlaStatusNormalized(item);
+
+  if (status === "ok") return "success";
+  if (status === "warning") return "queued";
+  if (status === "breached" || status === "escalated") return "failed";
+  return "unknown";
+}
+
+function getStatusTextTone(item: SlaItem): string {
+  const status = getSlaStatusNormalized(item);
+
+  if (status === "ok") return "text-emerald-300";
+  if (status === "warning") return "text-amber-300";
+  if (status === "breached") return "text-red-300";
+  if (status === "escalated") return "text-rose-300";
+  return "text-zinc-300";
+}
+
+function getQuickRead(params: {
+  breached: number;
+  escalated: number;
+  queued: number;
+  warning: number;
+  ok: number;
+  total: number;
+}): string {
+  const { breached, escalated, queued, warning, ok, total } = params;
+
+  if (escalated > 0) {
+    return "Priorité immédiate : ouvrir les signaux escaladés, puis remonter au flow et à la command liés.";
+  }
+
+  if (breached > 0) {
+    return "Priorité : traiter les SLA breached avant que la file d’escalade ne grossisse.";
+  }
+
+  if (queued > 0 || warning > 0) {
+    return "Lecture bleue : la surveillance reste active, avec des signaux à suivre avant rupture.";
+  }
+
+  if (ok > 0 && total > 0) {
+    return "La vue SLA visible paraît principalement stable sur le périmètre actuel.";
+  }
+
+  return "Aucun signal SLA significatif n’est visible pour le moment.";
+}
+
+function SlaMiniStat({
+  label,
+  value,
+  toneClass,
+}: {
+  label: string;
+  value: number | string;
+  toneClass: string;
+}) {
+  return (
+    <div className={statCardClassName()}>
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className={`mt-3 text-3xl font-semibold tracking-tight ${toneClass}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function SlaListCard({ item }: { item: SlaItem }) {
+  const id = String(item.id || "");
+  const title = getSlaTitle(item);
+  const flowTarget = getFlowTarget(item);
+  const commandTarget = getCommandTarget(item);
+  const hasFlow = flowTarget !== "";
+  const hasCommand = commandTarget !== "";
+
+  return (
+    <article className={cardClassName()}>
+      <div className="flex h-full flex-col gap-5">
+        <div className="space-y-4 border-b border-white/10 pb-4">
+          <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
+            BOSAI SLA
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="block break-words text-xl font-semibold tracking-tight text-white">
+                  {title}
+                </div>
+
+                <div className={`mt-2 text-sm font-medium ${getStatusTextTone(item)}`}>
+                  {getSlaStatusLabel(item)}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getSlaTone(
+                    item
+                  )}`}
+                >
+                  {getSlaStatusLabel(item)}
+                </span>
+
+                {item.escalation_queued ? (
+                  <DashboardStatusBadge kind="queued" label="QUEUE ACTIVE" />
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={chipClassName()}>
+                Workspace · {getWorkspace(item)}
+              </span>
+              <span className={chipClassName()}>
+                Remaining · {getRemainingMinutes(item)}
+              </span>
+              <span className={chipClassName()}>
+                Run · {getRunTarget(item)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Last check</div>
+            <div className="mt-2 text-zinc-100">{formatDate(getLastCheck(item))}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Remaining</div>
+            <div className="mt-2 text-zinc-100">{getRemainingMinutes(item)}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Category</div>
+            <div className="mt-2 text-zinc-100">{getSlaCategory(item)}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Reason</div>
+            <div className="mt-2 break-words text-zinc-100">{getSlaReason(item)}</div>
+          </div>
+
+          <div className="md:col-span-2 xl:col-span-2 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Flow</div>
+            <div className="mt-2 break-all text-zinc-100">{flowTarget || "—"}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Command</div>
+            <div className="mt-2 break-all text-zinc-100">{commandTarget || "—"}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Run</div>
+            <div className="mt-2 break-all text-zinc-100">{getRunTarget(item)}</div>
+          </div>
+
+          <div className="md:col-span-2 xl:col-span-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Record ID</div>
+            <div className="mt-2 break-all text-zinc-100">{id}</div>
+          </div>
+        </div>
+
+        <div className="mt-auto flex flex-col gap-2.5 pt-1">
+          {hasFlow ? (
+            <Link
+              href={`/flows/${encodeURIComponent(flowTarget)}`}
+              className={actionLinkClassName("primary")}
+            >
+              Ouvrir le flow lié
+            </Link>
+          ) : (
+            <span className={actionLinkClassName("primary", true)}>
+              Ouvrir le flow lié
+            </span>
+          )}
+
+          {hasCommand ? (
+            <Link
+              href={`/commands/${encodeURIComponent(commandTarget)}`}
+              className={actionLinkClassName("soft")}
+            >
+              Ouvrir la command liée
+            </Link>
+          ) : (
+            <span className={actionLinkClassName("soft", true)}>
+              Ouvrir la command liée
+            </span>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function SectionBlock({
+  title,
+  description,
+  count,
+  countTone = "default",
+  tone = "default",
+  children,
+}: {
+  title: string;
+  description: string;
+  count: number;
+  countTone?: "default" | "info" | "success" | "warning" | "danger" | "muted";
+  tone?: "default" | "attention" | "neutral";
+  children: ReactNode;
+}) {
+  return (
+    <SectionCard
+      title={title}
+      description={description}
+      tone={tone}
+      action={<SectionCountPill value={count} tone={countTone} />}
+    >
+      {children}
+    </SectionCard>
+  );
 }
 
 export default async function SlaPage() {
-  let data: SlaResponse | null = null;
+  let data: Awaited<ReturnType<typeof fetchSla>> | null = null;
 
   try {
     data = await fetchSla(100);
@@ -189,207 +487,311 @@ export default async function SlaPage() {
   const items: SlaItem[] = Array.isArray(data?.incidents) ? data.incidents : [];
   const stats = data?.stats ?? {};
 
-  const sortedItems = [...items].sort((a, b) => {
-    const aTs = new Date(getLastCheck(a) || 0).getTime();
-    const bTs = new Date(getLastCheck(b) || 0).getTime();
-    return bTs - aTs;
+  const okCount = statValue(stats.ok);
+  const warningCount = statValue(stats.warning);
+  const breachedCount = statValue(stats.breached);
+  const escalatedCount = statValue(stats.escalated);
+  const queuedCount = statValue(stats.escalation_queued);
+  const unknownCount = statValue(stats.unknown);
+
+  const attentionItems = sortAttentionItems(
+    items.filter((item) => {
+      const status = getSlaStatusNormalized(item);
+      return (
+        status === "warning" ||
+        status === "breached" ||
+        status === "escalated" ||
+        status === "unknown" ||
+        Boolean(item.escalation_queued)
+      );
+    })
+  );
+
+  const stableItems = sortStableItems(
+    items.filter((item) => getSlaStatusNormalized(item) === "ok")
+  );
+
+  const focusItem = attentionItems[0] ?? stableItems[0] ?? items[0] ?? null;
+
+  const latestCheck = [...items].sort((a, b) => getSlaLatestTs(b) - getSlaLatestTs(a))[0] ?? null;
+
+  const mostCritical =
+    attentionItems.find((item) => getSlaStatusNormalized(item) === "escalated") ||
+    attentionItems.find((item) => getSlaStatusNormalized(item) === "breached") ||
+    attentionItems.find((item) => Boolean(item.escalation_queued)) ||
+    attentionItems[0] ||
+    null;
+
+  const quickRead = getQuickRead({
+    breached: breachedCount,
+    escalated: escalatedCount,
+    queued: queuedCount,
+    warning: warningCount,
+    ok: okCount,
+    total: items.length,
   });
 
+  const focusRemaining = focusItem ? getRemainingMinutesValue(focusItem) : null;
+
   return (
-    <div className="space-y-8">
-      <section className="space-y-3 border-b border-white/10 pb-6">
-        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
+    <ControlPlaneShell
+      eyebrow="BOSAI Control Plane"
+      title="SLA"
+      description="Vue SLA du cockpit BOSAI avec lecture des signaux OK, Warning, Breached, Escalated et de la file de surveillance."
+      badges={[
+        { label: "SLA machine", tone: "muted" },
+        { label: "Blue queue aware", tone: "info" },
+        { label: "Flow-linked", tone: "warning" },
+      ]}
+      metrics={[
+        { label: "OK", value: okCount, toneClass: "text-emerald-300" },
+        { label: "Warning", value: warningCount, toneClass: "text-amber-300" },
+        { label: "Breached", value: breachedCount, toneClass: "text-red-300" },
+        { label: "Escalated", value: escalatedCount, toneClass: "text-rose-300" },
+      ]}
+      actions={
+        <>
+          <Link href="/flows" className={actionLinkClassName("soft")}>
+            Ouvrir Flows
+          </Link>
 
-        <div>
-          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-            SLA
-          </h1>
-          <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
-            Vue SLA du cockpit BOSAI. Cette page affiche les signaux OK, Warning,
-            Breached, Escalated et la file d’escalade.
-          </p>
-        </div>
-      </section>
+          <Link href="/commands" className={actionLinkClassName("soft")}>
+            Voir Commands
+          </Link>
 
-      <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">OK</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-emerald-300">
-            {statValue(stats.ok)}
-          </div>
-        </div>
+          <Link href="/incidents" className={actionLinkClassName("danger")}>
+            Voir Incidents
+          </Link>
+        </>
+      }
+      aside={
+        <>
+          <SidePanelCard title="Lecture SLA">
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={queuedCount > 0 ? "queued" : "success"}
+                  label={queuedCount > 0 ? "QUEUE ACTIVE" : "QUEUE STABLE"}
+                />
+                <DashboardStatusBadge
+                  kind={escalatedCount > 0 || breachedCount > 0 ? "failed" : "success"}
+                  label={
+                    escalatedCount > 0 || breachedCount > 0
+                      ? "ATTENTION REQUISE"
+                      : "STABLE"
+                  }
+                />
+              </div>
 
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Warning</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-amber-300">
-            {statValue(stats.warning)}
-          </div>
-        </div>
+              <div className="space-y-2 text-sm leading-6 text-white/65">
+                <div>
+                  Latest check :{" "}
+                  <span className="text-white/90">
+                    {formatDate(latestCheck ? getLastCheck(latestCheck) : "")}
+                  </span>
+                </div>
+                <div>
+                  Queue : <span className="text-sky-300">{queuedCount}</span>
+                </div>
+                <div>
+                  Critical :{" "}
+                  <span className="text-white/90">
+                    {breachedCount + escalatedCount}
+                  </span>
+                </div>
+              </div>
 
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Breached</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-red-300">
-            {statValue(stats.breached)}
-          </div>
-        </div>
+              <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                  Quick read
+                </div>
+                <div className="mt-2 text-sm leading-6 text-white/70">
+                  {quickRead}
+                </div>
+              </div>
+            </div>
+          </SidePanelCard>
 
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Escalated</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-rose-300">
-            {statValue(stats.escalated)}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Queued</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-violet-300">
-            {statValue(stats.escalation_queued)}
-          </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="text-sm text-zinc-400">Unknown</div>
-          <div className="mt-3 text-4xl font-semibold tracking-tight text-zinc-300">
-            {statValue(stats.unknown)}
-          </div>
-        </div>
-      </section>
-
-      {sortedItems.length === 0 ? (
-        <section className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-sm text-zinc-500">
-          Aucun signal SLA visible pour le moment.
-        </section>
-      ) : (
-        <section className="space-y-4">
-          {sortedItems.map((item) => {
-            const id = String(item.id || "");
-            const title = getSlaTitle(item);
-            const flowTarget = getFlowTarget(item);
-            const commandTarget = getCommandTarget(item);
-            const hasFlow = flowTarget !== "";
-            const hasCommand = commandTarget !== "";
-
-            return (
-              <article key={id} className={cardClassName()}>
-                <div className="flex h-full flex-col gap-5">
-                  <div className="space-y-4 border-b border-white/10 pb-4">
-                    <div className={sectionLabelClassName()}>BOSAI SLA</div>
-
-                    <div className="space-y-3">
-                      <div className="block break-words text-xl font-semibold tracking-tight text-white">
-                        {title}
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getSlaTone(
-                            item
-                          )}`}
-                        >
-                          {getSlaStatusLabel(item)}
-                        </span>
-
-                        {item.escalation_queued ? (
-                          <span className="inline-flex rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-300">
-                            ESCALATION QUEUED
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
-                      <span>
-                        Workspace:{" "}
-                        <span className="text-zinc-300">{getWorkspace(item)}</span>
-                      </span>
-                      <span>
-                        Remaining:{" "}
-                        <span className="text-zinc-300">{getRemainingMinutes(item)}</span>
-                      </span>
-                      <span>
-                        Last check:{" "}
-                        <span className="text-zinc-300">
-                          {formatDate(getLastCheck(item))}
-                        </span>
-                      </span>
-                    </div>
+          <SidePanelCard title="Signal actif">
+            {focusItem ? (
+              <div className="space-y-4">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-white/35">
+                    Titre
                   </div>
-
-                  <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-                    <div>
-                      <div className={metaLabelClassName()}>Record ID</div>
-                      <div className="mt-1 break-all text-zinc-200">{id}</div>
-                    </div>
-
-                    <div>
-                      <div className={metaLabelClassName()}>Flow</div>
-                      <div className="mt-1 break-all text-zinc-200">
-                        {flowTarget || "—"}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className={metaLabelClassName()}>Command</div>
-                      <div className="mt-1 break-all text-zinc-200">
-                        {commandTarget || "—"}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className={metaLabelClassName()}>Run</div>
-                      <div className="mt-1 break-all text-zinc-200">
-                        {getRunTarget(item)}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className={metaLabelClassName()}>Category</div>
-                      <div className="mt-1 text-zinc-200">
-                        {toText(item.category, "—")}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className={metaLabelClassName()}>Reason</div>
-                      <div className="mt-1 break-words text-zinc-200">
-                        {toText(item.reason, "—")}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    {hasFlow ? (
-                      <Link
-                        href={`/flows/${encodeURIComponent(flowTarget)}`}
-                        className={actionLinkClassName("primary")}
-                      >
-                        Ouvrir le flow lié
-                      </Link>
-                    ) : (
-                      <span className={actionLinkClassName("primary", true)}>
-                        Ouvrir le flow lié
-                      </span>
-                    )}
-
-                    {hasCommand ? (
-                      <Link
-                        href={`/commands/${encodeURIComponent(commandTarget)}`}
-                        className={actionLinkClassName("soft")}
-                      >
-                        Ouvrir la command liée
-                      </Link>
-                    ) : (
-                      <span className={actionLinkClassName("soft", true)}>
-                        Ouvrir la command liée
-                      </span>
-                    )}
+                  <div className="mt-2 text-sm font-medium leading-6 text-white">
+                    {getSlaTitle(focusItem)}
                   </div>
                 </div>
-              </article>
-            );
-          })}
-        </section>
+
+                <div className="flex flex-wrap gap-2">
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getSlaTone(
+                      focusItem
+                    )}`}
+                  >
+                    {getSlaStatusLabel(focusItem)}
+                  </span>
+                  {focusItem.escalation_queued ? (
+                    <DashboardStatusBadge kind="queued" label="QUEUE ACTIVE" />
+                  ) : null}
+                </div>
+
+                <div className="space-y-2 text-sm leading-6 text-white/65">
+                  <div>
+                    Workspace :{" "}
+                    <span className="text-white/90">{getWorkspace(focusItem)}</span>
+                  </div>
+                  <div>
+                    Remaining :{" "}
+                    <span className="text-white/90">
+                      {getRemainingMinutes(focusItem)}
+                    </span>
+                  </div>
+                  <div>
+                    Flow :{" "}
+                    <span className="break-all text-white/90">
+                      {getFlowTarget(focusItem) || "—"}
+                    </span>
+                  </div>
+                </div>
+
+                {mostCritical && getFlowTarget(mostCritical) ? (
+                  <Link
+                    href={`/flows/${encodeURIComponent(getFlowTarget(mostCritical))}`}
+                    className={actionLinkClassName("primary")}
+                  >
+                    Ouvrir le flow critique
+                  </Link>
+                ) : (
+                  <span className={actionLinkClassName("primary", true)}>
+                    Ouvrir le flow critique
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="text-sm text-white/55">Aucun signal SLA visible.</div>
+            )}
+          </SidePanelCard>
+        </>
+      }
+    >
+      <SectionCard
+        title="SLA posture"
+        description="Lecture rapide de la pression SLA visible sur le cockpit."
+        action={<SectionCountPill value={items.length} tone="info" />}
+      >
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
+          <SlaMiniStat label="OK" value={okCount} toneClass="text-emerald-300" />
+          <SlaMiniStat
+            label="Warning"
+            value={warningCount}
+            toneClass="text-amber-300"
+          />
+          <SlaMiniStat
+            label="Breached"
+            value={breachedCount}
+            toneClass="text-red-300"
+          />
+          <SlaMiniStat
+            label="Escalated"
+            value={escalatedCount}
+            toneClass="text-rose-300"
+          />
+          <SlaMiniStat
+            label="Queued"
+            value={queuedCount}
+            toneClass="text-sky-300"
+          />
+          <SlaMiniStat
+            label="Unknown"
+            value={unknownCount}
+            toneClass="text-zinc-300"
+          />
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Latest check</div>
+            <div className="mt-2 text-zinc-100">
+              {formatDate(latestCheck ? getLastCheck(latestCheck) : "")}
+            </div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Critical signals</div>
+            <div className="mt-2 text-zinc-100">{breachedCount + escalatedCount}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Queue active</div>
+            <div className="mt-2 text-sky-300">{queuedCount}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Focus remaining</div>
+            <div className="mt-2 text-zinc-100">
+              {focusRemaining === null ? "—" : `${focusRemaining} min`}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+          <div className={metaLabelClassName()}>Quick read</div>
+          <div className="mt-2 text-sm leading-6 text-zinc-300">{quickRead}</div>
+        </div>
+      </SectionCard>
+
+      {items.length === 0 ? (
+        <EmptyStatePanel
+          title="Aucun signal SLA visible"
+          description="Le Dashboard n’a remonté aucun signal SLA sur la source actuelle."
+        />
+      ) : (
+        <>
+          <SectionBlock
+            title="Needs attention"
+            description="Signaux SLA à surveiller en priorité : warning, breached, escalated ou queue active."
+            count={attentionItems.length}
+            countTone="warning"
+            tone="attention"
+          >
+            {attentionItems.length === 0 ? (
+              <EmptyStatePanel
+                title="Aucun signal prioritaire"
+                description="Aucun signal warning, breached, escalated ou queue active n’est visible."
+              />
+            ) : (
+              <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
+                {attentionItems.map((item) => (
+                  <SlaListCard key={String(item.id)} item={item} />
+                ))}
+              </div>
+            )}
+          </SectionBlock>
+
+          <SectionBlock
+            title="Stable signals"
+            description="Signaux SLA stables ou résiduels, triés du plus récent au plus ancien."
+            count={stableItems.length}
+            countTone="success"
+            tone="neutral"
+          >
+            {stableItems.length === 0 ? (
+              <EmptyStatePanel
+                title="Aucun signal stable"
+                description="Aucun signal SLA stable n’est visible sur cette vue."
+              />
+            ) : (
+              <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
+                {stableItems.map((item) => (
+                  <SlaListCard key={String(item.id)} item={item} />
+                ))}
+              </div>
+            )}
+          </SectionBlock>
+        </>
       )}
-    </div>
+    </ControlPlaneShell>
   );
 }
