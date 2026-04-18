@@ -98,12 +98,21 @@ function healthTone(score: number): string {
   return "text-red-400";
 }
 
+function coreHealthBadgeLabel(label: string): string {
+  const normalized = label.trim().toUpperCase();
+
+  if (normalized === "STABLE") return "Core stable";
+  if (normalized === "À SURVEILLER") return "Core à surveiller";
+  if (normalized === "CRITIQUE") return "Core critique";
+  return `Core ${label}`;
+}
+
 function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function statCardClassName(): string {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function sectionLabelClassName(): string {
@@ -268,22 +277,22 @@ function overviewPostureSummary(params: {
   } = params;
 
   if (criticalSlaSignals > 0 || escalatedIncidents > 0) {
-    return "Le cockpit remonte des signaux critiques à ouvrir en priorité côté incidents et SLA.";
+    return "Le core peut rester stable pendant que la couche opérationnelle demande une action immédiate.";
   }
 
   if (openIncidents > 0 || failedCommands > 0 || retryCommands > 0) {
-    return "Le système reste exploitable mais demande une lecture rapide des signaux actifs et des commandes à risque.";
+    return "Le système reste exploitable, mais certains signaux actifs méritent une vérification rapide.";
   }
 
   if (activeCommands > 0 || flowsUnderAttention > 0) {
-    return "L’activité est présente sans alerte majeure immédiate. Le cockpit sert surtout à piloter et confirmer l’état courant.";
+    return "Le cockpit sert surtout à suivre l’activité en cours et confirmer la bonne lecture des flux.";
   }
 
   if (healthScore >= 80) {
-    return "Le plan de contrôle paraît stable sur les surfaces visibles du dashboard.";
+    return "Les surfaces visibles du dashboard restent globalement stables.";
   }
 
-  return "L’état global mérite une surveillance légère même si aucune alerte prioritaire n’est dominante.";
+  return "L’état global mérite une surveillance légère même sans alerte dominante.";
 }
 
 /* ---------------- Incident helpers ---------------- */
@@ -378,6 +387,18 @@ function getIncidentUpdatedTs(incident: IncidentItem): number {
     toTs(record.opened_at as string | number | null | undefined),
     toTs(record.created_at as string | number | null | undefined)
   );
+}
+
+function getIncidentActivityLabel(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+
+  const value =
+    toText(record.updated_at) ||
+    toText(record.opened_at) ||
+    toText(record.created_at) ||
+    toText(record.resolved_at);
+
+  return formatDate(value || null);
 }
 
 function getIncidentBusinessKey(incident: IncidentItem): string {
@@ -648,6 +669,18 @@ function getCommandActivityTs(command: CommandItem): number {
   );
 }
 
+function getCommandActivityLabel(command: CommandItem): string {
+  const record = command as Record<string, unknown>;
+
+  const value =
+    toText(record.updated_at) ||
+    toText(record.finished_at) ||
+    toText(record.started_at) ||
+    toText(record.created_at);
+
+  return formatDate(value || null);
+}
+
 function getCommandFlowKey(command: CommandItem): string {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
@@ -756,19 +789,21 @@ function StatCard({
   value,
   toneClass,
   helper,
+  className = "",
 }: {
   label: string;
   value: number;
   toneClass: string;
   helper?: string;
+  className?: string;
 }) {
   return (
-    <div className={statCardClassName()}>
+    <div className={`${statCardClassName()} ${className}`}>
       <div className="text-sm text-zinc-400">{label}</div>
-      <div className={`mt-3 text-4xl font-semibold tracking-tight ${toneClass}`}>
+      <div className={`mt-3 text-3xl font-semibold tracking-tight md:text-4xl ${toneClass}`}>
         {value}
       </div>
-      {helper ? <div className="mt-3 text-sm text-zinc-300">{helper}</div> : null}
+      {helper ? <div className="mt-2 text-sm text-zinc-300">{helper}</div> : null}
     </div>
   );
 }
@@ -849,7 +884,7 @@ function AttentionIncidentCard({ incident }: { incident: IncidentItem }) {
               {incidentWorkspace} · {incidentFlow}
             </div>
             <div className="mt-2 text-sm text-zinc-500">
-              Activité : {formatDate((incident as Record<string, unknown>).updated_at as string)}
+              Activité : {getIncidentActivityLabel(incident)}
             </div>
           </div>
 
@@ -886,7 +921,7 @@ function AttentionCommandCard({ command }: { command: CommandItem }) {
             </div>
             <div className="mt-2 text-sm text-zinc-400">{commandSummaryLine(command)}</div>
             <div className="mt-2 text-sm text-zinc-500">
-              Activité : {formatDate((command as Record<string, unknown>).updated_at as string)}
+              Activité : {getCommandActivityLabel(command)}
             </div>
           </div>
 
@@ -988,6 +1023,7 @@ export default async function OverviewPage() {
 
   const healthScore = health?.score ?? 0;
   const healthStatus = health?.status ?? "";
+  const coreHealthState = healthLabel(healthScore, healthStatus);
 
   const totalRuns = runs?.count ?? 0;
   const runningRuns = runs?.stats?.running ?? 0;
@@ -1161,11 +1197,11 @@ export default async function OverviewPage() {
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <span className={badgeClassName(postureTone)}>{postureLabel}</span>
+            <span className={badgeClassName("success")}>
+              {coreHealthBadgeLabel(coreHealthState)}
+            </span>
             <span className={badgeClassName("info")}>
               {formatNumber(flowsUnderAttention)} flow(s) sous attention
-            </span>
-            <span className={badgeClassName("violet")}>
-              {formatNumber(activeCommands)} command(s) actives
             </span>
           </div>
 
@@ -1174,9 +1210,8 @@ export default async function OverviewPage() {
               Overview
             </h1>
             <p className="mt-3 max-w-3xl text-base text-zinc-400 sm:text-lg">
-              Point d’entrée cockpit BOSAI pour lire la posture actuelle du système,
-              ouvrir rapidement les lanes critiques et garder une hiérarchie claire
-              côté control plane.
+              Point d’entrée cockpit BOSAI pour lire la posture opérationnelle,
+              ouvrir les lanes utiles et garder une lecture claire du control plane.
             </p>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-500">
               {postureSummary}
@@ -1193,31 +1228,25 @@ export default async function OverviewPage() {
             <Link href="/commands" className={ctaClassName("primary")}>
               Voir Commands
             </Link>
-            <Link href="/runs" className={ctaClassName("default")}>
-              Voir Runs
-            </Link>
           </div>
         </div>
 
         <div className="rounded-[32px] border border-white/10 bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-8">
-          <div className={sectionLabelClassName()}>Current posture</div>
+          <div className={sectionLabelClassName()}>Signal summary</div>
 
-          <div className="mt-4 flex items-center justify-between gap-4">
-            <div>
-              <div className="text-2xl font-semibold tracking-tight text-white">
-                {postureLabel}
-              </div>
-              <div className="mt-2 text-sm text-zinc-400">
-                Lecture rapide avant d’ouvrir les vues détaillées.
-              </div>
+          <div className="mt-4">
+            <div className="text-2xl font-semibold tracking-tight text-white">
+              {postureLabel}
             </div>
-            <span className={badgeClassName(postureTone)}>{healthLabel(healthScore, healthStatus)}</span>
+            <div className="mt-2 text-sm text-zinc-400">
+              Résumé compact de la pression opérationnelle actuelle.
+            </div>
           </div>
 
           <div className="mt-6 space-y-3">
             <ControlPlaneSignalRow
-              label="Health score"
-              value={<span className={healthTone(healthScore)}>{healthScore}</span>}
+              label="Core health"
+              value={<span className={healthTone(healthScore)}>{coreHealthState}</span>}
             />
             <ControlPlaneSignalRow
               label="Flows sous attention"
@@ -1228,12 +1257,12 @@ export default async function OverviewPage() {
               value={formatNumber(openIncidents)}
             />
             <ControlPlaneSignalRow
-              label="Commands actives"
-              value={formatNumber(activeCommands)}
+              label="Commands failed/dead"
+              value={formatNumber(failedCommands)}
             />
             <ControlPlaneSignalRow
-              label="SLA critiques"
-              value={formatNumber(criticalSlaSignals)}
+              label="Commands retry"
+              value={formatNumber(retryCommands)}
             />
           </div>
 
@@ -1251,24 +1280,25 @@ export default async function OverviewPage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <StatCard
           label="Health score"
           value={healthScore}
           toneClass={healthTone(healthScore)}
-          helper={healthLabel(healthScore, healthStatus)}
+          helper={coreHealthState}
+          className="col-span-2 xl:col-span-1"
         />
         <StatCard
           label="Flows sous attention"
           value={flowsUnderAttention}
           toneClass="text-sky-300"
-          helper="Liés aux incidents ou commands actives"
+          helper="Incidents ou commands actives"
         />
         <StatCard
           label="Commands actives"
           value={activeCommands}
           toneClass="text-violet-300"
-          helper={`Total commands: ${formatNumber(totalCommands)}`}
+          helper={`Total: ${formatNumber(totalCommands)}`}
         />
         <StatCard
           label="Incidents ouverts"
@@ -1280,7 +1310,8 @@ export default async function OverviewPage() {
           label="SLA critiques"
           value={criticalSlaSignals}
           toneClass="text-rose-300"
-          helper={`Total signaux SLA: ${formatNumber(totalSlaSignals)}`}
+          helper={`Total SLA: ${formatNumber(totalSlaSignals)}`}
+          className="col-span-2 xl:col-span-1"
         />
       </section>
 
@@ -1548,9 +1579,7 @@ export default async function OverviewPage() {
               key={String((command as Record<string, unknown>).id)}
               title="Command récente"
               value={getCommandTitle(command)}
-              subtitle={`Dernière activité : ${formatDate(
-                (command as Record<string, unknown>).updated_at as string
-              )}`}
+              subtitle={`Dernière activité : ${getCommandActivityLabel(command)}`}
               href={`/commands/${encodeURIComponent(String((command as Record<string, unknown>).id || ""))}`}
               badge={
                 <span className={commandTone(getCommandStatus(command))}>
