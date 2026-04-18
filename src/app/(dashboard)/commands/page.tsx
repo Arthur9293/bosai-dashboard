@@ -41,8 +41,12 @@ function cardClassName() {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
+function compactCardClassName() {
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
 function statCardClassName() {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function actionLinkClassName(
@@ -50,6 +54,10 @@ function actionLinkClassName(
 ) {
   if (variant === "primary") {
     return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+  }
+
+  if (variant === "soft") {
+    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm font-medium text-zinc-200 transition hover:bg-white/[0.06]";
   }
 
   return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
@@ -64,7 +72,7 @@ function metaLabelClassName() {
 }
 
 function metaBoxClassName(): string {
-  return "rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+  return "rounded-[18px] border border-white/10 bg-black/20 px-4 py-4";
 }
 
 function neutralPillClassName() {
@@ -561,6 +569,53 @@ function SectionBlock({
   );
 }
 
+function SignalMiniStat({
+  label,
+  value,
+  toneClass = "text-white",
+}: {
+  label: string;
+  value: string;
+  toneClass?: string;
+}) {
+  return (
+    <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+      <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+        {label}
+      </div>
+      <div className={`mt-2 text-2xl font-semibold tracking-tight ${toneClass}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function HeroActionCard({
+  href,
+  title,
+  description,
+  tone = "default",
+}: {
+  href: string;
+  title: string;
+  description: string;
+  tone?: "default" | "danger" | "primary";
+}) {
+  const className =
+    tone === "danger"
+      ? "rounded-[22px] border border-rose-500/20 bg-rose-500/8 p-4 transition hover:bg-rose-500/12"
+      : tone === "primary"
+        ? "rounded-[22px] border border-emerald-500/20 bg-emerald-500/8 p-4 transition hover:bg-emerald-500/12"
+        : "rounded-[22px] border border-white/10 bg-black/20 p-4 transition hover:bg-white/[0.04]";
+
+  return (
+    <Link href={href} className={className}>
+      <div className="text-sm font-medium text-white">{title}</div>
+      <div className="mt-2 text-sm leading-6 text-zinc-400">{description}</div>
+    </Link>
+  );
+}
+
 function CommandCard({ command }: { command: CommandItem }) {
   const id = String(command.id || "");
   const title = getCommandTitle(command);
@@ -583,21 +638,29 @@ function CommandCard({ command }: { command: CommandItem }) {
           <div className={sectionLabelClassName()}>BOSAI Command</div>
 
           <div className="space-y-3">
-            <Link
-              href={`/commands/${encodeURIComponent(id)}`}
-              className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
-            >
-              {title}
-            </Link>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <Link
+                  href={`/commands/${encodeURIComponent(id)}`}
+                  className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
+                >
+                  {title}
+                </Link>
 
-            <div className="text-sm text-zinc-400">{getCommandSummaryLine(command)}</div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  {getCommandSummaryLine(command)}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <DashboardStatusBadge
+                  kind={getCommandStatusBadgeKind(command)}
+                  label={humanStatusLabel(status).toUpperCase()}
+                />
+              </div>
+            </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <DashboardStatusBadge
-                kind={getCommandStatusBadgeKind(command)}
-                label={humanStatusLabel(status).toUpperCase()}
-              />
-
               <span className={neutralPillClassName()}>
                 {cleanCapabilityLabel(capability)}
               </span>
@@ -609,28 +672,13 @@ function CommandCard({ command }: { command: CommandItem }) {
               {toolMode ? (
                 <span className={neutralPillClassName()}>MODE {toolMode}</span>
               ) : null}
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 md:grid-cols-2">
-            <div>
-              Workspace: <span className="text-zinc-300">{workspace}</span>
-            </div>
-            <div>
-              Run: <span className="text-zinc-300">{runId}</span>
-            </div>
-            <div className="hidden md:block">
-              Parent: <span className="text-zinc-300">{parentId || "—"}</span>
+              <span className={neutralPillClassName()}>{workspace}</span>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-3">
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>ID</div>
-            <div className="mt-2 break-all text-zinc-100">{id}</div>
-          </div>
-
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Created</div>
             <div className="mt-2 text-zinc-100">
@@ -646,6 +694,16 @@ function CommandCard({ command }: { command: CommandItem }) {
           </div>
 
           <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Run</div>
+            <div className="mt-2 break-all text-zinc-100">{runId}</div>
+          </div>
+
+          <div className={metaBoxClassName()}>
+            <div className={metaLabelClassName()}>Parent</div>
+            <div className="mt-2 break-all text-zinc-100">{parentId || "—"}</div>
+          </div>
+
+          <div className="md:col-span-2 xl:col-span-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>Flow</div>
             <div className="mt-2 break-all text-zinc-100">{flowId || "—"}</div>
           </div>
@@ -660,24 +718,14 @@ function CommandCard({ command }: { command: CommandItem }) {
             <div className="mt-2 break-all text-zinc-100">{sourceEventId || "—"}</div>
           </div>
 
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Run</div>
-            <div className="mt-2 break-all text-zinc-100">{runId}</div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Parent</div>
-            <div className="mt-2 break-all text-zinc-100">{parentId || "—"}</div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Workspace</div>
-            <div className="mt-2 text-zinc-100">{workspace}</div>
-          </div>
-
-          <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className="md:col-span-2 xl:col-span-4 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>Error</div>
             <div className="mt-2 break-all text-zinc-100">{errorText || "—"}</div>
+          </div>
+
+          <div className="md:col-span-2 xl:col-span-4 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>ID</div>
+            <div className="mt-2 break-all text-zinc-100">{id}</div>
           </div>
         </div>
 
@@ -771,22 +819,90 @@ export default async function CommandsPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-8">
-      <section className="space-y-3 border-b border-white/10 pb-6">
-        <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_0.95fr]">
+        <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6">
+          <div className={sectionLabelClassName()}>BOSAI Dashboard</div>
 
-        <div>
-          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-            Commands
-          </h1>
-          <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
-            Vue de la file d’exécution BOSAI. Cette page permet de suivre les
-            commands, leur statut, leur liaison au flow, et leur détail.
-          </p>
+          <div className="mt-5">
+            <h1 className="text-4xl font-semibold tracking-tight text-white md:text-5xl">
+              Commands
+            </h1>
+            <p className="mt-3 max-w-3xl text-base leading-8 text-zinc-400">
+              Vue de la file d’exécution BOSAI pour suivre les commands, leur statut,
+              leur liaison au flow et leur détail opérationnel.
+            </p>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <HeroActionCard
+              href="/flows"
+              title="Ouvrir Flows"
+              description="Lire les chaînes liées aux commands et remonter aux flows."
+            />
+            <HeroActionCard
+              href="/runs"
+              title="Voir Runs"
+              description="Comparer l’activité commands avec les runs observés."
+            />
+            <div className="sm:col-span-2">
+              <HeroActionCard
+                href="/"
+                title="Retour Overview"
+                description="Revenir au cockpit principal et aux signaux prioritaires."
+                tone="primary"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6">
+          <div className={sectionLabelClassName()}>Queue summary</div>
+
+          <div className="mt-4 text-2xl font-semibold tracking-tight text-white">
+            Commands visibles
+          </div>
+          <div className="mt-1 text-sm text-zinc-400">
+            Lecture rapide de la file actuelle selon les filtres actifs.
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <SignalMiniStat
+              label="Queued"
+              value={String(queuedCommands.length)}
+              toneClass="text-amber-300"
+            />
+            <SignalMiniStat
+              label="Running"
+              value={String(runningCommands.length)}
+              toneClass="text-sky-300"
+            />
+            <SignalMiniStat
+              label="Failed"
+              value={String(failedCommands.length)}
+              toneClass="text-red-300"
+            />
+            <SignalMiniStat
+              label="Done"
+              value={String(doneCommands.length)}
+              toneClass="text-emerald-300"
+            />
+          </div>
+
+          <div className="mt-4 rounded-[20px] border border-white/10 bg-black/20 px-4 py-3.5">
+            <div className={metaLabelClassName()}>Quick read</div>
+            <div className="mt-2 text-sm leading-6 text-zinc-400">
+              {failedCommands.length > 0 || retryCommands.length > 0
+                ? "Priorité : ouvrir les commands en échec ou en retry."
+                : runningCommands.length > 0 || queuedCommands.length > 0
+                  ? "Priorité : suivre la file active et les commands en cours."
+                  : "La file visible est principalement stable ou terminée."}
+            </div>
+          </div>
         </div>
       </section>
 
       {hasFlowFilters ? (
-        <section className="rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-5 md:p-6">
+        <section className="rounded-[24px] border border-emerald-500/20 bg-emerald-500/10 p-5 md:p-6">
           <div className="mb-4 text-lg font-medium text-emerald-200">
             Filtré depuis Flows
           </div>
@@ -811,7 +927,7 @@ export default async function CommandsPage({ searchParams }: PageProps) {
             ) : null}
           </div>
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
               Retour aux flows
             </Link>
