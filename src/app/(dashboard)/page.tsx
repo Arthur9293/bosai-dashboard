@@ -58,17 +58,6 @@ function toText(value: unknown, fallback = ""): string {
   return text || fallback;
 }
 
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-
-  return fallback;
-}
-
 function uniq(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
@@ -127,6 +116,10 @@ function rowCardClassName(): string {
   return "block w-full overflow-hidden rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 transition hover:border-white/15 hover:bg-white/[0.04]";
 }
 
+function compactRowCardClassName(): string {
+  return "block w-full overflow-hidden rounded-[22px] border border-white/10 bg-black/20 px-4 py-3.5 transition hover:border-white/15 hover:bg-white/[0.04] md:px-5 md:py-4";
+}
+
 function badgeClassName(variant: BadgeVariant = "default"): string {
   if (variant === "success") {
     return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
@@ -167,6 +160,10 @@ function ctaClassName(
   }
 
   return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+}
+
+function ctaCompactClassName(): string {
+  return "inline-flex items-center justify-center rounded-full border border-white/10 bg-black/20 px-3.5 py-2 text-sm font-medium text-zinc-200 transition hover:bg-white/[0.06]";
 }
 
 function systemStatusTone(value: string): string {
@@ -624,40 +621,6 @@ function getCommandFlowId(command: CommandItem): string {
   );
 }
 
-function getCommandRootEventId(command: CommandItem): string {
-  const input = getCommandInput(command);
-  const result = getCommandResult(command);
-
-  return (
-    toText((command as Record<string, unknown>).root_event_id) ||
-    toText(input.root_event_id) ||
-    toText(input.rootEventId) ||
-    toText(result.root_event_id) ||
-    toText(result.rootEventId) ||
-    ""
-  );
-}
-
-function getCommandSourceEventId(command: CommandItem): string {
-  const input = getCommandInput(command);
-  const result = getCommandResult(command);
-  const record = command as Record<string, unknown>;
-
-  return (
-    toText(record.source_event_id) ||
-    toText(record.Source_Event_ID) ||
-    toText(input.source_event_id) ||
-    toText(input.sourceEventId) ||
-    toText(input.event_id) ||
-    toText(input.eventId) ||
-    toText(result.source_event_id) ||
-    toText(result.sourceEventId) ||
-    toText(result.event_id) ||
-    toText(result.eventId) ||
-    ""
-  );
-}
-
 function getCommandActivityTs(command: CommandItem): number {
   const record = command as Record<string, unknown>;
 
@@ -694,19 +657,19 @@ function getCommandFlowKey(command: CommandItem): string {
     toText(result.flowId) ||
     toText(record.root_event_id) ||
     toText(input.root_event_id) ||
-    toText(input.rootEventId) ||
+    toText((input as Record<string, unknown>).rootEventId) ||
     toText(result.root_event_id) ||
-    toText(result.rootEventId) ||
+    toText((result as Record<string, unknown>).rootEventId) ||
     toText(record.source_event_id) ||
     toText(record.Source_Event_ID) ||
     toText(input.source_event_id) ||
-    toText(input.sourceEventId) ||
+    toText((input as Record<string, unknown>).sourceEventId) ||
     toText(input.event_id) ||
-    toText(input.eventId) ||
+    toText((input as Record<string, unknown>).eventId) ||
     toText(result.source_event_id) ||
-    toText(result.sourceEventId) ||
+    toText((result as Record<string, unknown>).sourceEventId) ||
     toText(result.event_id) ||
-    toText(result.eventId)
+    toText((result as Record<string, unknown>).eventId)
   );
 }
 
@@ -845,16 +808,18 @@ function QuickLinkCard({
   badge?: ReactNode;
 }) {
   return (
-    <Link href={href} className={rowCardClassName()}>
+    <Link href={href} className={compactRowCardClassName()}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className={metaLabelClassName()}>BOSAI Lane</div>
-          <div className="mt-2 text-lg font-semibold tracking-tight text-white">
+          <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+            BOSAI Lane
+          </div>
+          <div className="mt-2 text-[1.65rem] font-semibold leading-none tracking-tight text-white md:text-[1.8rem]">
             {title}
           </div>
-          <div className="mt-2 text-sm text-zinc-400">{subtitle}</div>
+          <div className="mt-3 text-sm leading-6 text-zinc-400">{subtitle}</div>
         </div>
-        {badge}
+        <div className="shrink-0">{badge}</div>
       </div>
     </Link>
   );
@@ -959,16 +924,20 @@ function RecentRunCard({
   badge?: ReactNode;
 }) {
   return (
-    <Link href={href} className={rowCardClassName()}>
+    <Link href={href} className={compactRowCardClassName()}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className={metaLabelClassName()}>{title}</div>
-          <div className="mt-2 break-words text-base font-semibold tracking-tight text-white">
+          <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+            {title}
+          </div>
+          <div className="mt-2 break-words text-base font-semibold tracking-tight text-white md:text-lg">
             {value}
           </div>
-          {subtitle ? <div className="mt-2 text-sm text-zinc-400">{subtitle}</div> : null}
+          {subtitle ? (
+            <div className="mt-2 text-sm leading-6 text-zinc-400">{subtitle}</div>
+          ) : null}
         </div>
-        {badge}
+        <div className="shrink-0">{badge}</div>
       </div>
     </Link>
   );
@@ -1068,7 +1037,7 @@ export default async function OverviewPage() {
 
   const recentCommands = [...commandItems]
     .sort((a, b) => getCommandActivityTs(b) - getCommandActivityTs(a))
-    .slice(0, 5);
+    .slice(0, 4);
 
   const newEvents = events?.stats?.new ?? 0;
   const queuedEvents = events?.stats?.queued ?? 0;
@@ -1091,14 +1060,10 @@ export default async function OverviewPage() {
   const criticalIncidentItems = incidentItems.filter((item) =>
     isCriticalIncident(item)
   );
-  const warningIncidentItems = incidentItems.filter((item) =>
-    isWarningIncident(item)
-  );
 
   const openIncidents = openIncidentItems.length;
   const escalatedIncidents = escalatedIncidentItems.length;
   const criticalIncidents = criticalIncidentItems.length;
-  const warningIncidents = warningIncidentItems.length;
 
   const activeIncidentItems = [...openIncidentItems, ...escalatedIncidentItems].sort(
     (a, b) => {
@@ -1334,7 +1299,7 @@ export default async function OverviewPage() {
                 </div>
               </div>
 
-              <Link href="/incidents" className={ctaClassName("soft")}>
+              <Link href="/incidents" className={ctaCompactClassName()}>
                 Voir tout
               </Link>
             </div>
@@ -1364,7 +1329,7 @@ export default async function OverviewPage() {
                 </div>
               </div>
 
-              <Link href="/commands" className={ctaClassName("soft")}>
+              <Link href="/commands" className={ctaCompactClassName()}>
                 Voir tout
               </Link>
             </div>
@@ -1391,7 +1356,7 @@ export default async function OverviewPage() {
         title="Operational lanes"
         description="Accès rapide aux vues principales du control plane BOSAI."
       >
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-4">
           <QuickLinkCard
             title="Flows"
             subtitle={`${formatNumber(flowsUnderAttention)} flow(s) sous attention`}
@@ -1452,11 +1417,7 @@ export default async function OverviewPage() {
               <MetricRow
                 label="Health status"
                 value={
-                  <span
-                    className={systemStatusTone(
-                      healthLabel(healthScore, healthStatus)
-                    )}
-                  >
+                  <span className={systemStatusTone(healthLabel(healthScore, healthStatus))}>
                     {healthLabel(healthScore, healthStatus)}
                   </span>
                 }
@@ -1568,12 +1529,12 @@ export default async function OverviewPage() {
         title="Recent activity"
         description="Dernières commands observées par BOSAI."
         action={
-          <Link href="/commands" className={ctaClassName("soft")}>
+          <Link href="/commands" className={ctaCompactClassName()}>
             Voir toutes les commands
           </Link>
         }
       >
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           {recentCommands.map((command) => (
             <RecentRunCard
               key={String((command as Record<string, unknown>).id)}
