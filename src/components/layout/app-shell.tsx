@@ -18,18 +18,20 @@ export function AppShell({ children }: AppShellProps) {
       />
 
       <div className="relative flex min-h-screen">
-        <div className="hidden xl:block xl:w-[300px] xl:shrink-0">
+        <div className="hidden xl:block xl:w-[312px] xl:shrink-0">
           <Sidebar variant="desktop" />
         </div>
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-transparent">
-          <MobileShell title="BOSAI" />
+          <MobileShell />
 
           <div className="hidden xl:block">
             <Topbar />
           </div>
 
-          <main className="flex-1 px-4 py-5 lg:px-6 lg:py-6">{children}</main>
+          <main className="flex-1 px-4 py-5 sm:px-5 lg:px-6 lg:py-6 xl:px-8">
+            {children}
+          </main>
         </div>
       </div>
     </div>
