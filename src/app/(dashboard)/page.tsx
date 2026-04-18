@@ -1008,6 +1008,53 @@ function SlaCompactCard({
   );
 }
 
+function HeroActionCard({
+  href,
+  title,
+  description,
+  tone = "default",
+}: {
+  href: string;
+  title: string;
+  description: string;
+  tone?: "default" | "danger" | "primary";
+}) {
+  const className =
+    tone === "danger"
+      ? "rounded-[22px] border border-rose-500/20 bg-rose-500/8 p-4 transition hover:bg-rose-500/12"
+      : tone === "primary"
+        ? "rounded-[22px] border border-emerald-500/20 bg-emerald-500/8 p-4 transition hover:bg-emerald-500/12"
+        : "rounded-[22px] border border-white/10 bg-black/20 p-4 transition hover:bg-white/[0.04]";
+
+  return (
+    <Link href={href} className={className}>
+      <div className="text-sm font-medium text-white">{title}</div>
+      <div className="mt-2 text-sm leading-6 text-zinc-400">{description}</div>
+    </Link>
+  );
+}
+
+function SignalMiniStat({
+  label,
+  value,
+  toneClass = "text-white",
+}: {
+  label: string;
+  value: string;
+  toneClass?: string;
+}) {
+  return (
+    <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+      <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+        {label}
+      </div>
+      <div className={`mt-2 text-2xl font-semibold tracking-tight ${toneClass}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
 export default async function OverviewPage() {
   let health: HealthScoreResponse | null = null;
   let runs: RunsResponse | null = null;
@@ -1206,8 +1253,8 @@ export default async function OverviewPage() {
 
   return (
     <div className="space-y-8">
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.45fr_0.95fr]">
-        <div className="rounded-[32px] border border-white/10 bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-8">
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_0.95fr]">
+        <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6">
           <div className={sectionLabelClassName()}>BOSAI Control Plane</div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -1220,76 +1267,77 @@ export default async function OverviewPage() {
             </span>
           </div>
 
-          <div className="mt-5 max-w-4xl">
-            <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+          <div className="mt-5">
+            <h1 className="text-4xl font-semibold tracking-tight text-white md:text-5xl">
               Overview
             </h1>
-            <p className="mt-3 max-w-3xl text-base text-zinc-400 sm:text-lg">
-              Point d’entrée cockpit BOSAI pour lire la posture opérationnelle,
-              ouvrir les lanes utiles et garder une lecture claire du control plane.
+            <p className="mt-3 max-w-3xl text-base leading-8 text-zinc-400">
+              Point d’entrée cockpit BOSAI pour lire la posture opérationnelle et
+              ouvrir rapidement les lanes utiles.
             </p>
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-500">
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-zinc-500">
               {postureSummary}
             </p>
           </div>
 
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-            <Link href="/flows" className={ctaClassName("soft")}>
-              Ouvrir Flows
-            </Link>
-            <Link href="/incidents" className={ctaClassName("danger")}>
-              Voir Incidents
-            </Link>
-            <Link href="/commands" className={ctaClassName("primary")}>
-              Voir Commands
-            </Link>
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <HeroActionCard
+              href="/flows"
+              title="Ouvrir Flows"
+              description="Lire les chaînes d’exécution et les flows sous attention."
+            />
+            <HeroActionCard
+              href="/incidents"
+              title="Voir Incidents"
+              description="Ouvrir les incidents actifs, escaladés et prioritaires."
+              tone="danger"
+            />
+            <div className="sm:col-span-2">
+              <HeroActionCard
+                href="/commands"
+                title="Voir Commands"
+                description="Contrôler l’activité récente et les commands critiques."
+                tone="primary"
+              />
+            </div>
           </div>
         </div>
 
-        <div className="rounded-[32px] border border-white/10 bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-8">
+        <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6">
           <div className={sectionLabelClassName()}>Signal summary</div>
 
-          <div className="mt-4">
-            <div className="text-2xl font-semibold tracking-tight text-white">
-              {postureLabel}
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <div>
+              <div className="text-2xl font-semibold tracking-tight text-white">
+                {postureLabel}
+              </div>
+              <div className="mt-1 text-sm text-zinc-400">
+                Vue compacte de la pression opérationnelle.
+              </div>
             </div>
-            <div className="mt-2 text-sm text-zinc-400">
-              Résumé compact de la pression opérationnelle actuelle.
-            </div>
+
+            <span className={badgeClassName(postureTone)}>{postureLabel}</span>
           </div>
 
-          <div className="mt-6 space-y-3">
-            <ControlPlaneSignalRow
-              label="Core health"
-              value={<span className={healthTone(healthScore)}>{coreHealthState}</span>}
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <SignalMiniStat
+              label="Core"
+              value={coreHealthState}
+              toneClass={healthTone(healthScore)}
             />
-            <ControlPlaneSignalRow
-              label="Flows sous attention"
-              value={formatNumber(flowsUnderAttention)}
-            />
-            <ControlPlaneSignalRow
-              label="Incidents ouverts"
-              value={formatNumber(openIncidents)}
-            />
-            <ControlPlaneSignalRow
-              label="Commands failed/dead"
-              value={formatNumber(failedCommands)}
-            />
-            <ControlPlaneSignalRow
-              label="Commands retry"
-              value={formatNumber(retryCommands)}
-            />
+            <SignalMiniStat label="Flows" value={formatNumber(flowsUnderAttention)} />
+            <SignalMiniStat label="Incidents" value={formatNumber(openIncidents)} />
+            <SignalMiniStat label="Failed" value={formatNumber(failedCommands)} />
           </div>
 
-          <div className="mt-6 rounded-[24px] border border-white/10 bg-black/20 p-4">
+          <div className="mt-4 rounded-[20px] border border-white/10 bg-black/20 px-4 py-3.5">
             <div className={metaLabelClassName()}>Quick read</div>
             <div className="mt-2 text-sm leading-6 text-zinc-400">
-              Priorité immédiate :
               {criticalSlaSignals > 0 || escalatedIncidents > 0
-                ? " ouvrir Incidents et SLA."
+                ? "Priorité immédiate : ouvrir Incidents puis SLA."
                 : openIncidents > 0 || failedCommands > 0 || retryCommands > 0
-                  ? " vérifier Incidents puis Commands."
-                  : " confirmer Flows et Commands sans urgence forte."}
+                  ? "Priorité : vérifier Incidents puis Commands."
+                  : "Priorité : confirmer Flows et Commands sans urgence forte."}
             </div>
           </div>
         </div>
