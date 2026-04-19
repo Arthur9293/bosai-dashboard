@@ -1,11 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function LoginForm() {
-  const router = useRouter();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
@@ -40,8 +37,7 @@ export default function LoginForm() {
         return;
       }
 
-      router.replace(data.route || "/workspace/home");
-      router.refresh();
+      window.location.href = data.route || "/workspace/home";
     } catch {
       setError("Erreur réseau ou serveur.");
       setPending(false);
