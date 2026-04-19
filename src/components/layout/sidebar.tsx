@@ -129,10 +129,10 @@ function getPrimaryItems(
   if (category === "company") {
     return dedupeItems([
       { href: "/workspace", label: "Workspace Hub" },
-      { href: "/overview", label: "Overview" },
       entitlements.canManageWorkspaces
         ? { href: "/workspaces", label: "Workspaces" }
         : null,
+      { href: "/overview", label: "Overview" },
       entitlements.canRunHttp ? { href: "/commands", label: "Commands" } : null,
       { href: "/events", label: "Events" },
       entitlements.canViewIncidents
@@ -169,9 +169,7 @@ function getConfigItems(
 }
 
 function getUtilityItems(): NavItem[] {
-  return [
-    { href: "/workspace/select", label: "Changer d’espace" },
-  ];
+  return [{ href: "/workspace/select", label: "Changer d’espace" }];
 }
 
 function getWorkspaceSubtitle(workspace: WorkspaceSummary): string {
