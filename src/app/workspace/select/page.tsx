@@ -135,7 +135,9 @@ function WorkspaceSelectCard({
   workspace: WorkspaceSummary;
   isActive: boolean;
 }) {
-  const laneHref = getDashboardRouteForWorkspaceCategory(workspace.category);
+  const laneHref =
+    getDashboardRouteForWorkspaceCategory(workspace.category) || "/overview";
+
   const activateHref = getWorkspaceActivateRoute({
     workspaceId: workspace.workspaceId,
     nextPath: laneHref,
@@ -173,23 +175,24 @@ function WorkspaceSelectCard({
             {workspace.name}
           </h2>
 
-          <p className="break-all text-sm text-zinc-400">{workspace.workspaceId}</p>
+          <p className="break-all text-sm text-zinc-400">
+            {workspace.workspaceId}
+          </p>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link
-            href={activateHref}
+            href={isActive ? laneHref : activateHref}
             className={buttonClassName("primary")}
           >
             {isActive ? "Continuer" : "Activer cet espace"}
           </Link>
 
-          <Link
-            href={laneHref}
-            className={buttonClassName("soft")}
-          >
-            Ouvrir la lane
-          </Link>
+          {isActive ? (
+            <Link href={laneHref} className={buttonClassName("soft")}>
+              Ouvrir la lane
+            </Link>
+          ) : null}
         </div>
       </div>
     </article>
@@ -251,7 +254,9 @@ export default async function WorkspaceSelectPage() {
 
           <div className="flex flex-wrap gap-2">
             {user?.displayName ? (
-              <span className={badgeClassName("default")}>{user.displayName}</span>
+              <span className={badgeClassName("default")}>
+                {user.displayName}
+              </span>
             ) : null}
 
             {user?.email ? (
