@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   AUTH_LOGIN_ROUTE,
@@ -8,6 +9,11 @@ import {
   getDashboardRouteForWorkspaceCategory,
   getWorkspaceActivateRoute,
 } from "@/lib/workspaces/resolver";
+import {
+  WORKSPACE_ROUTE_MEMORY_COOKIE_NAME,
+  getRememberedRouteForWorkspace,
+  readWorkspaceRememberedRoutes,
+} from "@/lib/workspaces/route-memory";
 import type { WorkspaceSummary } from "@/lib/workspaces/types";
 
 function text(value?: string | null): string {
@@ -131,17 +137,22 @@ function shouldShowPlanBadge(workspace: WorkspaceSummary): boolean {
 function WorkspaceSelectCard({
   workspace,
   isActive,
+  rememberedRoute,
 }: {
   workspace: WorkspaceSummary;
   isActive: boolean;
+  rememberedRoute?: string;
 }) {
-  const laneHref =
-    getDashboardRouteForWorkspaceCategory(workspace.category) || "/overview";
+  const laneHref = getDashboardRouteForWorkspaceCategory(workspace.category);
+  const preferredTarget = text(rememberedRoute) || laneHref;
 
   const activateHref = getWorkspaceActivateRoute({
     workspaceId: workspace.workspaceId,
-    nextPath: laneHref,
+    nextPath: preferredTarget,
   });
+
+  const primaryHref = isActive ? preferredTarget : activateHref;
+  const primaryLabel = isActive ? "Continuer" : "Activer cet espace";
 
   return (
     <article className={compactCardClassName()}>
@@ -181,18 +192,13 @@ function WorkspaceSelectCard({
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Link
-            href={isActive ? laneHref : activateHref}
-            className={buttonClassName("primary")}
-          >
-            {isActive ? "Continuer" : "Activer cet espace"}
+          <Link href={primaryHref} className={buttonClassName("primary")}>
+            {primaryLabel}
           </Link>
 
-          {isActive ? (
-            <Link href={laneHref} className={buttonClassName("soft")}>
-              Ouvrir la lane
-            </Link>
-          ) : null}
+          <Link href={laneHref} className={buttonClassName("soft")}>
+            Ouvrir la lane
+          </Link>
         </div>
       </div>
     </article>
@@ -226,6 +232,11 @@ export default async function WorkspaceSelectPage() {
       })
     );
   }
+
+  const cookieStore = await cookies();
+  const rememberedRoutes = readWorkspaceRememberedRoutes(
+    cookieStore.get(WORKSPACE_ROUTE_MEMORY_COOKIE_NAME)?.value
+  );
 
   const sortedMemberships = [...memberships].sort((a, b) => {
     if (a.workspaceId === activeWorkspaceId) return -1;
@@ -291,6 +302,10 @@ export default async function WorkspaceSelectPage() {
                 key={workspace.workspaceId}
                 workspace={workspace}
                 isActive={workspace.workspaceId === activeWorkspaceId}
+                rememberedRoute={getRememberedRouteForWorkspace(
+                  rememberedRoutes,
+                  workspace.workspaceId
+                )}
               />
             ))}
           </div>
