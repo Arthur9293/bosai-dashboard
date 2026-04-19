@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "../../components/layout/app-shell";
+import { WorkspaceRouteMemory } from "@/components/workspaces/workspace-route-memory";
 import {
   AUTH_LOGIN_ROUTE,
   resolveAuthSession,
@@ -30,5 +31,12 @@ export default async function DashboardLayout({
     redirect(resolution.redirectTo);
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <AppShell>
+      <WorkspaceRouteMemory
+        workspaceId={resolution.activeWorkspace.workspaceId}
+      />
+      {children}
+    </AppShell>
+  );
 }
