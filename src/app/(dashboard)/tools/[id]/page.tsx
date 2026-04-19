@@ -2,10 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "../../../../components/ui/page-header";
 import { DashboardCard } from "../../../../components/ui/dashboard-card";
-import {
-  DashboardStatusBadge,
-  type DashboardStatusKind,
-} from "@/components/dashboard/StatusBadge";
 import { fetchTools, type ToolItem } from "@/lib/api";
 
 type PageProps = {
@@ -176,47 +172,23 @@ function toBoolean(value: unknown, fallback = false): boolean {
 }
 
 function getToolId(tool: ToolItem): string {
-  return toText(tool.id, "");
+  return (
+    toText(tool.id, "") ||
+    toText(tool.tool_key, "") ||
+    toText(tool.name, "").toLowerCase().replace(/\s+/g, "_")
+  );
 }
 
 function getToolName(tool: ToolItem): string {
-  return (
-    toText(tool.name, "") ||
-    toText(tool.tool_key, "") ||
-    toText(tool.id, "") ||
-    "Unknown tool"
-  );
+  return toText(tool.name, "") || toText(tool.tool_key, "") || getToolId(tool) || "Unknown tool";
 }
 
 function getToolDescription(tool: ToolItem): string {
-  return (
-    toText(tool.description, "") ||
-    "Aucune description disponible pour cette capacité."
-  );
+  return toText(tool.description, "") || "Aucune description disponible.";
 }
 
 function getToolStatus(tool: ToolItem): string {
   return toText(tool.status, "unknown");
-}
-
-function getToolStatusLabel(tool: ToolItem): string {
-  const status = getToolStatus(tool).toLowerCase();
-
-  if (status === "active") return "ACTIVE";
-  if (status === "paused") return "PAUSED";
-  if (status === "disabled") return "DISABLED";
-
-  return status ? status.toUpperCase() : "UNKNOWN";
-}
-
-function getToolStatusKind(tool: ToolItem): DashboardStatusKind {
-  const status = getToolStatus(tool).toLowerCase();
-
-  if (status === "active") return "success";
-  if (status === "paused") return "retry";
-  if (status === "disabled") return "failed";
-
-  return "unknown";
 }
 
 function getToolCategory(tool: ToolItem): string {
@@ -236,7 +208,7 @@ function getToolCategory(tool: ToolItem): string {
 }
 
 function getToolKey(tool: ToolItem): string {
-  return toText(tool.tool_key, "") || getToolId(tool) || getToolName(tool);
+  return toText(tool.tool_key, "") || getToolId(tool);
 }
 
 function getToolMode(tool: ToolItem): string {
@@ -244,28 +216,39 @@ function getToolMode(tool: ToolItem): string {
 }
 
 function isToolEnabled(tool: ToolItem): boolean {
-  if (tool.enabled !== undefined) {
-    return toBoolean(tool.enabled, false);
-  }
-
+  if (tool.enabled !== undefined) return toBoolean(tool.enabled, false);
   return !["disabled", "inactive"].includes(getToolStatus(tool).toLowerCase());
 }
 
-function getCategoryChipTone(category: string):
+function getStatusChipTone(tool: ToolItem):
   | "default"
   | "success"
   | "warning"
-  | "danger"
-  | "info"
-  | "violet" {
-  const c = category.trim().toLowerCase();
+  | "danger" {
+  const status = getToolStatus(tool).toLowerCase();
 
-  if (c === "incident") return "danger";
-  if (c === "decision") return "violet";
-  if (c === "recovery") return "warning";
-  if (c === "execution") return "info";
-  if (c === "orchestration") return "default";
-  if (c === "flow") return "success";
+  if (status === "active") return "success";
+  if (status === "paused") return "warning";
+  if (status === "disabled") return "danger";
+
+  return "default";
+}
+
+function getCategoryChipTone(tool: ToolItem):
+  | "default"
+  | "info"
+  | "warning"
+  | "danger"
+  | "violet"
+  | "success" {
+  const category = getToolCategory(tool).toLowerCase();
+
+  if (category === "execution") return "info";
+  if (category === "decision") return "violet";
+  if (category === "incident") return "danger";
+  if (category === "recovery") return "warning";
+  if (category === "flow") return "success";
+  if (category === "orchestration") return "default";
 
   return "default";
 }
@@ -274,16 +257,16 @@ function mergeTools(primary: ToolItem[], fallback: ToolItem[]): ToolItem[] {
   const map = new Map<string, ToolItem>();
 
   for (const item of fallback) {
-    const key = getToolId(item) || getToolKey(item) || getToolName(item);
-    if (key) map.set(key.toLowerCase(), item);
+    const key = getToolId(item).toLowerCase();
+    if (key) map.set(key, item);
   }
 
   for (const item of primary) {
-    const key = getToolId(item) || getToolKey(item) || getToolName(item);
+    const key = getToolId(item).toLowerCase();
     if (!key) continue;
 
-    const existing = map.get(key.toLowerCase());
-    map.set(key.toLowerCase(), {
+    const existing = map.get(key);
+    map.set(key, {
       ...existing,
       ...item,
     });
@@ -298,7 +281,11 @@ function findTool(registry: ToolItem[], rawId: string): ToolItem | null {
 
   return (
     registry.find((tool) => {
-      const candidates = [getToolId(tool), getToolKey(tool), getToolName(tool)]
+      const candidates = [
+        getToolId(tool),
+        getToolKey(tool),
+        getToolName(tool),
+      ]
         .map((value) => value.trim().toLowerCase())
         .filter(Boolean);
 
@@ -312,39 +299,56 @@ function getSuggestedSurface(tool: ToolItem): { href: string; label: string } | 
   const category = getToolCategory(tool).toLowerCase();
 
   if (id.includes("incident") || category === "incident") {
-    return { href: "/incidents", label: "Ouvrir Incidents" };
+    return { href: "/incidents", label: "Ouvrir les incidents" };
   }
 
   if (id.includes("event") || category === "orchestration") {
-    return { href: "/events", label: "Ouvrir Events" };
+    return { href: "/events", label: "Ouvrir les events" };
   }
 
-  if (id.includes("retry")) {
-    return { href: "/commands", label: "Ouvrir Commands" };
+  if (id.includes("retry") || category === "recovery") {
+    return { href: "/commands", label: "Ouvrir les commands" };
   }
 
-  if (id.includes("http")) {
+  if (id.includes("http") || category === "execution") {
     return { href: "/commands", label: "Voir les commands HTTP" };
   }
 
   if (id.includes("decision") || id.includes("flow") || category === "flow") {
-    return { href: "/flows", label: "Ouvrir Flows" };
+    return { href: "/flows", label: "Ouvrir les flows" };
   }
 
-  return { href: "/", label: "Retour au cockpit" };
+  return { href: "/tools", label: "Retour au registre tools" };
 }
 
-function sortRelatedTools(items: ToolItem[], current: ToolItem): ToolItem[] {
-  const currentId = getToolId(current);
+function sortRelatedTools(registry: ToolItem[], current: ToolItem): ToolItem[] {
+  const currentId = getToolId(current).toLowerCase();
+  const currentCategory = getToolCategory(current).toLowerCase();
 
-  return [...items]
-    .filter((item) => getToolId(item) !== currentId)
-    .filter(
-      (item) =>
-        getToolCategory(item).toLowerCase() === getToolCategory(current).toLowerCase()
-    )
+  return [...registry]
+    .filter((item) => getToolId(item).toLowerCase() !== currentId)
+    .filter((item) => getToolCategory(item).toLowerCase() === currentCategory)
     .sort((a, b) => getToolName(a).localeCompare(getToolName(b)))
     .slice(0, 3);
+}
+
+function MetaCard({
+  label,
+  value,
+  breakAll = false,
+}: {
+  label: string;
+  value: string;
+  breakAll?: boolean;
+}) {
+  return (
+    <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className={`mt-2 text-zinc-200 ${breakAll ? "break-all" : ""}`}>
+        {value || "—"}
+      </div>
+    </div>
+  );
 }
 
 function InfoRow({
@@ -384,25 +388,6 @@ function StatCard({
   );
 }
 
-function MetaCard({
-  label,
-  value,
-  breakAll = false,
-}: {
-  label: string;
-  value: string;
-  breakAll?: boolean;
-}) {
-  return (
-    <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-      <div className={metaLabelClassName()}>{label}</div>
-      <div className={`mt-2 text-zinc-200 ${breakAll ? "break-all" : ""}`}>
-        {value || "—"}
-      </div>
-    </div>
-  );
-}
-
 export default async function ToolDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const id = decodeURIComponent(resolvedParams.id);
@@ -430,8 +415,8 @@ export default async function ToolDetailPage({ params }: PageProps) {
 
   const name = getToolName(tool);
   const description = getToolDescription(tool);
-  const status = getToolStatus(tool);
-  const enabled = isToolEnabled(tool);
+  const status = getToolStatus(tool).toUpperCase();
+  const enabled = isToolEnabled(tool) ? "Yes" : "No";
   const category = getToolCategory(tool);
   const toolKey = getToolKey(tool);
   const mode = getToolMode(tool);
@@ -440,8 +425,10 @@ export default async function ToolDetailPage({ params }: PageProps) {
   const activeCount = registry.filter(
     (item) => getToolStatus(item).toLowerCase() === "active"
   ).length;
-  const categoryCount = registry.filter(
-    (item) => getToolCategory(item).toLowerCase() === category.toLowerCase()
+  const sameCategoryCount = registry.filter(
+    (item) =>
+      getToolCategory(item).toLowerCase() === getToolCategory(tool).toLowerCase() &&
+      getToolId(item).toLowerCase() !== getToolId(tool).toLowerCase()
   ).length;
 
   return (
@@ -450,49 +437,51 @@ export default async function ToolDetailPage({ params }: PageProps) {
         eyebrow="Capabilities"
         title={name}
         description={description}
-        badges={[
-          { label: category, tone: getCategoryChipTone(category) === "info" ? "info" : "muted" },
-          { label: mode, tone: "muted" },
-          { label: registrySource, tone: "muted" },
-        ]}
-        actions={
-          <>
-            <Link href="/tools" className={actionLinkClassName("soft")}>
-              Retour Tools
-            </Link>
-
-            {suggestedSurface ? (
-              <Link
-                href={suggestedSurface.href}
-                className={actionLinkClassName("primary")}
-              >
-                {suggestedSurface.label}
-              </Link>
-            ) : null}
-          </>
-        }
       />
+
+      <section className="flex flex-wrap gap-2">
+        <span className={toneChipClassName(getStatusChipTone(tool))}>
+          {status}
+        </span>
+
+        <span className={toneChipClassName(getCategoryChipTone(tool))}>
+          {category.toUpperCase()}
+        </span>
+
+        <span className={toneChipClassName(isToolEnabled(tool) ? "success" : "danger")}>
+          {isToolEnabled(tool) ? "ENABLED" : "DISABLED"}
+        </span>
+
+        <span className={toneChipClassName("default")}>
+          {mode}
+        </span>
+
+        <span className={toneChipClassName("default")}>
+          {registrySource}
+        </span>
+      </section>
 
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard
           label="Status"
-          value={getToolStatusLabel(tool)}
+          value={status}
           tone={
-            getToolStatus(tool).toLowerCase() === "active"
+            status === "ACTIVE"
               ? "text-emerald-300"
-              : getToolStatus(tool).toLowerCase() === "paused"
+              : status === "PAUSED"
                 ? "text-amber-300"
-                : getToolStatus(tool).toLowerCase() === "disabled"
-                  ? "text-rose-300"
-                  : "text-zinc-300"
+                : "text-rose-300"
           }
         />
         <StatCard
           label="Enabled"
-          value={enabled ? "Yes" : "No"}
-          tone={enabled ? "text-emerald-300" : "text-zinc-300"}
+          value={enabled}
+          tone={enabled === "Yes" ? "text-emerald-300" : "text-zinc-300"}
         />
-        <StatCard label="Same category" value={categoryCount} />
+        <StatCard
+          label="Same category"
+          value={sameCategoryCount}
+        />
         <StatCard
           label="Registry active"
           value={activeCount}
@@ -503,56 +492,43 @@ export default async function ToolDetailPage({ params }: PageProps) {
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <DashboardCard
           title="Tool identity"
-          subtitle="Lecture produit et technique de la capacité sélectionnée."
-          rightSlot={
-            <DashboardStatusBadge
-              kind={getToolStatusKind(tool)}
-              label={getToolStatusLabel(tool)}
-            />
-          }
+          subtitle="Lecture produit et technique du tool sélectionné."
         >
-          <div className="mt-4 flex flex-wrap gap-2">
-            <span className={toneChipClassName(getCategoryChipTone(category))}>
-              {category}
-            </span>
-            <span className={toneChipClassName("default")}>{mode}</span>
-            <span className={toneChipClassName(enabled ? "success" : "danger")}>
-              {enabled ? "ENABLED" : "DISABLED"}
-            </span>
-          </div>
-
-          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <MetaCard label="Name" value={name} />
             <MetaCard label="Category" value={category} />
-            <MetaCard label="Tool key" value={toolKey} breakAll />
-            <MetaCard label="ID" value={getToolId(tool) || "—"} breakAll />
-            <MetaCard label="Status" value={getToolStatusLabel(tool)} />
+            <MetaCard label="Status" value={status} />
+            <MetaCard label="Enabled" value={enabled} />
             <MetaCard label="Mode" value={mode} />
+            <MetaCard label="Registry source" value={registrySource} />
+            <MetaCard label="Tool key" value={toolKey} breakAll />
+            <MetaCard label="ID" value={getToolId(tool)} breakAll />
           </div>
 
           <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>Description</div>
-            <div className="mt-2 text-sm leading-6 text-zinc-300">{description}</div>
+            <div className="mt-2 text-sm leading-6 text-zinc-300">
+              {description}
+            </div>
           </div>
         </DashboardCard>
 
         <DashboardCard
           title="Registry status"
-          subtitle="Source et lecture cockpit du registre tools."
+          subtitle="Lecture du registre tools."
         >
           <div className="space-y-3">
             <InfoRow label="Source" value={registrySource} />
             <InfoRow label="Category" value={category} />
             <InfoRow label="Active tools" value={activeCount} />
-            <InfoRow label="Same category" value={categoryCount} />
+            <InfoRow label="Same category" value={sameCategoryCount} />
           </div>
 
           <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>Quick read</div>
             <div className="mt-2 text-sm leading-6 text-zinc-300">
-              {registrySource === "Dynamic registry"
-                ? "Le registre dynamique alimente déjà cette page détail."
-                : "Cette page détail fonctionne encore sur fallback statique tant que l’API ne fournit pas le registre complet."}
+              Cette page détail lit le registre tools sans casser le cockpit,
+              avec fallback statique si l’API n’expose rien.
             </div>
           </div>
         </DashboardCard>
@@ -561,38 +537,37 @@ export default async function ToolDetailPage({ params }: PageProps) {
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <DashboardCard
           title="Suggested cockpit surface"
-          subtitle="Surface la plus logique pour poursuivre la lecture opérationnelle."
+          subtitle="Surface la plus logique pour continuer la lecture."
         >
-          {suggestedSurface ? (
-            <div className="space-y-4">
-              <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-                <div className={metaLabelClassName()}>Suggested route</div>
-                <div className="mt-2 text-zinc-200">{suggestedSurface.href}</div>
+          <div className="space-y-4">
+            <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className={metaLabelClassName()}>Suggested route</div>
+              <div className="mt-2 break-all text-zinc-200">
+                {suggestedSurface?.href || "—"}
               </div>
+            </div>
 
-              <div className="flex flex-col gap-3">
-                <Link
-                  href={suggestedSurface.href}
-                  className={actionLinkClassName("primary")}
-                >
+            <div className="grid grid-cols-1 gap-3">
+              {suggestedSurface ? (
+                <Link href={suggestedSurface.href} className={actionLinkClassName("primary")}>
                   {suggestedSurface.label}
                 </Link>
+              ) : (
+                <span className={actionLinkClassName("primary", true)}>
+                  Surface indisponible
+                </span>
+              )}
 
-                <Link href="/tools" className={actionLinkClassName("soft")}>
-                  Retour à la liste tools
-                </Link>
-              </div>
+              <Link href="/tools" className={actionLinkClassName("soft")}>
+                Retour Tools
+              </Link>
             </div>
-          ) : (
-            <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-300">
-              Aucune surface cockpit suggérée.
-            </div>
-          )}
+          </div>
         </DashboardCard>
 
         <DashboardCard
           title="Related tools"
-          subtitle="Autres capacités de la même catégorie."
+          subtitle="Autres tools de la même catégorie."
         >
           {relatedTools.length === 0 ? (
             <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-300">
@@ -600,30 +575,32 @@ export default async function ToolDetailPage({ params }: PageProps) {
             </div>
           ) : (
             <div className="space-y-3">
-              {relatedTools.map((item) => (
-                <Link
-                  key={getToolId(item) || getToolKey(item)}
-                  href={`/tools/${encodeURIComponent(getToolId(item) || getToolKey(item))}`}
-                  className="block rounded-[20px] border border-white/10 bg-black/20 p-4 transition hover:border-white/15 hover:bg-white/[0.04]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="break-words text-base font-semibold text-white">
-                        {getToolName(item)}
-                      </div>
-                      <div className="mt-1 text-sm leading-6 text-zinc-400">
-                        {getToolDescription(item)}
-                      </div>
-                    </div>
+              {relatedTools.map((item) => {
+                const itemId = getToolId(item);
 
-                    <DashboardStatusBadge
-                      kind={getToolStatusKind(item)}
-                      label={getToolStatusLabel(item)}
-                      compact
-                    />
-                  </div>
-                </Link>
-              ))}
+                return (
+                  <Link
+                    key={itemId}
+                    href={`/tools/${encodeURIComponent(itemId)}`}
+                    className="block rounded-[20px] border border-white/10 bg-black/20 p-4 transition hover:border-white/15 hover:bg-white/[0.04]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="break-words text-base font-semibold text-white">
+                          {getToolName(item)}
+                        </div>
+                        <div className="mt-1 text-sm leading-6 text-zinc-400">
+                          {getToolDescription(item)}
+                        </div>
+                      </div>
+
+                      <span className={toneChipClassName(getStatusChipTone(item))}>
+                        {getToolStatus(item).toUpperCase()}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           )}
         </DashboardCard>
@@ -632,11 +609,11 @@ export default async function ToolDetailPage({ params }: PageProps) {
       <section>
         <DashboardCard
           title="Navigation"
-          subtitle="Liens utiles sans sortir du cockpit."
+          subtitle="Liens utiles sans quitter le cockpit."
         >
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <Link href="/tools" className={actionLinkClassName("soft")}>
-              Retour Tools
+              Retour à la liste tools
             </Link>
 
             <Link href="/tools" className={actionLinkClassName("default")}>
@@ -644,15 +621,12 @@ export default async function ToolDetailPage({ params }: PageProps) {
             </Link>
 
             {suggestedSurface ? (
-              <Link
-                href={suggestedSurface.href}
-                className={actionLinkClassName("primary")}
-              >
+              <Link href={suggestedSurface.href} className={actionLinkClassName("primary")}>
                 {suggestedSurface.label}
               </Link>
             ) : (
-              <span className={actionLinkClassName("default", true)}>
-                Surface indisponible
+              <span className={actionLinkClassName("primary", true)}>
+                Surface cockpit indisponible
               </span>
             )}
           </div>
