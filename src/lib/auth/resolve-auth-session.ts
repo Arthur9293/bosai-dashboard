@@ -1,62 +1,98 @@
 import "server-only";
 
-import { isAirtableLiveConfigured } from "../airtable/config";
-import { listLiveMembershipsForUser } from "../airtable/memberships";
-import { getLiveWorkspaceQuotaByWorkspaceId } from "../airtable/quotas";
-import { listLiveWorkspaces } from "../airtable/workspaces";
-import {
-  getMockEntitlements,
-  getMockQuotaSnapshot,
-  listMockWorkspaceSummariesForUser,
-} from "./mock-registry";
+import { cookies } from "next/headers";
 import type {
+  DedicatedSpaceTarget,
   MembershipStatus,
   WorkspaceCategory,
   WorkspaceContext,
   WorkspaceEntitlements,
   WorkspacePlan,
   WorkspaceQuotaSnapshot,
-  WorkspaceResolverInput,
   WorkspaceRole,
   WorkspaceStatus,
   WorkspaceSummary,
-} from "./types";
+} from "../workspaces/types";
+import { getDedicatedSpaceTarget } from "../workspaces/types";
+import {
+  listLiveMembershipsForUser,
+  type LiveMembership,
+} from "../airtable/memberships";
+import {
+  getLiveProfileByEmail,
+  getLiveProfileByUserId,
+} from "../airtable/profiles";
+import { getLiveWorkspaceQuotaByWorkspaceId } from "../airtable/quotas";
+import { isAirtableLiveConfigured } from "../airtable/config";
+import {
+  listLiveWorkspaces,
+  type LiveWorkspace,
+} from "../airtable/workspaces";
+import {
+  MOCK_ACTIVE_WORKSPACE_COOKIE_NAME,
+  MOCK_ALLOWED_WORKSPACES_COOKIE_NAME,
+  MOCK_AUTH_COOKIE_NAME,
+  MOCK_AUTH_COOKIE_VALUE,
+  MOCK_DEDICATED_SPACE_COOKIE_NAME,
+  MOCK_SESSION_TOKEN_COOKIE_NAME,
+  MOCK_USER_ID_COOKIE_NAME,
+  buildMockSessionCookiePayload,
+  getMockLoginRedirect,
+  resolveMockSessionFromCookies,
+  type MockLoginIntent,
+  type MockSessionCookiePayload,
+  type ResolvedMockSession,
+} from "./mock-session";
 
-export type WorkspaceResolutionKind =
-  | "redirect_login"
-  | "redirect_create"
-  | "redirect_select"
-  | "redirect_activate"
-  | "allow_dashboard";
+export const AUTH_LOGIN_ROUTE = "/login";
+export const DEFAULT_AUTHENTICATED_ROUTE = "/overview";
+export const AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
-export type WorkspaceResolutionReason =
-  | "missing_user"
-  | "no_membership"
-  | "single_workspace_auto_activate"
-  | "multiple_workspaces_select_required"
-  | "invalid_requested_workspace"
-  | "workspace_not_accessible"
-  | "workspace_active"
-  | "workspace_cookie_valid";
-
-export type WorkspaceResolutionResult = {
-  kind: WorkspaceResolutionKind;
-  reason: WorkspaceResolutionReason;
-  redirectTo: string;
-  requestedWorkspaceId: string;
-  activeWorkspace: WorkspaceSummary | null;
-  memberships: WorkspaceSummary[];
-  context: WorkspaceContext | null;
-  autoActivateWorkspaceId: string;
-  dashboardRoute: string;
+type CookieReadableStore = {
+  get: (name: string) => { value?: string } | undefined;
 };
 
-type ResolverOptions = WorkspaceResolverInput & {
-  nextPath?: string;
+export type AuthCookieSnapshot = {
+  authValue: string;
+  sessionToken: string;
+  userId: string;
+  activeWorkspaceId: string;
+  allowedWorkspaceIdsRaw: string;
+  allowedWorkspaceIds: string[];
+  dedicatedSpace: string;
+};
+
+export type ResolvedAuthSessionState = ResolvedMockSession & {
+  authMode: "mock" | "live";
+  loginRoute: string;
+  homeRoute: string;
+  hasSessionToken: boolean;
+  cookieSnapshot: AuthCookieSnapshot;
+  cookiePayload: MockSessionCookiePayload | null;
+};
+
+export type AuthCookieWriteOptions = {
+  path: string;
+  httpOnly: boolean;
+  sameSite: "lax";
+  secure: boolean;
+  maxAge: number;
+};
+
+type NormalizedLiveWorkspace = {
+  summary: WorkspaceSummary;
+  raw: LiveWorkspace | Record<string, unknown>;
 };
 
 function normalizeText(value?: string | null): string {
   return String(value || "").trim();
+}
+
+function parseCsvList(value?: string | null): string[] {
+  return normalizeText(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -75,7 +111,8 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function getRecordFields(value: unknown): Record<string, unknown> {
   const record = asRecord(value);
-  return asRecord(record.fields);
+  const fields = record.fields;
+  return asRecord(fields);
 }
 
 function pickText(value: unknown): string {
@@ -100,9 +137,9 @@ function pickText(value: unknown): string {
       record.label,
       record.slug,
       record.email,
+      record.User_ID,
       record.Workspace_ID,
       record.Display_Name,
-      record.User_ID,
     ];
 
     for (const candidate of candidates) {
@@ -135,7 +172,6 @@ function pickBooleanValue(value: unknown): boolean | null {
 
   const text = normalizeText(pickText(value)).toLowerCase();
   if (!text) return null;
-
   if (["true", "1", "yes", "y", "on", "active"].includes(text)) return true;
   if (["false", "0", "no", "n", "off", "inactive"].includes(text)) return false;
 
@@ -157,39 +193,60 @@ function pickFirstBoolean(source: unknown, keys: string[]): boolean | null {
   return null;
 }
 
-function toNumber(value: unknown): number | null {
-  const text = pickText(value);
-  if (!text) return null;
+function normalizeDedicatedSpace(
+  value?: string | DedicatedSpaceTarget | null
+): DedicatedSpaceTarget | null {
+  const normalized = normalizeText(String(value || "")).toLowerCase();
 
-  const parsed = Number(text);
-  return Number.isFinite(parsed) ? parsed : null;
+  if (normalized === "personal_space") return "personal_space";
+  if (normalized === "freelance_space") return "freelance_space";
+  if (normalized === "company_space") return "company_space";
+  if (normalized === "agency_space") return "agency_space";
+
+  return null;
 }
 
-function normalizeCategory(value?: string | null): WorkspaceCategory {
+function mapDedicatedSpaceToRoute(
+  target?: DedicatedSpaceTarget | string | null
+): string {
+  const normalized = normalizeDedicatedSpace(target);
+
+  if (normalized === "personal_space") return "/overview";
+  if (normalized === "freelance_space") return "/commands";
+  if (normalized === "company_space") return "/workspaces";
+  if (normalized === "agency_space") return "/flows";
+
+  return DEFAULT_AUTHENTICATED_ROUTE;
+}
+
+function normalizeWorkspaceCategory(value?: string | null): WorkspaceCategory {
   const normalized = normalizeText(value).toLowerCase();
 
   if (normalized === "agency") return "agency";
   if (normalized === "company") return "company";
   if (normalized === "freelance") return "freelance";
+
   return "personal";
 }
 
-function normalizePlan(value?: string | null): WorkspacePlan {
+function normalizeWorkspacePlan(value?: string | null): WorkspacePlan {
   const normalized = normalizeText(value).toLowerCase();
 
   if (normalized === "enterprise") return "enterprise";
   if (normalized === "agency") return "agency";
   if (normalized === "company") return "company";
   if (normalized === "freelance") return "freelance";
+
   return "personal";
 }
 
 function normalizeWorkspaceStatus(value?: string | null): WorkspaceStatus {
   const normalized = normalizeText(value).toLowerCase();
 
-  if (normalized === "inactive") return "inactive";
   if (normalized === "blocked") return "blocked";
+  if (normalized === "inactive") return "inactive";
   if (normalized === "pending") return "pending";
+
   return "active";
 }
 
@@ -199,92 +256,19 @@ function normalizeMembershipStatus(value?: string | null): MembershipStatus {
   if (normalized === "invited") return "invited";
   if (normalized === "revoked") return "revoked";
   if (normalized === "suspended") return "suspended";
+
   return "active";
 }
 
-function normalizeRole(value?: string | null): WorkspaceRole {
+function normalizeWorkspaceRole(value?: string | null): WorkspaceRole {
   const normalized = normalizeText(value).toLowerCase();
 
   if (normalized === "admin") return "admin";
   if (normalized === "operator") return "operator";
   if (normalized === "member") return "member";
   if (normalized === "viewer") return "viewer";
+
   return "owner";
-}
-
-function buildQueryString(params: Record<string, string>): string {
-  const search = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(params)) {
-    const normalized = normalizeText(value);
-    if (!normalized) continue;
-    search.set(key, normalized);
-  }
-
-  const query = search.toString();
-  return query ? `?${query}` : "";
-}
-
-function getLoginRoute(nextPath?: string): string {
-  return `/login${buildQueryString({ next: nextPath || "" })}`;
-}
-
-function getCreateWorkspaceRoute(nextPath?: string): string {
-  return `/workspace/create${buildQueryString({ next: nextPath || "" })}`;
-}
-
-function getSelectWorkspaceRoute(nextPath?: string): string {
-  return `/workspace/select${buildQueryString({ next: nextPath || "" })}`;
-}
-
-export function getWorkspaceActivateRoute(args: {
-  workspaceId: string;
-  nextPath?: string;
-}): string {
-  return `/workspace/activate${buildQueryString({
-    workspace_id: args.workspaceId,
-    next: args.nextPath || "",
-  })}`;
-}
-
-export function getDashboardRouteForWorkspaceCategory(
-  category?: string | null
-): string {
-  const normalized = normalizeText(category).toLowerCase();
-
-  if (normalized === "agency") return "/flows";
-  if (normalized === "company") return "/workspaces";
-  if (normalized === "freelance") return "/commands";
-  return "/overview";
-}
-
-function findMembershipByWorkspaceId(
-  memberships: WorkspaceSummary[],
-  workspaceId?: string | null
-): WorkspaceSummary | null {
-  const normalized = normalizeText(workspaceId).toLowerCase();
-  if (!normalized) return null;
-
-  return (
-    memberships.find(
-      (item) => normalizeText(item.workspaceId).toLowerCase() === normalized
-    ) || null
-  );
-}
-
-function buildMockWorkspaceContext(
-  activeWorkspace: WorkspaceSummary,
-  memberships: WorkspaceSummary[]
-): WorkspaceContext {
-  return {
-    activeWorkspace,
-    memberships,
-    quota: getMockQuotaSnapshot(activeWorkspace.workspaceId),
-    entitlements: getMockEntitlements(
-      activeWorkspace.workspaceId,
-      activeWorkspace.membershipRole
-    ),
-  };
 }
 
 function buildFallbackEntitlements(role: WorkspaceRole): WorkspaceEntitlements {
@@ -301,34 +285,60 @@ function buildFallbackEntitlements(role: WorkspaceRole): WorkspaceEntitlements {
   };
 }
 
-type NormalizedLiveWorkspace = {
-  summary: WorkspaceSummary;
-  raw: Record<string, unknown>;
-};
+function buildAuthCookieSnapshotFromState(
+  current: AuthCookieSnapshot,
+  args: {
+    userId?: string;
+    activeWorkspaceId?: string;
+    allowedWorkspaceIds?: string[];
+    dedicatedSpace?: DedicatedSpaceTarget | null;
+  }
+): AuthCookieSnapshot {
+  const allowedWorkspaceIds = uniqueStrings(
+    args.allowedWorkspaceIds && args.allowedWorkspaceIds.length > 0
+      ? args.allowedWorkspaceIds
+      : current.allowedWorkspaceIds
+  );
+
+  const dedicatedSpace = normalizeDedicatedSpace(
+    args.dedicatedSpace || current.dedicatedSpace
+  );
+
+  return {
+    ...current,
+    userId: normalizeText(args.userId || current.userId),
+    activeWorkspaceId: normalizeText(
+      args.activeWorkspaceId || current.activeWorkspaceId
+    ),
+    allowedWorkspaceIdsRaw: allowedWorkspaceIds.join(","),
+    allowedWorkspaceIds,
+    dedicatedSpace: dedicatedSpace || "",
+  };
+}
 
 function normalizeLiveWorkspace(
-  workspace: unknown
+  workspace: LiveWorkspace | Record<string, unknown>
 ): NormalizedLiveWorkspace | null {
   const workspaceId =
     pickFirstText(workspace, ["Workspace_ID", "workspaceId", "id"]) ||
     pickText(asRecord(workspace).id);
 
-  if (!workspaceId) return null;
-
   const name = pickFirstText(workspace, ["Name", "Workspace_Name", "Display_Name"]);
   const slug = pickFirstText(workspace, ["Slug", "slug"]);
-  const category = normalizeCategory(
+  const category = normalizeWorkspaceCategory(
     pickFirstText(workspace, ["Category", "Type", "Workspace_Type"])
   );
-  const plan = normalizePlan(
+  const plan = normalizeWorkspacePlan(
     pickFirstText(workspace, ["Plan", "Plan_ID", "Type", "Category"]) || category
   );
   const status = normalizeWorkspaceStatus(
     pickFirstText(workspace, ["Status_select", "Status", "status"])
   );
 
+  if (!workspaceId) return null;
+
   return {
-    raw: asRecord(workspace),
+    raw: workspace,
     summary: {
       workspaceId,
       slug: slug || workspaceId.toLowerCase(),
@@ -343,7 +353,9 @@ function normalizeLiveWorkspace(
   };
 }
 
-function buildLiveWorkspaceIndexes(workspaces: unknown[]): {
+function buildLiveWorkspaceIndexes(
+  workspaces: Array<LiveWorkspace | Record<string, unknown>>
+): {
   byWorkspaceId: Map<string, NormalizedLiveWorkspace>;
   bySlug: Map<string, NormalizedLiveWorkspace>;
   byName: Map<string, NormalizedLiveWorkspace>;
@@ -371,7 +383,7 @@ function buildLiveWorkspaceIndexes(workspaces: unknown[]): {
 }
 
 function resolveWorkspaceFromMembership(
-  membership: unknown,
+  membership: LiveMembership | Record<string, unknown>,
   indexes: ReturnType<typeof buildLiveWorkspaceIndexes>
 ): NormalizedLiveWorkspace | null {
   const workspaceId = pickFirstText(membership, [
@@ -402,7 +414,7 @@ function resolveWorkspaceFromMembership(
 }
 
 function normalizeLiveMembershipSummary(
-  membership: unknown,
+  membership: LiveMembership | Record<string, unknown>,
   indexes: ReturnType<typeof buildLiveWorkspaceIndexes>
 ): WorkspaceSummary | null {
   const matchedWorkspace = resolveWorkspaceFromMembership(membership, indexes);
@@ -413,24 +425,29 @@ function normalizeLiveMembershipSummary(
     "workspaceId",
   ]);
 
+  const fallbackCategory = normalizeWorkspaceCategory(
+    pickFirstText(membership, ["Category", "Type"])
+  );
+
+  const fallbackPlan = normalizeWorkspacePlan(
+    pickFirstText(membership, ["Plan", "Plan_ID", "Type"]) || fallbackCategory
+  );
+
+  const fallbackStatus = normalizeWorkspaceStatus(
+    pickFirstText(membership, ["Workspace_Status", "Status_select", "Status"])
+  );
+
   const workspaceId = matchedWorkspace?.summary.workspaceId || fallbackWorkspaceId;
   if (!workspaceId) return null;
 
-  const category =
-    matchedWorkspace?.summary.category ||
-    normalizeCategory(pickFirstText(membership, ["Category", "Type"]));
-
-  const plan =
-    matchedWorkspace?.summary.plan ||
-    normalizePlan(
-      pickFirstText(membership, ["Plan", "Plan_ID", "Type"]) || category
-    );
-
-  const status =
-    matchedWorkspace?.summary.status ||
-    normalizeWorkspaceStatus(
-      pickFirstText(membership, ["Workspace_Status", "Status_select", "Status"])
-    );
+  const membershipRole = normalizeWorkspaceRole(
+    pickFirstText(membership, ["Role", "Membership_Role"])
+  );
+  const membershipStatus = normalizeMembershipStatus(
+    pickFirstText(membership, ["Status", "Membership_Status", "Status_select"])
+  );
+  const isDefault =
+    pickFirstBoolean(membership, ["Is_Default", "Default"]) ?? false;
 
   return {
     workspaceId,
@@ -442,17 +459,12 @@ function normalizeLiveMembershipSummary(
       matchedWorkspace?.summary.name ||
       pickFirstText(membership, ["Workspace_Name", "Workspace"]) ||
       workspaceId,
-    category,
-    plan,
-    status,
-    membershipRole: normalizeRole(
-      pickFirstText(membership, ["Role", "Membership_Role"])
-    ),
-    membershipStatus: normalizeMembershipStatus(
-      pickFirstText(membership, ["Status", "Membership_Status", "Status_select"])
-    ),
-    isDefault:
-      pickFirstBoolean(membership, ["Is_Default", "Default"]) ?? false,
+    category: matchedWorkspace?.summary.category || fallbackCategory,
+    plan: matchedWorkspace?.summary.plan || fallbackPlan,
+    status: matchedWorkspace?.summary.status || fallbackStatus,
+    membershipRole,
+    membershipStatus,
+    isDefault,
   };
 }
 
@@ -479,12 +491,30 @@ function dedupeWorkspaceSummaries(
   return Array.from(map.values());
 }
 
+function resolveActiveWorkspaceSummary(
+  memberships: WorkspaceSummary[],
+  preferredWorkspaceId?: string | null
+): WorkspaceSummary | null {
+  const preferred = normalizeText(preferredWorkspaceId);
+
+  if (preferred) {
+    const exact = memberships.find((item) => item.workspaceId === preferred);
+    if (exact) return exact;
+  }
+
+  const explicitDefault = memberships.find((item) => item.isDefault);
+  if (explicitDefault) return explicitDefault;
+
+  return memberships[0] || null;
+}
+
 function buildLiveEntitlements(
   workspace: NormalizedLiveWorkspace | null,
-  membershipRole: WorkspaceRole
+  membershipRole: WorkspaceRole,
+  fallback?: WorkspaceEntitlements | null
 ): WorkspaceEntitlements {
   if (!workspace) {
-    return buildFallbackEntitlements(membershipRole);
+    return fallback || buildFallbackEntitlements(membershipRole || "viewer");
   }
 
   const raw = workspace.raw;
@@ -499,7 +529,7 @@ function buildLiveEntitlements(
     canManageBilling: pickFirstBoolean(raw, ["Can_Manage_Billing"]),
   };
 
-  const derived = buildFallbackEntitlements(membershipRole);
+  const derived = fallback || buildFallbackEntitlements(membershipRole);
 
   return {
     canAccessDashboard: explicit.canAccessDashboard ?? derived.canAccessDashboard,
@@ -513,9 +543,26 @@ function buildLiveEntitlements(
   };
 }
 
-function normalizeLiveQuota(quota: unknown): WorkspaceQuotaSnapshot | null {
-  if (!quota) return null;
+function normalizeQuotaNumber(value: unknown): number {
+  const text = pickText(value);
+  if (!text) return 0;
 
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeQuotaLimit(value: unknown): number | null {
+  const text = pickText(value);
+  if (!text) return null;
+
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeLiveQuota(
+  quota: unknown,
+  workspaceId: string
+): WorkspaceQuotaSnapshot | null {
   const fields = getRecordFields(quota);
   const root = asRecord(quota);
 
@@ -527,304 +574,464 @@ function normalizeLiveQuota(quota: unknown): WorkspaceQuotaSnapshot | null {
 
   return {
     runsUsed:
-      toNumber(fields.Usage_Runs_Month) ??
-      toNumber(fields.Runs_Used) ??
-      0,
+      normalizeQuotaNumber(fields.Usage_Runs_Month) ||
+      normalizeQuotaNumber(fields.Runs_Used),
     runsHardLimit:
-      toNumber(fields.Hard_Limit_Runs_Month) ??
-      toNumber(fields.Runs_Hard_Limit),
+      normalizeQuotaLimit(fields.Hard_Limit_Runs_Month) ||
+      normalizeQuotaLimit(fields.Runs_Hard_Limit),
     tokensUsed:
-      toNumber(fields.Usage_Tokens_Month) ??
-      toNumber(fields.Tokens_Used) ??
-      0,
+      normalizeQuotaNumber(fields.Usage_Tokens_Month) ||
+      normalizeQuotaNumber(fields.Tokens_Used),
     tokensHardLimit:
-      toNumber(fields.Hard_Limit_Tokens_Month) ??
-      toNumber(fields.Tokens_Hard_Limit),
+      normalizeQuotaLimit(fields.Hard_Limit_Tokens_Month) ||
+      normalizeQuotaLimit(fields.Tokens_Hard_Limit),
     httpCallsUsed:
-      toNumber(fields.Usage_HTTP_Calls_Month) ??
-      toNumber(fields.HTTP_Calls_Used) ??
-      0,
+      normalizeQuotaNumber(fields.Usage_HTTP_Calls_Month) ||
+      normalizeQuotaNumber(fields.HTTP_Calls_Used),
     httpCallsHardLimit:
-      toNumber(fields.Hard_Limit_HTTP_Calls_Month) ??
-      toNumber(fields.HTTP_Calls_Hard_Limit),
-    periodKey,
+      normalizeQuotaLimit(fields.Hard_Limit_HTTP_Calls_Month) ||
+      normalizeQuotaLimit(fields.HTTP_Calls_Hard_Limit),
+    periodKey:
+      periodKey || `${workspaceId}:${new Date().toISOString().slice(0, 7)}`,
   };
 }
 
-async function tryResolveLiveWorkspaceState(
-  userId: string
-): Promise<{
-  memberships: WorkspaceSummary[];
-  quotaByWorkspaceId: Map<string, WorkspaceQuotaSnapshot | null>;
-  entitlementsByWorkspaceId: Map<string, WorkspaceEntitlements>;
-} | null> {
-  if (!isAirtableLiveConfigured()) {
-    return null;
-  }
+function resolveProfileUserId(profile: unknown): string {
+  return pickFirstText(profile, ["User_ID", "userId", "UserId", "id"]);
+}
+
+function resolveProfileEmail(profile: unknown): string {
+  return pickFirstText(profile, ["Email", "email"]);
+}
+
+function resolveProfileDisplayName(profile: unknown): string {
+  return pickFirstText(profile, ["Display_Name", "displayName", "Name"]);
+}
+
+function resolveProfileWorkspaceId(profile: unknown, keys: string[]): string {
+  return pickFirstText(profile, keys);
+}
+
+async function tryGetLiveProfile(args: {
+  userId?: string;
+  email?: string;
+}): Promise<Record<string, unknown> | null> {
+  const userId = normalizeText(args.userId);
+  const email = normalizeText(args.email);
 
   try {
-    const [rawMemberships, rawWorkspaces] = await Promise.all([
-      (listLiveMembershipsForUser as any)({ userId }),
-      (listLiveWorkspaces as any)(),
-    ]);
-
-    if (!Array.isArray(rawMemberships) || rawMemberships.length === 0) {
-      return null;
+    if (userId) {
+      const byUserId = await (getLiveProfileByUserId as any)(userId);
+      if (byUserId) return asRecord(byUserId);
     }
+  } catch {}
 
-    const indexes = buildLiveWorkspaceIndexes(
-      Array.isArray(rawWorkspaces) ? rawWorkspaces : []
+  try {
+    if (email) {
+      const byEmail = await (getLiveProfileByEmail as any)(email);
+      if (byEmail) return asRecord(byEmail);
+    }
+  } catch {}
+
+  return null;
+}
+
+async function tryListMemberships(args: {
+  userId?: string;
+  email?: string;
+}): Promise<Array<LiveMembership | Record<string, unknown>>> {
+  const fn = listLiveMembershipsForUser as any;
+  const userId = normalizeText(args.userId);
+  const email = normalizeText(args.email);
+
+  const attempts = [
+    async () => fn({ userId, email }),
+    async () => fn(userId),
+    async () => fn(email),
+    async () => fn({ email }),
+    async () => fn({ userId }),
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      const result = await attempt();
+      if (Array.isArray(result)) return result;
+    } catch {}
+  }
+
+  return [];
+}
+
+async function tryListWorkspaces(): Promise<
+  Array<LiveWorkspace | Record<string, unknown>>
+> {
+  const fn = listLiveWorkspaces as any;
+
+  const attempts = [async () => fn(), async () => fn({})];
+
+  for (const attempt of attempts) {
+    try {
+      const result = await attempt();
+      if (Array.isArray(result)) return result;
+    } catch {}
+  }
+
+  return [];
+}
+
+async function tryGetWorkspaceQuota(
+  workspaceId: string
+): Promise<WorkspaceQuotaSnapshot | null> {
+  const normalizedWorkspaceId = normalizeText(workspaceId);
+  if (!normalizedWorkspaceId) return null;
+
+  try {
+    const quota = await (getLiveWorkspaceQuotaByWorkspaceId as any)(
+      normalizedWorkspaceId
     );
 
-    const memberships = dedupeWorkspaceSummaries(
-      rawMemberships
-        .map((membership) =>
-          normalizeLiveMembershipSummary(membership, indexes)
-        )
-        .filter(Boolean) as WorkspaceSummary[]
-    ).filter(
-      (item) =>
-        item.membershipStatus === "active" && item.status === "active"
-    );
+    if (!quota) return null;
 
-    if (memberships.length === 0) {
-      return null;
-    }
-
-    const entitlementsByWorkspaceId = new Map<string, WorkspaceEntitlements>();
-
-    for (const membership of memberships) {
-      const workspace = indexes.byWorkspaceId.get(membership.workspaceId) || null;
-      entitlementsByWorkspaceId.set(
-        membership.workspaceId,
-        buildLiveEntitlements(workspace, membership.membershipRole)
-      );
-    }
-
-    const quotaByWorkspaceId = new Map<string, WorkspaceQuotaSnapshot | null>();
-
-    await Promise.all(
-      memberships.map(async (membership) => {
-        try {
-          const rawQuota = await (getLiveWorkspaceQuotaByWorkspaceId as any)(
-            membership.workspaceId
-          );
-          quotaByWorkspaceId.set(
-            membership.workspaceId,
-            normalizeLiveQuota(rawQuota)
-          );
-        } catch {
-          quotaByWorkspaceId.set(membership.workspaceId, null);
-        }
-      })
-    );
-
-    return {
-      memberships,
-      quotaByWorkspaceId,
-      entitlementsByWorkspaceId,
-    };
+    return normalizeLiveQuota(quota, normalizedWorkspaceId);
   } catch {
     return null;
   }
 }
 
-async function resolveWorkspaceSource(
-  userId: string
-): Promise<{
+function buildLiveContext(args: {
+  activeWorkspace: WorkspaceSummary | null;
   memberships: WorkspaceSummary[];
-  quotaByWorkspaceId: Map<string, WorkspaceQuotaSnapshot | null>;
-  entitlementsByWorkspaceId: Map<string, WorkspaceEntitlements>;
-  mode: "live" | "mock";
-}> {
-  const liveState = await tryResolveLiveWorkspaceState(userId);
-
-  if (liveState) {
-    return {
-      ...liveState,
-      mode: "live",
-    };
-  }
-
-  const mockMemberships = listMockWorkspaceSummariesForUser(userId).filter(
-    (item) => item.membershipStatus === "active" && item.status === "active"
-  );
-
-  const quotaByWorkspaceId = new Map<string, WorkspaceQuotaSnapshot | null>();
-  const entitlementsByWorkspaceId = new Map<string, WorkspaceEntitlements>();
-
-  for (const membership of mockMemberships) {
-    quotaByWorkspaceId.set(
-      membership.workspaceId,
-      getMockQuotaSnapshot(membership.workspaceId)
-    );
-    entitlementsByWorkspaceId.set(
-      membership.workspaceId,
-      getMockEntitlements(membership.workspaceId, membership.membershipRole)
-    );
-  }
-
+  quota: WorkspaceQuotaSnapshot | null;
+  entitlements: WorkspaceEntitlements;
+}): WorkspaceContext {
   return {
-    memberships: mockMemberships,
-    quotaByWorkspaceId,
-    entitlementsByWorkspaceId,
-    mode: "mock",
+    activeWorkspace: args.activeWorkspace,
+    memberships: args.memberships,
+    quota: args.quota,
+    entitlements: args.entitlements,
   };
 }
 
-export async function resolveWorkspaceAccess(
-  options: ResolverOptions
-): Promise<WorkspaceResolutionResult> {
-  const userId = normalizeText(options.userId);
-  const requestedWorkspaceId = normalizeText(options.requestedWorkspaceId);
-  const nextPath = normalizeText(options.nextPath) || "/overview";
+async function enrichSessionFromAirtable(
+  baseState: ResolvedAuthSessionState
+): Promise<ResolvedAuthSessionState> {
+  if (!baseState.isAuthenticated) return baseState;
+  if (!isAirtableLiveConfigured()) return baseState;
 
-  if (!userId) {
-    return {
-      kind: "redirect_login",
-      reason: "missing_user",
-      redirectTo: getLoginRoute(nextPath),
-      requestedWorkspaceId,
-      activeWorkspace: null,
-      memberships: [],
-      context: null,
-      autoActivateWorkspaceId: "",
-      dashboardRoute: "",
-    };
+  const baseUser = asRecord((baseState as Record<string, unknown>).user);
+  const snapshot = baseState.cookieSnapshot;
+
+  const seedUserId =
+    normalizeText(snapshot.userId) ||
+    pickText(baseUser.userId) ||
+    pickText(baseUser.id);
+
+  const seedEmail = pickText(baseUser.email);
+
+  const liveProfile = await tryGetLiveProfile({
+    userId: seedUserId,
+    email: seedEmail,
+  });
+
+  if (!liveProfile) {
+    return baseState;
   }
 
-  const source = await resolveWorkspaceSource(userId);
-  const memberships = source.memberships;
+  const liveUserId = resolveProfileUserId(liveProfile) || seedUserId;
+  const liveEmail = resolveProfileEmail(liveProfile) || seedEmail;
+  const liveDisplayName =
+    resolveProfileDisplayName(liveProfile) ||
+    pickText(baseUser.displayName) ||
+    liveEmail ||
+    liveUserId;
+
+  const [rawMemberships, rawWorkspaces] = await Promise.all([
+    tryListMemberships({ userId: liveUserId, email: liveEmail }),
+    tryListWorkspaces(),
+  ]);
+
+  const workspaceIndexes = buildLiveWorkspaceIndexes(rawWorkspaces);
+  const memberships = dedupeWorkspaceSummaries(
+    rawMemberships
+      .map((membership) =>
+        normalizeLiveMembershipSummary(membership, workspaceIndexes)
+      )
+      .filter(Boolean) as WorkspaceSummary[]
+  ).filter((item) => item.membershipStatus === "active" && item.status === "active");
 
   if (memberships.length === 0) {
     return {
-      kind: "redirect_create",
-      reason: "no_membership",
-      redirectTo: getCreateWorkspaceRoute(nextPath),
-      requestedWorkspaceId,
-      activeWorkspace: null,
-      memberships: [],
-      context: null,
-      autoActivateWorkspaceId: "",
-      dashboardRoute: "",
+      ...baseState,
+      authMode: "live",
+      user: {
+        ...baseUser,
+        userId: liveUserId,
+        email: liveEmail,
+        displayName: liveDisplayName,
+      } as any,
     };
   }
 
-  const requestedMembership = findMembershipByWorkspaceId(
+  const profileActiveWorkspaceId = resolveProfileWorkspaceId(liveProfile, [
+    "Active_Workspace_ID",
+    "Active_Workspace_Id",
+    "Active_Workspace",
+    "Default_Workspace_ID",
+    "Default_Workspace",
+  ]);
+
+  const activeWorkspace = resolveActiveWorkspaceSummary(
     memberships,
-    requestedWorkspaceId
+    snapshot.activeWorkspaceId || profileActiveWorkspaceId
   );
 
-  if (requestedWorkspaceId && !requestedMembership) {
-    if (memberships.length === 1) {
-      const onlyWorkspace = memberships[0];
-      return {
-        kind: "redirect_activate",
-        reason: "invalid_requested_workspace",
-        redirectTo: getWorkspaceActivateRoute({
-          workspaceId: onlyWorkspace.workspaceId,
-          nextPath: getDashboardRouteForWorkspaceCategory(onlyWorkspace.category),
-        }),
-        requestedWorkspaceId,
-        activeWorkspace: null,
-        memberships,
-        context: null,
-        autoActivateWorkspaceId: onlyWorkspace.workspaceId,
-        dashboardRoute: getDashboardRouteForWorkspaceCategory(
-          onlyWorkspace.category
-        ),
-      };
-    }
+  const activeWorkspaceId =
+    activeWorkspace?.workspaceId ||
+    normalizeText(snapshot.activeWorkspaceId) ||
+    profileActiveWorkspaceId;
 
-    return {
-      kind: "redirect_select",
-      reason: "invalid_requested_workspace",
-      redirectTo: getSelectWorkspaceRoute(nextPath),
-      requestedWorkspaceId,
-      activeWorkspace: null,
-      memberships,
-      context: null,
-      autoActivateWorkspaceId: "",
-      dashboardRoute: "",
-    };
-  }
+  const workspaceIds = memberships.map((item) => item.workspaceId);
+  const activeLiveWorkspace = activeWorkspaceId
+    ? workspaceIndexes.byWorkspaceId.get(activeWorkspaceId) || null
+    : null;
 
-  if (!requestedMembership && memberships.length > 1) {
-    return {
-      kind: "redirect_select",
-      reason: "multiple_workspaces_select_required",
-      redirectTo: getSelectWorkspaceRoute(nextPath),
-      requestedWorkspaceId,
-      activeWorkspace: null,
-      memberships,
-      context: null,
-      autoActivateWorkspaceId: "",
-      dashboardRoute: "",
-    };
-  }
+  const quota = activeWorkspace
+    ? await tryGetWorkspaceQuota(activeWorkspace.workspaceId)
+    : null;
 
-  if (!requestedMembership && memberships.length === 1) {
-    const onlyWorkspace = memberships[0];
-
-    return {
-      kind: "redirect_activate",
-      reason: "single_workspace_auto_activate",
-      redirectTo: getWorkspaceActivateRoute({
-        workspaceId: onlyWorkspace.workspaceId,
-        nextPath: getDashboardRouteForWorkspaceCategory(onlyWorkspace.category),
-      }),
-      requestedWorkspaceId,
-      activeWorkspace: null,
-      memberships,
-      context: null,
-      autoActivateWorkspaceId: onlyWorkspace.workspaceId,
-      dashboardRoute: getDashboardRouteForWorkspaceCategory(
-        onlyWorkspace.category
-      ),
-    };
-  }
-
-  const activeWorkspace = requestedMembership;
-  if (!activeWorkspace) {
-    return {
-      kind: "redirect_select",
-      reason: "workspace_not_accessible",
-      redirectTo: getSelectWorkspaceRoute(nextPath),
-      requestedWorkspaceId,
-      activeWorkspace: null,
-      memberships,
-      context: null,
-      autoActivateWorkspaceId: "",
-      dashboardRoute: "",
-    };
-  }
-
-  const dashboardRoute = getDashboardRouteForWorkspaceCategory(
-    activeWorkspace.category
+  const entitlements = buildLiveEntitlements(
+    activeLiveWorkspace,
+    activeWorkspace?.membershipRole || "viewer",
+    baseState.context?.entitlements || null
   );
 
-  const context: WorkspaceContext =
-    source.mode === "mock"
-      ? buildMockWorkspaceContext(activeWorkspace, memberships)
-      : {
-          activeWorkspace,
-          memberships,
-          quota:
-            source.quotaByWorkspaceId.get(activeWorkspace.workspaceId) || null,
-          entitlements:
-            source.entitlementsByWorkspaceId.get(activeWorkspace.workspaceId) ||
-            buildFallbackEntitlements(activeWorkspace.membershipRole),
-        };
+  const dedicatedSpace = activeWorkspace
+    ? getDedicatedSpaceTarget(activeWorkspace.category)
+    : normalizeDedicatedSpace(baseState.target) ||
+      normalizeDedicatedSpace(snapshot.dedicatedSpace);
 
-  return {
-    kind: "allow_dashboard",
-    reason: "workspace_cookie_valid",
-    redirectTo: dashboardRoute,
-    requestedWorkspaceId,
+  const homeRoute = activeWorkspace
+    ? mapDedicatedSpaceToRoute(dedicatedSpace)
+    : baseState.homeRoute;
+
+  const cookieSnapshot = buildAuthCookieSnapshotFromState(snapshot, {
+    userId: liveUserId,
+    activeWorkspaceId,
+    allowedWorkspaceIds: workspaceIds,
+    dedicatedSpace,
+  });
+
+  const context = buildLiveContext({
     activeWorkspace,
     memberships,
+    quota,
+    entitlements,
+  });
+
+  const sessionLike = {
+    ...(baseState as unknown as Record<string, unknown>),
+    user: {
+      ...baseUser,
+      userId: liveUserId,
+      email: liveEmail,
+      displayName: liveDisplayName,
+    },
+    target: dedicatedSpace,
+    route: homeRoute,
     context,
-    autoActivateWorkspaceId: "",
-    dashboardRoute,
+    allowedWorkspaceIds: workspaceIds,
+  } as ResolvedMockSession;
+
+  return {
+    ...(baseState as unknown as Record<string, unknown>),
+    ...(sessionLike as unknown as Record<string, unknown>),
+    authMode: "live",
+    loginRoute: AUTH_LOGIN_ROUTE,
+    homeRoute,
+    hasSessionToken: baseState.hasSessionToken,
+    cookieSnapshot,
+    cookiePayload: buildMockSessionCookiePayload(sessionLike),
+  } as ResolvedAuthSessionState;
+}
+
+export function buildAuthCookieSnapshotFromStore(
+  store: CookieReadableStore
+): AuthCookieSnapshot {
+  const authValue = normalizeText(store.get(MOCK_AUTH_COOKIE_NAME)?.value);
+  const sessionToken = normalizeText(
+    store.get(MOCK_SESSION_TOKEN_COOKIE_NAME)?.value
+  );
+  const userId = normalizeText(store.get(MOCK_USER_ID_COOKIE_NAME)?.value);
+  const activeWorkspaceId = normalizeText(
+    store.get(MOCK_ACTIVE_WORKSPACE_COOKIE_NAME)?.value
+  );
+  const allowedWorkspaceIdsRaw = normalizeText(
+    store.get(MOCK_ALLOWED_WORKSPACES_COOKIE_NAME)?.value
+  );
+  const dedicatedSpace = normalizeText(
+    store.get(MOCK_DEDICATED_SPACE_COOKIE_NAME)?.value
+  );
+
+  return {
+    authValue,
+    sessionToken,
+    userId,
+    activeWorkspaceId,
+    allowedWorkspaceIdsRaw,
+    allowedWorkspaceIds: parseCsvList(allowedWorkspaceIdsRaw),
+    dedicatedSpace,
+  };
+}
+
+export async function readAuthCookieSnapshot(): Promise<AuthCookieSnapshot> {
+  const store = await cookies();
+  return buildAuthCookieSnapshotFromStore(store);
+}
+
+export function resolveAuthSessionFromSnapshot(
+  snapshot: AuthCookieSnapshot
+): ResolvedAuthSessionState {
+  const session = resolveMockSessionFromCookies({
+    [MOCK_AUTH_COOKIE_NAME]: snapshot.authValue,
+    [MOCK_SESSION_TOKEN_COOKIE_NAME]: snapshot.sessionToken,
+    [MOCK_USER_ID_COOKIE_NAME]: snapshot.userId,
+    [MOCK_ACTIVE_WORKSPACE_COOKIE_NAME]: snapshot.activeWorkspaceId,
+    [MOCK_ALLOWED_WORKSPACES_COOKIE_NAME]: snapshot.allowedWorkspaceIdsRaw,
+    [MOCK_DEDICATED_SPACE_COOKIE_NAME]: snapshot.dedicatedSpace,
+  });
+
+  const cookieTarget = normalizeDedicatedSpace(snapshot.dedicatedSpace);
+  const resolvedTarget = session.target || cookieTarget || null;
+
+  const homeRoute = session.isAuthenticated
+    ? session.route || mapDedicatedSpaceToRoute(resolvedTarget)
+    : AUTH_LOGIN_ROUTE;
+
+  return {
+    ...session,
+    authMode: "mock",
+    loginRoute: AUTH_LOGIN_ROUTE,
+    homeRoute,
+    hasSessionToken: Boolean(snapshot.sessionToken),
+    cookieSnapshot: snapshot,
+    cookiePayload: session.isAuthenticated
+      ? buildMockSessionCookiePayload(session)
+      : null,
+  };
+}
+
+export async function resolveAuthSession(): Promise<ResolvedAuthSessionState> {
+  const snapshot = await readAuthCookieSnapshot();
+  const baseState = resolveAuthSessionFromSnapshot(snapshot);
+  return enrichSessionFromAirtable(baseState);
+}
+
+export async function requireAuthenticatedSession(): Promise<ResolvedAuthSessionState> {
+  return resolveAuthSession();
+}
+
+export async function getAuthenticatedHomeRoute(): Promise<string> {
+  const session = await resolveAuthSession();
+  return session.isAuthenticated ? session.homeRoute : AUTH_LOGIN_ROUTE;
+}
+
+export function isAuthenticatedCookieSnapshot(
+  snapshot: AuthCookieSnapshot
+): boolean {
+  return normalizeText(snapshot.authValue) === MOCK_AUTH_COOKIE_VALUE;
+}
+
+export function getAuthCookieWriteOptions(): AuthCookieWriteOptions {
+  return {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
+  };
+}
+
+export function getAuthCookieNames(): string[] {
+  return [
+    MOCK_AUTH_COOKIE_NAME,
+    MOCK_SESSION_TOKEN_COOKIE_NAME,
+    MOCK_USER_ID_COOKIE_NAME,
+    MOCK_ACTIVE_WORKSPACE_COOKIE_NAME,
+    MOCK_ALLOWED_WORKSPACES_COOKIE_NAME,
+    MOCK_DEDICATED_SPACE_COOKIE_NAME,
+  ];
+}
+
+export function buildLoginCookieBundle(input: MockLoginIntent): {
+  route: string;
+  session: ResolvedAuthSessionState;
+  cookiePayload: MockSessionCookiePayload | null;
+} {
+  const { route } = getMockLoginRedirect(input);
+
+  const session = resolveAuthSessionFromSnapshot({
+    authValue: MOCK_AUTH_COOKIE_VALUE,
+    sessionToken: normalizeText(input.token),
+    userId: "",
+    activeWorkspaceId: normalizeText(input.requestedWorkspaceId),
+    allowedWorkspaceIdsRaw: "",
+    allowedWorkspaceIds: [],
+    dedicatedSpace: "",
+  });
+
+  return {
+    route,
+    session,
+    cookiePayload: session.cookiePayload,
+  };
+}
+
+export function getCookiesToClear(): Array<{
+  name: string;
+  value: string;
+  options: AuthCookieWriteOptions;
+}> {
+  const expiredOptions: AuthCookieWriteOptions = {
+    ...getAuthCookieWriteOptions(),
+    maxAge: 0,
+  };
+
+  return getAuthCookieNames().map((name) => ({
+    name,
+    value: "",
+    options: expiredOptions,
+  }));
+}
+
+export function buildWorkspaceSwitchCookieBundle(args: {
+  current: ResolvedAuthSessionState;
+  nextWorkspaceId: string;
+}): {
+  route: string;
+  cookiePayload: MockSessionCookiePayload | null;
+  session: ResolvedAuthSessionState;
+} {
+  const nextWorkspaceId = normalizeText(args.nextWorkspaceId);
+
+  const nextSessionBase = resolveMockSessionFromCookies({
+    [MOCK_AUTH_COOKIE_NAME]: args.current.cookieSnapshot.authValue,
+    [MOCK_SESSION_TOKEN_COOKIE_NAME]: args.current.cookieSnapshot.sessionToken,
+    [MOCK_USER_ID_COOKIE_NAME]: args.current.cookieSnapshot.userId,
+    [MOCK_ACTIVE_WORKSPACE_COOKIE_NAME]: nextWorkspaceId,
+    [MOCK_ALLOWED_WORKSPACES_COOKIE_NAME]:
+      args.current.cookieSnapshot.allowedWorkspaceIdsRaw,
+    [MOCK_DEDICATED_SPACE_COOKIE_NAME]:
+      args.current.cookieSnapshot.dedicatedSpace,
+  });
+
+  const session = resolveAuthSessionFromSnapshot({
+    ...args.current.cookieSnapshot,
+    activeWorkspaceId: nextWorkspaceId,
+  });
+
+  return {
+    route: nextSessionBase.route || session.homeRoute,
+    cookiePayload: session.cookiePayload,
+    session,
   };
 }
