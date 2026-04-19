@@ -286,6 +286,14 @@ function getEntitlementItems(entitlements?: WorkspaceEntitlements | null) {
   ] as const;
 }
 
+function shouldShowPlanBadge(workspace: WorkspaceSummary): boolean {
+  const category = text(workspace.category).toLowerCase();
+  const plan = text(workspace.plan).toLowerCase();
+
+  if (!plan) return false;
+  return category !== plan;
+}
+
 function ActionCard({ item }: { item: HubCard }) {
   return (
     <article className={cardClassName()}>
@@ -406,9 +414,13 @@ export default async function WorkspaceHomePage() {
             <span className={badgeClassName(categoryTone(activeWorkspace.category))}>
               {activeWorkspace.category.toUpperCase()}
             </span>
-            <span className={badgeClassName("violet")}>
-              {activeWorkspace.plan.toUpperCase()}
-            </span>
+
+            {shouldShowPlanBadge(activeWorkspace) ? (
+              <span className={badgeClassName("violet")}>
+                {activeWorkspace.plan.toUpperCase()}
+              </span>
+            ) : null}
+
             <span className={badgeClassName(roleTone(activeWorkspace.membershipRole))}>
               {activeWorkspace.membershipRole.toUpperCase()}
             </span>
