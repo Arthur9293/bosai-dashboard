@@ -11,18 +11,24 @@ type LedgerFilters = {
   limit: number;
 };
 
-const QUICK_STATUS_OPTIONS = ["success", "error", "blocked", "unsupported"] as const;
+const QUICK_STATUS_OPTIONS = [
+  "success",
+  "error",
+  "blocked",
+  "unsupported",
+] as const;
+
 const QUICK_CAPABILITY_OPTIONS = ["health_tick"] as const;
 
-function badgeClassName(
-  variant:
-    | "default"
-    | "success"
-    | "warning"
-    | "danger"
-    | "info"
-    | "violet" = "default"
-): string {
+type ChipTone =
+  | "default"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  | "violet";
+
+function badgeClassName(variant: ChipTone = "default"): string {
   if (variant === "success") {
     return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
   }
@@ -46,10 +52,7 @@ function badgeClassName(
   return "inline-flex rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
-function quickChipClass(
-  active: boolean,
-  tone: "default" | "success" | "warning" | "danger" | "info" | "violet" = "info"
-): string {
+function quickChipClass(active: boolean, tone: ChipTone = "info"): string {
   if (!active) {
     return "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-zinc-300";
   }
@@ -68,6 +71,10 @@ function quickChipClass(
 
   if (tone === "violet") {
     return "inline-flex rounded-full border border-violet-500/30 bg-violet-500/15 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-violet-300";
+  }
+
+  if (tone === "default") {
+    return "inline-flex rounded-full border border-white/15 bg-white/[0.08] px-3 py-1.5 text-[11px] sm:text-xs font-medium text-white";
   }
 
   return "inline-flex rounded-full border border-sky-500/30 bg-sky-500/15 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-sky-300";
@@ -97,6 +104,17 @@ function applyPreset(
   setters.setLimit(preset.limit ?? "20");
 }
 
+function statusTone(status: string): ChipTone {
+  const normalized = status.trim().toLowerCase();
+
+  if (normalized === "success") return "success";
+  if (normalized === "error") return "danger";
+  if (normalized === "blocked") return "warning";
+  if (normalized === "unsupported") return "violet";
+
+  return "info";
+}
+
 export function WorkspaceLedgerFilters({
   initialFilters,
 }: {
@@ -117,6 +135,7 @@ export function WorkspaceLedgerFilters({
 
     const fromInitial = String(initialFilters.period_key || "").trim();
     if (fromInitial) values.add(fromInitial);
+
     if (currentPeriodKey) values.add(currentPeriodKey);
 
     return Array.from(values);
@@ -266,6 +285,7 @@ export function WorkspaceLedgerFilters({
           <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
             Status
           </div>
+
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
@@ -282,7 +302,7 @@ export function WorkspaceLedgerFilters({
             <button
               type="button"
               onClick={() => setStatus("")}
-              className={quickChipClass(status === "", "info")}
+              className={quickChipClass(status === "", "default")}
             >
               Tous
             </button>
@@ -294,13 +314,7 @@ export function WorkspaceLedgerFilters({
                 onClick={() => setStatus(item)}
                 className={quickChipClass(
                   status === item,
-                  item === "success"
-                    ? "success"
-                    : item === "error"
-                      ? "danger"
-                      : item === "blocked"
-                        ? "warning"
-                        : "violet"
+                  statusTone(item)
                 )}
               >
                 {item}
@@ -313,6 +327,7 @@ export function WorkspaceLedgerFilters({
           <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
             Capability
           </div>
+
           <input
             type="text"
             value={capability}
@@ -325,7 +340,7 @@ export function WorkspaceLedgerFilters({
             <button
               type="button"
               onClick={() => setCapability("")}
-              className={quickChipClass(capability === "", "info")}
+              className={quickChipClass(capability === "", "default")}
             >
               Toutes
             </button>
@@ -347,6 +362,7 @@ export function WorkspaceLedgerFilters({
           <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
             Period key
           </div>
+
           <input
             type="text"
             value={periodKey}
@@ -359,7 +375,7 @@ export function WorkspaceLedgerFilters({
             <button
               type="button"
               onClick={() => setPeriodKey("")}
-              className={quickChipClass(periodKey === "", "info")}
+              className={quickChipClass(periodKey === "", "default")}
             >
               Toutes
             </button>
@@ -381,6 +397,7 @@ export function WorkspaceLedgerFilters({
           <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
             Limit
           </div>
+
           <select
             value={limit}
             onChange={(e) => setLimit(e.target.value)}
@@ -393,7 +410,7 @@ export function WorkspaceLedgerFilters({
           </select>
         </label>
 
-        <div className="md:col-span-2 xl:col-span-4 flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3 md:col-span-2 xl:col-span-4">
           <button
             type="button"
             onClick={applyFilters}
