@@ -1,4 +1,10 @@
 import Link from "next/link";
+import { PageHeader } from "../../../components/ui/page-header";
+import { DashboardCard } from "../../../components/ui/dashboard-card";
+import {
+  DashboardStatusBadge,
+  type DashboardStatusKind,
+} from "@/components/dashboard/StatusBadge";
 import { fetchPolicies, type PolicyItem } from "@/lib/api";
 
 const fallbackPolicies: PolicyItem[] = [
@@ -78,20 +84,8 @@ const fallbackPolicies: PolicyItem[] = [
   },
 ];
 
-function cardClassName(): string {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
-
 function statCardClassName(): string {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
-}
-
-function emptyStateClassName(): string {
-  return "rounded-[28px] border border-dashed border-white/10 px-5 py-8 text-sm text-zinc-500";
-}
-
-function sectionLabelClassName(): string {
-  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function metaLabelClassName(): string {
@@ -102,14 +96,46 @@ function actionLinkClassName(
   variant: "default" | "primary" | "soft" = "default"
 ): string {
   if (variant === "primary") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+    return "inline-flex items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
   if (variant === "soft") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+    return "inline-flex items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/12 px-4 py-3 text-sm font-medium text-sky-300 transition hover:bg-sky-500/18";
   }
 
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+  return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+}
+
+function toneChipClassName(
+  variant:
+    | "default"
+    | "success"
+    | "warning"
+    | "danger"
+    | "info"
+    | "violet" = "default"
+): string {
+  if (variant === "success") {
+    return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
+  }
+
+  if (variant === "warning") {
+    return "inline-flex rounded-full border border-amber-500/20 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300";
+  }
+
+  if (variant === "danger") {
+    return "inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-300";
+  }
+
+  if (variant === "info") {
+    return "inline-flex rounded-full border border-sky-500/20 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-300";
+  }
+
+  if (variant === "violet") {
+    return "inline-flex rounded-full border border-violet-500/20 bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300";
+  }
+
+  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
 function toText(value: unknown, fallback = ""): string {
@@ -152,11 +178,7 @@ function getPolicyId(policy: PolicyItem): string {
 }
 
 function getPolicyName(policy: PolicyItem): string {
-  return (
-    toText(policy.name, "") ||
-    toText(policy.id, "") ||
-    "Untitled policy"
-  );
+  return toText(policy.name, "") || toText(policy.id, "") || "Untitled policy";
 }
 
 function getPolicyDescription(policy: PolicyItem): string {
@@ -180,6 +202,15 @@ function getPolicyStatusLabel(policy: PolicyItem): string {
 
   if (isPolicyEnabled(policy)) return "ACTIVE";
   return "DISABLED";
+}
+
+function getPolicyStatusKind(policy: PolicyItem): DashboardStatusKind {
+  const status = getPolicyStatusLabel(policy).toLowerCase();
+
+  if (status === "active") return "success";
+  if (status === "paused") return "retry";
+  if (status === "disabled") return "failed";
+  return "unknown";
 }
 
 function getPolicyType(policy: PolicyItem): string {
@@ -211,125 +242,78 @@ function getPolicyValueSummary(policy: PolicyItem): string {
   return String(policy.value);
 }
 
-function statusTone(policy: PolicyItem): string {
-  const status = getPolicyStatusLabel(policy).toLowerCase();
-
-  if (status === "active") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (status === "paused") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (status === "disabled") {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-}
-
-function typeTone(policy: PolicyItem): string {
+function getTypeChipTone(policy: PolicyItem):
+  | "default"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  | "violet" {
   const type = getPolicyType(policy).toLowerCase();
 
-  if (["security", "guardrail"].includes(type)) {
-    return "bg-sky-500/15 text-sky-300 border border-sky-500/20";
-  }
-
-  if (["retry", "recovery"].includes(type)) {
-    return "bg-violet-500/15 text-violet-300 border border-violet-500/20";
-  }
-
-  if (["escalation", "incident"].includes(type)) {
-    return "bg-orange-500/15 text-orange-300 border border-orange-500/20";
-  }
-
-  return "bg-white/[0.04] text-zinc-300 border border-white/10";
+  if (["security", "guardrail"].includes(type)) return "info";
+  if (["retry", "recovery"].includes(type)) return "violet";
+  if (["escalation", "incident"].includes(type)) return "warning";
+  if (["workspace"].includes(type)) return "default";
+  return "default";
 }
 
-function PolicyCard({ policy }: { policy: PolicyItem }) {
-  const id = getPolicyId(policy);
-  const name = getPolicyName(policy);
-  const description = getPolicyDescription(policy);
+function sortPolicies(items: PolicyItem[]): PolicyItem[] {
+  const priority = (policy: PolicyItem): number => {
+    const status = getPolicyStatusLabel(policy).toLowerCase();
 
-  return (
-    <article className={cardClassName()}>
-      <div className="flex h-full flex-col gap-5">
-        <div className="space-y-4 border-b border-white/10 pb-4">
-          <div className={sectionLabelClassName()}>BOSAI Policy</div>
+    if (status === "paused") return 0;
+    if (status === "disabled") return 1;
+    if (status === "active") return 2;
+    return 3;
+  };
 
-          <div className="space-y-3">
-            <Link
-              href={`/policies/${encodeURIComponent(id || name)}`}
-              className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
-            >
-              {name}
-            </Link>
+  return [...items].sort((a, b) => {
+    const diff = priority(a) - priority(b);
+    if (diff !== 0) return diff;
 
-            <div className="text-sm text-zinc-400">{description}</div>
+    return getPolicyName(a).localeCompare(getPolicyName(b));
+  });
+}
 
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
-                  policy
-                )}`}
-              >
-                {getPolicyStatusLabel(policy)}
-              </span>
+function getQuickRead(params: {
+  total: number;
+  active: number;
+  paused: number;
+  disabled: number;
+  enabled: number;
+}): string {
+  const { total, active, paused, disabled, enabled } = params;
 
-              <span
-                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${typeTone(
-                  policy
-                )}`}
-              >
-                {getPolicyType(policy).toUpperCase()}
-              </span>
+  if (disabled > 0) {
+    return "Priorité : vérifier les policies désactivées ou cassées avant d’élargir le registre.";
+  }
 
-              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
-                {isPolicyEnabled(policy) ? "ENABLED" : "DISABLED"}
-              </span>
-            </div>
-          </div>
-        </div>
+  if (paused > 0) {
+    return "Certaines policies sont en pause. Le registre reste lisible mais demande une revue de posture.";
+  }
 
-        <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            <div className={metaLabelClassName()}>Category</div>
-            <div className="mt-1 text-zinc-200">{getPolicyCategory(policy)}</div>
-          </div>
+  if (active > 0 && total > 0) {
+    return "Le registre policies visible paraît globalement stable et majoritairement actif.";
+  }
 
-          <div>
-            <div className={metaLabelClassName()}>Value</div>
-            <div className="mt-1 text-zinc-200">{getPolicyValueSummary(policy)}</div>
-          </div>
+  if (enabled > 0) {
+    return "Des policies sont visibles et activées, sans signal d’alerte dominant.";
+  }
 
-          <div className="md:col-span-2 xl:col-span-1">
-            <div className={metaLabelClassName()}>ID</div>
-            <div className="mt-1 break-all text-zinc-200">{id || "—"}</div>
-          </div>
-        </div>
-
-        <div className="pt-1">
-          <Link
-            href={`/policies/${encodeURIComponent(id || name)}`}
-            className={actionLinkClassName("primary")}
-          >
-            Ouvrir le détail
-          </Link>
-        </div>
-      </div>
-    </article>
-  );
+  return "Aucune policy significative n’est visible pour le moment.";
 }
 
 function StatCard({
   label,
   value,
   tone = "text-white",
+  helper,
 }: {
   label: string;
   value: number;
   tone?: string;
+  helper?: string;
 }) {
   return (
     <div className={statCardClassName()}>
@@ -337,7 +321,88 @@ function StatCard({
       <div className={`mt-3 text-4xl font-semibold tracking-tight ${tone}`}>
         {value}
       </div>
+      {helper ? <div className="mt-2 text-sm text-zinc-300">{helper}</div> : null}
     </div>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+      <span className="text-sm text-zinc-400">{label}</span>
+      <span className="text-sm font-medium text-zinc-200">{value}</span>
+    </div>
+  );
+}
+
+function PolicyCard({ policy }: { policy: PolicyItem }) {
+  const id = getPolicyId(policy);
+  const name = getPolicyName(policy);
+  const description = getPolicyDescription(policy);
+  const detailHref = `/policies/${encodeURIComponent(id || name)}`;
+
+  return (
+    <DashboardCard
+      rightSlot={
+        <DashboardStatusBadge
+          kind={getPolicyStatusKind(policy)}
+          label={getPolicyStatusLabel(policy)}
+        />
+      }
+    >
+      <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
+        BOSAI Policy
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span className={toneChipClassName(getTypeChipTone(policy))}>
+          {getPolicyType(policy).toUpperCase()}
+        </span>
+
+        <span className={toneChipClassName("default")}>
+          {getPolicyCategory(policy)}
+        </span>
+
+        <span className={toneChipClassName(isPolicyEnabled(policy) ? "success" : "danger")}>
+          {isPolicyEnabled(policy) ? "ENABLED" : "DISABLED"}
+        </span>
+      </div>
+
+      <div className="mt-4 text-2xl font-semibold tracking-tight text-white">
+        {name}
+      </div>
+
+      <p className="mt-2 text-sm leading-6 text-zinc-400">{description}</p>
+
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={metaLabelClassName()}>Category</div>
+          <div className="mt-2 text-zinc-200">{getPolicyCategory(policy)}</div>
+        </div>
+
+        <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={metaLabelClassName()}>Value</div>
+          <div className="mt-2 text-zinc-200">{getPolicyValueSummary(policy)}</div>
+        </div>
+
+        <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={metaLabelClassName()}>ID</div>
+          <div className="mt-2 break-all text-zinc-200">{id || "—"}</div>
+        </div>
+      </div>
+
+      <div className="mt-6 border-t border-white/10 pt-5">
+        <Link href={detailHref} className={actionLinkClassName("primary")}>
+          Ouvrir le détail
+        </Link>
+      </div>
+    </DashboardCard>
   );
 }
 
@@ -356,83 +421,169 @@ export default async function PoliciesPage() {
     source = "Fallback registry";
   }
 
-  const activeCount = policies.filter(
-    (item) => getPolicyStatusLabel(item) === "ACTIVE"
-  ).length;
+  const sortedPolicies = sortPolicies(policies);
 
-  const pausedCount = policies.filter(
+  const activePolicies = sortedPolicies.filter(
+    (item) => getPolicyStatusLabel(item) === "ACTIVE"
+  );
+
+  const attentionPolicies = sortedPolicies.filter((item) => {
+    const status = getPolicyStatusLabel(item);
+    return status === "PAUSED" || status === "DISABLED";
+  });
+
+  const activeCount = activePolicies.length;
+  const pausedCount = sortedPolicies.filter(
     (item) => getPolicyStatusLabel(item) === "PAUSED"
   ).length;
-
-  const disabledCount = policies.filter(
+  const disabledCount = sortedPolicies.filter(
     (item) => getPolicyStatusLabel(item) === "DISABLED"
   ).length;
+  const enabledCount = sortedPolicies.filter((item) => isPolicyEnabled(item)).length;
 
-  const enabledCount = policies.filter((item) => isPolicyEnabled(item)).length;
+  const quickRead = getQuickRead({
+    total: sortedPolicies.length,
+    active: activeCount,
+    paused: pausedCount,
+    disabled: disabledCount,
+    enabled: enabledCount,
+  });
 
   return (
     <div className="space-y-8">
-      <section className="space-y-3 border-b border-white/10 pb-6">
-        <div className={sectionLabelClassName()}>Capabilities</div>
+      <PageHeader
+        eyebrow="Capabilities"
+        title="Policies"
+        description="Inventaire des politiques BOSAI avec lecture du registre, de l’état d’activation et des catégories de contrôle."
+        badges={[
+          { label: "Policy registry", tone: "info" },
+          { label: "Guardrails aware", tone: "muted" },
+          { label: source, tone: "muted" },
+        ]}
+        actions={
+          <>
+            <Link href="/tools" className={actionLinkClassName("soft")}>
+              Ouvrir Tools
+            </Link>
+            <Link href="/settings" className={actionLinkClassName("default")}>
+              Voir Settings
+            </Link>
+          </>
+        }
+      />
 
-        <div>
-          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-            Policies
-          </h1>
-          <p className="mt-2 max-w-3xl text-base text-zinc-400 sm:text-lg">
-            Inventaire des politiques BOSAI. Cette vue affiche leur état, leur
-            catégorie, leur type et leur niveau d’activation.
-          </p>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Total policies" value={policies.length} />
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+        <StatCard label="Total policies" value={sortedPolicies.length} />
         <StatCard label="Active" value={activeCount} tone="text-emerald-300" />
         <StatCard label="Paused" value={pausedCount} tone="text-amber-300" />
         <StatCard label="Disabled" value={disabledCount} tone="text-red-300" />
-        <StatCard label="Enabled" value={enabledCount} tone="text-sky-300" />
+        <StatCard
+          label="Enabled"
+          value={enabledCount}
+          tone="text-sky-300"
+          helper="Policies activées"
+        />
       </section>
 
-      <section className={cardClassName()}>
-        <div className="mb-4 text-xl font-semibold text-white">Registry status</div>
-
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-4">
-          <div>
-            <div className={metaLabelClassName()}>Source</div>
-            <div className="mt-1 text-zinc-200">{source}</div>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <DashboardCard
+          title="Policy posture"
+          subtitle="Lecture rapide du registre policies visible."
+        >
+          <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+            <div className={metaLabelClassName()}>Quick read</div>
+            <div className="mt-2 text-sm leading-6 text-zinc-300">
+              {quickRead}
+            </div>
           </div>
+        </DashboardCard>
 
-          <div>
-            <div className={metaLabelClassName()}>Loaded policies</div>
-            <div className="mt-1 text-zinc-200">{policies.length}</div>
+        <DashboardCard
+          title="Registry status"
+          subtitle="État de la source utilisée pour cette page."
+        >
+          <div className="space-y-3">
+            <InfoRow label="Source" value={source} />
+            <InfoRow label="Loaded policies" value={sortedPolicies.length} />
+            <InfoRow label="Enabled policies" value={enabledCount} />
+            <InfoRow label="Next step" value="Policies detail page" />
           </div>
-
-          <div>
-            <div className={metaLabelClassName()}>Enabled policies</div>
-            <div className="mt-1 text-zinc-200">{enabledCount}</div>
-          </div>
-
-          <div>
-            <div className={metaLabelClassName()}>Next step</div>
-            <div className="mt-1 text-zinc-200">Policies detail page</div>
-          </div>
-        </div>
+        </DashboardCard>
       </section>
 
-      {policies.length === 0 ? (
-        <section className={emptyStateClassName()}>
-          Aucune policy visible pour le moment.
-        </section>
+      {sortedPolicies.length === 0 ? (
+        <DashboardCard
+          title="Aucune policy visible"
+          subtitle="Le cockpit n’a remonté aucune policy sur la source actuelle."
+        >
+          <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300">
+            Aucune policy visible pour le moment.
+          </div>
+        </DashboardCard>
       ) : (
-        <section className="space-y-4">
-          {policies.map((policy) => (
-            <PolicyCard
-              key={getPolicyId(policy) || getPolicyName(policy)}
-              policy={policy}
-            />
-          ))}
-        </section>
+        <>
+          <section className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
+                Needs attention
+              </div>
+              <span className={toneChipClassName("warning")}>
+                {attentionPolicies.length} visible(s)
+              </span>
+            </div>
+
+            {attentionPolicies.length === 0 ? (
+              <DashboardCard
+                title="Aucune policy prioritaire"
+                subtitle="Aucune policy paused ou disabled n’est visible."
+              >
+                <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300">
+                  Le registre visible paraît stable.
+                </div>
+              </DashboardCard>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {attentionPolicies.map((policy) => (
+                  <PolicyCard
+                    key={getPolicyId(policy) || getPolicyName(policy)}
+                    policy={policy}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
+                Active policies
+              </div>
+              <span className={toneChipClassName("success")}>
+                {activePolicies.length} visible(s)
+              </span>
+            </div>
+
+            {activePolicies.length === 0 ? (
+              <DashboardCard
+                title="Aucune policy active"
+                subtitle="Aucune policy active n’est visible sur cette vue."
+              >
+                <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300">
+                  Le registre ne montre actuellement aucune policy active.
+                </div>
+              </DashboardCard>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {activePolicies.map((policy) => (
+                  <PolicyCard
+                    key={getPolicyId(policy) || getPolicyName(policy)}
+                    policy={policy}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        </>
       )}
     </div>
   );
