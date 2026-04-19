@@ -1,7 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { PageHeader } from "@/components/ui/page-header";
-import { DashboardCard } from "@/components/ui/dashboard-card";
 import {
   AUTH_LOGIN_ROUTE,
   resolveAuthSession,
@@ -13,75 +11,135 @@ import {
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-type PageProps = {
-  searchParams?: Promise<SearchParams> | SearchParams;
-};
-
-type CreateTemplate = {
-  id: "freelance" | "company" | "agency";
+type WorkspacePreset = {
+  id: "personal" | "freelance" | "company" | "agency";
   title: string;
-  category: "freelance" | "company" | "agency";
+  subtitle: string;
   description: string;
-  cockpitLabel: string;
+  planLabel: string;
+  audienceLabel: string;
+  quotaLabel: string;
+  dashboardRoute: string;
   highlights: string[];
-  tone: "success" | "info" | "violet";
 };
 
-const CREATE_TEMPLATES: CreateTemplate[] = [
+const WORKSPACE_PRESETS: WorkspacePreset[] = [
+  {
+    id: "personal",
+    title: "Personal",
+    subtitle: "Espace simple pour usage individuel",
+    description:
+      "Surface légère pour lecture personnelle, suivi global et point d’entrée stable.",
+    planLabel: "Starter",
+    audienceLabel: "Solo",
+    quotaLabel: "Faible volume",
+    dashboardRoute: getDashboardRouteForWorkspaceCategory("personal"),
+    highlights: [
+      "Overview centré lecture globale",
+      "Configuration légère",
+      "Point d’entrée simple",
+    ],
+  },
   {
     id: "freelance",
-    title: "Freelance workspace",
-    category: "freelance",
+    title: "Freelance",
+    subtitle: "Pilotage orienté exécution",
     description:
-      "Espace léger orienté exécution, suivi direct des commands, runs et usage opérationnel.",
-    cockpitLabel: "Commands-first cockpit",
+      "Adapté à un opérateur seul qui suit surtout les commands, retries et runs utiles.",
+    planLabel: "Builder",
+    audienceLabel: "Freelance",
+    quotaLabel: "Volume moyen",
+    dashboardRoute: getDashboardRouteForWorkspaceCategory("freelance"),
     highlights: [
-      "Vue rapide sur commands et runs",
-      "Pilotage quota simple",
-      "Bon point de départ pour solo builder",
+      "Entrée cockpit côté Commands",
+      "Lecture rapide de l’exécution",
+      "Workflow orienté delivery",
     ],
-    tone: "success",
   },
   {
     id: "company",
-    title: "Company workspace",
-    category: "company",
+    title: "Company",
+    subtitle: "Cockpit d’équipe et quotas workspace",
     description:
-      "Espace structuré pour une entreprise avec vision plus large sur workspaces, quotas et gouvernance.",
-    cockpitLabel: "Workspace-first cockpit",
+      "Pensé pour une structure qui veut piloter plusieurs espaces, quotas et vues d’exploitation.",
+    planLabel: "Team",
+    audienceLabel: "Entreprise",
+    quotaLabel: "Volume structuré",
+    dashboardRoute: getDashboardRouteForWorkspaceCategory("company"),
     highlights: [
-      "Lecture multi-espaces",
-      "Suivi des limites et de la consommation",
-      "Base saine pour équipes internes",
+      "Entrée cockpit côté Workspaces",
+      "Vision quotas / tenancy",
+      "Lecture produit + opérations",
     ],
-    tone: "info",
   },
   {
     id: "agency",
-    title: "Agency workspace",
-    category: "agency",
+    title: "Agency",
+    subtitle: "Vue orientée flows, incidents et orchestration",
     description:
-      "Espace orienté orchestration, flows et supervision client, avec lecture prioritaire des incidents et du pipeline.",
-    cockpitLabel: "Flows-first cockpit",
+      "Idéal pour une agence qui suit plusieurs chaînes d’exécution et veut ouvrir vite la vue flows.",
+    planLabel: "Agency",
+    audienceLabel: "Agence",
+    quotaLabel: "Volume élevé",
+    dashboardRoute: getDashboardRouteForWorkspaceCategory("agency"),
     highlights: [
-      "Navigation centrée sur flows",
-      "Supervision opérationnelle client",
-      "Bon fit pour studio, agence et ops",
+      "Entrée cockpit côté Flows",
+      "Lecture des incidents et chaînes",
+      "Pilotage multi-clients plus naturel",
     ],
-    tone: "violet",
   },
 ];
 
-function text(value?: string | string[] | null): string {
-  if (Array.isArray(value)) {
-    return String(value[0] || "").trim();
-  }
-
+function text(value?: string | null): string {
   return String(value || "").trim();
 }
 
+function getSingle(value?: string | string[]): string {
+  return Array.isArray(value) ? String(value[0] || "").trim() : String(value || "").trim();
+}
+
+function pageWrapClassName(): string {
+  return "min-h-screen bg-black px-4 py-8 text-white sm:px-6 lg:px-8";
+}
+
+function shellClassName(): string {
+  return "mx-auto max-w-6xl space-y-8";
+}
+
+function cardClassName(): string {
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function sectionLabelClassName(): string {
+  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
+}
+
+function metaLabelClassName(): string {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function buttonClassName(
+  variant: "default" | "primary" | "soft" = "default"
+): string {
+  if (variant === "primary") {
+    return "inline-flex items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+  }
+
+  if (variant === "soft") {
+    return "inline-flex items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/12 px-4 py-3 text-sm font-medium text-sky-300 transition hover:bg-sky-500/18";
+  }
+
+  return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+}
+
 function badgeClassName(
-  variant: "default" | "success" | "warning" | "danger" | "info" | "violet" = "default"
+  variant:
+    | "default"
+    | "success"
+    | "warning"
+    | "danger"
+    | "info"
+    | "violet" = "default"
 ): string {
   if (variant === "success") {
     return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
@@ -106,225 +164,226 @@ function badgeClassName(
   return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
-function buttonClassName(
-  variant: "default" | "primary" | "soft" = "default"
-): string {
-  const base =
-    "inline-flex items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
-
-  if (variant === "primary") {
-    return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
-  }
-
-  if (variant === "soft") {
-    return `${base} border border-sky-500/20 bg-sky-500/12 text-sky-300 hover:bg-sky-500/18`;
-  }
-
-  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+function categoryTone(
+  category: WorkspacePreset["id"]
+): "default" | "success" | "warning" | "danger" | "info" | "violet" {
+  if (category === "personal") return "default";
+  if (category === "freelance") return "success";
+  if (category === "company") return "info";
+  return "violet";
 }
 
-function sectionLabelClassName(): string {
-  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
-}
-
-function metaLabelClassName(): string {
-  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
-}
-
-function findTemplateById(value: string): CreateTemplate | null {
-  const normalized = value.trim().toLowerCase();
-
+function WorkspacePresetCard({
+  preset,
+  selected,
+}: {
+  preset: WorkspacePreset;
+  selected: boolean;
+}) {
   return (
-    CREATE_TEMPLATES.find((item) => item.id === normalized) || null
+    <article
+      className={[
+        cardClassName(),
+        selected ? "border-sky-500/25 shadow-[inset_0_1px_0_rgba(56,189,248,0.12)]" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <div className="flex h-full flex-col gap-5">
+        <div className="space-y-4 border-b border-white/10 pb-4">
+          <div className={sectionLabelClassName()}>Workspace template</div>
+
+          <div className="flex flex-wrap gap-2">
+            <span className={badgeClassName(categoryTone(preset.id))}>
+              {preset.id.toUpperCase()}
+            </span>
+            <span className={badgeClassName("violet")}>{preset.planLabel}</span>
+            <span className={badgeClassName("default")}>{preset.quotaLabel}</span>
+            {selected ? (
+              <span className={badgeClassName("info")}>TEMPLATE ACTIF</span>
+            ) : null}
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight text-white">
+              {preset.title}
+            </h2>
+            <p className="mt-2 text-sm text-zinc-400">{preset.subtitle}</p>
+          </div>
+
+          <p className="text-sm leading-7 text-zinc-300">{preset.description}</p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 sm:grid-cols-2">
+          <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Audience</div>
+            <div className="mt-2 text-zinc-200">{preset.audienceLabel}</div>
+          </div>
+
+          <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Cockpit target</div>
+            <div className="mt-2 text-zinc-200">{preset.dashboardRoute}</div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className={metaLabelClassName()}>Highlights</div>
+          <div className="flex flex-wrap gap-2">
+            {preset.highlights.map((item) => (
+              <span key={`${preset.id}-${item}`} className={badgeClassName("default")}>
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-auto flex flex-col gap-3 sm:flex-row">
+          <Link
+            href={`/workspace/create?category=${encodeURIComponent(preset.id)}`}
+            className={buttonClassName(selected ? "primary" : "soft")}
+          >
+            {selected ? "Template sélectionné" : "Choisir ce template"}
+          </Link>
+        </div>
+      </div>
+    </article>
   );
 }
 
 export default async function WorkspaceCreatePage({
   searchParams,
-}: PageProps) {
+}: {
+  searchParams?: Promise<SearchParams> | SearchParams;
+}) {
+  const resolvedSearchParams = (await Promise.resolve(
+    searchParams ?? {}
+  )) as SearchParams;
+
   const session = await resolveAuthSession();
 
   if (!session.isAuthenticated) {
     redirect(AUTH_LOGIN_ROUTE);
   }
 
-  const memberships = session.context?.memberships ?? [];
-  const activeWorkspaceId =
-    session.context?.activeWorkspace?.workspaceId ||
-    session.cookieSnapshot.activeWorkspaceId;
+  const resolution = resolveWorkspaceAccess({
+    userId: session.user?.userId || "",
+    requestedWorkspaceId: session.cookieSnapshot.activeWorkspaceId || "",
+    nextPath: session.homeRoute || "/overview",
+  });
 
-  if (memberships.length > 0) {
-    const resolution = resolveWorkspaceAccess({
-      userId: String(session.user?.userId || ""),
-      requestedWorkspaceId: String(activeWorkspaceId || ""),
-      nextPath: String(session.homeRoute || "/overview"),
-    });
+  if (resolution.kind === "allow_dashboard") {
+    redirect(resolution.dashboardRoute || resolution.redirectTo || "/overview");
+  }
 
+  if (
+    resolution.kind === "redirect_activate" ||
+    resolution.kind === "redirect_select"
+  ) {
     redirect(resolution.redirectTo);
   }
 
-  const resolvedSearchParams = (await Promise.resolve(
-    searchParams ?? {}
-  )) as SearchParams;
-
-  const selectedTemplate = findTemplateById(text(resolvedSearchParams.template));
-  const userDisplay =
-    session.user?.displayName ||
-    session.user?.email ||
-    "Utilisateur connecté";
+  const categoryParam = getSingle(resolvedSearchParams.category).toLowerCase();
+  const selectedPreset =
+    WORKSPACE_PRESETS.find((item) => item.id === categoryParam) ||
+    WORKSPACE_PRESETS[1];
 
   return (
-    <div className="space-y-8">
-      <PageHeader
-        eyebrow="Workspace setup"
-        title="Créer ton premier espace BOSAI"
-        description="Choisis la forme de l’espace à préparer. Cette étape pose le bon cockpit cible avant de brancher la vraie création backend."
-      />
+    <div className={pageWrapClassName()}>
+      <div className={shellClassName()}>
+        <section className="space-y-4 border-b border-white/10 pb-6">
+          <div className={sectionLabelClassName()}>Workspace Provisioning</div>
 
-      <section className="flex flex-wrap gap-2">
-        <span className={badgeClassName("default")}>{userDisplay}</span>
-        <span className={badgeClassName("warning")}>Aucun workspace actif</span>
-        <span className={badgeClassName("info")}>Mock-first setup</span>
-      </section>
+          <div className="space-y-3">
+            <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+              Créer un espace BOSAI
+            </h1>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {CREATE_TEMPLATES.map((template) => {
-          const isSelected = selectedTemplate?.id === template.id;
-          const cockpitRoute = getDashboardRouteForWorkspaceCategory(
-            template.category
-          );
+            <p className="max-w-3xl text-base text-zinc-400 sm:text-lg">
+              Aucun workspace actif n’est encore disponible pour ce compte. Choisis
+              d’abord le type d’espace que tu veux provisionner.
+            </p>
+          </div>
 
-          return (
-            <DashboardCard
-              key={template.id}
-              title={template.title}
-              subtitle={template.description}
-              rightSlot={
-                isSelected ? (
-                  <span className={badgeClassName("success")}>SELECTED</span>
-                ) : (
-                  <span className={badgeClassName(template.tone)}>
-                    {template.category.toUpperCase()}
-                  </span>
-                )
-              }
-            >
-              <div className="mt-4 space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  <span className={badgeClassName(template.tone)}>
-                    {template.cockpitLabel}
-                  </span>
-                  <span className={badgeClassName("default")}>
-                    Target {cockpitRoute}
-                  </span>
-                </div>
+          <div className="flex flex-wrap gap-2">
+            {text(session.user?.displayName) ? (
+              <span className={badgeClassName("default")}>
+                {text(session.user?.displayName)}
+              </span>
+            ) : null}
 
-                <div className="space-y-2">
-                  {template.highlights.map((item) => (
-                    <div
-                      key={`${template.id}-${item}`}
-                      className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3 text-sm leading-6 text-zinc-300"
-                    >
-                      {item}
-                    </div>
-                  ))}
-                </div>
+            {text(session.user?.email) ? (
+              <span className={badgeClassName("default")}>
+                {text(session.user?.email)}
+              </span>
+            ) : null}
 
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <Link
-                    href={`/workspace/create?template=${encodeURIComponent(
-                      template.id
-                    )}`}
-                    className={buttonClassName("primary")}
-                  >
-                    {isSelected ? "Modèle sélectionné" : "Choisir ce modèle"}
-                  </Link>
+            <span className={badgeClassName("info")}>
+              {WORKSPACE_PRESETS.length} templates
+            </span>
+          </div>
+        </section>
 
-                  <Link href={cockpitRoute} className={buttonClassName("soft")}>
-                    Voir la cible cockpit
-                  </Link>
-                </div>
-              </div>
-            </DashboardCard>
-          );
-        })}
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <DashboardCard
-          title="Prévisualisation"
-          subtitle="Lecture du modèle actuellement choisi."
-        >
-          {selectedTemplate ? (
-            <div className="mt-4 space-y-4">
-              <div className="flex flex-wrap gap-2">
-                <span className={badgeClassName(selectedTemplate.tone)}>
-                  {selectedTemplate.category.toUpperCase()}
-                </span>
-                <span className={badgeClassName("success")}>
-                  {selectedTemplate.cockpitLabel}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-                  <div className={metaLabelClassName()}>Template</div>
-                  <div className="mt-2 text-zinc-200">{selectedTemplate.title}</div>
-                </div>
-
-                <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-                  <div className={metaLabelClassName()}>Cockpit cible</div>
-                  <div className="mt-2 text-zinc-200">
-                    {getDashboardRouteForWorkspaceCategory(
-                      selectedTemplate.category
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-                <div className={metaLabelClassName()}>Description</div>
-                <div className="mt-2 text-sm leading-6 text-zinc-300">
-                  {selectedTemplate.description}
-                </div>
-              </div>
+        <section className={cardClassName()}>
+          <div className="space-y-3">
+            <div className={sectionLabelClassName()}>Template actif</div>
+            <div className="text-2xl font-semibold tracking-tight text-white">
+              {selectedPreset.title}
             </div>
-          ) : (
-            <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4 text-sm leading-6 text-zinc-300">
-              Aucun modèle sélectionné. Choisis un template ci-dessus pour préparer
-              le flux de création.
-            </div>
-          )}
-        </DashboardCard>
-
-        <DashboardCard
-          title="État actuel"
-          subtitle="Cette page prépare le bon flux sans casser l’auth existante."
-        >
-          <div className="mt-4 space-y-3">
-            <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-              <div className={sectionLabelClassName()}>Roadmap immédiate</div>
-              <div className="mt-2 text-sm leading-6 text-zinc-300">
-                1. choisir un template
-                <br />
-                2. brancher la vraie création backend
-                <br />
-                3. activer automatiquement le workspace créé
-              </div>
+            <div className="text-sm leading-7 text-zinc-400">
+              Ce template ouvrira naturellement le cockpit cible{" "}
+              <span className="text-zinc-200">{selectedPreset.dashboardRoute}</span>{" "}
+              quand le provisioning backend sera branché.
             </div>
 
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-2">
+              <span className={badgeClassName(categoryTone(selectedPreset.id))}>
+                {selectedPreset.id.toUpperCase()}
+              </span>
+              <span className={badgeClassName("violet")}>
+                {selectedPreset.planLabel}
+              </span>
+              <span className={badgeClassName("default")}>
+                {selectedPreset.quotaLabel}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          {WORKSPACE_PRESETS.map((preset) => (
+            <WorkspacePresetCard
+              key={preset.id}
+              preset={preset}
+              selected={preset.id === selectedPreset.id}
+            />
+          ))}
+        </section>
+
+        <section className={cardClassName()}>
+          <div className="space-y-4">
+            <div className={sectionLabelClassName()}>Navigation</div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <Link href="/workspace/select" className={buttonClassName("soft")}>
-                Ouvrir la sélection workspace
+                Aller au sélecteur d’espaces
               </Link>
 
-              <Link href="/overview" className={buttonClassName("default")}>
-                Retour cockpit
+              <Link href="/login" className={buttonClassName("default")}>
+                Retour Login
+              </Link>
+
+              <Link
+                href={`/workspace/create?category=${encodeURIComponent(
+                  selectedPreset.id
+                )}`}
+                className={buttonClassName("primary")}
+              >
+                Continuer avec {selectedPreset.title}
               </Link>
             </div>
           </div>
-        </DashboardCard>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
