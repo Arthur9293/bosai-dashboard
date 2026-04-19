@@ -1,11 +1,18 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { resolveAuthSession, AUTH_LOGIN_ROUTE } from "@/lib/auth/resolve-auth-session";
+import {
+  AUTH_LOGIN_ROUTE,
+  resolveAuthSession,
+} from "@/lib/auth/resolve-auth-session";
 import {
   getDashboardRouteForWorkspaceCategory,
   getWorkspaceActivateRoute,
 } from "@/lib/workspaces/resolver";
 import type { WorkspaceSummary } from "@/lib/workspaces/types";
+
+function text(value?: string | null): string {
+  return String(value || "").trim();
+}
 
 function pageWrapClassName(): string {
   return "min-h-screen bg-black px-4 py-8 text-white sm:px-6 lg:px-8";
@@ -19,26 +26,12 @@ function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
+function compactCardClassName(): string {
+  return "rounded-[24px] border border-white/10 bg-black/20 p-4 md:p-5";
+}
+
 function sectionLabelClassName(): string {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
-}
-
-function metaLabelClassName(): string {
-  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
-}
-
-function buttonClassName(
-  variant: "default" | "primary" | "soft" = "default"
-): string {
-  if (variant === "primary") {
-    return "inline-flex items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
-  }
-
-  if (variant === "soft") {
-    return "inline-flex items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/12 px-4 py-3 text-sm font-medium text-sky-300 transition hover:bg-sky-500/18";
-  }
-
-  return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
 function badgeClassName(
@@ -73,115 +66,126 @@ function badgeClassName(
   return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
-function categoryBadgeTone(category?: string): "info" | "violet" | "success" | "default" {
-  const normalized = String(category || "").trim().toLowerCase();
+function buttonClassName(
+  variant: "default" | "primary" | "soft" = "default"
+): string {
+  const base =
+    "inline-flex items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
+
+  if (variant === "primary") {
+    return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
+  }
+
+  if (variant === "soft") {
+    return `${base} border border-sky-500/20 bg-sky-500/12 text-sky-300 hover:bg-sky-500/18`;
+  }
+
+  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+}
+
+function categoryTone(
+  category?: string
+): "default" | "success" | "warning" | "danger" | "info" | "violet" {
+  const normalized = text(category).toLowerCase();
 
   if (normalized === "agency") return "violet";
   if (normalized === "company") return "info";
   if (normalized === "freelance") return "success";
+  if (normalized === "personal") return "default";
+
   return "default";
 }
 
-function roleBadgeTone(role?: string): "default" | "warning" | "success" | "info" {
-  const normalized = String(role || "").trim().toLowerCase();
+function roleTone(
+  role?: string
+): "default" | "success" | "warning" | "danger" | "info" | "violet" {
+  const normalized = text(role).toLowerCase();
 
   if (normalized === "owner") return "success";
   if (normalized === "admin") return "info";
   if (normalized === "viewer") return "warning";
+
   return "default";
 }
 
-function normalizeText(value?: string | null): string {
-  return String(value || "").trim();
+function statusTone(
+  status?: string
+): "default" | "success" | "warning" | "danger" | "info" | "violet" {
+  const normalized = text(status).toLowerCase();
+
+  if (normalized === "active") return "success";
+  if (normalized === "pending") return "warning";
+  if (normalized === "blocked") return "danger";
+
+  return "default";
 }
 
 function shouldShowPlanBadge(workspace: WorkspaceSummary): boolean {
-  const category = normalizeText(workspace.category).toLowerCase();
-  const plan = normalizeText(workspace.plan).toLowerCase();
+  const category = text(workspace.category).toLowerCase();
+  const plan = text(workspace.plan).toLowerCase();
 
   if (!plan) return false;
   return category !== plan;
 }
 
-function WorkspaceCard({
+function WorkspaceSelectCard({
   workspace,
   isActive,
 }: {
   workspace: WorkspaceSummary;
   isActive: boolean;
 }) {
-  const openHref = getWorkspaceActivateRoute({
+  const laneHref = getDashboardRouteForWorkspaceCategory(workspace.category);
+  const activateHref = getWorkspaceActivateRoute({
     workspaceId: workspace.workspaceId,
-    nextPath: getDashboardRouteForWorkspaceCategory(workspace.category),
+    nextPath: laneHref,
   });
 
   return (
-    <article className={cardClassName()}>
-      <div className="flex h-full flex-col gap-5">
-        <div className="space-y-4 border-b border-white/10 pb-4">
-          <div className={sectionLabelClassName()}>Workspace</div>
+    <article className={compactCardClassName()}>
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <span className={badgeClassName(categoryTone(workspace.category))}>
+            {workspace.category.toUpperCase()}
+          </span>
 
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={badgeClassName(categoryBadgeTone(workspace.category))}>
-                {workspace.category.toUpperCase()}
-              </span>
+          {shouldShowPlanBadge(workspace) ? (
+            <span className={badgeClassName("violet")}>
+              {workspace.plan.toUpperCase()}
+            </span>
+          ) : null}
 
-              {shouldShowPlanBadge(workspace) ? (
-                <span className={badgeClassName("violet")}>
-                  {workspace.plan.toUpperCase()}
-                </span>
-              ) : null}
+          <span className={badgeClassName(roleTone(workspace.membershipRole))}>
+            {workspace.membershipRole.toUpperCase()}
+          </span>
 
-              <span className={badgeClassName(roleBadgeTone(workspace.membershipRole))}>
-                {workspace.membershipRole.toUpperCase()}
-              </span>
+          <span className={badgeClassName(statusTone(workspace.status))}>
+            {workspace.status.toUpperCase()}
+          </span>
 
-              <span
-                className={badgeClassName(
-                  workspace.status === "active" ? "success" : "warning"
-                )}
-              >
-                {workspace.status.toUpperCase()}
-              </span>
-
-              {isActive ? (
-                <span className={badgeClassName("info")}>ACTIVE SPACE</span>
-              ) : null}
-            </div>
-
-            <div>
-              <h2 className="break-words text-2xl font-semibold tracking-tight text-white">
-                {workspace.name}
-              </h2>
-              <p className="mt-2 break-all text-sm text-zinc-400">
-                {workspace.workspaceId}
-              </p>
-            </div>
-          </div>
+          {isActive ? (
+            <span className={badgeClassName("info")}>ACTIVE SPACE</span>
+          ) : null}
         </div>
 
-        <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 sm:grid-cols-2">
-          <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-            <div className={metaLabelClassName()}>Slug</div>
-            <div className="mt-2 text-zinc-200">{workspace.slug || "—"}</div>
-          </div>
+        <div className="space-y-2">
+          <h2 className="break-words text-2xl font-semibold tracking-tight text-white">
+            {workspace.name}
+          </h2>
 
-          <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-            <div className={metaLabelClassName()}>Membership status</div>
-            <div className="mt-2 text-zinc-200">
-              {workspace.membershipStatus || "—"}
-            </div>
-          </div>
+          <p className="break-all text-sm text-zinc-400">{workspace.workspaceId}</p>
         </div>
 
-        <div className="mt-auto flex flex-col gap-3 sm:flex-row">
-          <Link href={openHref} className={buttonClassName("primary")}>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link
+            href={activateHref}
+            className={buttonClassName("primary")}
+          >
             {isActive ? "Continuer" : "Activer cet espace"}
           </Link>
 
           <Link
-            href={getDashboardRouteForWorkspaceCategory(workspace.category)}
+            href={laneHref}
             className={buttonClassName("soft")}
           >
             Ouvrir la lane
@@ -211,6 +215,7 @@ export default async function WorkspaceSelectPage() {
 
   if (memberships.length === 1) {
     const onlyWorkspace = memberships[0];
+
     redirect(
       getWorkspaceActivateRoute({
         workspaceId: onlyWorkspace.workspaceId,
@@ -228,7 +233,7 @@ export default async function WorkspaceSelectPage() {
   });
 
   return (
-    <div className={pageWrapClassName()}>
+    <main className={pageWrapClassName()}>
       <div className={shellClassName()}>
         <section className="space-y-4 border-b border-white/10 pb-6">
           <div className={sectionLabelClassName()}>Workspace Resolver</div>
@@ -253,24 +258,39 @@ export default async function WorkspaceSelectPage() {
               <span className={badgeClassName("default")}>{user.email}</span>
             ) : null}
 
-            {session.allowedWorkspaceIds.length > 0 ? (
-              <span className={badgeClassName("info")}>
-                {session.allowedWorkspaceIds.length} workspace(s)
-              </span>
-            ) : null}
+            <span className={badgeClassName("info")}>
+              {sortedMemberships.length} workspace(s)
+            </span>
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-          {sortedMemberships.map((workspace) => (
-            <WorkspaceCard
-              key={workspace.workspaceId}
-              workspace={workspace}
-              isActive={workspace.workspaceId === activeWorkspaceId}
-            />
-          ))}
+        <section className={cardClassName()}>
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className={sectionLabelClassName()}>Memberships</div>
+              <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
+                Espaces accessibles
+              </div>
+            </div>
+
+            {activeWorkspaceId ? (
+              <span className={badgeClassName("info")}>
+                Actif: {activeWorkspaceId}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+            {sortedMemberships.map((workspace) => (
+              <WorkspaceSelectCard
+                key={workspace.workspaceId}
+                workspace={workspace}
+                isActive={workspace.workspaceId === activeWorkspaceId}
+              />
+            ))}
+          </div>
         </section>
       </div>
-    </div>
+    </main>
   );
 }
