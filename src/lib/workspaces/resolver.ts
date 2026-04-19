@@ -250,12 +250,8 @@ export function getWorkspaceActivateRoute(args: {
 export function getDashboardRouteForWorkspaceCategory(
   category?: string | null
 ): string {
-  const normalized = normalizeText(category).toLowerCase();
-
-  if (normalized === "agency") return "/flows";
-  if (normalized === "company") return "/workspace";
-  if (normalized === "freelance") return "/commands";
-  return "/overview";
+  void category;
+  return "/workspace";
 }
 
 function findMembershipByWorkspaceId(
