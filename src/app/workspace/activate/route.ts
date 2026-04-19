@@ -12,7 +12,8 @@ const AUTH_COOKIE_NAME =
   (process.env.BOSAI_AUTH_COOKIE_NAME || "bosai_auth").trim() || "bosai_auth";
 
 const AUTH_COOKIE_VALUE =
-  (process.env.BOSAI_AUTH_COOKIE_VALUE || "authenticated").trim() || "authenticated";
+  (process.env.BOSAI_AUTH_COOKIE_VALUE || "authenticated").trim() ||
+  "authenticated";
 
 const WORKSPACE_ACTIVE_COOKIE_NAME =
   (
@@ -89,7 +90,7 @@ export async function GET(request: NextRequest) {
     text(request.nextUrl.searchParams.get("workspace_id")) ||
     text(session.cookieSnapshot.activeWorkspaceId);
 
-  const resolution = resolveWorkspaceAccess({
+  const resolution = await resolveWorkspaceAccess({
     userId: text(session.user?.userId),
     requestedWorkspaceId,
     nextPath: nextParam,
@@ -112,32 +113,14 @@ export async function GET(request: NextRequest) {
   );
 
   const finalTarget = explicitNext || fallbackDashboard || "/overview";
-  const response = NextResponse.redirect(
-    buildRedirectUrl(request, finalTarget)
-  );
+  const response = NextResponse.redirect(buildRedirectUrl(request, finalTarget));
 
   const options = cookieOptions();
 
   response.cookies.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, options);
-
-  response.cookies.set(
-    WORKSPACE_ACTIVE_COOKIE_NAME,
-    activeWorkspaceId,
-    options
-  );
-
-  response.cookies.set(
-    WORKSPACE_ALIAS_COOKIE_NAME,
-    activeWorkspaceId,
-    options
-  );
-
-  response.cookies.set(
-    WORKSPACE_LEGACY_COOKIE_NAME,
-    activeWorkspaceId,
-    options
-  );
-
+  response.cookies.set(WORKSPACE_ACTIVE_COOKIE_NAME, activeWorkspaceId, options);
+  response.cookies.set(WORKSPACE_ALIAS_COOKIE_NAME, activeWorkspaceId, options);
+  response.cookies.set(WORKSPACE_LEGACY_COOKIE_NAME, activeWorkspaceId, options);
   response.cookies.set(
     WORKSPACE_ALLOWED_COOKIE_NAME,
     JSON.stringify(allowedWorkspaceIds),
