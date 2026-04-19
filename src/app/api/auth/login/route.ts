@@ -1,29 +1,31 @@
 import { NextResponse } from "next/server";
-import type { WorkspaceCategory } from "@/lib/workspaces/types";
-import {
-  buildLoginCookieBundle,
-  getAuthCookieWriteOptions,
-} from "@/lib/auth/resolve-auth-session";
 
-type LoginBody = {
-  email?: string;
-  password?: string;
-  preferredCategory?: string;
-  requestedWorkspaceId?: string;
-};
+const AUTH_COOKIE_NAME =
+  (process.env.BOSAI_AUTH_COOKIE_NAME || "bosai_auth").trim() || "bosai_auth";
 
-const DEMO_EMAIL_TOKEN_MAP: Record<string, string> = {
-  "arthur@bosai.local": "arthur_token",
-  "personal@bosai.local": "demo_personal_token",
-  "freelance@bosai.local": "demo_freelance_token",
-  "company@bosai.local": "demo_company_token",
-  "agency@bosai.local": "demo_agency_token",
-  "viewer@bosai.local": "demo_viewer_token",
-};
+const AUTH_COOKIE_VALUE =
+  (process.env.BOSAI_AUTH_COOKIE_VALUE || "authenticated").trim() || "authenticated";
+
+const WORKSPACE_ACTIVE_COOKIE_NAME =
+  (process.env.BOSAI_ACTIVE_WORKSPACE_COOKIE_NAME || "bosai_active_workspace_id").trim() ||
+  "bosai_active_workspace_id";
+
+const WORKSPACE_ALIAS_COOKIE_NAME =
+  (process.env.BOSAI_WORKSPACE_COOKIE_NAME || "bosai_workspace_id").trim() ||
+  "bosai_workspace_id";
+
+const WORKSPACE_LEGACY_COOKIE_NAME =
+  (process.env.BOSAI_WORKSPACE_LEGACY_COOKIE_NAME || "workspace_id").trim() ||
+  "workspace_id";
+
+const WORKSPACE_ALLOWED_COOKIE_NAME =
+  (process.env.BOSAI_ALLOWED_WORKSPACES_COOKIE_NAME || "bosai_allowed_workspace_ids").trim() ||
+  "bosai_allowed_workspace_ids";
 
 function text(value: unknown): string {
   if (typeof value === "string") {
-    return value.trim();
+    const v = value.trim();
+    return v || "";
   }
 
   if (typeof value === "number" || typeof value === "boolean") {
@@ -33,91 +35,107 @@ function text(value: unknown): string {
   return "";
 }
 
-function normalizedEmail(value: unknown): string {
-  return text(value).toLowerCase();
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.map((v) => text(v)).filter(Boolean)));
 }
 
-function resolveRequestedWorkspaceId(value: unknown): string {
-  return text(value);
+function parseWorkspaceIds(value: string): string[] {
+  const raw = value.trim();
+  if (!raw) return [];
+
+  if (raw.startsWith("[") && raw.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return uniq(parsed.map((item) => text(item)));
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  if (raw.includes(",")) {
+    return uniq(raw.split(","));
+  }
+
+  return raw ? [raw] : [];
 }
 
-function resolvePreferredCategory(
-  value: unknown
-): WorkspaceCategory | undefined {
-  const normalized = text(value).toLowerCase();
+function resolveWorkspaceSession(): {
+  allowedWorkspaceIds: string[];
+  activeWorkspaceId: string;
+  route: string;
+} {
+  const envAllowed = uniq([
+    ...parseWorkspaceIds(process.env.BOSAI_ALLOWED_WORKSPACE_IDS || ""),
+    ...parseWorkspaceIds(process.env.BOSAI_AUTH_ALLOWED_WORKSPACE_IDS || ""),
+  ]);
 
-  if (normalized === "personal") return "personal";
-  if (normalized === "freelance") return "freelance";
-  if (normalized === "company") return "company";
-  if (normalized === "agency") return "agency";
+  const envActive = text(
+    process.env.BOSAI_ACTIVE_WORKSPACE_ID ||
+      process.env.BOSAI_DEFAULT_WORKSPACE_ID ||
+      process.env.BOSAI_WORKSPACE_ID ||
+      ""
+  );
 
-  return undefined;
-}
+  const allowedWorkspaceIds =
+    envAllowed.length > 0
+      ? envAllowed
+      : envActive
+        ? [envActive]
+        : ["production"];
 
-function getConfiguredCredentials() {
+  const activeWorkspaceId =
+    envActive && allowedWorkspaceIds.includes(envActive)
+      ? envActive
+      : allowedWorkspaceIds[0] || "production";
+
   return {
-    expectedEmail: normalizedEmail(process.env.BOSAI_AUTH_EMAIL || ""),
-    expectedPassword: text(process.env.BOSAI_AUTH_PASSWORD || ""),
-    configuredToken:
-      text(process.env.BOSAI_SESSION_TOKEN || "") ||
-      text(process.env.BOSAI_DEFAULT_SESSION_TOKEN || ""),
+    allowedWorkspaceIds,
+    activeWorkspaceId,
+    route: "/workspace/home",
   };
 }
 
-function getDemoPassword(): string {
-  return (
-    text(process.env.BOSAI_MOCK_LOGIN_PASSWORD || "") ||
-    text(process.env.BOSAI_AUTH_PASSWORD || "") ||
-    "bosai"
-  );
-}
-
-function isConfiguredCredentialMatch(email: string, password: string): boolean {
-  const { expectedEmail, expectedPassword } = getConfiguredCredentials();
-
-  if (!expectedEmail || !expectedPassword) return false;
-  return email === expectedEmail && password === expectedPassword;
-}
-
-function isDemoCredentialMatch(email: string, password: string): boolean {
-  const demoPassword = getDemoPassword();
-  return Boolean(DEMO_EMAIL_TOKEN_MAP[email]) && password === demoPassword;
-}
-
-function resolveTokenForEmail(email: string): string {
-  const { expectedEmail, configuredToken } = getConfiguredCredentials();
-
-  if (configuredToken && expectedEmail && email === expectedEmail) {
-    return configuredToken;
-  }
-
-  return DEMO_EMAIL_TOKEN_MAP[email] || configuredToken || "arthur_token";
+function getCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  };
 }
 
 export async function POST(request: Request) {
   try {
     const contentType = request.headers.get("content-type") || "";
 
-    let body: LoginBody = {};
+    let email = "";
+    let password = "";
 
     if (contentType.includes("application/json")) {
-      body = (await request.json()) as LoginBody;
+      const body = (await request.json()) as {
+        email?: string;
+        password?: string;
+      };
+
+      email = String(body.email || "")
+        .trim()
+        .toLowerCase();
+      password = String(body.password || "").trim();
     } else {
       const formData = await request.formData();
-      body = {
-        email: text(formData.get("email")),
-        password: text(formData.get("password")),
-        preferredCategory: text(formData.get("preferredCategory")),
-        requestedWorkspaceId: text(formData.get("requestedWorkspaceId")),
-      };
+      email = String(formData.get("email") || "")
+        .trim()
+        .toLowerCase();
+      password = String(formData.get("password") || "").trim();
     }
 
-    const email = normalizedEmail(body.email);
-    const password = text(body.password);
-    const preferredCategory = resolvePreferredCategory(body.preferredCategory);
-    const requestedWorkspaceId = resolveRequestedWorkspaceId(
-      body.requestedWorkspaceId
-    );
+    const expectedEmail = (process.env.BOSAI_AUTH_EMAIL || "")
+      .trim()
+      .toLowerCase();
+    const expectedPassword = (process.env.BOSAI_AUTH_PASSWORD || "").trim();
 
     if (!email || !password) {
       return NextResponse.json(
@@ -126,53 +144,57 @@ export async function POST(request: Request) {
       );
     }
 
-    const validCredential =
-      isConfiguredCredentialMatch(email, password) ||
-      isDemoCredentialMatch(email, password);
+    if (!expectedEmail || !expectedPassword) {
+      return NextResponse.json(
+        { ok: false, error: "Configuration auth incomplète côté serveur." },
+        { status: 500 }
+      );
+    }
 
-    if (!validCredential) {
+    if (email !== expectedEmail || password !== expectedPassword) {
       return NextResponse.json(
         { ok: false, error: "Identifiants invalides." },
         { status: 401 }
       );
     }
 
-    const token = resolveTokenForEmail(email);
+    const { allowedWorkspaceIds, activeWorkspaceId, route } =
+      resolveWorkspaceSession();
 
-    const login = buildLoginCookieBundle({
-      token,
-      requestedWorkspaceId: requestedWorkspaceId || undefined,
-      preferredCategory,
-    });
-
-    if (!login.cookiePayload || !login.session.isAuthenticated) {
-      return NextResponse.json(
-        { ok: false, error: "Impossible d’initialiser la session." },
-        { status: 500 }
-      );
-    }
+    const cookieOptions = getCookieOptions();
 
     const response = NextResponse.json({
       ok: true,
-      redirectTo: login.route || login.session.homeRoute || "/overview",
-      activeWorkspaceId: login.session.workspace?.workspaceId || "",
-      allowedWorkspaceIds: login.session.allowedWorkspaceIds,
-      dedicatedSpace: login.session.target || "",
-      user: login.session.user
-        ? {
-            userId: login.session.user.userId,
-            email: login.session.user.email,
-            displayName: login.session.user.displayName,
-            preferredCategory: login.session.user.preferredCategory,
-          }
-        : null,
+      activeWorkspaceId,
+      allowedWorkspaceIds,
+      route,
     });
 
-    const cookieOptions = getAuthCookieWriteOptions();
+    response.cookies.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, cookieOptions);
 
-    for (const [name, value] of Object.entries(login.cookiePayload)) {
-      response.cookies.set(name, value, cookieOptions);
-    }
+    response.cookies.set(
+      WORKSPACE_ACTIVE_COOKIE_NAME,
+      activeWorkspaceId,
+      cookieOptions
+    );
+
+    response.cookies.set(
+      WORKSPACE_ALIAS_COOKIE_NAME,
+      activeWorkspaceId,
+      cookieOptions
+    );
+
+    response.cookies.set(
+      WORKSPACE_LEGACY_COOKIE_NAME,
+      activeWorkspaceId,
+      cookieOptions
+    );
+
+    response.cookies.set(
+      WORKSPACE_ALLOWED_COOKIE_NAME,
+      JSON.stringify(allowedWorkspaceIds),
+      cookieOptions
+    );
 
     return response;
   } catch {
