@@ -3,7 +3,6 @@ import {
   AUTH_LOGIN_ROUTE,
   resolveAuthSession,
 } from "@/lib/auth/resolve-auth-session";
-import { resolveWorkspaceAccess } from "@/lib/workspaces/resolver";
 
 export default async function RootPage() {
   const session = await resolveAuthSession();
@@ -12,11 +11,16 @@ export default async function RootPage() {
     redirect(AUTH_LOGIN_ROUTE);
   }
 
-  const resolution = resolveWorkspaceAccess({
-    userId: session.user?.userId ?? "",
-    requestedWorkspaceId: session.cookieSnapshot.activeWorkspaceId ?? "",
-    nextPath: "/workspace/home",
-  });
+  const memberships = session.context?.memberships ?? [];
+  const activeWorkspace = session.context?.activeWorkspace ?? null;
 
-  redirect(resolution.redirectTo);
+  if (memberships.length === 0) {
+    redirect("/workspace/create");
+  }
+
+  if (!activeWorkspace && memberships.length > 1) {
+    redirect("/workspace/select");
+  }
+
+  redirect("/workspace/home");
 }
