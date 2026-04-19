@@ -345,6 +345,42 @@ function getAgencyFocusCards(
   ];
 }
 
+function getCompanyFocusCards(
+  memberships: WorkspaceSummary[],
+  entitlements?: WorkspaceEntitlements | null
+): FocusCard[] {
+  const workspacesAccess = entitlements?.canManageWorkspaces ? "ON" : "OFF";
+  const policiesAccess = entitlements?.canManagePolicies ? "ON" : "OFF";
+  const billingAccess = entitlements?.canManageBilling ? "ON" : "OFF";
+
+  return [
+    {
+      label: "Governance mode",
+      title: "Pilotage entreprise",
+      value: "Company",
+      helper: "Tenants, settings, quotas et gouvernance visible.",
+    },
+    {
+      label: "Portfolio size",
+      title: "Espaces suivis",
+      value: String(memberships.length),
+      helper: "Nombre d’espaces visibles dans le périmètre entreprise.",
+    },
+    {
+      label: "Workspace admin",
+      title: "Workspaces",
+      value: workspacesAccess,
+      helper: "Capacité à piloter les espaces et leur lecture détaillée.",
+    },
+    {
+      label: "Policy / Billing",
+      title: "Policies / Billing",
+      value: `${policiesAccess} / ${billingAccess}`,
+      helper: "Niveau de contrôle sur la gouvernance et la couche business.",
+    },
+  ];
+}
+
 function MetaCard({
   label,
   value,
@@ -483,6 +519,31 @@ function AgencyOperatingView({
   );
 }
 
+function CompanyOperatingView({
+  memberships,
+  entitlements,
+}: {
+  memberships: WorkspaceSummary[];
+  entitlements?: WorkspaceEntitlements | null;
+}) {
+  const focusCards = getCompanyFocusCards(memberships, entitlements);
+
+  return (
+    <section className="space-y-4">
+      <div className={sectionLabelClassName()}>Company operating view</div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {focusCards.map((item) => (
+          <FocusCardItem
+            key={`${item.label}-${item.title}-${item.value}`}
+            item={item}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function AgencyPrioritySection() {
   return (
     <section className={cardClassName()}>
@@ -511,6 +572,40 @@ function AgencyPrioritySection() {
           Cette home agence sert de cockpit d’entrée pour piloter les flows,
           surveiller les incidents, lire la pression SLA et basculer rapidement
           entre les espaces clients ou internes.
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CompanyPrioritySection() {
+  return (
+    <section className={cardClassName()}>
+      <div className="mb-4 text-lg font-medium text-white">
+        Priorité entreprise
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Link href="/workspaces" className={buttonClassName("primary")}>
+          Ouvrir Workspaces
+        </Link>
+        <Link href="/settings" className={buttonClassName("soft")}>
+          Ouvrir Settings
+        </Link>
+        <Link href="/policies" className={buttonClassName("default")}>
+          Ouvrir Policies
+        </Link>
+        <Link href="/overview" className={buttonClassName("default")}>
+          Ouvrir Overview
+        </Link>
+      </div>
+
+      <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+        <div className={metaLabelClassName()}>Company quick read</div>
+        <div className="mt-2 text-sm leading-6 text-zinc-300">
+          Cette home company sert de cockpit de gouvernance pour piloter les
+          workspaces, relire les réglages visibles, vérifier les politiques et
+          garder une lecture claire du périmètre entreprise.
         </div>
       </div>
     </section>
@@ -581,6 +676,73 @@ function AgencyWorkspaceSection({
   );
 }
 
+function CompanyWorkspaceSection({
+  activeWorkspace,
+  defaultLane,
+  entitlements,
+}: {
+  activeWorkspace: WorkspaceSummary;
+  defaultLane: string;
+  entitlements?: WorkspaceEntitlements | null;
+}) {
+  const entitlementItems = getEntitlementItems(entitlements);
+
+  return (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">
+          Company workspace details
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <MetaCard
+            label="Workspace ID"
+            value={text(activeWorkspace.workspaceId)}
+            breakAll
+          />
+          <MetaCard label="Name" value={text(activeWorkspace.name)} />
+          <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
+          <MetaCard label="Category" value={text(activeWorkspace.category)} />
+          <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
+          <MetaCard
+            label="Membership role"
+            value={text(activeWorkspace.membershipRole)}
+          />
+          <MetaCard
+            label="Membership status"
+            value={text(activeWorkspace.membershipStatus)}
+          />
+          <MetaCard label="Default lane" value={defaultLane} breakAll />
+        </div>
+      </div>
+
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">Governance layer</div>
+
+        <div className="flex flex-wrap gap-2">
+          {entitlementItems.map(([label, enabled]) => (
+            <span
+              key={label}
+              className={badgeClassName(enabled ? "success" : "default")}
+            >
+              {label}: {enabled ? "ON" : "OFF"}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={metaLabelClassName()}>Quick read</div>
+          <div className="mt-2 text-sm leading-6 text-zinc-300">
+            La couche company garde visibles les droits de gouvernance, les
+            réglages et la lecture des workspaces, avec une logique plus pilotage
+            que runtime.
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AgencyPortfolioSection({
   memberships,
   activeWorkspaceId,
@@ -620,6 +782,65 @@ function AgencyPortfolioSection({
 
         <div className="grid grid-cols-1 gap-3">
           <Link href="/flows" className={buttonClassName("primary")}>
+            Ouvrir la lane principale
+          </Link>
+
+          <Link href="/workspace/select" className={buttonClassName("soft")}>
+            Changer d’espace
+          </Link>
+
+          <Link href="/overview" className={buttonClassName("default")}>
+            Ouvrir Overview
+          </Link>
+
+          <Link href="/settings" className={buttonClassName("default")}>
+            Ouvrir Settings
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CompanyPortfolioSection({
+  memberships,
+  activeWorkspaceId,
+}: {
+  memberships: WorkspaceSummary[];
+  activeWorkspaceId: string;
+}) {
+  return (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className={cardClassName()}>
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className={sectionLabelClassName()}>Memberships</div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
+              Périmètre workspace
+            </div>
+          </div>
+
+          <Link href="/workspace/select" className={buttonClassName("soft")}>
+            Changer d’espace
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          {memberships.map((workspace) => (
+            <WorkspaceCard
+              key={workspace.workspaceId}
+              workspace={workspace}
+              isActive={workspace.workspaceId === activeWorkspaceId}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">Navigation</div>
+
+        <div className="grid grid-cols-1 gap-3">
+          <Link href="/workspaces" className={buttonClassName("primary")}>
             Ouvrir la lane principale
           </Link>
 
@@ -866,6 +1087,26 @@ export default async function WorkspaceHomePage() {
             />
 
             <AgencyPortfolioSection
+              memberships={memberships}
+              activeWorkspaceId={activeWorkspace.workspaceId}
+            />
+          </>
+        ) : category === "company" ? (
+          <>
+            <CompanyOperatingView
+              memberships={memberships}
+              entitlements={session.context?.entitlements}
+            />
+
+            <CompanyPrioritySection />
+
+            <CompanyWorkspaceSection
+              activeWorkspace={activeWorkspace}
+              defaultLane={defaultLane}
+              entitlements={session.context?.entitlements}
+            />
+
+            <CompanyPortfolioSection
               memberships={memberships}
               activeWorkspaceId={activeWorkspace.workspaceId}
             />
