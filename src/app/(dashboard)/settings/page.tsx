@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { PageHeader } from "../../../components/ui/page-header";
 import { DashboardCard } from "../../../components/ui/dashboard-card";
@@ -118,7 +119,11 @@ function metaLabelClassName(): string {
 }
 
 function statCardClassName(): string {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function metaBoxClassName(): string {
+  return "rounded-[18px] border border-white/10 bg-black/20 px-4 py-4";
 }
 
 function badgeClassName(
@@ -151,6 +156,24 @@ function badgeClassName(
   }
 
   return "inline-flex rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300";
+}
+
+function actionLinkClassName(
+  variant: "default" | "primary" | "soft" | "danger" = "default"
+): string {
+  if (variant === "primary") {
+    return "inline-flex items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+  }
+
+  if (variant === "danger") {
+    return "inline-flex items-center justify-center rounded-full border border-rose-500/25 bg-rose-500/12 px-4 py-3 text-sm font-medium text-rose-200 transition hover:bg-rose-500/18";
+  }
+
+  if (variant === "soft") {
+    return "inline-flex items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/12 px-4 py-3 text-sm font-medium text-sky-300 transition hover:bg-sky-500/18";
+  }
+
+  return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
 function statusBadgeVariant(
@@ -395,16 +418,71 @@ async function fetchWorkspaceUsage(params?: {
   }
 }
 
+function getCurrentQuickRead(params: {
+  blocked: boolean;
+  warningsCount: number;
+  usage?: UsageValues;
+  limits?: LimitValues;
+  ok?: boolean;
+}): string {
+  const { blocked, warningsCount, usage, limits, ok } = params;
+
+  if (!ok) {
+    return "Le worker a répondu avec un payload partiel ou une erreur sur la lecture workspace.";
+  }
+
+  if (blocked) {
+    return "Le workspace est actuellement bloqué par les quotas. Il faut vérifier la ressource dominante et l’état de reset avant toute exécution.";
+  }
+
+  if (warningsCount > 0) {
+    return "Le workspace reste actif, mais certains seuils soft demandent une surveillance avant blocage.";
+  }
+
+  const runs = usage?.runs_month ?? 0;
+  const hardRuns = limits?.hard_runs_month ?? 0;
+
+  if (hardRuns > 0 && runs > 0) {
+    return "Le workspace semble stable avec une consommation lisible par rapport à son plan courant.";
+  }
+
+  return "Le workspace visible ne montre pas de signal quota dominant pour le moment.";
+}
+
+function getPreviewQuickRead(params: {
+  previewBlocked: boolean;
+  previewWarningsCount: number;
+  previewOk?: boolean;
+}): string {
+  const { previewBlocked, previewWarningsCount, previewOk } = params;
+
+  if (!previewOk) {
+    return "La simulation preview n’a pas retourné un payload complet.";
+  }
+
+  if (previewBlocked) {
+    return "La prochaine exécution projetée déclencherait un blocage quota.";
+  }
+
+  if (previewWarningsCount > 0) {
+    return "La prochaine exécution resterait autorisée, mais générerait des warnings de quota.";
+  }
+
+  return "La prochaine exécution projetée reste dans les limites visibles du plan.";
+}
+
 function StatCard({
   label,
   value,
   helper,
   badge,
+  toneClass = "text-white",
 }: {
   label: string;
   value: string;
   helper?: string;
   badge?: ReactNode;
+  toneClass?: string;
 }) {
   return (
     <div className={statCardClassName()}>
@@ -412,10 +490,43 @@ function StatCard({
         <div className="text-sm text-zinc-400">{label}</div>
         {badge}
       </div>
-      <div className="mt-3 text-3xl font-semibold tracking-tight text-white">
+      <div className={`mt-3 text-3xl font-semibold tracking-tight ${toneClass}`}>
         {value}
       </div>
-      {helper ? <div className="mt-3 text-sm text-zinc-300">{helper}</div> : null}
+      {helper ? <div className="mt-2 text-sm text-zinc-300">{helper}</div> : null}
+    </div>
+  );
+}
+
+function SectionBlock({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+}) {
+  return (
+    <DashboardCard title={title} subtitle={subtitle}>
+      {children}
+    </DashboardCard>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+      <span className="text-sm text-zinc-400">{label}</span>
+      <span className="break-all text-right text-sm font-medium text-zinc-200">
+        {value}
+      </span>
     </div>
   );
 }
@@ -440,12 +551,19 @@ function MeterCard({
     meter?.hard_reached_on_projection
   );
 
+  const fillClass =
+    variant === "danger"
+      ? "bg-red-400"
+      : variant === "warning"
+        ? "bg-amber-400"
+        : "bg-sky-400";
+
   return (
     <DashboardCard>
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className={metaLabelClassName()}>{label}</div>
-          <div className="mt-2 text-xl font-semibold tracking-tight text-white">
+          <div className="mt-2 text-2xl font-semibold tracking-tight text-white">
             {formatNumber(current)}
           </div>
         </div>
@@ -462,33 +580,33 @@ function MeterCard({
       <div className="mt-4">
         <div className="h-2 overflow-hidden rounded-full bg-white/10">
           <div
-            className="h-full rounded-full bg-white/70"
+            className={`h-full rounded-full ${fillClass}`}
             style={{ width: `${percent}%` }}
           />
         </div>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-zinc-400">
-        <div>
+        <div className={metaBoxClassName()}>
           <div className={metaLabelClassName()}>Projeté</div>
           <div className="mt-1 text-zinc-200">{formatNumber(projected)}</div>
         </div>
 
-        <div>
+        <div className={metaBoxClassName()}>
           <div className={metaLabelClassName()}>Hard limit</div>
           <div className="mt-1 text-zinc-200">
             {formatOptionalNumber(hardLimit)}
           </div>
         </div>
 
-        <div>
+        <div className={metaBoxClassName()}>
           <div className={metaLabelClassName()}>Soft limit</div>
           <div className="mt-1 text-zinc-200">
             {formatOptionalNumber(softLimit)}
           </div>
         </div>
 
-        <div>
+        <div className={metaBoxClassName()}>
           <div className={metaLabelClassName()}>Restant hard</div>
           <div className="mt-1 text-zinc-200">
             {formatOptionalNumber(meter?.remaining_to_hard ?? null)}
@@ -602,6 +720,20 @@ export default async function SettingsPage() {
     Boolean(process.env.BOSAI_WORKSPACE_ID) &&
     Boolean(process.env.BOSAI_WORKSPACE_API_KEY);
 
+  const currentQuickRead = getCurrentQuickRead({
+    blocked,
+    warningsCount: warnings.length,
+    usage,
+    limits,
+    ok: currentUsage?.ok,
+  });
+
+  const previewQuickRead = getPreviewQuickRead({
+    previewBlocked,
+    previewWarningsCount: previewWarnings.length,
+    previewOk: previewUsage?.ok,
+  });
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -631,20 +763,11 @@ export default async function SettingsPage() {
 
       {envReady ? (
         <>
-          <section className="space-y-4 border-b border-white/10 pb-6">
-            <div className={sectionLabelClassName()}>Workspace identity</div>
-
-            <div className="space-y-4 xl:flex xl:items-end xl:justify-between xl:gap-8 xl:space-y-0">
-              <div className="max-w-4xl">
-                <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                  {workspace?.name || workspace?.workspace_id || "Workspace"}
-                </h2>
-                <p className="mt-2 max-w-3xl text-base text-zinc-400">
-                  Vue quota prête pour le cockpit SaaS : usage courant, limites,
-                  projection avant run et état de blocage.
-                </p>
-              </div>
-
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.3fr_0.9fr]">
+            <DashboardCard
+              title="Workspace posture"
+              subtitle="Lecture rapide du tenant courant avant toute exécution."
+            >
               <div className="flex flex-wrap gap-2">
                 <span
                   className={badgeClassName(
@@ -672,16 +795,68 @@ export default async function SettingsPage() {
                   </span>
                 ) : null}
               </div>
-            </div>
+
+              <div className="mt-5 text-3xl font-semibold tracking-tight text-white">
+                {workspace?.name || workspace?.workspace_id || "Workspace"}
+              </div>
+              <p className="mt-2 break-all text-sm text-zinc-400">
+                {workspace?.workspace_id || "—"}
+              </p>
+
+              <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                <div className={metaLabelClassName()}>Quick read</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-300">
+                  {currentQuickRead}
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link href="/workspaces" className={actionLinkClassName("soft")}>
+                  Ouvrir Workspaces
+                </Link>
+                <Link href="/runs" className={actionLinkClassName("default")}>
+                  Voir Runs
+                </Link>
+                <Link href="/sla" className={actionLinkClassName("default")}>
+                  Voir SLA
+                </Link>
+              </div>
+            </DashboardCard>
+
+            <DashboardCard
+              title="Workspace metadata"
+              subtitle="Informations produit et identité du tenant."
+            >
+              <div className="space-y-3">
+                <InfoRow
+                  label="Workspace ID"
+                  value={workspace?.workspace_id || "—"}
+                />
+                <InfoRow label="Slug" value={workspace?.slug || "—"} />
+                <InfoRow label="Type" value={workspace?.type || "—"} />
+                <InfoRow label="Plan" value={humanizePlanLabel(workspace)} />
+                <InfoRow
+                  label="Plan code"
+                  value={workspace?.plan_code || workspace?.plan_label || "—"}
+                />
+                <InfoRow label="Plan ref" value={workspace?.plan_id || "—"} />
+                <InfoRow label="Status" value={workspace?.status || "—"} />
+                <InfoRow
+                  label="Last reset"
+                  value={formatDate(workspace?.last_usage_reset_at)}
+                />
+              </div>
+            </DashboardCard>
           </section>
 
-          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <StatCard
               label="Runs / mois"
               value={formatNumber(usage?.runs_month)}
               helper={`Hard: ${formatOptionalNumber(
                 limits?.hard_runs_month ?? null
               )}`}
+              toneClass="text-white"
             />
             <StatCard
               label="Tokens / mois"
@@ -689,6 +864,7 @@ export default async function SettingsPage() {
               helper={`Hard: ${formatOptionalNumber(
                 limits?.hard_tokens_month ?? null
               )}`}
+              toneClass="text-white"
             />
             <StatCard
               label="Appels HTTP / mois"
@@ -696,11 +872,13 @@ export default async function SettingsPage() {
               helper={`Hard: ${formatOptionalNumber(
                 limits?.hard_http_calls_month ?? null
               )}`}
+              toneClass="text-sky-300"
             />
             <StatCard
               label="Dernière remise à zéro"
               value={formatDate(workspace?.last_usage_reset_at)}
               helper={workspace?.workspace_id || "—"}
+              toneClass="text-white"
             />
           </section>
 
@@ -730,250 +908,230 @@ export default async function SettingsPage() {
               blockReasonLabel={currentBlockReasonLabel}
             />
 
-            <DashboardCard
+            <SectionBlock
               title="Projection actuelle"
               subtitle="Projection renvoyée par le worker pour l’état courant."
             >
-              <div className="space-y-3 text-sm text-zinc-400">
-                <div className="flex items-center justify-between gap-4">
-                  <span>Projected runs</span>
-                  <span className="text-zinc-200">
-                    {formatNumber(projected?.runs_month)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span>Projected tokens</span>
-                  <span className="text-zinc-200">
-                    {formatNumber(projected?.tokens_month)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span>Projected HTTP</span>
-                  <span className="text-zinc-200">
-                    {formatNumber(projected?.http_calls_month)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span>Estimated token delta</span>
-                  <span className="text-zinc-200">
-                    {formatNumber(projected?.estimated_tokens_delta)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span>Estimation source</span>
-                  <span className="text-zinc-200">
-                    {estimation?.source || "—"}
-                  </span>
-                </div>
+              <div className="space-y-3">
+                <InfoRow
+                  label="Projected runs"
+                  value={formatNumber(projected?.runs_month)}
+                />
+                <InfoRow
+                  label="Projected tokens"
+                  value={formatNumber(projected?.tokens_month)}
+                />
+                <InfoRow
+                  label="Projected HTTP"
+                  value={formatNumber(projected?.http_calls_month)}
+                />
+                <InfoRow
+                  label="Estimated token delta"
+                  value={formatNumber(projected?.estimated_tokens_delta)}
+                />
+                <InfoRow
+                  label="Estimation source"
+                  value={estimation?.source || "—"}
+                />
               </div>
-            </DashboardCard>
+            </SectionBlock>
 
-            <DashboardCard
-              title="Workspace metadata"
-              subtitle="Informations produit du workspace SaaS."
+            <SectionBlock
+              title="Current posture"
+              subtitle="Résumé opérable du tenant actuel."
             >
-              <div className="space-y-3 text-sm text-zinc-400">
-                <div className="flex items-center justify-between gap-4">
-                  <span>Workspace ID</span>
-                  <span className="break-all text-right text-zinc-200">
-                    {workspace?.workspace_id || "—"}
-                  </span>
-                </div>
+              <div className="space-y-3">
+                <InfoRow
+                  label="Warnings"
+                  value={formatNumber(warnings.length)}
+                />
+                <InfoRow
+                  label="Blocked"
+                  value={blocked ? "OUI" : "NON"}
+                />
+                <InfoRow
+                  label="Plan"
+                  value={humanizePlanLabel(workspace)}
+                />
+                <InfoRow
+                  label="Workspace"
+                  value={workspace?.workspace_id || "—"}
+                />
+              </div>
 
-                <div className="flex items-center justify-between gap-4">
-                  <span>Slug</span>
-                  <span className="text-zinc-200">{workspace?.slug || "—"}</span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span>Type</span>
-                  <span className="text-zinc-200">{workspace?.type || "—"}</span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span>Plan</span>
-                  <span className="text-zinc-200">
-                    {humanizePlanLabel(workspace)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span>Plan code</span>
-                  <span className="text-zinc-200">
-                    {workspace?.plan_code || workspace?.plan_label || "—"}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span>Plan ref</span>
-                  <span className="break-all text-right text-zinc-200">
-                    {workspace?.plan_id || "—"}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span>Status</span>
-                  <span className="text-zinc-200">
-                    {workspace?.status || "—"}
-                  </span>
+              <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                <div className={metaLabelClassName()}>Quick read</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-300">
+                  {currentQuickRead}
                 </div>
               </div>
-            </DashboardCard>
+            </SectionBlock>
           </section>
 
           <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <DashboardCard
+            <SectionBlock
               title="Plan limits"
               subtitle="Soft / hard limits configurés sur le workspace."
             >
               <div className="grid grid-cols-1 gap-3 text-sm text-zinc-400 sm:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <div className={metaBoxClassName()}>
                   <div className={metaLabelClassName()}>Runs soft</div>
                   <div className="mt-1 text-zinc-200">
                     {formatOptionalNumber(limits?.soft_runs_month ?? null)}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <div className={metaBoxClassName()}>
                   <div className={metaLabelClassName()}>Runs hard</div>
                   <div className="mt-1 text-zinc-200">
                     {formatOptionalNumber(limits?.hard_runs_month ?? null)}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <div className={metaBoxClassName()}>
                   <div className={metaLabelClassName()}>Tokens soft</div>
                   <div className="mt-1 text-zinc-200">
                     {formatOptionalNumber(limits?.soft_tokens_month ?? null)}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <div className={metaBoxClassName()}>
                   <div className={metaLabelClassName()}>Tokens hard</div>
                   <div className="mt-1 text-zinc-200">
                     {formatOptionalNumber(limits?.hard_tokens_month ?? null)}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <div className={metaBoxClassName()}>
                   <div className={metaLabelClassName()}>HTTP soft</div>
                   <div className="mt-1 text-zinc-200">
                     {formatOptionalNumber(limits?.soft_http_calls_month ?? null)}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <div className={metaBoxClassName()}>
                   <div className={metaLabelClassName()}>HTTP hard</div>
                   <div className="mt-1 text-zinc-200">
                     {formatOptionalNumber(limits?.hard_http_calls_month ?? null)}
                   </div>
                 </div>
               </div>
-            </DashboardCard>
+            </SectionBlock>
 
-            <DashboardCard
+            <SectionBlock
               title="Preview next run"
               subtitle="Simulation avant exécution via /workspace/usage avec capability=http_exec et estimated_tokens=700."
             >
-              <div className="space-y-3 text-sm text-zinc-400">
-                <div className="flex items-center justify-between gap-4">
-                  <span>Projected runs</span>
-                  <span className="text-zinc-200">
+              <div className="flex flex-wrap gap-2">
+                <span className={badgeClassName(previewBlocked ? "danger" : "success")}>
+                  {previewBlocked ? "BLOCKAGE PRÉVU" : "PREVIEW OK"}
+                </span>
+
+                {previewWarnings.length > 0 ? (
+                  <span className={badgeClassName("warning")}>
+                    {previewWarnings.length} warning(s)
+                  </span>
+                ) : (
+                  <span className={badgeClassName("info")}>Blue preview</span>
+                )}
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className={metaBoxClassName()}>
+                  <div className={metaLabelClassName()}>Projected runs</div>
+                  <div className="mt-1 text-zinc-200">
                     {formatNumber(previewUsage?.projected?.runs_month)}
-                  </span>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-4">
-                  <span>Projected tokens</span>
-                  <span className="text-zinc-200">
+                <div className={metaBoxClassName()}>
+                  <div className={metaLabelClassName()}>Projected tokens</div>
+                  <div className="mt-1 text-zinc-200">
                     {formatNumber(previewUsage?.projected?.tokens_month)}
-                  </span>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-4">
-                  <span>Projected HTTP</span>
-                  <span className="text-zinc-200">
+                <div className={metaBoxClassName()}>
+                  <div className={metaLabelClassName()}>Projected HTTP</div>
+                  <div className="mt-1 text-zinc-200">
                     {formatNumber(previewUsage?.projected?.http_calls_month)}
-                  </span>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-4">
-                  <span>Blocage prévu</span>
-                  <span
-                    className={
-                      previewBlocked
-                        ? "font-medium text-red-300"
-                        : "font-medium text-emerald-300"
-                    }
+                <div className={metaBoxClassName()}>
+                  <div className={metaLabelClassName()}>Blocage prévu</div>
+                  <div
+                    className={`mt-1 ${
+                      previewBlocked ? "text-red-300" : "text-emerald-300"
+                    }`}
                   >
                     {previewBlocked ? "OUI" : "NON"}
-                  </span>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                  <div className={metaLabelClassName()}>Blocage principal prévu</div>
-                  <div className="mt-2 text-sm text-white">
-                    {previewBlocked
-                      ? previewPrimaryReasonLabel
-                      : "Aucun blocage prévisionnel"}
                   </div>
-                  {previewPrimaryReason ? (
-                    <div className="mt-1 text-xs text-zinc-500">
-                      {previewPrimaryReason}
-                    </div>
-                  ) : null}
                 </div>
+              </div>
 
-                {previewExtraReasons.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className={metaLabelClassName()}>
-                      Autres blocages prévus
+              <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                <div className={metaLabelClassName()}>Blocage principal prévu</div>
+                <div className="mt-2 text-sm text-white">
+                  {previewBlocked
+                    ? previewPrimaryReasonLabel
+                    : "Aucun blocage prévisionnel"}
+                </div>
+                {previewPrimaryReason ? (
+                  <div className="mt-1 text-xs text-zinc-500">
+                    {previewPrimaryReason}
+                  </div>
+                ) : null}
+              </div>
+
+              {previewExtraReasons.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  <div className={metaLabelClassName()}>Autres blocages prévus</div>
+                  {previewExtraReasons.map((reason) => (
+                    <div
+                      key={reason}
+                      className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-red-200"
+                    >
+                      <div className="font-medium">
+                        {humanizeQuotaSignal(reason, previewReasonContext)}
+                      </div>
+                      <div className="mt-1 text-xs text-red-300/80">{reason}</div>
                     </div>
-                    {previewExtraReasons.map((reason) => (
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                <div className={metaLabelClassName()}>Preview read</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-300">
+                  {previewQuickRead}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                {previewWarnings.length > 0 ? (
+                  <div className="space-y-2">
+                    {previewWarnings.map((warning) => (
                       <div
-                        key={reason}
-                        className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-red-200"
+                        key={warning}
+                        className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-amber-200"
                       >
                         <div className="font-medium">
-                          {humanizeQuotaSignal(reason, previewReasonContext)}
+                          {humanizeQuotaSignal(warning)}
                         </div>
-                        <div className="mt-1 text-xs text-red-300/80">
-                          {reason}
+                        <div className="mt-1 text-xs text-amber-300/80">
+                          {warning}
                         </div>
                       </div>
                     ))}
                   </div>
-                ) : null}
-
-                <div className="pt-2">
-                  {previewWarnings.length > 0 ? (
-                    <div className="space-y-2">
-                      {previewWarnings.map((warning) => (
-                        <div
-                          key={warning}
-                          className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-amber-200"
-                        >
-                          <div className="font-medium">
-                            {humanizeQuotaSignal(warning)}
-                          </div>
-                          <div className="mt-1 text-xs text-amber-300/80">
-                            {warning}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-zinc-300">
-                      Aucun warning preview.
-                    </div>
-                  )}
-                </div>
+                ) : (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-zinc-300">
+                    Aucun warning preview.
+                  </div>
+                )}
               </div>
-            </DashboardCard>
+            </SectionBlock>
           </section>
 
           {!currentUsage?.ok ? (
