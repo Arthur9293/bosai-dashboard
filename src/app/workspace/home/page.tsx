@@ -253,6 +253,33 @@ function getCategoryCards(category?: string | null): HubCard[] {
     ];
   }
 
+  if (normalized === "personal") {
+    return [
+      {
+        title: "Overview",
+        description: "Point d’entrée principal du workspace personnel.",
+        href: "/overview",
+        tone: "primary",
+      },
+      {
+        title: "Settings",
+        description: "Lire les réglages visibles du cockpit.",
+        href: "/settings",
+        tone: "soft",
+      },
+      {
+        title: "Commands",
+        description: "Voir les actions exécutées par le control plane.",
+        href: "/commands",
+      },
+      {
+        title: "Workspace select",
+        description: "Basculer simplement vers un autre espace.",
+        href: "/workspace/select",
+      },
+    ];
+  }
+
   return [
     {
       title: "Overview",
@@ -413,6 +440,42 @@ function getFreelanceFocusCards(
       title: "Incidents",
       value: incidentsAccess,
       helper: "Lecture utile des incidents sans logique gouvernance lourde.",
+    },
+  ];
+}
+
+function getPersonalFocusCards(
+  memberships: WorkspaceSummary[],
+  entitlements?: WorkspaceEntitlements | null
+): FocusCard[] {
+  const dashboardAccess = entitlements?.canAccessDashboard ? "ON" : "OFF";
+  const httpAccess = entitlements?.canRunHttp ? "ON" : "OFF";
+  const incidentsAccess = entitlements?.canViewIncidents ? "ON" : "OFF";
+
+  return [
+    {
+      label: "Personal mode",
+      title: "Lecture personnelle",
+      value: "Personal",
+      helper: "Vue simple pour lire le cockpit et accéder aux surfaces utiles.",
+    },
+    {
+      label: "Visible spaces",
+      title: "Espaces disponibles",
+      value: String(memberships.length),
+      helper: "Nombre d’espaces accessibles depuis le profil personnel.",
+    },
+    {
+      label: "Light access",
+      title: "Dashboard / HTTP",
+      value: `${dashboardAccess} / ${httpAccess}`,
+      helper: "Lecture cockpit et actions utiles, sans couche gouvernance lourde.",
+    },
+    {
+      label: "Signal visibility",
+      title: "Incidents",
+      value: incidentsAccess,
+      helper: "Lecture des signaux disponibles quand ils sont utiles.",
     },
   ];
 }
@@ -605,6 +668,31 @@ function FreelanceOperatingView({
   );
 }
 
+function PersonalOperatingView({
+  memberships,
+  entitlements,
+}: {
+  memberships: WorkspaceSummary[];
+  entitlements?: WorkspaceEntitlements | null;
+}) {
+  const focusCards = getPersonalFocusCards(memberships, entitlements);
+
+  return (
+    <section className="space-y-4">
+      <div className={sectionLabelClassName()}>Personal operating view</div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {focusCards.map((item) => (
+          <FocusCardItem
+            key={`${item.label}-${item.title}-${item.value}`}
+            item={item}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function AgencyPrioritySection() {
   return (
     <section className={cardClassName()}>
@@ -701,6 +789,40 @@ function FreelancePrioritySection() {
           Cette home freelance sert de hub d’exécution pour relire les commands,
           suivre les runs, vérifier les events et garder un accès simple aux
           surfaces utiles sans couche de gouvernance lourde.
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PersonalPrioritySection() {
+  return (
+    <section className={cardClassName()}>
+      <div className="mb-4 text-lg font-medium text-white">
+        Priorité personnelle
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Link href="/overview" className={buttonClassName("primary")}>
+          Ouvrir Overview
+        </Link>
+        <Link href="/settings" className={buttonClassName("soft")}>
+          Ouvrir Settings
+        </Link>
+        <Link href="/commands" className={buttonClassName("default")}>
+          Ouvrir Commands
+        </Link>
+        <Link href="/workspace/select" className={buttonClassName("default")}>
+          Changer d’espace
+        </Link>
+      </div>
+
+      <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+        <div className={metaLabelClassName()}>Personal quick read</div>
+        <div className="mt-2 text-sm leading-6 text-zinc-300">
+          Cette home personal sert d’entrée simple pour lire l’état global,
+          ouvrir les réglages utiles et accéder rapidement aux actions visibles
+          sans surcharge métier.
         </div>
       </div>
     </section>
@@ -905,6 +1027,72 @@ function FreelanceWorkspaceSection({
   );
 }
 
+function PersonalWorkspaceSection({
+  activeWorkspace,
+  defaultLane,
+  entitlements,
+}: {
+  activeWorkspace: WorkspaceSummary;
+  defaultLane: string;
+  entitlements?: WorkspaceEntitlements | null;
+}) {
+  const entitlementItems = getEntitlementItems(entitlements);
+
+  return (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">
+          Personal workspace details
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <MetaCard
+            label="Workspace ID"
+            value={text(activeWorkspace.workspaceId)}
+            breakAll
+          />
+          <MetaCard label="Name" value={text(activeWorkspace.name)} />
+          <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
+          <MetaCard label="Category" value={text(activeWorkspace.category)} />
+          <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
+          <MetaCard
+            label="Membership role"
+            value={text(activeWorkspace.membershipRole)}
+          />
+          <MetaCard
+            label="Membership status"
+            value={text(activeWorkspace.membershipStatus)}
+          />
+          <MetaCard label="Default lane" value={defaultLane} breakAll />
+        </div>
+      </div>
+
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">Access layer light</div>
+
+        <div className="flex flex-wrap gap-2">
+          {entitlementItems.map(([label, enabled]) => (
+            <span
+              key={label}
+              className={badgeClassName(enabled ? "success" : "default")}
+            >
+              {label}: {enabled ? "ON" : "OFF"}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={metaLabelClassName()}>Quick read</div>
+          <div className="mt-2 text-sm leading-6 text-zinc-300">
+            La couche personal garde visibles les éléments utiles du workspace,
+            mais reste centrée sur une lecture simple et un accès rapide.
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AgencyPortfolioSection({
   memberships,
   activeWorkspaceId,
@@ -1075,6 +1263,65 @@ function FreelancePortfolioSection({
 
           <Link href="/settings" className={buttonClassName("default")}>
             Ouvrir Settings
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PersonalPortfolioSection({
+  memberships,
+  activeWorkspaceId,
+}: {
+  memberships: WorkspaceSummary[];
+  activeWorkspaceId: string;
+}) {
+  return (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className={cardClassName()}>
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className={sectionLabelClassName()}>Memberships</div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
+              Espaces accessibles
+            </div>
+          </div>
+
+          <Link href="/workspace/select" className={buttonClassName("soft")}>
+            Changer d’espace
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          {memberships.map((workspace) => (
+            <WorkspaceCard
+              key={workspace.workspaceId}
+              workspace={workspace}
+              isActive={workspace.workspaceId === activeWorkspaceId}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">Navigation</div>
+
+        <div className="grid grid-cols-1 gap-3">
+          <Link href="/overview" className={buttonClassName("primary")}>
+            Ouvrir la lane principale
+          </Link>
+
+          <Link href="/workspace/select" className={buttonClassName("soft")}>
+            Changer d’espace
+          </Link>
+
+          <Link href="/settings" className={buttonClassName("default")}>
+            Ouvrir Settings
+          </Link>
+
+          <Link href="/commands" className={buttonClassName("default")}>
+            Ouvrir Commands
           </Link>
         </div>
       </div>
@@ -1348,6 +1595,26 @@ export default async function WorkspaceHomePage() {
             />
 
             <FreelancePortfolioSection
+              memberships={memberships}
+              activeWorkspaceId={activeWorkspace.workspaceId}
+            />
+          </>
+        ) : category === "personal" ? (
+          <>
+            <PersonalOperatingView
+              memberships={memberships}
+              entitlements={session.context?.entitlements}
+            />
+
+            <PersonalPrioritySection />
+
+            <PersonalWorkspaceSection
+              activeWorkspace={activeWorkspace}
+              defaultLane={defaultLane}
+              entitlements={session.context?.entitlements}
+            />
+
+            <PersonalPortfolioSection
               memberships={memberships}
               activeWorkspaceId={activeWorkspace.workspaceId}
             />
