@@ -147,7 +147,6 @@ function normalizeCategory(
   if (normalized === "freelance") return "freelance";
   if (normalized === "company") return "company";
   if (normalized === "agency") return "agency";
-  if (normalized === "enterprise") return "enterprise";
 
   return null;
 }
@@ -290,7 +289,8 @@ export function resolveMockSessionFromCookies(cookies: {
     ...MOCK_SESSION_SEEDS[0],
   };
 
-  const effectiveToken = normalizeText(sessionToken) || getPrimaryToken(fallbackSeed);
+  const effectiveToken =
+    normalizeText(sessionToken) || getPrimaryToken(fallbackSeed);
 
   return resolveMockSession({
     token: effectiveToken,
