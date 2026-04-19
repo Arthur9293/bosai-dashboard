@@ -136,10 +136,45 @@ type LedgerFilters = {
   limit: number;
 };
 
+function sectionLabelClassName(): string {
+  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
+}
+
+function metaLabelClassName(): string {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
+function statCardClassName(): string {
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function actionLinkClassName(
+  variant: "default" | "primary" | "soft" = "default"
+): string {
+  const base =
+    "inline-flex items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
+
+  if (variant === "primary") {
+    return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
+  }
+
+  if (variant === "soft") {
+    return `${base} border border-sky-500/20 bg-sky-500/12 text-sky-300 hover:bg-sky-500/18`;
+  }
+
+  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+}
+
 function formatNumber(value?: number | null): string {
   return typeof value === "number" && Number.isFinite(value)
     ? value.toString()
     : "0";
+}
+
+function formatMaybeNumber(value?: number | null): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value.toString()
+    : "—";
 }
 
 function formatOptional(value?: string | null): string {
@@ -231,7 +266,7 @@ function badgeClassName(
     return "inline-flex rounded-full border border-violet-500/20 bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300";
   }
 
-  return "inline-flex rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300";
+  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
 function statusVariant(
@@ -401,9 +436,67 @@ async function fetchWorkspaceUsageLedger(
     return {
       ok: false,
       error:
-        error instanceof Error ? error.message : "workspace_usage_ledger_fetch_failed",
+        error instanceof Error
+          ? error.message
+          : "workspace_usage_ledger_fetch_failed",
     };
   }
+}
+
+function StatCard({
+  label,
+  value,
+  tone = "text-white",
+  helper,
+}: {
+  label: string;
+  value: string | number;
+  tone?: string;
+  helper?: string;
+}) {
+  return (
+    <div className={statCardClassName()}>
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className={`mt-3 text-4xl font-semibold tracking-tight ${tone}`}>
+        {value}
+      </div>
+      {helper ? <div className="mt-2 text-sm text-zinc-300">{helper}</div> : null}
+    </div>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+      <span className="text-sm text-zinc-400">{label}</span>
+      <span className="text-sm font-medium text-zinc-200">{value}</span>
+    </div>
+  );
+}
+
+function MetaCard({
+  label,
+  value,
+  breakAll = false,
+}: {
+  label: string;
+  value: string;
+  breakAll?: boolean;
+}) {
+  return (
+    <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className={`mt-2 text-zinc-200 ${breakAll ? "break-all" : ""}`}>
+        {value || "—"}
+      </div>
+    </div>
+  );
 }
 
 function MeterCard({
@@ -430,9 +523,7 @@ function MeterCard({
     <DashboardCard>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-            {label}
-          </div>
+          <div className={metaLabelClassName()}>{label}</div>
           <div className="mt-2 text-xl font-semibold tracking-tight text-white">
             {formatNumber(current)}
           </div>
@@ -458,36 +549,24 @@ function MeterCard({
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-zinc-400">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-            Projeté
-          </div>
+          <div className={metaLabelClassName()}>Projeté</div>
           <div className="mt-1 text-zinc-200">{formatNumber(projected)}</div>
         </div>
 
         <div>
-          <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-            Hard limit
-          </div>
-          <div className="mt-1 text-zinc-200">{formatNumber(hardLimit)}</div>
+          <div className={metaLabelClassName()}>Hard limit</div>
+          <div className="mt-1 text-zinc-200">{formatMaybeNumber(hardLimit)}</div>
         </div>
 
         <div>
-          <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-            Soft limit
-          </div>
-          <div className="mt-1 text-zinc-200">
-            {typeof softLimit === "number" ? softLimit : "—"}
-          </div>
+          <div className={metaLabelClassName()}>Soft limit</div>
+          <div className="mt-1 text-zinc-200">{formatMaybeNumber(softLimit)}</div>
         </div>
 
         <div>
-          <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-            Restant hard
-          </div>
+          <div className={metaLabelClassName()}>Restant hard</div>
           <div className="mt-1 text-zinc-200">
-            {typeof meter?.remaining_to_hard === "number"
-              ? meter.remaining_to_hard
-              : "—"}
+            {formatMaybeNumber(meter?.remaining_to_hard)}
           </div>
         </div>
       </div>
@@ -537,12 +616,12 @@ export default async function WorkspaceDetailPage({
         description="Vue détaillée du workspace : identité, plan, quotas, période courante, reset mensuel et capabilities autorisées."
       />
 
-      <div>
-        <Link
-          href="/workspaces"
-          className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:bg-white/10 hover:text-white"
-        >
-          ← Retour Workspaces
+      <div className="flex flex-wrap gap-3">
+        <Link href="/workspaces" className={actionLinkClassName("soft")}>
+          Retour Workspaces
+        </Link>
+        <Link href="/settings" className={actionLinkClassName("default")}>
+          Ouvrir Settings
         </Link>
       </div>
 
@@ -572,9 +651,7 @@ export default async function WorkspaceDetailPage({
       {envReady && data?.ok ? (
         <>
           <section className="space-y-4 border-b border-white/10 pb-6">
-            <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
-              Workspace identity
-            </div>
+            <div className={sectionLabelClassName()}>Workspace identity</div>
 
             <div className="space-y-4 xl:flex xl:items-end xl:justify-between xl:gap-8 xl:space-y-0">
               <div className="max-w-4xl">
@@ -614,52 +691,114 @@ export default async function WorkspaceDetailPage({
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <DashboardCard>
-              <div className="text-sm text-zinc-400">Slug</div>
-              <div className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                {formatOptional(workspace?.slug)}
+          <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <StatCard
+              label="Runs"
+              value={formatNumber(usage.runs_month)}
+              helper={`Hard ${formatMaybeNumber(limits.hard_runs_month)}`}
+            />
+            <StatCard
+              label="Tokens"
+              value={formatNumber(usage.tokens_month)}
+              helper={`Hard ${formatMaybeNumber(limits.hard_tokens_month)}`}
+            />
+            <StatCard
+              label="HTTP"
+              value={formatNumber(usage.http_calls_month)}
+              helper={`Hard ${formatMaybeNumber(limits.hard_http_calls_month)}`}
+            />
+            <StatCard
+              label="Capabilities"
+              value={capabilities.length}
+              helper={formatOptional(data?.capabilities?.resolved_plan_key)}
+            />
+          </section>
+
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            <DashboardCard
+              title="Workspace identity"
+              subtitle="Lecture produit et technique du workspace."
+            >
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <MetaCard
+                  label="Workspace ID"
+                  value={workspace?.workspace_id || workspaceId}
+                  breakAll
+                />
+                <MetaCard label="Slug" value={formatOptional(workspace?.slug)} />
+                <MetaCard label="Type" value={formatOptional(workspace?.type)} />
+                <MetaCard label="Plan" value={humanizePlan(workspace)} />
+                <MetaCard
+                  label="Plan code"
+                  value={formatOptional(workspace?.plan_code || workspace?.plan_label)}
+                />
+                <MetaCard label="Status" value={formatOptional(workspace?.status)} />
+                <MetaCard
+                  label="Current period"
+                  value={formatOptional(workspace?.current_usage_period_key)}
+                />
+                <MetaCard
+                  label="Last reset"
+                  value={formatDate(workspace?.last_usage_reset_at)}
+                />
               </div>
             </DashboardCard>
 
-            <DashboardCard>
-              <div className="text-sm text-zinc-400">Plan code</div>
-              <div className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                {formatOptional(workspace?.plan_code || workspace?.plan_label)}
+            <DashboardCard
+              title="Workspace posture"
+              subtitle="Lecture rapide du tenant visible."
+            >
+              <div className="space-y-3">
+                <InfoRow
+                  label="Blocked"
+                  value={blocked ? "YES" : "NO"}
+                />
+                <InfoRow
+                  label="Warnings"
+                  value={warnings.length}
+                />
+                <InfoRow
+                  label="Resolved plan"
+                  value={formatOptional(data?.capabilities?.resolved_plan_key)}
+                />
+                <InfoRow
+                  label="Ledger items"
+                  value={ledger?.count ?? ledgerItems.length}
+                />
               </div>
-            </DashboardCard>
 
-            <DashboardCard>
-              <div className="text-sm text-zinc-400">Status</div>
-              <div className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                {formatOptional(workspace?.status)}
-              </div>
-            </DashboardCard>
-
-            <DashboardCard>
-              <div className="text-sm text-zinc-400">Last reset</div>
-              <div className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                {formatDate(workspace?.last_usage_reset_at)}
+              <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+                <div className={metaLabelClassName()}>Quick read</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-300">
+                  {blocked
+                    ? `Le workspace est actuellement bloqué : ${humanizeSignal(
+                        data?.block_reason
+                      )}.`
+                    : "Le workspace paraît exploitable, avec lecture quota et historique disponibles."}
+                </div>
               </div>
             </DashboardCard>
           </section>
 
-          <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <MeterCard
-              label="Runs meter"
-              meter={data?.meters?.runs_month}
-              blocked={blocked}
-            />
-            <MeterCard
-              label="Tokens meter"
-              meter={data?.meters?.tokens_month}
-              blocked={blocked}
-            />
-            <MeterCard
-              label="HTTP meter"
-              meter={data?.meters?.http_calls_month}
-              blocked={blocked}
-            />
+          <section className="space-y-4">
+            <div className={sectionLabelClassName()}>Meters</div>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+              <MeterCard
+                label="Runs meter"
+                meter={data?.meters?.runs_month}
+                blocked={blocked}
+              />
+              <MeterCard
+                label="Tokens meter"
+                meter={data?.meters?.tokens_month}
+                blocked={blocked}
+              />
+              <MeterCard
+                label="HTTP meter"
+                meter={data?.meters?.http_calls_month}
+                blocked={blocked}
+              />
+            </div>
           </section>
 
           <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -667,45 +806,36 @@ export default async function WorkspaceDetailPage({
               title="Current usage"
               subtitle="État courant du workspace."
             >
-              <div className="space-y-3 text-sm text-zinc-400">
-                <div className="flex items-center justify-between gap-4">
-                  <span>Runs</span>
-                  <span className="text-zinc-200">{formatNumber(usage.runs_month)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span>Tokens</span>
-                  <span className="text-zinc-200">{formatNumber(usage.tokens_month)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span>HTTP</span>
-                  <span className="text-zinc-200">{formatNumber(usage.http_calls_month)}</span>
-                </div>
+              <div className="space-y-3">
+                <InfoRow label="Runs" value={formatNumber(usage.runs_month)} />
+                <InfoRow label="Tokens" value={formatNumber(usage.tokens_month)} />
+                <InfoRow label="HTTP" value={formatNumber(usage.http_calls_month)} />
               </div>
             </DashboardCard>
 
             <DashboardCard
               title="Plan limits"
-              subtitle="Soft / hard limits configurés."
+              subtitle="Soft et hard limits configurés."
             >
-              <div className="space-y-3 text-sm text-zinc-400">
-                <div className="flex items-center justify-between gap-4">
-                  <span>Runs</span>
-                  <span className="text-zinc-200">
-                    {formatNumber(limits.soft_runs_month)} / {formatNumber(limits.hard_runs_month)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span>Tokens</span>
-                  <span className="text-zinc-200">
-                    {formatNumber(limits.soft_tokens_month)} / {formatNumber(limits.hard_tokens_month)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span>HTTP</span>
-                  <span className="text-zinc-200">
-                    {formatNumber(limits.soft_http_calls_month)} / {formatNumber(limits.hard_http_calls_month)}
-                  </span>
-                </div>
+              <div className="space-y-3">
+                <InfoRow
+                  label="Runs"
+                  value={`${formatMaybeNumber(limits.soft_runs_month)} / ${formatMaybeNumber(
+                    limits.hard_runs_month
+                  )}`}
+                />
+                <InfoRow
+                  label="Tokens"
+                  value={`${formatMaybeNumber(limits.soft_tokens_month)} / ${formatMaybeNumber(
+                    limits.hard_tokens_month
+                  )}`}
+                />
+                <InfoRow
+                  label="HTTP"
+                  value={`${formatMaybeNumber(
+                    limits.soft_http_calls_month
+                  )} / ${formatMaybeNumber(limits.hard_http_calls_month)}`}
+                />
               </div>
             </DashboardCard>
 
@@ -713,23 +843,27 @@ export default async function WorkspaceDetailPage({
               title="Projection"
               subtitle="Projection worker pour l’état courant."
             >
-              <div className="space-y-3 text-sm text-zinc-400">
-                <div className="flex items-center justify-between gap-4">
-                  <span>Projected runs</span>
-                  <span className="text-zinc-200">{formatNumber(projected.runs_month)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span>Projected tokens</span>
-                  <span className="text-zinc-200">{formatNumber(projected.tokens_month)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span>Projected HTTP</span>
-                  <span className="text-zinc-200">{formatNumber(projected.http_calls_month)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span>Estimation source</span>
-                  <span className="text-zinc-200">{formatOptional(estimation.source)}</span>
-                </div>
+              <div className="space-y-3">
+                <InfoRow
+                  label="Projected runs"
+                  value={formatNumber(projected.runs_month)}
+                />
+                <InfoRow
+                  label="Projected tokens"
+                  value={formatNumber(projected.tokens_month)}
+                />
+                <InfoRow
+                  label="Projected HTTP"
+                  value={formatNumber(projected.http_calls_month)}
+                />
+                <InfoRow
+                  label="Estimated delta"
+                  value={formatNumber(projected.estimated_tokens_delta)}
+                />
+                <InfoRow
+                  label="Estimation source"
+                  value={formatOptional(estimation.source)}
+                />
               </div>
             </DashboardCard>
           </section>
@@ -737,48 +871,46 @@ export default async function WorkspaceDetailPage({
           <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <DashboardCard
               title="Reset status"
-              subtitle="État du cycle mensuel."
+              subtitle="État du cycle mensuel et fallback éventuel."
             >
-              <div className="space-y-3 text-sm text-zinc-400">
-                <div className="flex items-center justify-between gap-4">
-                  <span>Current period</span>
-                  <span className="text-zinc-200">
-                    {formatOptional(resetInfo.current_period)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span>Effective period</span>
-                  <span className="text-zinc-200">
-                    {formatOptional(
-                      resetInfo.effective_period || resetInfo.effective_period_before_reset
-                    )}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span>Reset applied</span>
-                  <span className="text-zinc-200">
-                    {resetInfo.reset_applied ? "YES" : "NO"}
-                  </span>
-                </div>
-                {resetInfo.reason ? (
-                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-amber-200">
-                    {humanizeSignal(resetInfo.reason)}
-                  </div>
-                ) : null}
+              <div className="space-y-3">
+                <InfoRow
+                  label="Current period"
+                  value={formatOptional(resetInfo.current_period)}
+                />
+                <InfoRow
+                  label="Effective period"
+                  value={formatOptional(
+                    resetInfo.effective_period ||
+                      resetInfo.effective_period_before_reset
+                  )}
+                />
+                <InfoRow
+                  label="Reset applied"
+                  value={resetInfo.reset_applied ? "YES" : "NO"}
+                />
+                <InfoRow
+                  label="Fallback"
+                  value={resetInfo.fallback ? "YES" : "NO"}
+                />
               </div>
+
+              {resetInfo.reason ? (
+                <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-amber-200">
+                  {humanizeSignal(resetInfo.reason)}
+                </div>
+              ) : null}
             </DashboardCard>
 
             <DashboardCard
               title="Allowed capabilities"
               subtitle="Capabilities autorisées pour ce plan."
             >
-              <div className="space-y-3">
-                <div className="text-sm text-zinc-400">
-                  Resolved plan key:{" "}
-                  <span className="text-zinc-200">
-                    {formatOptional(data?.capabilities?.resolved_plan_key)}
-                  </span>
-                </div>
+              <div className="space-y-4">
+                <InfoRow
+                  label="Resolved plan key"
+                  value={formatOptional(data?.capabilities?.resolved_plan_key)}
+                />
 
                 {capabilities.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
@@ -822,27 +954,25 @@ export default async function WorkspaceDetailPage({
 
             <DashboardCard
               title="Blocking state"
-              subtitle="État final de blocage."
+              subtitle="État final de blocage et raison principale."
             >
               <div className="space-y-3">
-                <div className="text-sm text-zinc-400">
-                  Blocked:{" "}
-                  <span className={blocked ? "text-red-300" : "text-emerald-300"}>
-                    {blocked ? "YES" : "NO"}
-                  </span>
-                </div>
+                <InfoRow
+                  label="Blocked"
+                  value={blocked ? "YES" : "NO"}
+                />
 
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300">
-                  {blocked ? humanizeSignal(data?.block_reason) : "Aucun blocage actif."}
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-300">
+                  {blocked
+                    ? humanizeSignal(data?.block_reason)
+                    : "Aucun blocage actif."}
                 </div>
               </div>
             </DashboardCard>
           </section>
 
           <section className="space-y-4">
-            <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
-              Usage history
-            </div>
+            <div className={sectionLabelClassName()}>Usage history</div>
 
             <WorkspaceLedgerFilters initialFilters={ledgerFilters} />
 
@@ -871,12 +1001,15 @@ export default async function WorkspaceDetailPage({
                     {ledgerItems.map((item) => (
                       <div
                         key={item.record_id}
-                        className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                        className="rounded-[22px] border border-white/10 bg-black/20 p-4"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-medium text-white">
-                              {item.name || item.capability || item.usage_id || item.record_id}
+                          <div className="min-w-0">
+                            <div className="break-words text-base font-semibold text-white">
+                              {item.name ||
+                                item.capability ||
+                                item.usage_id ||
+                                item.record_id}
                             </div>
                             <div className="mt-1 text-xs text-zinc-500">
                               {formatDate(item.created_at)}
@@ -887,9 +1020,13 @@ export default async function WorkspaceDetailPage({
                             <span className={badgeClassName(ledgerStatusVariant(item.status))}>
                               {humanizeSignal(item.status)}
                             </span>
-                            <span className={badgeClassName("default")}>
-                              {formatOptional(item.capability)}
-                            </span>
+
+                            {item.capability ? (
+                              <span className={badgeClassName("default")}>
+                                {item.capability}
+                              </span>
+                            ) : null}
+
                             {item.period_key ? (
                               <span className={badgeClassName("violet")}>
                                 {item.period_key}
@@ -898,71 +1035,42 @@ export default async function WorkspaceDetailPage({
                           </div>
                         </div>
 
-                        <div className="mt-4 grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-3">
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                              Runs delta
-                            </div>
-                            <div className="mt-1 text-zinc-200">
-                              {formatNumber(item.runs_delta)}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                              Tokens delta
-                            </div>
-                            <div className="mt-1 text-zinc-200">
-                              {formatNumber(item.tokens_delta)}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                              HTTP delta
-                            </div>
-                            <div className="mt-1 text-zinc-200">
-                              {formatNumber(item.http_calls_delta)}
-                            </div>
-                          </div>
+                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <MetaCard
+                            label="Runs delta"
+                            value={formatNumber(item.runs_delta)}
+                          />
+                          <MetaCard
+                            label="Tokens delta"
+                            value={formatNumber(item.tokens_delta)}
+                          />
+                          <MetaCard
+                            label="HTTP delta"
+                            value={formatNumber(item.http_calls_delta)}
+                          />
                         </div>
 
-                        <div className="mt-4 grid grid-cols-1 gap-4 border-t border-white/10 pt-4 text-sm text-zinc-400 md:grid-cols-2">
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                              Worker
-                            </div>
-                            <div className="mt-1 break-all text-zinc-200">
-                              {formatOptional(item.worker)}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                              Idempotency key
-                            </div>
-                            <div className="mt-1 break-all text-zinc-200">
-                              {formatOptional(item.idempotency_key)}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                              Run record
-                            </div>
-                            <div className="mt-1 break-all text-zinc-200">
-                              {formatOptional(item.run_record_id)}
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                              Run ID
-                            </div>
-                            <div className="mt-1 break-all text-zinc-200">
-                              {formatOptional(item.run_id)}
-                            </div>
-                          </div>
+                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <MetaCard
+                            label="Worker"
+                            value={formatOptional(item.worker)}
+                            breakAll
+                          />
+                          <MetaCard
+                            label="Idempotency key"
+                            value={formatOptional(item.idempotency_key)}
+                            breakAll
+                          />
+                          <MetaCard
+                            label="Run record"
+                            value={formatOptional(item.run_record_id)}
+                            breakAll
+                          />
+                          <MetaCard
+                            label="Run ID"
+                            value={formatOptional(item.run_id)}
+                            breakAll
+                          />
                         </div>
                       </div>
                     ))}
