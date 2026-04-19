@@ -28,23 +28,27 @@ export function AppShell({
       />
 
       <div className="relative flex min-h-screen">
-        <div className="hidden xl:block xl:w-[312px] xl:shrink-0">
-          <Sidebar
-            variant="desktop"
-            workspace={workspace}
-            entitlements={entitlements}
-          />
-        </div>
+        <aside className="hidden xl:block xl:w-[312px] xl:shrink-0">
+          <div className="sticky top-0 h-screen">
+            <Sidebar
+              variant="desktop"
+              workspace={workspace}
+              entitlements={entitlements}
+            />
+          </div>
+        </aside>
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-transparent">
           <MobileShell workspace={workspace} entitlements={entitlements} />
 
           <div className="hidden xl:block">
-            <Topbar workspace={workspace} />
+            <div className="sticky top-0 z-30">
+              <Topbar workspace={workspace} />
+            </div>
           </div>
 
-          <main className="flex-1 px-4 py-5 sm:px-5 lg:px-6 lg:py-6 xl:px-8">
-            {children}
+          <main className="min-w-0 flex-1 px-4 py-5 sm:px-5 lg:px-6 lg:py-6 xl:px-8">
+            <div className="min-w-0">{children}</div>
           </main>
         </div>
       </div>
