@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
+import { PageHeader } from "../../../../components/ui/page-header";
+import { DashboardCard } from "../../../../components/ui/dashboard-card";
+import {
+  DashboardStatusBadge,
+  type DashboardStatusKind,
+} from "@/components/dashboard/StatusBadge";
 import { fetchTools, type ToolItem } from "@/lib/api";
 
 type PageProps = {
@@ -76,16 +81,12 @@ const fallbackTools: ToolItem[] = [
   },
 ];
 
-function cardClassName(): string {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+function statCardClassName(): string {
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
-function softPanelClassName(): string {
-  return "rounded-[20px] border border-white/10 bg-black/20 p-4";
-}
-
-function emptyStateClassName(): string {
-  return "rounded-[24px] border border-dashed border-white/10 px-4 py-8 text-sm text-zinc-500";
+function metaLabelClassName(): string {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
 function actionLinkClassName(
@@ -93,7 +94,7 @@ function actionLinkClassName(
   disabled = false
 ): string {
   const base =
-    "inline-flex w-full items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
+    "inline-flex items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
 
   if (disabled) {
     return `${base} cursor-not-allowed border border-white/10 bg-white/[0.04] text-zinc-500 opacity-60`;
@@ -104,18 +105,42 @@ function actionLinkClassName(
   }
 
   if (variant === "soft") {
-    return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+    return `${base} border border-sky-500/20 bg-sky-500/12 text-sky-300 hover:bg-sky-500/18`;
   }
 
   return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
 }
 
-function sectionLabelClassName(): string {
-  return "text-xs uppercase tracking-[0.24em] text-zinc-500";
-}
+function toneChipClassName(
+  variant:
+    | "default"
+    | "success"
+    | "warning"
+    | "danger"
+    | "info"
+    | "violet" = "default"
+): string {
+  if (variant === "success") {
+    return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
+  }
 
-function metaLabelClassName(): string {
-  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+  if (variant === "warning") {
+    return "inline-flex rounded-full border border-amber-500/20 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300";
+  }
+
+  if (variant === "danger") {
+    return "inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-300";
+  }
+
+  if (variant === "info") {
+    return "inline-flex rounded-full border border-sky-500/20 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-300";
+  }
+
+  if (variant === "violet") {
+    return "inline-flex rounded-full border border-violet-500/20 bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300";
+  }
+
+  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
 function toText(value: unknown, fallback = ""): string {
@@ -174,6 +199,26 @@ function getToolStatus(tool: ToolItem): string {
   return toText(tool.status, "unknown");
 }
 
+function getToolStatusLabel(tool: ToolItem): string {
+  const status = getToolStatus(tool).toLowerCase();
+
+  if (status === "active") return "ACTIVE";
+  if (status === "paused") return "PAUSED";
+  if (status === "disabled") return "DISABLED";
+
+  return status ? status.toUpperCase() : "UNKNOWN";
+}
+
+function getToolStatusKind(tool: ToolItem): DashboardStatusKind {
+  const status = getToolStatus(tool).toLowerCase();
+
+  if (status === "active") return "success";
+  if (status === "paused") return "retry";
+  if (status === "disabled") return "failed";
+
+  return "unknown";
+}
+
 function getToolCategory(tool: ToolItem): string {
   const direct = toText(tool.category, "");
   if (direct) return direct;
@@ -203,64 +248,26 @@ function isToolEnabled(tool: ToolItem): boolean {
     return toBoolean(tool.enabled, false);
   }
 
-  const status = getToolStatus(tool).toLowerCase();
-  return !["disabled", "inactive"].includes(status);
+  return !["disabled", "inactive"].includes(getToolStatus(tool).toLowerCase());
 }
 
-function statusTone(status?: string): string {
-  const s = (status || "").trim().toLowerCase();
-
-  if (s === "active") {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  if (s === "paused") {
-    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-  }
-
-  if (s === "disabled") {
-    return "bg-red-500/15 text-red-300 border border-red-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-}
-
-function enabledTone(enabled: boolean): string {
-  if (enabled) {
-    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
-}
-
-function categoryTone(category: string): string {
+function getCategoryChipTone(category: string):
+  | "default"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  | "violet" {
   const c = category.trim().toLowerCase();
 
-  if (c === "incident") {
-    return "bg-rose-500/10 text-rose-200 border border-rose-500/20";
-  }
+  if (c === "incident") return "danger";
+  if (c === "decision") return "violet";
+  if (c === "recovery") return "warning";
+  if (c === "execution") return "info";
+  if (c === "orchestration") return "default";
+  if (c === "flow") return "success";
 
-  if (c === "decision") {
-    return "bg-violet-500/10 text-violet-200 border border-violet-500/20";
-  }
-
-  if (c === "recovery") {
-    return "bg-amber-500/10 text-amber-200 border border-amber-500/20";
-  }
-
-  if (c === "execution") {
-    return "bg-sky-500/10 text-sky-200 border border-sky-500/20";
-  }
-
-  if (c === "orchestration") {
-    return "bg-zinc-500/10 text-zinc-200 border border-zinc-500/20";
-  }
-
-  if (c === "flow") {
-    return "bg-emerald-500/10 text-emerald-200 border border-emerald-500/20";
-  }
-
-  return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+  return "default";
 }
 
 function mergeTools(primary: ToolItem[], fallback: ToolItem[]): ToolItem[] {
@@ -291,11 +298,7 @@ function findTool(registry: ToolItem[], rawId: string): ToolItem | null {
 
   return (
     registry.find((tool) => {
-      const candidates = [
-        getToolId(tool),
-        getToolKey(tool),
-        getToolName(tool),
-      ]
+      const candidates = [getToolId(tool), getToolKey(tool), getToolName(tool)]
         .map((value) => value.trim().toLowerCase())
         .filter(Boolean);
 
@@ -309,15 +312,15 @@ function getSuggestedSurface(tool: ToolItem): { href: string; label: string } | 
   const category = getToolCategory(tool).toLowerCase();
 
   if (id.includes("incident") || category === "incident") {
-    return { href: "/incidents", label: "Ouvrir les incidents" };
+    return { href: "/incidents", label: "Ouvrir Incidents" };
   }
 
   if (id.includes("event") || category === "orchestration") {
-    return { href: "/events", label: "Ouvrir les events" };
+    return { href: "/events", label: "Ouvrir Events" };
   }
 
   if (id.includes("retry")) {
-    return { href: "/commands", label: "Ouvrir les commands" };
+    return { href: "/commands", label: "Ouvrir Commands" };
   }
 
   if (id.includes("http")) {
@@ -325,25 +328,36 @@ function getSuggestedSurface(tool: ToolItem): { href: string; label: string } | 
   }
 
   if (id.includes("decision") || id.includes("flow") || category === "flow") {
-    return { href: "/flows", label: "Ouvrir les flows" };
+    return { href: "/flows", label: "Ouvrir Flows" };
   }
 
-  return { href: "/overview", label: "Retour au cockpit" };
+  return { href: "/", label: "Retour au cockpit" };
 }
 
-function MetaItem({
+function sortRelatedTools(items: ToolItem[], current: ToolItem): ToolItem[] {
+  const currentId = getToolId(current);
+
+  return [...items]
+    .filter((item) => getToolId(item) !== currentId)
+    .filter(
+      (item) =>
+        getToolCategory(item).toLowerCase() === getToolCategory(current).toLowerCase()
+    )
+    .sort((a, b) => getToolName(a).localeCompare(getToolName(b)))
+    .slice(0, 3);
+}
+
+function InfoRow({
   label,
   value,
-  breakAll = false,
 }: {
   label: string;
-  value: ReactNode;
-  breakAll?: boolean;
+  value: string | number;
 }) {
   return (
-    <div className={breakAll ? "break-all" : undefined}>
-      <div className={metaLabelClassName()}>{label}</div>
-      <div className="mt-1 text-zinc-200">{value}</div>
+    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+      <span className="text-sm text-zinc-400">{label}</span>
+      <span className="text-sm font-medium text-zinc-200">{value}</span>
     </div>
   );
 }
@@ -352,16 +366,38 @@ function StatCard({
   label,
   value,
   tone = "text-white",
+  helper,
 }: {
   label: string;
   value: string | number;
   tone?: string;
+  helper?: string;
 }) {
   return (
-    <div className={cardClassName()}>
+    <div className={statCardClassName()}>
       <div className="text-sm text-zinc-400">{label}</div>
       <div className={`mt-3 text-4xl font-semibold tracking-tight ${tone}`}>
         {value}
+      </div>
+      {helper ? <div className="mt-2 text-sm text-zinc-300">{helper}</div> : null}
+    </div>
+  );
+}
+
+function MetaCard({
+  label,
+  value,
+  breakAll = false,
+}: {
+  label: string;
+  value: string;
+  breakAll?: boolean;
+}) {
+  return (
+    <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className={`mt-2 text-zinc-200 ${breakAll ? "break-all" : ""}`}>
+        {value || "—"}
       </div>
     </div>
   );
@@ -400,73 +436,56 @@ export default async function ToolDetailPage({ params }: PageProps) {
   const toolKey = getToolKey(tool);
   const mode = getToolMode(tool);
   const suggestedSurface = getSuggestedSurface(tool);
-
-  const relatedTools = registry
-    .filter((item) => getToolId(item) !== getToolId(tool))
-    .filter((item) => getToolCategory(item).toLowerCase() === category.toLowerCase())
-    .slice(0, 3);
-
-  const activeCount = registry.filter((item) => getToolStatus(item).toLowerCase() === "active").length;
+  const relatedTools = sortRelatedTools(registry, tool);
+  const activeCount = registry.filter(
+    (item) => getToolStatus(item).toLowerCase() === "active"
+  ).length;
   const categoryCount = registry.filter(
     (item) => getToolCategory(item).toLowerCase() === category.toLowerCase()
   ).length;
 
   return (
     <div className="space-y-8">
-      <section className="space-y-4 border-b border-white/10 pb-6">
-        <div className="text-sm text-zinc-400">
-          <Link
-            href="/tools"
-            className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
-          >
-            Tools
-          </Link>{" "}
-          / {name}
-        </div>
+      <PageHeader
+        eyebrow="Capabilities"
+        title={name}
+        description={description}
+        badges={[
+          { label: category, tone: getCategoryChipTone(category) === "info" ? "info" : "muted" },
+          { label: mode, tone: "muted" },
+          { label: registrySource, tone: "muted" },
+        ]}
+        actions={
+          <>
+            <Link href="/tools" className={actionLinkClassName("soft")}>
+              Retour Tools
+            </Link>
 
-        <div className={sectionLabelClassName()}>Capabilities</div>
+            {suggestedSurface ? (
+              <Link
+                href={suggestedSurface.href}
+                className={actionLinkClassName("primary")}
+              >
+                {suggestedSurface.label}
+              </Link>
+            ) : null}
+          </>
+        }
+      />
 
-        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          {name}
-        </h1>
-
-        <p className="max-w-3xl text-base text-zinc-400 sm:text-lg">
-          {description}
-        </p>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${statusTone(
-              status
-            )}`}
-          >
-            {status.toUpperCase()}
-          </span>
-
-          <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${categoryTone(
-              category
-            )}`}
-          >
-            {category}
-          </span>
-
-          <span
-            className={`inline-flex rounded-full px-3 py-1.5 text-sm font-medium ${enabledTone(
-              enabled
-            )}`}
-          >
-            {enabled ? "ENABLED" : "DISABLED"}
-          </span>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Registry source" value={registrySource} />
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard
           label="Status"
-          value={status.toUpperCase()}
-          tone={status.toLowerCase() === "active" ? "text-emerald-300" : "text-zinc-300"}
+          value={getToolStatusLabel(tool)}
+          tone={
+            getToolStatus(tool).toLowerCase() === "active"
+              ? "text-emerald-300"
+              : getToolStatus(tool).toLowerCase() === "paused"
+                ? "text-amber-300"
+                : getToolStatus(tool).toLowerCase() === "disabled"
+                  ? "text-rose-300"
+                  : "text-zinc-300"
+          }
         />
         <StatCard
           label="Enabled"
@@ -474,95 +493,109 @@ export default async function ToolDetailPage({ params }: PageProps) {
           tone={enabled ? "text-emerald-300" : "text-zinc-300"}
         />
         <StatCard label="Same category" value={categoryCount} />
+        <StatCard
+          label="Registry active"
+          value={activeCount}
+          helper="Tools actifs visibles"
+        />
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className={`${cardClassName()} xl:col-span-2`}>
-          <div className="mb-5 text-lg font-medium text-white">Tool identity</div>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <DashboardCard
+          title="Tool identity"
+          subtitle="Lecture produit et technique de la capacité sélectionnée."
+          rightSlot={
+            <DashboardStatusBadge
+              kind={getToolStatusKind(tool)}
+              label={getToolStatusLabel(tool)}
+            />
+          }
+        >
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className={toneChipClassName(getCategoryChipTone(category))}>
+              {category}
+            </span>
+            <span className={toneChipClassName("default")}>{mode}</span>
+            <span className={toneChipClassName(enabled ? "success" : "danger")}>
+              {enabled ? "ENABLED" : "DISABLED"}
+            </span>
+          </div>
 
-          <div className="grid grid-cols-1 gap-4 text-sm text-zinc-400 md:grid-cols-2">
-            <MetaItem label="Name" value={name} />
-            <MetaItem label="Category" value={category} />
-            <MetaItem label="Status" value={status.toUpperCase()} />
-            <MetaItem label="Enabled" value={enabled ? "Yes" : "No"} />
-            <MetaItem label="Mode" value={mode} />
-            <MetaItem label="Registry source" value={registrySource} />
-            <MetaItem label="Tool key" value={toolKey} breakAll />
-            <MetaItem label="ID" value={getToolId(tool) || "—"} breakAll />
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <MetaCard label="Name" value={name} />
+            <MetaCard label="Category" value={category} />
+            <MetaCard label="Tool key" value={toolKey} breakAll />
+            <MetaCard label="ID" value={getToolId(tool) || "—"} breakAll />
+            <MetaCard label="Status" value={getToolStatusLabel(tool)} />
+            <MetaCard label="Mode" value={mode} />
+          </div>
 
-            <div className="md:col-span-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
-              <div className={metaLabelClassName()}>Description</div>
-              <div className="mt-1 text-zinc-200">{description}</div>
+          <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Description</div>
+            <div className="mt-2 text-sm leading-6 text-zinc-300">{description}</div>
+          </div>
+        </DashboardCard>
+
+        <DashboardCard
+          title="Registry status"
+          subtitle="Source et lecture cockpit du registre tools."
+        >
+          <div className="space-y-3">
+            <InfoRow label="Source" value={registrySource} />
+            <InfoRow label="Category" value={category} />
+            <InfoRow label="Active tools" value={activeCount} />
+            <InfoRow label="Same category" value={categoryCount} />
+          </div>
+
+          <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Quick read</div>
+            <div className="mt-2 text-sm leading-6 text-zinc-300">
+              {registrySource === "Dynamic registry"
+                ? "Le registre dynamique alimente déjà cette page détail."
+                : "Cette page détail fonctionne encore sur fallback statique tant que l’API ne fournit pas le registre complet."}
             </div>
           </div>
-        </div>
-
-        <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">Registry status</div>
-
-          <div className="space-y-4 text-sm">
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-zinc-400">Source</span>
-              <span className="text-zinc-200">{registrySource}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-zinc-400">Active tools</span>
-              <span className="text-zinc-200">{activeCount}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-zinc-400">Category</span>
-              <span className="text-zinc-200">{category}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-zinc-400">Availability</span>
-              <span className="text-zinc-200">{enabled ? "Enabled" : "Disabled"}</span>
-            </div>
-
-            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
-              <div className={metaLabelClassName()}>Next step</div>
-              <div className="mt-1 text-zinc-200">
-                {registrySource === "Dynamic registry"
-                  ? "Le registre dynamique alimente déjà cette page."
-                  : "Cette page fonctionne en fallback statique tant que l’API n’expose pas encore /tools."}
-              </div>
-            </div>
-          </div>
-        </div>
+        </DashboardCard>
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">Suggested cockpit surface</div>
-
+        <DashboardCard
+          title="Suggested cockpit surface"
+          subtitle="Surface la plus logique pour poursuivre la lecture opérationnelle."
+        >
           {suggestedSurface ? (
             <div className="space-y-4">
-              <div className={softPanelClassName()}>
+              <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
                 <div className={metaLabelClassName()}>Suggested route</div>
-                <div className="mt-1 text-zinc-200">{suggestedSurface.href}</div>
+                <div className="mt-2 text-zinc-200">{suggestedSurface.href}</div>
               </div>
 
-              <Link
-                href={suggestedSurface.href}
-                className={actionLinkClassName("primary")}
-              >
-                {suggestedSurface.label}
-              </Link>
+              <div className="flex flex-col gap-3">
+                <Link
+                  href={suggestedSurface.href}
+                  className={actionLinkClassName("primary")}
+                >
+                  {suggestedSurface.label}
+                </Link>
+
+                <Link href="/tools" className={actionLinkClassName("soft")}>
+                  Retour à la liste tools
+                </Link>
+              </div>
             </div>
           ) : (
-            <div className={emptyStateClassName()}>
+            <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-300">
               Aucune surface cockpit suggérée.
             </div>
           )}
-        </div>
+        </DashboardCard>
 
-        <div className={cardClassName()}>
-          <div className="mb-5 text-lg font-medium text-white">Related tools</div>
-
+        <DashboardCard
+          title="Related tools"
+          subtitle="Autres capacités de la même catégorie."
+        >
           {relatedTools.length === 0 ? (
-            <div className={emptyStateClassName()}>
+            <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-300">
               Aucun autre tool dans cette catégorie.
             </div>
           ) : (
@@ -573,56 +606,57 @@ export default async function ToolDetailPage({ params }: PageProps) {
                   href={`/tools/${encodeURIComponent(getToolId(item) || getToolKey(item))}`}
                   className="block rounded-[20px] border border-white/10 bg-black/20 p-4 transition hover:border-white/15 hover:bg-white/[0.04]"
                 >
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="break-words text-base font-semibold text-white">
                         {getToolName(item)}
                       </div>
-                      <div className="mt-1 text-sm text-zinc-400">
+                      <div className="mt-1 text-sm leading-6 text-zinc-400">
                         {getToolDescription(item)}
                       </div>
                     </div>
 
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(
-                        getToolStatus(item)
-                      )}`}
-                    >
-                      {getToolStatus(item).toUpperCase()}
-                    </span>
+                    <DashboardStatusBadge
+                      kind={getToolStatusKind(item)}
+                      label={getToolStatusLabel(item)}
+                      compact
+                    />
                   </div>
                 </Link>
               ))}
             </div>
           )}
-        </div>
+        </DashboardCard>
       </section>
 
-      <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Navigation</div>
-
-        <div className="flex flex-col gap-3">
-          <Link href="/tools" className={actionLinkClassName("soft")}>
-            Retour à la liste tools
-          </Link>
-
-          <Link href="/tools" className={actionLinkClassName("primary")}>
-            Voir tous les tools
-          </Link>
-
-          {suggestedSurface ? (
-            <Link
-              href={suggestedSurface.href}
-              className={actionLinkClassName("default")}
-            >
-              {suggestedSurface.label}
+      <section>
+        <DashboardCard
+          title="Navigation"
+          subtitle="Liens utiles sans sortir du cockpit."
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <Link href="/tools" className={actionLinkClassName("soft")}>
+              Retour Tools
             </Link>
-          ) : (
-            <span className={actionLinkClassName("default", true)}>
-              Surface cockpit indisponible
-            </span>
-          )}
-        </div>
+
+            <Link href="/tools" className={actionLinkClassName("default")}>
+              Voir tous les tools
+            </Link>
+
+            {suggestedSurface ? (
+              <Link
+                href={suggestedSurface.href}
+                className={actionLinkClassName("primary")}
+              >
+                {suggestedSurface.label}
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("default", true)}>
+                Surface indisponible
+              </span>
+            )}
+          </div>
+        </DashboardCard>
       </section>
     </div>
   );
