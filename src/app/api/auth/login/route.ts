@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { WorkspaceCategory } from "@/lib/workspaces/types";
 import {
   buildLoginCookieBundle,
   getAuthCookieWriteOptions,
@@ -40,7 +41,9 @@ function resolveRequestedWorkspaceId(value: unknown): string {
   return text(value);
 }
 
-function resolvePreferredCategory(value: unknown): string {
+function resolvePreferredCategory(
+  value: unknown
+): WorkspaceCategory | undefined {
   const normalized = text(value).toLowerCase();
 
   if (normalized === "personal") return "personal";
@@ -48,7 +51,7 @@ function resolvePreferredCategory(value: unknown): string {
   if (normalized === "company") return "company";
   if (normalized === "agency") return "agency";
 
-  return "";
+  return undefined;
 }
 
 function getConfiguredCredentials() {
@@ -139,7 +142,7 @@ export async function POST(request: Request) {
     const login = buildLoginCookieBundle({
       token,
       requestedWorkspaceId: requestedWorkspaceId || undefined,
-      preferredCategory: preferredCategory || undefined,
+      preferredCategory,
     });
 
     if (!login.cookiePayload || !login.session.isAuthenticated) {
