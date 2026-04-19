@@ -1,11 +1,18 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { resolveAuthSession, AUTH_LOGIN_ROUTE } from "@/lib/auth/resolve-auth-session";
+import {
+  AUTH_LOGIN_ROUTE,
+  resolveAuthSession,
+} from "@/lib/auth/resolve-auth-session";
 import {
   getDashboardRouteForWorkspaceCategory,
   getWorkspaceActivateRoute,
 } from "@/lib/workspaces/resolver";
 import type { WorkspaceSummary } from "@/lib/workspaces/types";
+
+function text(value?: string | null): string {
+  return String(value || "").trim();
+}
 
 function pageWrapClassName(): string {
   return "min-h-screen bg-black px-4 py-8 text-white sm:px-6 lg:px-8";
@@ -30,15 +37,18 @@ function metaLabelClassName(): string {
 function buttonClassName(
   variant: "default" | "primary" | "soft" = "default"
 ): string {
+  const base =
+    "inline-flex items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
+
   if (variant === "primary") {
-    return "inline-flex items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
+    return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
   }
 
   if (variant === "soft") {
-    return "inline-flex items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/12 px-4 py-3 text-sm font-medium text-sky-300 transition hover:bg-sky-500/18";
+    return `${base} border border-sky-500/20 bg-sky-500/12 text-sky-300 hover:bg-sky-500/18`;
   }
 
-  return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
+  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
 }
 
 function badgeClassName(
@@ -73,26 +83,28 @@ function badgeClassName(
   return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
-function categoryBadgeTone(category?: string): "info" | "violet" | "success" | "default" {
-  const normalized = String(category || "").trim().toLowerCase();
+function categoryTone(
+  category?: string
+): "default" | "success" | "warning" | "danger" | "info" | "violet" {
+  const normalized = text(category).toLowerCase();
 
   if (normalized === "agency") return "violet";
   if (normalized === "company") return "info";
   if (normalized === "freelance") return "success";
+
   return "default";
 }
 
-function roleBadgeTone(role?: string): "default" | "warning" | "success" | "info" {
-  const normalized = String(role || "").trim().toLowerCase();
+function roleTone(
+  role?: string
+): "default" | "success" | "warning" | "danger" | "info" | "violet" {
+  const normalized = text(role).toLowerCase();
 
   if (normalized === "owner") return "success";
   if (normalized === "admin") return "info";
   if (normalized === "viewer") return "warning";
-  return "default";
-}
 
-function normalizeText(value?: string | null): string {
-  return String(value || "").trim();
+  return "default";
 }
 
 function WorkspaceCard({
@@ -102,9 +114,9 @@ function WorkspaceCard({
   workspace: WorkspaceSummary;
   isActive: boolean;
 }) {
-  const openHref = getWorkspaceActivateRoute({
+  const activateHref = getWorkspaceActivateRoute({
     workspaceId: workspace.workspaceId,
-    nextPath: getDashboardRouteForWorkspaceCategory(workspace.category),
+    nextPath: "/workspace/home",
   });
 
   return (
@@ -113,40 +125,38 @@ function WorkspaceCard({
         <div className="space-y-4 border-b border-white/10 pb-4">
           <div className={sectionLabelClassName()}>Workspace</div>
 
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={badgeClassName(categoryBadgeTone(workspace.category))}>
-                {workspace.category.toUpperCase()}
-              </span>
+          <div className="flex flex-wrap gap-2">
+            <span className={badgeClassName(categoryTone(workspace.category))}>
+              {workspace.category.toUpperCase()}
+            </span>
 
-              <span className={badgeClassName("violet")}>
-                {workspace.plan.toUpperCase()}
-              </span>
+            <span className={badgeClassName("violet")}>
+              {workspace.plan.toUpperCase()}
+            </span>
 
-              <span className={badgeClassName(roleBadgeTone(workspace.membershipRole))}>
-                {workspace.membershipRole.toUpperCase()}
-              </span>
+            <span className={badgeClassName(roleTone(workspace.membershipRole))}>
+              {workspace.membershipRole.toUpperCase()}
+            </span>
 
-              <span
-                className={badgeClassName(
-                  workspace.status === "active" ? "success" : "warning"
-                )}
-              >
-                {workspace.status.toUpperCase()}
-              </span>
+            <span
+              className={badgeClassName(
+                workspace.status === "active" ? "success" : "warning"
+              )}
+            >
+              {workspace.status.toUpperCase()}
+            </span>
 
-              {isActive ? (
-                <span className={badgeClassName("info")}>ACTIVE SPACE</span>
-              ) : null}
+            {isActive ? (
+              <span className={badgeClassName("info")}>ACTIVE SPACE</span>
+            ) : null}
+          </div>
+
+          <div>
+            <div className="text-2xl font-semibold tracking-tight text-white">
+              {workspace.name}
             </div>
-
-            <div>
-              <h2 className="break-words text-2xl font-semibold tracking-tight text-white">
-                {workspace.name}
-              </h2>
-              <p className="mt-2 break-all text-sm text-zinc-400">
-                {workspace.workspaceId}
-              </p>
+            <div className="mt-2 break-all text-sm text-zinc-400">
+              {workspace.workspaceId}
             </div>
           </div>
         </div>
@@ -166,18 +176,22 @@ function WorkspaceCard({
         </div>
 
         <div className="mt-auto flex flex-col gap-3 sm:flex-row">
-          <Link href={openHref} className={buttonClassName("primary")}>
-            {isActive ? "Continuer dans cet espace" : "Entrer dans cet espace"}
-          </Link>
-
           {isActive ? (
-            <Link
-              href={getDashboardRouteForWorkspaceCategory(workspace.category)}
-              className={buttonClassName("soft")}
-            >
-              Ouvrir le cockpit
+            <Link href="/workspace/home" className={buttonClassName("primary")}>
+              Continuer
             </Link>
-          ) : null}
+          ) : (
+            <Link href={activateHref} className={buttonClassName("primary")}>
+              Activer cet espace
+            </Link>
+          )}
+
+          <Link
+            href={getDashboardRouteForWorkspaceCategory(workspace.category)}
+            className={buttonClassName("soft")}
+          >
+            Ouvrir la lane
+          </Link>
         </div>
       </div>
     </article>
@@ -191,7 +205,6 @@ export default async function WorkspaceSelectPage() {
     redirect(AUTH_LOGIN_ROUTE);
   }
 
-  const user = session.user;
   const memberships = session.context?.memberships ?? [];
   const activeWorkspaceId =
     session.context?.activeWorkspace?.workspaceId ||
@@ -199,16 +212,6 @@ export default async function WorkspaceSelectPage() {
 
   if (memberships.length === 0) {
     redirect("/workspace/create");
-  }
-
-  if (memberships.length === 1) {
-    const onlyWorkspace = memberships[0];
-    redirect(
-      getWorkspaceActivateRoute({
-        workspaceId: onlyWorkspace.workspaceId,
-        nextPath: getDashboardRouteForWorkspaceCategory(onlyWorkspace.category),
-      })
-    );
   }
 
   const sortedMemberships = [...memberships].sort((a, b) => {
@@ -220,52 +223,40 @@ export default async function WorkspaceSelectPage() {
   });
 
   return (
-    <div className={pageWrapClassName()}>
+    <main className={pageWrapClassName()}>
       <div className={shellClassName()}>
         <section className="space-y-4 border-b border-white/10 pb-6">
-          <div className={sectionLabelClassName()}>Workspace Resolver</div>
+          <div className={sectionLabelClassName()}>Workspace resolver</div>
 
           <div className="space-y-3">
             <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-              Choisir un espace BOSAI
+              Choisir un espace
             </h1>
 
             <p className="max-w-3xl text-base text-zinc-400 sm:text-lg">
-              Sélectionne l’espace à ouvrir. Le cockpit, les quotas et les surfaces
-              visibles dépendront du workspace actif.
+              Sélectionne l’espace actif. Ton hub et les surfaces visibles
+              dépendront du workspace activé.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {user?.displayName ? (
-              <span className={badgeClassName("default")}>{user.displayName}</span>
-            ) : null}
-
-            {user?.email ? (
-              <span className={badgeClassName("default")}>{user.email}</span>
-            ) : null}
-
-            {session.allowedWorkspaceIds.length > 0 ? (
-              <span className={badgeClassName("info")}>
-                {session.allowedWorkspaceIds.length} workspace(s)
+            {session.user?.displayName ? (
+              <span className={badgeClassName("default")}>
+                {session.user.displayName}
               </span>
             ) : null}
+
+            {session.user?.email ? (
+              <span className={badgeClassName("default")}>
+                {session.user.email}
+              </span>
+            ) : null}
+
+            <span className={badgeClassName("info")}>
+              {sortedMemberships.length} workspace(s)
+            </span>
           </div>
         </section>
-
-        {activeWorkspaceId ? (
-          <section className={cardClassName()}>
-            <div className="space-y-2">
-              <div className={sectionLabelClassName()}>Espace actuel</div>
-              <div className="text-lg font-medium text-white">
-                Un workspace actif est déjà défini.
-              </div>
-              <div className="break-all text-sm text-zinc-400">
-                {normalizeText(activeWorkspaceId)}
-              </div>
-            </div>
-          </section>
-        ) : null}
 
         <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
           {sortedMemberships.map((workspace) => (
@@ -277,6 +268,6 @@ export default async function WorkspaceSelectPage() {
           ))}
         </section>
       </div>
-    </div>
+    </main>
   );
 }
