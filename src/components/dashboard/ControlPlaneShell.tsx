@@ -88,26 +88,26 @@ export function dashboardButtonClassName(
 
 function sectionCountToneClass(tone: SectionCountTone): string {
   if (tone === "info") {
-    return "border-sky-500/20 bg-sky-500/10 text-sky-300";
+    return "border-sky-500/20 bg-sky-500/10 text-sky-300 shadow-[inset_0_1px_0_rgba(125,211,252,0.08)]";
   }
 
   if (tone === "success") {
-    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-300";
+    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-300 shadow-[inset_0_1px_0_rgba(110,231,183,0.08)]";
   }
 
   if (tone === "warning") {
-    return "border-amber-500/20 bg-amber-500/10 text-amber-300";
+    return "border-amber-500/20 bg-amber-500/10 text-amber-300 shadow-[inset_0_1px_0_rgba(253,230,138,0.08)]";
   }
 
   if (tone === "danger") {
-    return "border-rose-500/20 bg-rose-500/10 text-rose-300";
+    return "border-rose-500/20 bg-rose-500/10 text-rose-300 shadow-[inset_0_1px_0_rgba(253,164,175,0.08)]";
   }
 
   if (tone === "muted") {
-    return "border-zinc-700 bg-zinc-800 text-zinc-300";
+    return "border-zinc-700 bg-zinc-800 text-zinc-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]";
   }
 
-  return "border-white/10 bg-white/[0.04] text-zinc-300";
+  return "border-white/10 bg-white/[0.04] text-zinc-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]";
 }
 
 function legacyPanelToneClass(tone: LegacyPanelTone): string {
@@ -134,7 +134,7 @@ export function SectionCountPill({
   return (
     <span
       className={[
-        "inline-flex min-w-8 items-center justify-center rounded-full border px-3 py-1 text-xs font-medium",
+        "inline-flex min-w-9 items-center justify-center rounded-full border px-3 py-1.5 text-[11px] font-medium leading-none tracking-[0.12em]",
         sectionCountToneClass(tone),
         className,
       ]
@@ -161,18 +161,19 @@ export function EmptyStatePanel({
     <div
       className={[
         dashboardCardClassName(),
-        "border-dashed px-5 py-8 md:px-6",
+        "border-dashed bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.06),transparent_48%),linear-gradient(180deg,rgba(255,255,255,0.02)_0%,rgba(255,255,255,0.01)_100%)] px-5 py-8 md:px-6",
         className,
       ]
         .filter(Boolean)
         .join(" ")}
     >
-      <div className="space-y-2">
-        <div className="text-lg font-medium text-white">{title}</div>
+      <div className="space-y-3">
+        <div className={dashboardSectionLabelClassName()}>Empty state</div>
+        <div className="text-xl font-semibold tracking-tight text-white">{title}</div>
         <p className="max-w-2xl text-sm leading-6 text-zinc-400">{description}</p>
       </div>
 
-      {action ? <div className="mt-5">{action}</div> : null}
+      {action ? <div className="mt-6">{action}</div> : null}
     </div>
   );
 }
