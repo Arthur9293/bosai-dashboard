@@ -57,20 +57,6 @@ function normalizeText(value?: string | null): string {
   return String(value || "").trim();
 }
 
-function normalizeDedicatedSpace(
-  value?: string | DedicatedSpaceTarget | null
-): DedicatedSpaceTarget | null {
-  const normalized = normalizeText(String(value || "")).toLowerCase();
-
-  if (normalized === "personal") return "personal";
-  if (normalized === "freelance") return "freelance";
-  if (normalized === "company") return "company";
-  if (normalized === "agency") return "agency";
-  if (normalized === "enterprise") return "enterprise";
-
-  return null;
-}
-
 function parseCsvList(value?: string | null): string[] {
   return normalizeText(value)
     .split(",")
@@ -78,16 +64,28 @@ function parseCsvList(value?: string | null): string[] {
     .filter(Boolean);
 }
 
+function normalizeDedicatedSpace(
+  value?: string | DedicatedSpaceTarget | null
+): DedicatedSpaceTarget | null {
+  const normalized = normalizeText(String(value || "")).toLowerCase();
+
+  if (normalized === "personal_space") return "personal_space";
+  if (normalized === "freelance_space") return "freelance_space";
+  if (normalized === "company_space") return "company_space";
+  if (normalized === "agency_space") return "agency_space";
+
+  return null;
+}
+
 function mapDedicatedSpaceToRoute(
   target?: DedicatedSpaceTarget | string | null
 ): string {
   const normalized = normalizeDedicatedSpace(target);
 
-  if (normalized === "personal") return "/overview";
-  if (normalized === "freelance") return "/commands";
-  if (normalized === "company") return "/workspaces";
-  if (normalized === "agency") return "/flows";
-  if (normalized === "enterprise") return "/incidents";
+  if (normalized === "personal_space") return "/overview";
+  if (normalized === "freelance_space") return "/commands";
+  if (normalized === "company_space") return "/workspaces";
+  if (normalized === "agency_space") return "/flows";
 
   return DEFAULT_AUTHENTICATED_ROUTE;
 }
@@ -257,7 +255,8 @@ export function buildWorkspaceSwitchCookieBundle(args: {
     [MOCK_ACTIVE_WORKSPACE_COOKIE_NAME]: nextWorkspaceId,
     [MOCK_ALLOWED_WORKSPACES_COOKIE_NAME]:
       args.current.cookieSnapshot.allowedWorkspaceIdsRaw,
-    [MOCK_DEDICATED_SPACE_COOKIE_NAME]: args.current.cookieSnapshot.dedicatedSpace,
+    [MOCK_DEDICATED_SPACE_COOKIE_NAME]:
+      args.current.cookieSnapshot.dedicatedSpace,
   });
 
   const session = resolveAuthSessionFromSnapshot({
