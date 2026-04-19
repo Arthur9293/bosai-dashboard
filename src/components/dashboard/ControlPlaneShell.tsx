@@ -80,7 +80,7 @@ export function dashboardButtonClassName(
   }
 
   if (variant === "soft") {
-    return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+    return `${base} border border-white/10 bg-black/20 text-zinc-200 hover:bg-white/[0.06]`;
   }
 
   return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
@@ -112,11 +112,11 @@ function sectionCountToneClass(tone: SectionCountTone): string {
 
 function legacyPanelToneClass(tone: LegacyPanelTone): string {
   if (tone === "attention") {
-    return "border-amber-500/20 bg-amber-500/[0.06] shadow-[inset_0_1px_0_rgba(251,191,36,0.08)]";
+    return "border-amber-500/20 bg-[radial-gradient(120%_120%_at_100%_0%,rgba(245,158,11,0.08),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)] shadow-[inset_0_1px_0_rgba(251,191,36,0.08)]";
   }
 
   if (tone === "neutral") {
-    return "border-white/10 bg-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]";
+    return "border-white/10 bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.06),transparent_46%),linear-gradient(180deg,rgba(7,18,43,0.68)_0%,rgba(3,8,22,0.54)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]";
   }
 
   return "border-white/10 bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
@@ -169,7 +169,7 @@ export function EmptyStatePanel({
     >
       <div className="space-y-2">
         <div className="text-lg font-medium text-white">{title}</div>
-        <p className="max-w-2xl text-sm text-zinc-400">{description}</p>
+        <p className="max-w-2xl text-sm leading-6 text-zinc-400">{description}</p>
       </div>
 
       {action ? <div className="mt-5">{action}</div> : null}
@@ -298,7 +298,7 @@ export function DashboardMetricCard({
   helper?: string;
 }) {
   return (
-    <DashboardCard className="min-h-[150px]">
+    <DashboardCard className="min-h-[140px]">
       <div className="text-sm text-zinc-400">{label}</div>
       <div className={`mt-3 text-3xl font-semibold tracking-tight sm:text-4xl ${toneClass}`}>
         {value}
@@ -316,9 +316,9 @@ export function DashboardInlineMetric({
   value: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-2.5">
-      <span className="text-zinc-400">{label}</span>
-      <span className="font-medium text-white">{value}</span>
+    <div className="flex items-center justify-between gap-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+      <span className="text-sm text-zinc-400">{label}</span>
+      <span className="text-sm font-medium text-white">{value}</span>
     </div>
   );
 }
@@ -344,7 +344,7 @@ export function DashboardLaneCard({
           <div className="mt-2 break-words text-lg font-semibold tracking-tight text-white [overflow-wrap:anywhere]">
             {title}
           </div>
-          <div className="mt-2 text-sm text-zinc-400">{subtitle}</div>
+          <div className="mt-2 text-sm leading-6 text-zinc-400">{subtitle}</div>
         </div>
 
         {badge ? <div className="shrink-0">{badge}</div> : null}
@@ -573,7 +573,7 @@ export function SidePanelCard({
             {title ? <div className={dashboardSideTitleClassName()}>{title}</div> : null}
 
             {resolvedDescription ? (
-              <p className="text-sm text-zinc-400">{resolvedDescription}</p>
+              <p className="text-sm leading-6 text-zinc-400">{resolvedDescription}</p>
             ) : null}
           </div>
 
