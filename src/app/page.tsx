@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
-import { resolveAuthSession, AUTH_LOGIN_ROUTE } from "@/lib/auth/resolve-auth-session";
+import {
+  AUTH_LOGIN_ROUTE,
+  resolveAuthSession,
+} from "@/lib/auth/resolve-auth-session";
 import { resolveWorkspaceAccess } from "@/lib/workspaces/resolver";
-
-function safeText(value?: string | null): string {
-  return String(value || "").trim();
-}
 
 export default async function RootPage() {
   const session = await resolveAuthSession();
@@ -14,9 +13,9 @@ export default async function RootPage() {
   }
 
   const resolution = resolveWorkspaceAccess({
-    userId: safeText(session.user?.userId),
-    requestedWorkspaceId: safeText(session.cookieSnapshot.activeWorkspaceId),
-    nextPath: safeText(session.homeRoute) || "/overview",
+    userId: session.user?.userId ?? "",
+    requestedWorkspaceId: session.cookieSnapshot.activeWorkspaceId ?? "",
+    nextPath: "/workspace/home",
   });
 
   redirect(resolution.redirectTo);
