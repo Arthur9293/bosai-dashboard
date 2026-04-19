@@ -8,9 +8,9 @@ export default async function LoginPage() {
 
   if (session.isAuthenticated) {
     const resolution = resolveWorkspaceAccess({
-      userId: session.user?.userId,
-      requestedWorkspaceId: session.cookieSnapshot.activeWorkspaceId,
-      nextPath: session.homeRoute,
+      userId: session.user?.userId || "",
+      requestedWorkspaceId: session.cookieSnapshot.activeWorkspaceId || "",
+      nextPath: session.homeRoute || "/overview",
     });
 
     if (resolution.kind === "allow_dashboard") {
