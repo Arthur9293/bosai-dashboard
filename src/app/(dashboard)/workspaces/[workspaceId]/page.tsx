@@ -193,6 +193,17 @@ function formatDate(value?: string | null): string {
   }).format(date);
 }
 
+function formatBool(value?: boolean | null): string {
+  return value ? "YES" : "NO";
+}
+
+function compactText(value?: string | null, max = 280): string {
+  const text = String(value || "").trim();
+  if (!text) return "—";
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}…`;
+}
+
 function humanizePlan(workspace?: WorkspaceInfo): string {
   const raw =
     workspace?.plan_code ||
@@ -217,12 +228,16 @@ function humanizeSignal(code?: string): string {
     hard_limit_runs_month_reached: "Limite mensuelle runs atteinte",
     soft_limit_tokens_month_exceeded: "Seuil mensuel tokens dépassé",
     hard_limit_tokens_month_reached: "Limite mensuelle tokens atteinte",
-    soft_limit_http_calls_month_exceeded: "Seuil mensuel appels HTTP dépassé",
-    hard_limit_http_calls_month_reached: "Limite mensuelle appels HTTP atteinte",
+    soft_limit_http_calls_month_exceeded:
+      "Seuil mensuel appels HTTP dépassé",
+    hard_limit_http_calls_month_reached:
+      "Limite mensuelle appels HTTP atteinte",
     workspace_not_found: "Workspace introuvable",
     workspace_inactive: "Workspace inactif",
-    capability_not_allowed_for_plan: "Capability non autorisée pour ce plan",
-    snapshot_lookup_failed_but_record_listed: "Snapshot détaillé indisponible",
+    capability_not_allowed_for_plan:
+      "Capability non autorisée pour ce plan",
+    snapshot_lookup_failed_but_record_listed:
+      "Snapshot détaillé indisponible",
     success: "Succès",
     error: "Erreur",
     blocked: "Bloqué",
@@ -306,10 +321,12 @@ function meterVariant(
 function ledgerStatusVariant(
   status?: string
 ): "success" | "warning" | "danger" | "default" {
-  const normalized = String(status || "").toLowerCase();
+  const normalized = String(status || "").trim().toLowerCase();
 
   if (normalized === "success") return "success";
-  if (normalized === "blocked" || normalized === "unsupported") return "warning";
+  if (normalized === "blocked" || normalized === "unsupported") {
+    return "warning";
+  }
   if (normalized === "error") return "danger";
   return "default";
 }
@@ -346,6 +363,45 @@ function buildLedgerQuery(filters: LedgerFilters): string {
   if (filters.limit) params.set("limit", String(filters.limit));
 
   return params.toString();
+}
+
+function buildWorkspaceQuickRead(args: {
+  blocked: boolean;
+  warningsCount: number;
+  capabilitiesCount: number;
+  ledgerCount: number;
+  planKey?: string;
+  blockReason?: string;
+}): string {
+  if (args.blocked) {
+    return `Workspace bloqué. Raison principale : ${humanizeSignal(
+      args.blockReason
+    )}.`;
+  }
+
+  if (args.warningsCount > 0) {
+    return `Workspace exploitable avec ${args.warningsCount} warning(s) quota visibles, ${args.capabilitiesCount} capability(s) remontées et ${args.ledgerCount} entrée(s) ledger visibles.`;
+  }
+
+  return `Workspace globalement stable avec ${args.capabilitiesCount} capability(s) autorisées et ${args.ledgerCount} entrée(s) ledger visibles${
+    args.planKey ? ` sur le plan ${args.planKey}` : ""
+  }.`;
+}
+
+function buildLedgerQuickRead(filters: LedgerFilters, count: number): string {
+  const parts: string[] = [];
+
+  if (filters.status) parts.push(`statut ${filters.status}`);
+  if (filters.capability) parts.push(`capability ${filters.capability}`);
+  if (filters.period_key) parts.push(`période ${filters.period_key}`);
+
+  if (parts.length === 0) {
+    return `Lecture large du ledger avec ${count} résultat(s) visibles.`;
+  }
+
+  return `Lecture filtrée du ledger sur ${parts.join(
+    " · "
+  )}, avec ${count} résultat(s) visibles.`;
 }
 
 async function fetchWorkspaceDetail(
@@ -410,9 +466,10 @@ async function fetchWorkspaceUsageLedger(
   }
 
   const query = buildLedgerQuery(filters);
-  const urlBase = `${baseUrl.replace(/\/+$/, "")}/workspaces/${encodeURIComponent(
-    workspaceId
-  )}/usage-ledger`;
+  const urlBase = `${baseUrl.replace(
+    /\/+$/,
+    ""
+  )}/workspaces/${encodeURIComponent(workspaceId)}/usage-ledger`;
   const url = query ? `${urlBase}?${query}` : urlBase;
 
   try {
@@ -608,6 +665,20 @@ export default async function WorkspaceDetailPage({
         process.env.NEXT_PUBLIC_API_BASE_URL
     ) && Boolean(process.env.BOSAI_WORKSPACE_API_KEY);
 
+  const workspaceQuickRead = buildWorkspaceQuickRead({
+    blocked,
+    warningsCount: warnings.length,
+    capabilitiesCount: capabilities.length,
+    ledgerCount: ledger?.count ?? ledgerItems.length,
+    planKey: data?.capabilities?.resolved_plan_key,
+    blockReason: data?.block_reason,
+  });
+
+  const ledgerQuickRead = buildLedgerQuickRead(
+    ledgerFilters,
+    ledger?.count ?? ledgerItems.length
+  );
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -730,7 +801,9 @@ export default async function WorkspaceDetailPage({
                 <MetaCard label="Plan" value={humanizePlan(workspace)} />
                 <MetaCard
                   label="Plan code"
-                  value={formatOptional(workspace?.plan_code || workspace?.plan_label)}
+                  value={formatOptional(
+                    workspace?.plan_code || workspace?.plan_label
+                  )}
                 />
                 <MetaCard label="Status" value={formatOptional(workspace?.status)} />
                 <MetaCard
@@ -749,14 +822,8 @@ export default async function WorkspaceDetailPage({
               subtitle="Lecture rapide du tenant visible."
             >
               <div className="space-y-3">
-                <InfoRow
-                  label="Blocked"
-                  value={blocked ? "YES" : "NO"}
-                />
-                <InfoRow
-                  label="Warnings"
-                  value={warnings.length}
-                />
+                <InfoRow label="Blocked" value={formatBool(blocked)} />
+                <InfoRow label="Warnings" value={warnings.length} />
                 <InfoRow
                   label="Resolved plan"
                   value={formatOptional(data?.capabilities?.resolved_plan_key)}
@@ -770,11 +837,7 @@ export default async function WorkspaceDetailPage({
               <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
                 <div className={metaLabelClassName()}>Quick read</div>
                 <div className="mt-2 text-sm leading-6 text-zinc-300">
-                  {blocked
-                    ? `Le workspace est actuellement bloqué : ${humanizeSignal(
-                        data?.block_reason
-                      )}.`
-                    : "Le workspace paraît exploitable, avec lecture quota et historique disponibles."}
+                  {workspaceQuickRead}
                 </div>
               </div>
             </DashboardCard>
@@ -820,15 +883,15 @@ export default async function WorkspaceDetailPage({
               <div className="space-y-3">
                 <InfoRow
                   label="Runs"
-                  value={`${formatMaybeNumber(limits.soft_runs_month)} / ${formatMaybeNumber(
-                    limits.hard_runs_month
-                  )}`}
+                  value={`${formatMaybeNumber(
+                    limits.soft_runs_month
+                  )} / ${formatMaybeNumber(limits.hard_runs_month)}`}
                 />
                 <InfoRow
                   label="Tokens"
-                  value={`${formatMaybeNumber(limits.soft_tokens_month)} / ${formatMaybeNumber(
-                    limits.hard_tokens_month
-                  )}`}
+                  value={`${formatMaybeNumber(
+                    limits.soft_tokens_month
+                  )} / ${formatMaybeNumber(limits.hard_tokens_month)}`}
                 />
                 <InfoRow
                   label="HTTP"
@@ -861,6 +924,14 @@ export default async function WorkspaceDetailPage({
                   value={formatNumber(projected.estimated_tokens_delta)}
                 />
                 <InfoRow
+                  label="Requested tokens"
+                  value={formatNumber(estimation.requested_tokens)}
+                />
+                <InfoRow
+                  label="Text chars"
+                  value={formatNumber(estimation.text_chars)}
+                />
+                <InfoRow
                   label="Estimation source"
                   value={formatOptional(estimation.source)}
                 />
@@ -887,12 +958,11 @@ export default async function WorkspaceDetailPage({
                 />
                 <InfoRow
                   label="Reset applied"
-                  value={resetInfo.reset_applied ? "YES" : "NO"}
+                  value={formatBool(resetInfo.reset_applied)}
                 />
-                <InfoRow
-                  label="Fallback"
-                  value={resetInfo.fallback ? "YES" : "NO"}
-                />
+                <InfoRow label="Fallback" value={formatBool(resetInfo.fallback)} />
+                <InfoRow label="Exists" value={formatBool(resetInfo.exists)} />
+                <InfoRow label="OK" value={formatBool(resetInfo.ok)} />
               </div>
 
               {resetInfo.reason ? (
@@ -915,7 +985,7 @@ export default async function WorkspaceDetailPage({
                 {capabilities.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {capabilities.map((capability) => (
-                      <span key={capability} className={badgeClassName("default")}>
+                      <span key={capability} className={badgeClassName("info")}>
                         {capability}
                       </span>
                     ))}
@@ -957,10 +1027,7 @@ export default async function WorkspaceDetailPage({
               subtitle="État final de blocage et raison principale."
             >
               <div className="space-y-3">
-                <InfoRow
-                  label="Blocked"
-                  value={blocked ? "YES" : "NO"}
-                />
+                <InfoRow label="Blocked" value={formatBool(blocked)} />
 
                 <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-300">
                   {blocked
@@ -986,97 +1053,175 @@ export default async function WorkspaceDetailPage({
                 </div>
               </DashboardCard>
             ) : (
-              <DashboardCard
-                title="Usage history"
-                subtitle={`Dernières écritures réelles du ledger pour ce workspace. ${formatNumber(
-                  ledger?.count
-                )} résultat(s).`}
-              >
-                {ledgerItems.length === 0 ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300">
-                    Aucun événement de consommation trouvé.
+              <>
+                <DashboardCard
+                  title="Ledger posture"
+                  subtitle="Lecture rapide du ledger visible pour ce workspace."
+                >
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <InfoRow
+                      label="Visible items"
+                      value={ledger?.count ?? ledgerItems.length}
+                    />
+                    <InfoRow
+                      label="Status filter"
+                      value={ledgerFilters.status || "Tous"}
+                    />
+                    <InfoRow
+                      label="Capability filter"
+                      value={ledgerFilters.capability || "Toutes"}
+                    />
+                    <InfoRow
+                      label="Period filter"
+                      value={ledgerFilters.period_key || "Toutes"}
+                    />
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {ledgerItems.map((item) => (
-                      <div
-                        key={item.record_id}
-                        className="rounded-[22px] border border-white/10 bg-black/20 p-4"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="break-words text-base font-semibold text-white">
-                              {item.name ||
-                                item.capability ||
-                                item.usage_id ||
-                                item.record_id}
+
+                  <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+                    <div className={metaLabelClassName()}>Quick read</div>
+                    <div className="mt-2 text-sm leading-6 text-zinc-300">
+                      {ledgerQuickRead}
+                    </div>
+                  </div>
+                </DashboardCard>
+
+                <DashboardCard
+                  title="Usage history"
+                  subtitle={`Dernières écritures réelles du ledger pour ce workspace. ${formatNumber(
+                    ledger?.count
+                  )} résultat(s).`}
+                >
+                  {ledgerItems.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300">
+                      Aucun événement de consommation trouvé.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {ledgerItems.map((item) => (
+                        <div
+                          key={item.record_id}
+                          className="rounded-[22px] border border-white/10 bg-black/20 p-4"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="break-words text-base font-semibold text-white">
+                                {item.name ||
+                                  item.capability ||
+                                  item.usage_id ||
+                                  item.record_id}
+                              </div>
+                              <div className="mt-1 text-xs text-zinc-500">
+                                {formatDate(item.created_at)}
+                              </div>
                             </div>
-                            <div className="mt-1 text-xs text-zinc-500">
-                              {formatDate(item.created_at)}
+
+                            <div className="flex flex-wrap gap-2">
+                              <span
+                                className={badgeClassName(
+                                  ledgerStatusVariant(item.status)
+                                )}
+                              >
+                                {humanizeSignal(item.status)}
+                              </span>
+
+                              {item.capability ? (
+                                <span className={badgeClassName("default")}>
+                                  {item.capability}
+                                </span>
+                              ) : null}
+
+                              {item.period_key ? (
+                                <span className={badgeClassName("violet")}>
+                                  {item.period_key}
+                                </span>
+                              ) : null}
+
+                              {item.usage_type ? (
+                                <span className={badgeClassName("info")}>
+                                  {item.usage_type}
+                                </span>
+                              ) : null}
+
+                              {typeof item.billable === "boolean" ? (
+                                <span
+                                  className={badgeClassName(
+                                    item.billable ? "success" : "default"
+                                  )}
+                                >
+                                  {item.billable ? "BILLABLE" : "NON BILLABLE"}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
 
-                          <div className="flex flex-wrap gap-2">
-                            <span className={badgeClassName(ledgerStatusVariant(item.status))}>
-                              {humanizeSignal(item.status)}
-                            </span>
-
-                            {item.capability ? (
-                              <span className={badgeClassName("default")}>
-                                {item.capability}
-                              </span>
-                            ) : null}
-
-                            {item.period_key ? (
-                              <span className={badgeClassName("violet")}>
-                                {item.period_key}
-                              </span>
-                            ) : null}
+                          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <MetaCard
+                              label="Runs delta"
+                              value={formatNumber(item.runs_delta)}
+                            />
+                            <MetaCard
+                              label="Tokens delta"
+                              value={formatNumber(item.tokens_delta)}
+                            />
+                            <MetaCard
+                              label="HTTP delta"
+                              value={formatNumber(item.http_calls_delta)}
+                            />
                           </div>
-                        </div>
 
-                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                          <MetaCard
-                            label="Runs delta"
-                            value={formatNumber(item.runs_delta)}
-                          />
-                          <MetaCard
-                            label="Tokens delta"
-                            value={formatNumber(item.tokens_delta)}
-                          />
-                          <MetaCard
-                            label="HTTP delta"
-                            value={formatNumber(item.http_calls_delta)}
-                          />
-                        </div>
+                          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <MetaCard
+                              label="Worker"
+                              value={formatOptional(item.worker)}
+                              breakAll
+                            />
+                            <MetaCard
+                              label="Idempotency key"
+                              value={formatOptional(item.idempotency_key)}
+                              breakAll
+                            />
+                            <MetaCard
+                              label="Run record"
+                              value={formatOptional(item.run_record_id)}
+                              breakAll
+                            />
+                            <MetaCard
+                              label="Run ID"
+                              value={formatOptional(item.run_id)}
+                              breakAll
+                            />
+                          </div>
 
-                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <MetaCard
-                            label="Worker"
-                            value={formatOptional(item.worker)}
-                            breakAll
-                          />
-                          <MetaCard
-                            label="Idempotency key"
-                            value={formatOptional(item.idempotency_key)}
-                            breakAll
-                          />
-                          <MetaCard
-                            label="Run record"
-                            value={formatOptional(item.run_record_id)}
-                            breakAll
-                          />
-                          <MetaCard
-                            label="Run ID"
-                            value={formatOptional(item.run_id)}
-                            breakAll
-                          />
+                          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <MetaCard
+                              label="Quantity"
+                              value={`${formatMaybeNumber(item.quantity)} ${
+                                item.unit || ""
+                              }`.trim() || "—"}
+                            />
+                            <MetaCard
+                              label="Usage ID"
+                              value={formatOptional(item.usage_id)}
+                              breakAll
+                            />
+                          </div>
+
+                          {item.metadata_json ? (
+                            <div className="mt-4 rounded-[18px] border border-white/10 bg-black/30 px-4 py-4">
+                              <div className={metaLabelClassName()}>
+                                Metadata preview
+                              </div>
+                              <div className="mt-2 break-words text-sm leading-6 text-zinc-300">
+                                {compactText(item.metadata_json)}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </DashboardCard>
+                      ))}
+                    </div>
+                  )}
+                </DashboardCard>
+              </>
             )}
           </section>
         </>
