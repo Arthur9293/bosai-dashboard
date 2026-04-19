@@ -1,12 +1,14 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   AUTH_LOGIN_ROUTE,
   resolveAuthSession,
 } from "@/lib/auth/resolve-auth-session";
-import {
-  getDashboardRouteForWorkspaceCategory,
-  resolveWorkspaceAccess,
-} from "@/lib/workspaces/resolver";
+import { resolveWorkspaceAccess } from "@/lib/workspaces/resolver";
+
+function text(value?: string | null): string {
+  return String(value || "").trim();
+}
 
 function pageWrapClassName(): string {
   return "min-h-screen bg-black px-4 py-8 text-white sm:px-6 lg:px-8";
@@ -20,12 +22,16 @@ function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
+function compactCardClassName(): string {
+  return "rounded-[24px] border border-white/10 bg-black/20 p-4 md:p-5";
+}
+
 function sectionLabelClassName(): string {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
 
 function badgeClassName(
-  variant: "default" | "success" | "info" | "violet" = "default"
+  variant: "default" | "success" | "info" | "warning" | "violet" = "default"
 ): string {
   if (variant === "success") {
     return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
@@ -35,6 +41,10 @@ function badgeClassName(
     return "inline-flex rounded-full border border-sky-500/20 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-300";
   }
 
+  if (variant === "warning") {
+    return "inline-flex rounded-full border border-amber-500/20 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300";
+  }
+
   if (variant === "violet") {
     return "inline-flex rounded-full border border-violet-500/20 bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300";
   }
@@ -42,8 +52,21 @@ function badgeClassName(
   return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
-function metricCardClassName(): string {
-  return "rounded-[24px] border border-white/10 bg-black/20 p-4 md:p-5";
+function buttonClassName(
+  variant: "default" | "primary" | "soft" = "default"
+): string {
+  const base =
+    "inline-flex items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
+
+  if (variant === "primary") {
+    return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
+  }
+
+  if (variant === "soft") {
+    return `${base} border border-sky-500/20 bg-sky-500/12 text-sky-300 hover:bg-sky-500/18`;
+  }
+
+  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
 }
 
 function formatNumber(value?: number | null): string {
@@ -60,6 +83,92 @@ function hardLimitText(value?: number | null): string {
   }
 
   return new Intl.NumberFormat("fr-FR").format(value);
+}
+
+function categoryTone(
+  category?: string | null
+): "default" | "success" | "info" | "warning" | "violet" {
+  const normalized = text(category).toLowerCase();
+
+  if (normalized === "agency") return "violet";
+  if (normalized === "company") return "info";
+  if (normalized === "freelance") return "success";
+  if (normalized === "personal") return "default";
+
+  return "default";
+}
+
+function getPrimaryAction(category?: string | null): {
+  href: string;
+  label: string;
+} {
+  const normalized = text(category).toLowerCase();
+
+  if (normalized === "agency") {
+    return { href: "/flows", label: "Ouvrir Flows" };
+  }
+
+  if (normalized === "freelance") {
+    return { href: "/commands", label: "Ouvrir Commands" };
+  }
+
+  if (normalized === "company") {
+    return { href: "/overview", label: "Ouvrir Overview" };
+  }
+
+  return { href: "/overview", label: "Ouvrir Overview" };
+}
+
+function getWorkspaceDescription(category?: string | null): string {
+  const normalized = text(category).toLowerCase();
+
+  if (normalized === "agency") {
+    return "Hub du workspace actif. Cette vue sert de point d’entrée avant d’ouvrir les flows et les surfaces d’exploitation.";
+  }
+
+  if (normalized === "freelance") {
+    return "Hub du workspace actif. Cette vue centralise les informations utiles avant d’ouvrir les commands et les surfaces de travail.";
+  }
+
+  if (normalized === "company") {
+    return "Hub du workspace actif. Cette vue centralise la lecture métier, les quotas et les accès utiles avant d’ouvrir les surfaces opérationnelles.";
+  }
+
+  return "Hub du workspace actif. Cette vue sert de point d’entrée simple pour lire l’état du workspace et ouvrir les surfaces autorisées.";
+}
+
+function MetricCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+}) {
+  return (
+    <div className={compactCardClassName()}>
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
+        {value}
+      </div>
+      <div className="mt-2 text-sm text-zinc-500">{hint}</div>
+    </div>
+  );
+}
+
+function CapabilityBadge({
+  label,
+  enabled,
+}: {
+  label: string;
+  enabled: boolean;
+}) {
+  return (
+    <span className={badgeClassName(enabled ? "success" : "default")}>
+      {label}: {enabled ? "ON" : "OFF"}
+    </span>
+  );
 }
 
 export default async function WorkspaceIndexPage() {
@@ -85,18 +194,15 @@ export default async function WorkspaceIndexPage() {
     redirect("/workspace/select");
   }
 
-  if (activeWorkspace.category !== "company") {
-    redirect(getDashboardRouteForWorkspaceCategory(activeWorkspace.category));
-  }
-
   const quota = resolution.context?.quota || null;
   const entitlements = resolution.context?.entitlements || null;
+  const primaryAction = getPrimaryAction(activeWorkspace.category);
 
   return (
     <main className={pageWrapClassName()}>
       <div className={shellClassName()}>
         <section className="space-y-4 border-b border-white/10 pb-6">
-          <div className={sectionLabelClassName()}>Workspace Company Hub</div>
+          <div className={sectionLabelClassName()}>Workspace Hub</div>
 
           <div className="space-y-3">
             <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
@@ -104,14 +210,12 @@ export default async function WorkspaceIndexPage() {
             </h1>
 
             <p className="max-w-4xl text-base text-zinc-400 sm:text-lg">
-              Hub company du workspace actif. Cette vue centralise la lecture
-              métier, les quotas et les accès utiles avant d’ouvrir les surfaces
-              opérationnelles.
+              {getWorkspaceDescription(activeWorkspace.category)}
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <span className={badgeClassName("info")}>
+            <span className={badgeClassName(categoryTone(activeWorkspace.category))}>
               {activeWorkspace.category.toUpperCase()}
             </span>
 
@@ -121,6 +225,10 @@ export default async function WorkspaceIndexPage() {
 
             <span className={badgeClassName("success")}>
               {activeWorkspace.status.toUpperCase()}
+            </span>
+
+            <span className={badgeClassName("default")}>
+              {activeWorkspace.plan.toUpperCase()}
             </span>
 
             {session.user?.displayName ? (
@@ -146,28 +254,28 @@ export default async function WorkspaceIndexPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className={metricCardClassName()}>
+            <div className={compactCardClassName()}>
               <div className={sectionLabelClassName()}>Workspace ID</div>
               <div className="mt-3 break-all text-2xl font-semibold text-white">
                 {activeWorkspace.workspaceId}
               </div>
             </div>
 
-            <div className={metricCardClassName()}>
+            <div className={compactCardClassName()}>
               <div className={sectionLabelClassName()}>Slug</div>
               <div className="mt-3 break-all text-2xl font-semibold text-white">
                 {activeWorkspace.slug}
               </div>
             </div>
 
-            <div className={metricCardClassName()}>
+            <div className={compactCardClassName()}>
               <div className={sectionLabelClassName()}>Plan</div>
               <div className="mt-3 text-2xl font-semibold text-white">
                 {activeWorkspace.plan}
               </div>
             </div>
 
-            <div className={metricCardClassName()}>
+            <div className={compactCardClassName()}>
               <div className={sectionLabelClassName()}>Memberships</div>
               <div className="mt-3 text-2xl font-semibold text-white">
                 {resolution.memberships.length}
@@ -184,36 +292,24 @@ export default async function WorkspaceIndexPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4">
-            <div className={metricCardClassName()}>
-              <div className="text-sm text-zinc-400">Runs</div>
-              <div className="mt-3 text-5xl font-semibold tracking-tight text-white">
-                {formatNumber(quota?.runsUsed)}
-              </div>
-              <div className="mt-2 text-sm text-zinc-500">
-                Limite dure : {hardLimitText(quota?.runsHardLimit)}
-              </div>
-            </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <MetricCard
+              label="Runs"
+              value={formatNumber(quota?.runsUsed)}
+              hint={`Limite dure : ${hardLimitText(quota?.runsHardLimit)}`}
+            />
 
-            <div className={metricCardClassName()}>
-              <div className="text-sm text-zinc-400">Tokens</div>
-              <div className="mt-3 text-5xl font-semibold tracking-tight text-white">
-                {formatNumber(quota?.tokensUsed)}
-              </div>
-              <div className="mt-2 text-sm text-zinc-500">
-                Limite dure : {hardLimitText(quota?.tokensHardLimit)}
-              </div>
-            </div>
+            <MetricCard
+              label="Tokens"
+              value={formatNumber(quota?.tokensUsed)}
+              hint={`Limite dure : ${hardLimitText(quota?.tokensHardLimit)}`}
+            />
 
-            <div className={metricCardClassName()}>
-              <div className="text-sm text-zinc-400">HTTP Calls</div>
-              <div className="mt-3 text-5xl font-semibold tracking-tight text-white">
-                {formatNumber(quota?.httpCallsUsed)}
-              </div>
-              <div className="mt-2 text-sm text-zinc-500">
-                Limite dure : {hardLimitText(quota?.httpCallsHardLimit)}
-              </div>
-            </div>
+            <MetricCard
+              label="HTTP Calls"
+              value={formatNumber(quota?.httpCallsUsed)}
+              hint={`Limite dure : ${hardLimitText(quota?.httpCallsHardLimit)}`}
+            />
           </div>
         </section>
 
@@ -226,87 +322,85 @@ export default async function WorkspaceIndexPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <span className={badgeClassName(entitlements?.canAccessDashboard ? "success" : "default")}>
-              Dashboard: {entitlements?.canAccessDashboard ? "ON" : "OFF"}
-            </span>
-            <span className={badgeClassName(entitlements?.canRunHttp ? "success" : "default")}>
-              HTTP: {entitlements?.canRunHttp ? "ON" : "OFF"}
-            </span>
-            <span className={badgeClassName(entitlements?.canViewIncidents ? "success" : "default")}>
-              Incidents: {entitlements?.canViewIncidents ? "ON" : "OFF"}
-            </span>
-            <span className={badgeClassName(entitlements?.canManagePolicies ? "success" : "default")}>
-              Policies: {entitlements?.canManagePolicies ? "ON" : "OFF"}
-            </span>
-            <span className={badgeClassName(entitlements?.canManageTools ? "success" : "default")}>
-              Tools: {entitlements?.canManageTools ? "ON" : "OFF"}
-            </span>
-            <span className={badgeClassName(entitlements?.canManageWorkspaces ? "success" : "default")}>
-              Workspaces: {entitlements?.canManageWorkspaces ? "ON" : "OFF"}
-            </span>
-            <span className={badgeClassName(entitlements?.canManageBilling ? "success" : "default")}>
-              Billing: {entitlements?.canManageBilling ? "ON" : "OFF"}
-            </span>
+            <CapabilityBadge
+              label="Dashboard"
+              enabled={Boolean(entitlements?.canAccessDashboard)}
+            />
+            <CapabilityBadge
+              label="HTTP"
+              enabled={Boolean(entitlements?.canRunHttp)}
+            />
+            <CapabilityBadge
+              label="Incidents"
+              enabled={Boolean(entitlements?.canViewIncidents)}
+            />
+            <CapabilityBadge
+              label="Policies"
+              enabled={Boolean(entitlements?.canManagePolicies)}
+            />
+            <CapabilityBadge
+              label="Tools"
+              enabled={Boolean(entitlements?.canManageTools)}
+            />
+            <CapabilityBadge
+              label="Workspaces"
+              enabled={Boolean(entitlements?.canManageWorkspaces)}
+            />
+            <CapabilityBadge
+              label="Billing"
+              enabled={Boolean(entitlements?.canManageBilling)}
+            />
           </div>
         </section>
 
         <section className={cardClassName()}>
           <div className="mb-5">
-            <div className={sectionLabelClassName()}>Company Surfaces</div>
+            <div className={sectionLabelClassName()}>Workspace Surfaces</div>
             <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
               Navigation rapide
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4">
-            <a
-              href="/workspaces"
-              className="inline-flex items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20"
-            >
-              Ouvrir Workspaces
-            </a>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <Link href={primaryAction.href} className={buttonClassName("primary")}>
+              {primaryAction.label}
+            </Link>
 
-            <a
-              href="/overview"
-              className="inline-flex items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/12 px-4 py-3 text-sm font-medium text-sky-300 transition hover:bg-sky-500/18"
-            >
+            <Link href="/workspace/select" className={buttonClassName("soft")}>
+              Changer d’espace
+            </Link>
+
+            <Link href="/overview" className={buttonClassName()}>
               Ouvrir Overview
-            </a>
+            </Link>
 
-            <a
-              href="/settings"
-              className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
-            >
+            <Link href="/settings" className={buttonClassName()}>
               Ouvrir Settings
-            </a>
+            </Link>
 
-            <a
-              href="/commands"
-              className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
-            >
-              Ouvrir Commands
-            </a>
-
-            <a
-              href="/events"
-              className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
-            >
+            <Link href="/events" className={buttonClassName()}>
               Ouvrir Events
-            </a>
+            </Link>
 
-            <a
-              href="/incidents"
-              className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
-            >
-              Ouvrir Incidents
-            </a>
+            <Link href="/commands" className={buttonClassName()}>
+              Ouvrir Commands
+            </Link>
 
-            <a
-              href="/policies"
-              className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
-            >
-              Ouvrir Policies
-            </a>
+            <Link href="/flows" className={buttonClassName()}>
+              Ouvrir Flows
+            </Link>
+
+            {entitlements?.canViewIncidents ? (
+              <Link href="/incidents" className={buttonClassName()}>
+                Ouvrir Incidents
+              </Link>
+            ) : null}
+
+            {entitlements?.canManagePolicies ? (
+              <Link href="/policies" className={buttonClassName()}>
+                Ouvrir Policies
+              </Link>
+            ) : null}
           </div>
         </section>
       </div>
