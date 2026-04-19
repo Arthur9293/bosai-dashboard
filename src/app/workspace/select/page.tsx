@@ -1,18 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  AUTH_LOGIN_ROUTE,
-  resolveAuthSession,
-} from "@/lib/auth/resolve-auth-session";
+import { resolveAuthSession, AUTH_LOGIN_ROUTE } from "@/lib/auth/resolve-auth-session";
 import {
   getDashboardRouteForWorkspaceCategory,
   getWorkspaceActivateRoute,
 } from "@/lib/workspaces/resolver";
 import type { WorkspaceSummary } from "@/lib/workspaces/types";
-
-function text(value?: string | null): string {
-  return String(value || "").trim();
-}
 
 function pageWrapClassName(): string {
   return "min-h-screen bg-black px-4 py-8 text-white sm:px-6 lg:px-8";
@@ -37,18 +30,15 @@ function metaLabelClassName(): string {
 function buttonClassName(
   variant: "default" | "primary" | "soft" = "default"
 ): string {
-  const base =
-    "inline-flex items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
-
   if (variant === "primary") {
-    return `${base} border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20`;
+    return "inline-flex items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
   }
 
   if (variant === "soft") {
-    return `${base} border border-sky-500/20 bg-sky-500/12 text-sky-300 hover:bg-sky-500/18`;
+    return "inline-flex items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/12 px-4 py-3 text-sm font-medium text-sky-300 transition hover:bg-sky-500/18";
   }
 
-  return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
+  return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
 function badgeClassName(
@@ -83,28 +73,34 @@ function badgeClassName(
   return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
-function categoryTone(
-  category?: string
-): "default" | "success" | "warning" | "danger" | "info" | "violet" {
-  const normalized = text(category).toLowerCase();
+function categoryBadgeTone(category?: string): "info" | "violet" | "success" | "default" {
+  const normalized = String(category || "").trim().toLowerCase();
 
   if (normalized === "agency") return "violet";
   if (normalized === "company") return "info";
   if (normalized === "freelance") return "success";
-
   return "default";
 }
 
-function roleTone(
-  role?: string
-): "default" | "success" | "warning" | "danger" | "info" | "violet" {
-  const normalized = text(role).toLowerCase();
+function roleBadgeTone(role?: string): "default" | "warning" | "success" | "info" {
+  const normalized = String(role || "").trim().toLowerCase();
 
   if (normalized === "owner") return "success";
   if (normalized === "admin") return "info";
   if (normalized === "viewer") return "warning";
-
   return "default";
+}
+
+function normalizeText(value?: string | null): string {
+  return String(value || "").trim();
+}
+
+function shouldShowPlanBadge(workspace: WorkspaceSummary): boolean {
+  const category = normalizeText(workspace.category).toLowerCase();
+  const plan = normalizeText(workspace.plan).toLowerCase();
+
+  if (!plan) return false;
+  return category !== plan;
 }
 
 function WorkspaceCard({
@@ -114,9 +110,9 @@ function WorkspaceCard({
   workspace: WorkspaceSummary;
   isActive: boolean;
 }) {
-  const activateHref = getWorkspaceActivateRoute({
+  const openHref = getWorkspaceActivateRoute({
     workspaceId: workspace.workspaceId,
-    nextPath: "/workspace/home",
+    nextPath: getDashboardRouteForWorkspaceCategory(workspace.category),
   });
 
   return (
@@ -125,38 +121,42 @@ function WorkspaceCard({
         <div className="space-y-4 border-b border-white/10 pb-4">
           <div className={sectionLabelClassName()}>Workspace</div>
 
-          <div className="flex flex-wrap gap-2">
-            <span className={badgeClassName(categoryTone(workspace.category))}>
-              {workspace.category.toUpperCase()}
-            </span>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={badgeClassName(categoryBadgeTone(workspace.category))}>
+                {workspace.category.toUpperCase()}
+              </span>
 
-            <span className={badgeClassName("violet")}>
-              {workspace.plan.toUpperCase()}
-            </span>
+              {shouldShowPlanBadge(workspace) ? (
+                <span className={badgeClassName("violet")}>
+                  {workspace.plan.toUpperCase()}
+                </span>
+              ) : null}
 
-            <span className={badgeClassName(roleTone(workspace.membershipRole))}>
-              {workspace.membershipRole.toUpperCase()}
-            </span>
+              <span className={badgeClassName(roleBadgeTone(workspace.membershipRole))}>
+                {workspace.membershipRole.toUpperCase()}
+              </span>
 
-            <span
-              className={badgeClassName(
-                workspace.status === "active" ? "success" : "warning"
-              )}
-            >
-              {workspace.status.toUpperCase()}
-            </span>
+              <span
+                className={badgeClassName(
+                  workspace.status === "active" ? "success" : "warning"
+                )}
+              >
+                {workspace.status.toUpperCase()}
+              </span>
 
-            {isActive ? (
-              <span className={badgeClassName("info")}>ACTIVE SPACE</span>
-            ) : null}
-          </div>
-
-          <div>
-            <div className="text-2xl font-semibold tracking-tight text-white">
-              {workspace.name}
+              {isActive ? (
+                <span className={badgeClassName("info")}>ACTIVE SPACE</span>
+              ) : null}
             </div>
-            <div className="mt-2 break-all text-sm text-zinc-400">
-              {workspace.workspaceId}
+
+            <div>
+              <h2 className="break-words text-2xl font-semibold tracking-tight text-white">
+                {workspace.name}
+              </h2>
+              <p className="mt-2 break-all text-sm text-zinc-400">
+                {workspace.workspaceId}
+              </p>
             </div>
           </div>
         </div>
@@ -176,15 +176,9 @@ function WorkspaceCard({
         </div>
 
         <div className="mt-auto flex flex-col gap-3 sm:flex-row">
-          {isActive ? (
-            <Link href="/workspace/home" className={buttonClassName("primary")}>
-              Continuer
-            </Link>
-          ) : (
-            <Link href={activateHref} className={buttonClassName("primary")}>
-              Activer cet espace
-            </Link>
-          )}
+          <Link href={openHref} className={buttonClassName("primary")}>
+            {isActive ? "Continuer" : "Activer cet espace"}
+          </Link>
 
           <Link
             href={getDashboardRouteForWorkspaceCategory(workspace.category)}
@@ -205,6 +199,7 @@ export default async function WorkspaceSelectPage() {
     redirect(AUTH_LOGIN_ROUTE);
   }
 
+  const user = session.user;
   const memberships = session.context?.memberships ?? [];
   const activeWorkspaceId =
     session.context?.activeWorkspace?.workspaceId ||
@@ -212,6 +207,16 @@ export default async function WorkspaceSelectPage() {
 
   if (memberships.length === 0) {
     redirect("/workspace/create");
+  }
+
+  if (memberships.length === 1) {
+    const onlyWorkspace = memberships[0];
+    redirect(
+      getWorkspaceActivateRoute({
+        workspaceId: onlyWorkspace.workspaceId,
+        nextPath: getDashboardRouteForWorkspaceCategory(onlyWorkspace.category),
+      })
+    );
   }
 
   const sortedMemberships = [...memberships].sort((a, b) => {
@@ -223,10 +228,10 @@ export default async function WorkspaceSelectPage() {
   });
 
   return (
-    <main className={pageWrapClassName()}>
+    <div className={pageWrapClassName()}>
       <div className={shellClassName()}>
         <section className="space-y-4 border-b border-white/10 pb-6">
-          <div className={sectionLabelClassName()}>Workspace resolver</div>
+          <div className={sectionLabelClassName()}>Workspace Resolver</div>
 
           <div className="space-y-3">
             <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
@@ -240,21 +245,19 @@ export default async function WorkspaceSelectPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {session.user?.displayName ? (
-              <span className={badgeClassName("default")}>
-                {session.user.displayName}
-              </span>
+            {user?.displayName ? (
+              <span className={badgeClassName("default")}>{user.displayName}</span>
             ) : null}
 
-            {session.user?.email ? (
-              <span className={badgeClassName("default")}>
-                {session.user.email}
-              </span>
+            {user?.email ? (
+              <span className={badgeClassName("default")}>{user.email}</span>
             ) : null}
 
-            <span className={badgeClassName("info")}>
-              {sortedMemberships.length} workspace(s)
-            </span>
+            {session.allowedWorkspaceIds.length > 0 ? (
+              <span className={badgeClassName("info")}>
+                {session.allowedWorkspaceIds.length} workspace(s)
+              </span>
+            ) : null}
           </div>
         </section>
 
@@ -268,6 +271,6 @@ export default async function WorkspaceSelectPage() {
           ))}
         </section>
       </div>
-    </main>
+    </div>
   );
 }
