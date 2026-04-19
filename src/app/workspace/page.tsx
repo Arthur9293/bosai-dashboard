@@ -6,6 +6,15 @@ import {
 } from "@/lib/auth/resolve-auth-session";
 import { resolveWorkspaceAccess } from "@/lib/workspaces/resolver";
 
+type ButtonVariant = "default" | "primary" | "soft";
+type BadgeVariant = "default" | "success" | "info" | "warning" | "violet";
+
+type SurfaceLink = {
+  href: string;
+  label: string;
+  variant?: ButtonVariant;
+};
+
 function text(value?: string | null): string {
   return String(value || "").trim();
 }
@@ -30,9 +39,7 @@ function sectionLabelClassName(): string {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
 
-function badgeClassName(
-  variant: "default" | "success" | "info" | "warning" | "violet" = "default"
-): string {
+function badgeClassName(variant: BadgeVariant = "default"): string {
   if (variant === "success") {
     return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
   }
@@ -52,9 +59,7 @@ function badgeClassName(
   return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
-function buttonClassName(
-  variant: "default" | "primary" | "soft" = "default"
-): string {
+function buttonClassName(variant: ButtonVariant = "default"): string {
   const base =
     "inline-flex items-center justify-center rounded-full px-4 py-3 text-sm font-medium transition";
 
@@ -85,9 +90,7 @@ function hardLimitText(value?: number | null): string {
   return new Intl.NumberFormat("fr-FR").format(value);
 }
 
-function categoryTone(
-  category?: string | null
-): "default" | "success" | "info" | "warning" | "violet" {
+function categoryTone(category?: string | null): BadgeVariant {
   const normalized = text(category).toLowerCase();
 
   if (normalized === "agency") return "violet";
@@ -98,25 +101,35 @@ function categoryTone(
   return "default";
 }
 
-function getPrimaryAction(category?: string | null): {
-  href: string;
-  label: string;
-} {
-  const normalized = text(category).toLowerCase();
+function shouldShowPlanBadge(
+  plan?: string | null,
+  category?: string | null
+): boolean {
+  const normalizedPlan = text(plan).toLowerCase();
+  const normalizedCategory = text(category).toLowerCase();
+
+  return Boolean(normalizedPlan) && normalizedPlan !== normalizedCategory;
+}
+
+function getPrimaryAction(args: {
+  category?: string | null;
+  canManageWorkspaces: boolean;
+}): SurfaceLink {
+  const normalized = text(args.category).toLowerCase();
 
   if (normalized === "agency") {
-    return { href: "/flows", label: "Ouvrir Flows" };
+    return { href: "/flows", label: "Ouvrir Flows", variant: "primary" };
   }
 
   if (normalized === "freelance") {
-    return { href: "/commands", label: "Ouvrir Commands" };
+    return { href: "/commands", label: "Ouvrir Commands", variant: "primary" };
   }
 
-  if (normalized === "company") {
-    return { href: "/overview", label: "Ouvrir Overview" };
+  if (normalized === "company" && args.canManageWorkspaces) {
+    return { href: "/workspaces", label: "Ouvrir Workspaces", variant: "primary" };
   }
 
-  return { href: "/overview", label: "Ouvrir Overview" };
+  return { href: "/overview", label: "Ouvrir Overview", variant: "primary" };
 }
 
 function getWorkspaceDescription(category?: string | null): string {
@@ -135,6 +148,75 @@ function getWorkspaceDescription(category?: string | null): string {
   }
 
   return "Hub du workspace actif. Cette vue sert de point d’entrée simple pour lire l’état du workspace et ouvrir les surfaces autorisées.";
+}
+
+function buildSurfaceLinks(args: {
+  category?: string | null;
+  canViewIncidents: boolean;
+  canManagePolicies: boolean;
+  canManageWorkspaces: boolean;
+}): SurfaceLink[] {
+  const normalizedCategory = text(args.category).toLowerCase();
+
+  const links: SurfaceLink[] = [
+    {
+      href: "/workspace/select",
+      label: "Changer d’espace",
+      variant: "soft",
+    },
+    {
+      href: "/overview",
+      label: "Ouvrir Overview",
+    },
+    {
+      href: "/settings",
+      label: "Ouvrir Settings",
+    },
+    {
+      href: "/events",
+      label: "Ouvrir Events",
+    },
+  ];
+
+  if (normalizedCategory === "personal" || normalizedCategory === "agency") {
+    links.push({
+      href: "/commands",
+      label: "Ouvrir Commands",
+    });
+  }
+
+  if (normalizedCategory === "company" && args.canManageWorkspaces) {
+    links.push({
+      href: "/workspaces",
+      label: "Ouvrir Workspaces",
+    });
+  }
+
+  if (args.canViewIncidents) {
+    links.push({
+      href: "/incidents",
+      label: "Ouvrir Incidents",
+    });
+  }
+
+  if (args.canManagePolicies) {
+    links.push({
+      href: "/policies",
+      label: "Ouvrir Policies",
+    });
+  }
+
+  const deduped = new Map<string, SurfaceLink>();
+
+  for (const link of links) {
+    const href = text(link.href);
+    if (!href) continue;
+    if (!deduped.has(href)) {
+      deduped.set(href, link);
+    }
+  }
+
+  return Array.from(deduped.values());
 }
 
 function MetricCard({
@@ -196,7 +278,22 @@ export default async function WorkspaceIndexPage() {
 
   const quota = resolution.context?.quota || null;
   const entitlements = resolution.context?.entitlements || null;
-  const primaryAction = getPrimaryAction(activeWorkspace.category);
+
+  const canViewIncidents = Boolean(entitlements?.canViewIncidents);
+  const canManagePolicies = Boolean(entitlements?.canManagePolicies);
+  const canManageWorkspaces = Boolean(entitlements?.canManageWorkspaces);
+
+  const primaryAction = getPrimaryAction({
+    category: activeWorkspace.category,
+    canManageWorkspaces,
+  });
+
+  const secondaryLinks = buildSurfaceLinks({
+    category: activeWorkspace.category,
+    canViewIncidents,
+    canManagePolicies,
+    canManageWorkspaces,
+  }).filter((link) => link.href !== primaryAction.href);
 
   return (
     <main className={pageWrapClassName()}>
@@ -227,9 +324,11 @@ export default async function WorkspaceIndexPage() {
               {activeWorkspace.status.toUpperCase()}
             </span>
 
-            <span className={badgeClassName("default")}>
-              {activeWorkspace.plan.toUpperCase()}
-            </span>
+            {shouldShowPlanBadge(activeWorkspace.plan, activeWorkspace.category) ? (
+              <span className={badgeClassName("default")}>
+                {activeWorkspace.plan.toUpperCase()}
+              </span>
+            ) : null}
 
             {session.user?.displayName ? (
               <span className={badgeClassName("default")}>
@@ -362,45 +461,22 @@ export default async function WorkspaceIndexPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <Link href={primaryAction.href} className={buttonClassName("primary")}>
+            <Link
+              href={primaryAction.href}
+              className={buttonClassName(primaryAction.variant || "primary")}
+            >
               {primaryAction.label}
             </Link>
 
-            <Link href="/workspace/select" className={buttonClassName("soft")}>
-              Changer d’espace
-            </Link>
-
-            <Link href="/overview" className={buttonClassName()}>
-              Ouvrir Overview
-            </Link>
-
-            <Link href="/settings" className={buttonClassName()}>
-              Ouvrir Settings
-            </Link>
-
-            <Link href="/events" className={buttonClassName()}>
-              Ouvrir Events
-            </Link>
-
-            <Link href="/commands" className={buttonClassName()}>
-              Ouvrir Commands
-            </Link>
-
-            <Link href="/flows" className={buttonClassName()}>
-              Ouvrir Flows
-            </Link>
-
-            {entitlements?.canViewIncidents ? (
-              <Link href="/incidents" className={buttonClassName()}>
-                Ouvrir Incidents
+            {secondaryLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={buttonClassName(link.variant || "default")}
+              >
+                {link.label}
               </Link>
-            ) : null}
-
-            {entitlements?.canManagePolicies ? (
-              <Link href="/policies" className={buttonClassName()}>
-                Ouvrir Policies
-              </Link>
-            ) : null}
+            ))}
           </div>
         </section>
       </div>
