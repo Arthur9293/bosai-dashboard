@@ -155,7 +155,7 @@ export function getDashboardStatusMeta(
       return {
         kind,
         label: explicitLabel ?? "QUEUED",
-        tone: "muted",
+        tone: "info",
       };
 
     case "retry":
@@ -189,7 +189,7 @@ export function getDashboardStatusMeta(
     case "registry-only":
       return {
         kind,
-        label: explicitLabel ?? "REGISTRY-ONLY",
+        label: explicitLabel ?? "REGISTRY ONLY",
         tone: "muted",
       };
 
@@ -221,17 +221,23 @@ export function getDashboardStatusClasses(
   compact = false
 ): string {
   const base = [
-    "inline-flex items-center justify-center rounded-full border font-medium tracking-wide",
-    compact ? "px-2.5 py-1 text-[11px]" : "px-3 py-1 text-xs",
+    "inline-flex items-center justify-center rounded-full border font-medium leading-none tracking-[0.16em]",
+    compact ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
   ].join(" ");
 
   const toneClasses: Record<DashboardStatusTone, string> = {
-    default: "border-white/10 bg-white/[0.06] text-white/80",
-    info: "border-sky-500/20 bg-sky-500/15 text-sky-300",
-    success: "border-emerald-500/20 bg-emerald-500/15 text-emerald-300",
-    warning: "border-amber-500/20 bg-amber-500/15 text-amber-300",
-    danger: "border-rose-500/20 bg-rose-500/15 text-rose-300",
-    muted: "border-zinc-700 bg-zinc-800 text-zinc-300",
+    default:
+      "border-white/10 bg-white/[0.06] text-white/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
+    info:
+      "border-sky-500/20 bg-sky-500/15 text-sky-300 shadow-[inset_0_1px_0_rgba(125,211,252,0.08)]",
+    success:
+      "border-emerald-500/20 bg-emerald-500/15 text-emerald-300 shadow-[inset_0_1px_0_rgba(110,231,183,0.08)]",
+    warning:
+      "border-amber-500/20 bg-amber-500/15 text-amber-300 shadow-[inset_0_1px_0_rgba(253,230,138,0.08)]",
+    danger:
+      "border-rose-500/20 bg-rose-500/15 text-rose-300 shadow-[inset_0_1px_0_rgba(253,164,175,0.08)]",
+    muted:
+      "border-zinc-700 bg-zinc-800 text-zinc-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]",
   };
 
   return `${base} ${toneClasses[tone]}`;
@@ -275,9 +281,7 @@ export function DashboardStatusGroup({
     <div className={`flex flex-wrap items-center gap-2 ${className}`.trim()}>
       {items.map((item, index) => {
         const meta = getDashboardStatusMeta(item.status, item.label, item.kind);
-        const key =
-          item.key ??
-          `${meta.kind}-${meta.label}-${index}`;
+        const key = item.key ?? `${meta.kind}-${meta.label}-${index}`;
 
         return (
           <DashboardStatusBadge
