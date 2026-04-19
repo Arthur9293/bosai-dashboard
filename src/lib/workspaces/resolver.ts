@@ -1,11 +1,24 @@
+import "server-only";
+
+import { isAirtableLiveConfigured } from "../airtable/config";
+import { listLiveMembershipsForUser } from "../airtable/memberships";
+import { getLiveWorkspaceQuotaByWorkspaceId } from "../airtable/quotas";
+import { listLiveWorkspaces } from "../airtable/workspaces";
 import {
   getMockEntitlements,
   getMockQuotaSnapshot,
   listMockWorkspaceSummariesForUser,
 } from "./mock-registry";
 import type {
+  MembershipStatus,
+  WorkspaceCategory,
   WorkspaceContext,
+  WorkspaceEntitlements,
+  WorkspacePlan,
+  WorkspaceQuotaSnapshot,
   WorkspaceResolverInput,
+  WorkspaceRole,
+  WorkspaceStatus,
   WorkspaceSummary,
 } from "./types";
 
@@ -44,6 +57,159 @@ type ResolverOptions = WorkspaceResolverInput & {
 
 function normalizeText(value?: string | null): string {
   return String(value || "").trim();
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(
+    new Set(values.map((value) => normalizeText(value)).filter(Boolean))
+  );
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  return {};
+}
+
+function getRecordFields(value: unknown): Record<string, unknown> {
+  const record = asRecord(value);
+  return asRecord(record.fields);
+}
+
+function pickText(value: unknown): string {
+  if (typeof value === "string") return normalizeText(value);
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = pickText(item);
+      if (candidate) return candidate;
+    }
+    return "";
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const candidates = [
+      record.id,
+      record.name,
+      record.value,
+      record.label,
+      record.slug,
+      record.email,
+      record.Workspace_ID,
+      record.Display_Name,
+      record.User_ID,
+    ];
+
+    for (const candidate of candidates) {
+      const text = pickText(candidate);
+      if (text) return text;
+    }
+  }
+
+  return "";
+}
+
+function pickFirstText(source: unknown, keys: string[]): string {
+  const root = asRecord(source);
+  const fields = getRecordFields(source);
+
+  for (const key of keys) {
+    const fromRoot = pickText(root[key]);
+    if (fromRoot) return fromRoot;
+
+    const fromFields = pickText(fields[key]);
+    if (fromFields) return fromFields;
+  }
+
+  return "";
+}
+
+function pickBooleanValue(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+
+  const text = normalizeText(pickText(value)).toLowerCase();
+  if (!text) return null;
+
+  if (["true", "1", "yes", "y", "on", "active"].includes(text)) return true;
+  if (["false", "0", "no", "n", "off", "inactive"].includes(text)) return false;
+
+  return null;
+}
+
+function pickFirstBoolean(source: unknown, keys: string[]): boolean | null {
+  const root = asRecord(source);
+  const fields = getRecordFields(source);
+
+  for (const key of keys) {
+    const fromRoot = pickBooleanValue(root[key]);
+    if (fromRoot !== null) return fromRoot;
+
+    const fromFields = pickBooleanValue(fields[key]);
+    if (fromFields !== null) return fromFields;
+  }
+
+  return null;
+}
+
+function toNumber(value: unknown): number | null {
+  const text = pickText(value);
+  if (!text) return null;
+
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeCategory(value?: string | null): WorkspaceCategory {
+  const normalized = normalizeText(value).toLowerCase();
+
+  if (normalized === "agency") return "agency";
+  if (normalized === "company") return "company";
+  if (normalized === "freelance") return "freelance";
+  return "personal";
+}
+
+function normalizePlan(value?: string | null): WorkspacePlan {
+  const normalized = normalizeText(value).toLowerCase();
+
+  if (normalized === "enterprise") return "enterprise";
+  if (normalized === "agency") return "agency";
+  if (normalized === "company") return "company";
+  if (normalized === "freelance") return "freelance";
+  return "personal";
+}
+
+function normalizeWorkspaceStatus(value?: string | null): WorkspaceStatus {
+  const normalized = normalizeText(value).toLowerCase();
+
+  if (normalized === "inactive") return "inactive";
+  if (normalized === "blocked") return "blocked";
+  if (normalized === "pending") return "pending";
+  return "active";
+}
+
+function normalizeMembershipStatus(value?: string | null): MembershipStatus {
+  const normalized = normalizeText(value).toLowerCase();
+
+  if (normalized === "invited") return "invited";
+  if (normalized === "revoked") return "revoked";
+  if (normalized === "suspended") return "suspended";
+  return "active";
+}
+
+function normalizeRole(value?: string | null): WorkspaceRole {
+  const normalized = normalizeText(value).toLowerCase();
+
+  if (normalized === "admin") return "admin";
+  if (normalized === "operator") return "operator";
+  if (normalized === "member") return "member";
+  if (normalized === "viewer") return "viewer";
+  return "owner";
 }
 
 function buildQueryString(params: Record<string, string>): string {
@@ -106,7 +272,7 @@ function findMembershipByWorkspaceId(
   );
 }
 
-function buildWorkspaceContext(
+function buildMockWorkspaceContext(
   activeWorkspace: WorkspaceSummary,
   memberships: WorkspaceSummary[]
 ): WorkspaceContext {
@@ -121,9 +287,394 @@ function buildWorkspaceContext(
   };
 }
 
-export function resolveWorkspaceAccess(
+function buildFallbackEntitlements(role: WorkspaceRole): WorkspaceEntitlements {
+  const elevated = role === "owner" || role === "admin";
+
+  return {
+    canAccessDashboard: true,
+    canRunHttp: elevated || role === "operator",
+    canViewIncidents: elevated || role === "operator" || role === "viewer",
+    canManagePolicies: elevated,
+    canManageTools: elevated,
+    canManageWorkspaces: elevated,
+    canManageBilling: role === "owner",
+  };
+}
+
+type NormalizedLiveWorkspace = {
+  summary: WorkspaceSummary;
+  raw: Record<string, unknown>;
+};
+
+function normalizeLiveWorkspace(
+  workspace: unknown
+): NormalizedLiveWorkspace | null {
+  const workspaceId =
+    pickFirstText(workspace, ["Workspace_ID", "workspaceId", "id"]) ||
+    pickText(asRecord(workspace).id);
+
+  if (!workspaceId) return null;
+
+  const name = pickFirstText(workspace, ["Name", "Workspace_Name", "Display_Name"]);
+  const slug = pickFirstText(workspace, ["Slug", "slug"]);
+  const category = normalizeCategory(
+    pickFirstText(workspace, ["Category", "Type", "Workspace_Type"])
+  );
+  const plan = normalizePlan(
+    pickFirstText(workspace, ["Plan", "Plan_ID", "Type", "Category"]) || category
+  );
+  const status = normalizeWorkspaceStatus(
+    pickFirstText(workspace, ["Status_select", "Status", "status"])
+  );
+
+  return {
+    raw: asRecord(workspace),
+    summary: {
+      workspaceId,
+      slug: slug || workspaceId.toLowerCase(),
+      name: name || workspaceId,
+      category,
+      plan,
+      status,
+      membershipRole: "member",
+      membershipStatus: "active",
+      isDefault: false,
+    },
+  };
+}
+
+function buildLiveWorkspaceIndexes(workspaces: unknown[]): {
+  byWorkspaceId: Map<string, NormalizedLiveWorkspace>;
+  bySlug: Map<string, NormalizedLiveWorkspace>;
+  byName: Map<string, NormalizedLiveWorkspace>;
+} {
+  const byWorkspaceId = new Map<string, NormalizedLiveWorkspace>();
+  const bySlug = new Map<string, NormalizedLiveWorkspace>();
+  const byName = new Map<string, NormalizedLiveWorkspace>();
+
+  for (const workspace of workspaces) {
+    const normalized = normalizeLiveWorkspace(workspace);
+    if (!normalized) continue;
+
+    byWorkspaceId.set(normalized.summary.workspaceId, normalized);
+
+    if (normalized.summary.slug) {
+      bySlug.set(normalized.summary.slug.toLowerCase(), normalized);
+    }
+
+    if (normalized.summary.name) {
+      byName.set(normalized.summary.name.toLowerCase(), normalized);
+    }
+  }
+
+  return { byWorkspaceId, bySlug, byName };
+}
+
+function resolveWorkspaceFromMembership(
+  membership: unknown,
+  indexes: ReturnType<typeof buildLiveWorkspaceIndexes>
+): NormalizedLiveWorkspace | null {
+  const workspaceId = pickFirstText(membership, [
+    "Workspace_ID_Cache",
+    "Workspace_ID_Text",
+    "Workspace_ID",
+    "workspaceId",
+  ]);
+
+  if (workspaceId && indexes.byWorkspaceId.has(workspaceId)) {
+    return indexes.byWorkspaceId.get(workspaceId) || null;
+  }
+
+  const linkedWorkspace = pickFirstText(membership, ["Workspace"]);
+  if (linkedWorkspace && indexes.byWorkspaceId.has(linkedWorkspace)) {
+    return indexes.byWorkspaceId.get(linkedWorkspace) || null;
+  }
+
+  if (linkedWorkspace && indexes.bySlug.has(linkedWorkspace.toLowerCase())) {
+    return indexes.bySlug.get(linkedWorkspace.toLowerCase()) || null;
+  }
+
+  if (linkedWorkspace && indexes.byName.has(linkedWorkspace.toLowerCase())) {
+    return indexes.byName.get(linkedWorkspace.toLowerCase()) || null;
+  }
+
+  return null;
+}
+
+function normalizeLiveMembershipSummary(
+  membership: unknown,
+  indexes: ReturnType<typeof buildLiveWorkspaceIndexes>
+): WorkspaceSummary | null {
+  const matchedWorkspace = resolveWorkspaceFromMembership(membership, indexes);
+  const fallbackWorkspaceId = pickFirstText(membership, [
+    "Workspace_ID_Cache",
+    "Workspace_ID_Text",
+    "Workspace_ID",
+    "workspaceId",
+  ]);
+
+  const workspaceId = matchedWorkspace?.summary.workspaceId || fallbackWorkspaceId;
+  if (!workspaceId) return null;
+
+  const category =
+    matchedWorkspace?.summary.category ||
+    normalizeCategory(pickFirstText(membership, ["Category", "Type"]));
+
+  const plan =
+    matchedWorkspace?.summary.plan ||
+    normalizePlan(
+      pickFirstText(membership, ["Plan", "Plan_ID", "Type"]) || category
+    );
+
+  const status =
+    matchedWorkspace?.summary.status ||
+    normalizeWorkspaceStatus(
+      pickFirstText(membership, ["Workspace_Status", "Status_select", "Status"])
+    );
+
+  return {
+    workspaceId,
+    slug:
+      matchedWorkspace?.summary.slug ||
+      pickFirstText(membership, ["Workspace_Slug", "Slug"]) ||
+      workspaceId.toLowerCase(),
+    name:
+      matchedWorkspace?.summary.name ||
+      pickFirstText(membership, ["Workspace_Name", "Workspace"]) ||
+      workspaceId,
+    category,
+    plan,
+    status,
+    membershipRole: normalizeRole(
+      pickFirstText(membership, ["Role", "Membership_Role"])
+    ),
+    membershipStatus: normalizeMembershipStatus(
+      pickFirstText(membership, ["Status", "Membership_Status", "Status_select"])
+    ),
+    isDefault:
+      pickFirstBoolean(membership, ["Is_Default", "Default"]) ?? false,
+  };
+}
+
+function dedupeWorkspaceSummaries(
+  memberships: WorkspaceSummary[]
+): WorkspaceSummary[] {
+  const map = new Map<string, WorkspaceSummary>();
+
+  for (const membership of memberships) {
+    const existing = map.get(membership.workspaceId);
+
+    if (!existing) {
+      map.set(membership.workspaceId, membership);
+      continue;
+    }
+
+    map.set(membership.workspaceId, {
+      ...existing,
+      ...membership,
+      isDefault: existing.isDefault || membership.isDefault,
+    });
+  }
+
+  return Array.from(map.values());
+}
+
+function buildLiveEntitlements(
+  workspace: NormalizedLiveWorkspace | null,
+  membershipRole: WorkspaceRole
+): WorkspaceEntitlements {
+  if (!workspace) {
+    return buildFallbackEntitlements(membershipRole);
+  }
+
+  const raw = workspace.raw;
+
+  const explicit = {
+    canAccessDashboard: pickFirstBoolean(raw, ["Can_Access_Dashboard"]),
+    canRunHttp: pickFirstBoolean(raw, ["Can_Run_HTTP"]),
+    canViewIncidents: pickFirstBoolean(raw, ["Can_View_Incidents"]),
+    canManagePolicies: pickFirstBoolean(raw, ["Can_Manage_Policies"]),
+    canManageTools: pickFirstBoolean(raw, ["Can_Manage_Tools"]),
+    canManageWorkspaces: pickFirstBoolean(raw, ["Can_Manage_Workspaces"]),
+    canManageBilling: pickFirstBoolean(raw, ["Can_Manage_Billing"]),
+  };
+
+  const derived = buildFallbackEntitlements(membershipRole);
+
+  return {
+    canAccessDashboard: explicit.canAccessDashboard ?? derived.canAccessDashboard,
+    canRunHttp: explicit.canRunHttp ?? derived.canRunHttp,
+    canViewIncidents: explicit.canViewIncidents ?? derived.canViewIncidents,
+    canManagePolicies: explicit.canManagePolicies ?? derived.canManagePolicies,
+    canManageTools: explicit.canManageTools ?? derived.canManageTools,
+    canManageWorkspaces:
+      explicit.canManageWorkspaces ?? derived.canManageWorkspaces,
+    canManageBilling: explicit.canManageBilling ?? derived.canManageBilling,
+  };
+}
+
+function normalizeLiveQuota(quota: unknown): WorkspaceQuotaSnapshot | null {
+  if (!quota) return null;
+
+  const fields = getRecordFields(quota);
+  const root = asRecord(quota);
+
+  const periodKey =
+    pickText(fields.Period_Key) ||
+    pickText(fields.Current_Usage_Period_Key) ||
+    pickText(root.Period_Key) ||
+    new Date().toISOString().slice(0, 7);
+
+  return {
+    runsUsed:
+      toNumber(fields.Usage_Runs_Month) ??
+      toNumber(fields.Runs_Used) ??
+      0,
+    runsHardLimit:
+      toNumber(fields.Hard_Limit_Runs_Month) ??
+      toNumber(fields.Runs_Hard_Limit),
+    tokensUsed:
+      toNumber(fields.Usage_Tokens_Month) ??
+      toNumber(fields.Tokens_Used) ??
+      0,
+    tokensHardLimit:
+      toNumber(fields.Hard_Limit_Tokens_Month) ??
+      toNumber(fields.Tokens_Hard_Limit),
+    httpCallsUsed:
+      toNumber(fields.Usage_HTTP_Calls_Month) ??
+      toNumber(fields.HTTP_Calls_Used) ??
+      0,
+    httpCallsHardLimit:
+      toNumber(fields.Hard_Limit_HTTP_Calls_Month) ??
+      toNumber(fields.HTTP_Calls_Hard_Limit),
+    periodKey,
+  };
+}
+
+async function tryResolveLiveWorkspaceState(
+  userId: string
+): Promise<{
+  memberships: WorkspaceSummary[];
+  quotaByWorkspaceId: Map<string, WorkspaceQuotaSnapshot | null>;
+  entitlementsByWorkspaceId: Map<string, WorkspaceEntitlements>;
+} | null> {
+  if (!isAirtableLiveConfigured()) {
+    return null;
+  }
+
+  try {
+    const [rawMemberships, rawWorkspaces] = await Promise.all([
+      (listLiveMembershipsForUser as any)({ userId }),
+      (listLiveWorkspaces as any)(),
+    ]);
+
+    if (!Array.isArray(rawMemberships) || rawMemberships.length === 0) {
+      return null;
+    }
+
+    const indexes = buildLiveWorkspaceIndexes(
+      Array.isArray(rawWorkspaces) ? rawWorkspaces : []
+    );
+
+    const memberships = dedupeWorkspaceSummaries(
+      rawMemberships
+        .map((membership) =>
+          normalizeLiveMembershipSummary(membership, indexes)
+        )
+        .filter(Boolean) as WorkspaceSummary[]
+    ).filter(
+      (item) =>
+        item.membershipStatus === "active" && item.status === "active"
+    );
+
+    if (memberships.length === 0) {
+      return null;
+    }
+
+    const entitlementsByWorkspaceId = new Map<string, WorkspaceEntitlements>();
+
+    for (const membership of memberships) {
+      const workspace = indexes.byWorkspaceId.get(membership.workspaceId) || null;
+      entitlementsByWorkspaceId.set(
+        membership.workspaceId,
+        buildLiveEntitlements(workspace, membership.membershipRole)
+      );
+    }
+
+    const quotaByWorkspaceId = new Map<string, WorkspaceQuotaSnapshot | null>();
+
+    await Promise.all(
+      memberships.map(async (membership) => {
+        try {
+          const rawQuota = await (getLiveWorkspaceQuotaByWorkspaceId as any)(
+            membership.workspaceId
+          );
+          quotaByWorkspaceId.set(
+            membership.workspaceId,
+            normalizeLiveQuota(rawQuota)
+          );
+        } catch {
+          quotaByWorkspaceId.set(membership.workspaceId, null);
+        }
+      })
+    );
+
+    return {
+      memberships,
+      quotaByWorkspaceId,
+      entitlementsByWorkspaceId,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function resolveWorkspaceSource(
+  userId: string
+): Promise<{
+  memberships: WorkspaceSummary[];
+  quotaByWorkspaceId: Map<string, WorkspaceQuotaSnapshot | null>;
+  entitlementsByWorkspaceId: Map<string, WorkspaceEntitlements>;
+  mode: "live" | "mock";
+}> {
+  const liveState = await tryResolveLiveWorkspaceState(userId);
+
+  if (liveState) {
+    return {
+      ...liveState,
+      mode: "live",
+    };
+  }
+
+  const mockMemberships = listMockWorkspaceSummariesForUser(userId).filter(
+    (item) => item.membershipStatus === "active" && item.status === "active"
+  );
+
+  const quotaByWorkspaceId = new Map<string, WorkspaceQuotaSnapshot | null>();
+  const entitlementsByWorkspaceId = new Map<string, WorkspaceEntitlements>();
+
+  for (const membership of mockMemberships) {
+    quotaByWorkspaceId.set(
+      membership.workspaceId,
+      getMockQuotaSnapshot(membership.workspaceId)
+    );
+    entitlementsByWorkspaceId.set(
+      membership.workspaceId,
+      getMockEntitlements(membership.workspaceId, membership.membershipRole)
+    );
+  }
+
+  return {
+    memberships: mockMemberships,
+    quotaByWorkspaceId,
+    entitlementsByWorkspaceId,
+    mode: "mock",
+  };
+}
+
+export async function resolveWorkspaceAccess(
   options: ResolverOptions
-): WorkspaceResolutionResult {
+): Promise<WorkspaceResolutionResult> {
   const userId = normalizeText(options.userId);
   const requestedWorkspaceId = normalizeText(options.requestedWorkspaceId);
   const nextPath = normalizeText(options.nextPath) || "/overview";
@@ -142,9 +693,8 @@ export function resolveWorkspaceAccess(
     };
   }
 
-  const memberships = listMockWorkspaceSummariesForUser(userId).filter(
-    (item) => item.membershipStatus === "active" && item.status === "active"
-  );
+  const source = await resolveWorkspaceSource(userId);
+  const memberships = source.memberships;
 
   if (memberships.length === 0) {
     return {
@@ -253,6 +803,19 @@ export function resolveWorkspaceAccess(
     activeWorkspace.category
   );
 
+  const context: WorkspaceContext =
+    source.mode === "mock"
+      ? buildMockWorkspaceContext(activeWorkspace, memberships)
+      : {
+          activeWorkspace,
+          memberships,
+          quota:
+            source.quotaByWorkspaceId.get(activeWorkspace.workspaceId) || null,
+          entitlements:
+            source.entitlementsByWorkspaceId.get(activeWorkspace.workspaceId) ||
+            buildFallbackEntitlements(activeWorkspace.membershipRole),
+        };
+
   return {
     kind: "allow_dashboard",
     reason: "workspace_cookie_valid",
@@ -260,7 +823,7 @@ export function resolveWorkspaceAccess(
     requestedWorkspaceId,
     activeWorkspace,
     memberships,
-    context: buildWorkspaceContext(activeWorkspace, memberships),
+    context,
     autoActivateWorkspaceId: "",
     dashboardRoute,
   };
