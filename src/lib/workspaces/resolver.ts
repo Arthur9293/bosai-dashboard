@@ -253,7 +253,7 @@ export function getDashboardRouteForWorkspaceCategory(
   const normalized = normalizeText(category).toLowerCase();
 
   if (normalized === "agency") return "/flows";
-  if (normalized === "company") return "/workspaces";
+  if (normalized === "company") return "/workspace";
   if (normalized === "freelance") return "/commands";
   return "/overview";
 }
