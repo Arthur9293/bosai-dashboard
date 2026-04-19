@@ -1,90 +1,148 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   AUTH_LOGIN_ROUTE,
-  buildWorkspaceSwitchCookieBundle,
-  getAuthCookieWriteOptions,
   resolveAuthSession,
 } from "@/lib/auth/resolve-auth-session";
+import {
+  getDashboardRouteForWorkspaceCategory,
+  resolveWorkspaceAccess,
+} from "@/lib/workspaces/resolver";
 
-const WORKSPACE_SELECT_ROUTE = "/workspace/select";
-const DEFAULT_HOME_ROUTE = "/overview";
+const AUTH_COOKIE_NAME =
+  (process.env.BOSAI_AUTH_COOKIE_NAME || "bosai_auth").trim() || "bosai_auth";
 
-function normalizeText(value?: string | null): string {
-  return String(value || "").trim();
-}
+const AUTH_COOKIE_VALUE =
+  (process.env.BOSAI_AUTH_COOKIE_VALUE || "authenticated").trim() || "authenticated";
 
-function sanitizeInternalPath(value?: string | null): string {
-  const normalized = normalizeText(value);
+const WORKSPACE_ACTIVE_COOKIE_NAME =
+  (
+    process.env.BOSAI_ACTIVE_WORKSPACE_COOKIE_NAME ||
+    "bosai_active_workspace_id"
+  ).trim() || "bosai_active_workspace_id";
 
-  if (!normalized) return "";
-  if (!normalized.startsWith("/")) return "";
-  if (normalized.startsWith("//")) return "";
+const WORKSPACE_ALIAS_COOKIE_NAME =
+  (process.env.BOSAI_WORKSPACE_COOKIE_NAME || "bosai_workspace_id").trim() ||
+  "bosai_workspace_id";
 
-  return normalized;
-}
+const WORKSPACE_LEGACY_COOKIE_NAME =
+  (process.env.BOSAI_WORKSPACE_LEGACY_COOKIE_NAME || "workspace_id").trim() ||
+  "workspace_id";
 
-function buildSelectRoute(nextPath?: string): string {
-  const safeNext = sanitizeInternalPath(nextPath);
+const WORKSPACE_ALLOWED_COOKIE_NAME =
+  (
+    process.env.BOSAI_ALLOWED_WORKSPACES_COOKIE_NAME ||
+    "bosai_allowed_workspace_ids"
+  ).trim() || "bosai_allowed_workspace_ids";
 
-  if (!safeNext) return WORKSPACE_SELECT_ROUTE;
-
-  const query = new URLSearchParams({ next: safeNext }).toString();
-  return `${WORKSPACE_SELECT_ROUTE}?${query}`;
-}
-
-export async function GET(request: Request) {
-  const requestUrl = new URL(request.url);
-
-  const workspaceId = normalizeText(requestUrl.searchParams.get("workspace_id"));
-  const nextPath = sanitizeInternalPath(requestUrl.searchParams.get("next"));
-
-  const current = await resolveAuthSession();
-
-  if (!current.isAuthenticated) {
-    return NextResponse.redirect(new URL(AUTH_LOGIN_ROUTE, requestUrl));
+function text(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
   }
 
-  if (!workspaceId) {
-    return NextResponse.redirect(
-      new URL(buildSelectRoute(nextPath || current.homeRoute), requestUrl)
-    );
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value).trim();
   }
 
-  const allowedWorkspaceIds = current.allowedWorkspaceIds.map((item) =>
-    item.trim().toLowerCase()
-  );
+  return "";
+}
 
-  const isAllowed = allowedWorkspaceIds.includes(workspaceId.toLowerCase());
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.map((item) => text(item)).filter(Boolean)));
+}
 
-  if (!isAllowed) {
-    return NextResponse.redirect(
-      new URL(buildSelectRoute(nextPath || current.homeRoute), requestUrl)
-    );
+function cookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  };
+}
+
+function buildRedirectUrl(request: NextRequest, path: string): URL {
+  const normalized = text(path) || "/";
+  return new URL(normalized, request.url);
+}
+
+function buildLoginUrl(request: NextRequest, nextPath: string): URL {
+  const url = buildRedirectUrl(request, AUTH_LOGIN_ROUTE);
+  if (text(nextPath)) {
+    url.searchParams.set("next", nextPath);
+  }
+  return url;
+}
+
+export async function GET(request: NextRequest) {
+  const session = await resolveAuthSession();
+
+  const nextParam =
+    text(request.nextUrl.searchParams.get("next")) ||
+    text(session.homeRoute) ||
+    "/overview";
+
+  if (!session.isAuthenticated) {
+    return NextResponse.redirect(buildLoginUrl(request, nextParam));
   }
 
-  const switched = buildWorkspaceSwitchCookieBundle({
-    current,
-    nextWorkspaceId: workspaceId,
+  const requestedWorkspaceId =
+    text(request.nextUrl.searchParams.get("workspace_id")) ||
+    text(session.cookieSnapshot.activeWorkspaceId);
+
+  const resolution = resolveWorkspaceAccess({
+    userId: text(session.user?.userId),
+    requestedWorkspaceId,
+    nextPath: nextParam,
   });
 
-  if (!switched.cookiePayload || !switched.session.isAuthenticated) {
+  if (resolution.kind !== "allow_dashboard" || !resolution.activeWorkspace) {
     return NextResponse.redirect(
-      new URL(buildSelectRoute(nextPath || current.homeRoute), requestUrl)
+      buildRedirectUrl(request, resolution.redirectTo)
     );
   }
 
-  const targetPath =
-    nextPath ||
-    sanitizeInternalPath(switched.route) ||
-    sanitizeInternalPath(switched.session.homeRoute) ||
-    DEFAULT_HOME_ROUTE;
+  const activeWorkspaceId = text(resolution.activeWorkspace.workspaceId);
+  const allowedWorkspaceIds = uniq(
+    resolution.memberships.map((item) => text(item.workspaceId))
+  );
 
-  const response = NextResponse.redirect(new URL(targetPath, requestUrl));
-  const cookieOptions = getAuthCookieWriteOptions();
+  const explicitNext = text(request.nextUrl.searchParams.get("next"));
+  const fallbackDashboard = getDashboardRouteForWorkspaceCategory(
+    resolution.activeWorkspace.category
+  );
 
-  for (const [name, value] of Object.entries(switched.cookiePayload)) {
-    response.cookies.set(name, value, cookieOptions);
-  }
+  const finalTarget = explicitNext || fallbackDashboard || "/overview";
+  const response = NextResponse.redirect(
+    buildRedirectUrl(request, finalTarget)
+  );
+
+  const options = cookieOptions();
+
+  response.cookies.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, options);
+
+  response.cookies.set(
+    WORKSPACE_ACTIVE_COOKIE_NAME,
+    activeWorkspaceId,
+    options
+  );
+
+  response.cookies.set(
+    WORKSPACE_ALIAS_COOKIE_NAME,
+    activeWorkspaceId,
+    options
+  );
+
+  response.cookies.set(
+    WORKSPACE_LEGACY_COOKIE_NAME,
+    activeWorkspaceId,
+    options
+  );
+
+  response.cookies.set(
+    WORKSPACE_ALLOWED_COOKIE_NAME,
+    JSON.stringify(allowedWorkspaceIds),
+    options
+  );
 
   return response;
 }
