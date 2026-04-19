@@ -3,8 +3,20 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./sidebar";
+import type {
+  WorkspaceEntitlements,
+  WorkspaceSummary,
+} from "@/lib/workspaces/types";
 
-export function MobileSidebar() {
+type MobileSidebarProps = {
+  workspace: WorkspaceSummary;
+  entitlements: WorkspaceEntitlements;
+};
+
+export function MobileSidebar({
+  workspace,
+  entitlements,
+}: MobileSidebarProps) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -45,7 +57,9 @@ export function MobileSidebar() {
           <span className="text-xl leading-none">☰</span>
         </button>
 
-        <div className="text-sm font-medium text-white/75">BOSAI</div>
+        <div className="truncate px-3 text-sm font-medium text-white/75">
+          {workspace.name}
+        </div>
 
         <div className="h-11 w-11" />
       </div>
@@ -71,12 +85,13 @@ export function MobileSidebar() {
           }`}
         >
           <div className="flex items-start justify-between border-b border-white/10 px-5 py-5">
-            <div>
-              <div className="text-3xl font-semibold tracking-tight text-white">
-                BOSAI
+            <div className="min-w-0">
+              <div className="truncate text-3xl font-semibold tracking-tight text-white">
+                {workspace.name}
               </div>
               <div className="mt-1 text-sm text-zinc-400">
-                Anti-Chaos AI Ops Layer
+                {workspace.category.toUpperCase()} ·{" "}
+                {workspace.membershipRole.toUpperCase()}
               </div>
             </div>
 
@@ -91,7 +106,11 @@ export function MobileSidebar() {
           </div>
 
           <div className="h-[calc(100%-88px)]">
-            <Sidebar onNavigate={() => setOpen(false)} />
+            <Sidebar
+              workspace={workspace}
+              entitlements={entitlements}
+              onNavigate={() => setOpen(false)}
+            />
           </div>
         </div>
       </div>
