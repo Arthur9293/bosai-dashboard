@@ -1,13 +1,16 @@
 import { redirect } from "next/navigation";
 import LoginForm from "./LoginForm";
-import { resolveAuthSession } from "@/lib/auth/resolve-auth-session";
+import {
+  AUTH_LOGIN_ROUTE,
+  resolveAuthSession,
+} from "@/lib/auth/resolve-auth-session";
 import { resolveWorkspaceAccess } from "@/lib/workspaces/resolver";
 
 export default async function LoginPage() {
   const session = await resolveAuthSession();
 
   if (session.isAuthenticated) {
-    const resolution = resolveWorkspaceAccess({
+    const resolution = await resolveWorkspaceAccess({
       userId: session.user?.userId || "",
       requestedWorkspaceId: session.cookieSnapshot.activeWorkspaceId || "",
       nextPath: session.homeRoute || "/overview",
@@ -17,7 +20,7 @@ export default async function LoginPage() {
       redirect(resolution.dashboardRoute || session.homeRoute || "/overview");
     }
 
-    redirect(resolution.redirectTo);
+    redirect(resolution.redirectTo || AUTH_LOGIN_ROUTE);
   }
 
   return <LoginForm />;
