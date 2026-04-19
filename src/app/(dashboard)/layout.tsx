@@ -20,7 +20,7 @@ export default async function DashboardLayout({
     redirect(AUTH_LOGIN_ROUTE);
   }
 
-  const resolution = resolveWorkspaceAccess({
+  const resolution = await resolveWorkspaceAccess({
     userId: session.user?.userId || "",
     requestedWorkspaceId: session.cookieSnapshot.activeWorkspaceId || "",
     nextPath: session.homeRoute || "/overview",
