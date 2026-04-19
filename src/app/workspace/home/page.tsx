@@ -64,6 +64,14 @@ function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
+function compactCardClassName(): string {
+  return "rounded-[22px] border border-white/10 bg-black/20 p-4";
+}
+
+function statCardClassName(): string {
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
 function badgeClassName(
   variant:
     | "default"
@@ -337,28 +345,6 @@ function getAgencyFocusCards(
   ];
 }
 
-function ActionCard({ item }: { item: HubCard }) {
-  return (
-    <article className={cardClassName()}>
-      <div className="flex h-full flex-col gap-5">
-        <div className="space-y-3">
-          <div className={sectionLabelClassName()}>Dedicated lane</div>
-          <div className="text-2xl font-semibold tracking-tight text-white">
-            {item.title}
-          </div>
-          <p className="text-sm leading-6 text-zinc-400">{item.description}</p>
-        </div>
-
-        <div className="mt-auto">
-          <Link href={item.href} className={buttonClassName(item.tone || "default")}>
-            Ouvrir {item.title}
-          </Link>
-        </div>
-      </div>
-    </article>
-  );
-}
-
 function MetaCard({
   label,
   value,
@@ -378,6 +364,28 @@ function MetaCard({
   );
 }
 
+function StatCard({
+  label,
+  value,
+  toneClass = "text-white",
+  helper,
+}: {
+  label: string;
+  value: string | number;
+  toneClass?: string;
+  helper?: string;
+}) {
+  return (
+    <div className={statCardClassName()}>
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className={`mt-3 text-4xl font-semibold tracking-tight ${toneClass}`}>
+        {value}
+      </div>
+      {helper ? <div className="mt-2 text-sm text-zinc-400">{helper}</div> : null}
+    </div>
+  );
+}
+
 function WorkspaceCard({
   workspace,
   isActive,
@@ -386,7 +394,7 @@ function WorkspaceCard({
   isActive: boolean;
 }) {
   return (
-    <article className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+    <article className={compactCardClassName()}>
       <div className="space-y-3">
         <div className="flex flex-wrap gap-2">
           <span className={badgeClassName(categoryTone(workspace.category))}>
@@ -408,6 +416,25 @@ function WorkspaceCard({
           <div className="mt-1 break-all text-sm text-zinc-400">
             {workspace.workspaceId}
           </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function CompactLaneCard({ item }: { item: HubCard }) {
+  return (
+    <article className={compactCardClassName()}>
+      <div className="space-y-3">
+        <div className={sectionLabelClassName()}>Dedicated lane</div>
+        <div className="text-2xl font-semibold tracking-tight text-white">
+          {item.title}
+        </div>
+        <p className="text-sm leading-6 text-zinc-400">{item.description}</p>
+        <div className="pt-1">
+          <Link href={item.href} className={buttonClassName(item.tone || "default")}>
+            Ouvrir {item.title}
+          </Link>
         </div>
       </div>
     </article>
@@ -452,37 +479,305 @@ function AgencyOperatingView({
           />
         ))}
       </div>
+    </section>
+  );
+}
+
+function AgencyPrioritySection() {
+  return (
+    <section className={cardClassName()}>
+      <div className="mb-4 text-lg font-medium text-white">
+        Priorité opérationnelle agence
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Link href="/flows" className={buttonClassName("primary")}>
+          Ouvrir Flows
+        </Link>
+        <Link href="/incidents" className={buttonClassName("soft")}>
+          Ouvrir Incidents
+        </Link>
+        <Link href="/sla" className={buttonClassName("default")}>
+          Ouvrir SLA
+        </Link>
+        <Link href="/workspaces" className={buttonClassName("default")}>
+          Ouvrir Workspaces
+        </Link>
+      </div>
+
+      <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+        <div className={metaLabelClassName()}>Agency quick read</div>
+        <div className="mt-2 text-sm leading-6 text-zinc-300">
+          Cette home agence sert de cockpit d’entrée pour piloter les flows,
+          surveiller les incidents, lire la pression SLA et basculer rapidement
+          entre les espaces clients ou internes.
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AgencyWorkspaceSection({
+  activeWorkspace,
+  defaultLane,
+  entitlements,
+}: {
+  activeWorkspace: WorkspaceSummary;
+  defaultLane: string;
+  entitlements?: WorkspaceEntitlements | null;
+}) {
+  const entitlementItems = getEntitlementItems(entitlements);
+
+  return (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">Workspace details</div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <MetaCard
+            label="Workspace ID"
+            value={text(activeWorkspace.workspaceId)}
+            breakAll
+          />
+          <MetaCard label="Name" value={text(activeWorkspace.name)} />
+          <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
+          <MetaCard label="Category" value={text(activeWorkspace.category)} />
+          <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
+          <MetaCard
+            label="Membership role"
+            value={text(activeWorkspace.membershipRole)}
+          />
+          <MetaCard
+            label="Membership status"
+            value={text(activeWorkspace.membershipStatus)}
+          />
+          <MetaCard label="Default lane" value={defaultLane} breakAll />
+        </div>
+      </div>
 
       <div className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">
-          Priorité opérationnelle agence
-        </div>
+        <div className="mb-5 text-lg font-medium text-white">Access layer</div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Link href="/flows" className={buttonClassName("primary")}>
-            Ouvrir Flows
-          </Link>
-          <Link href="/incidents" className={buttonClassName("soft")}>
-            Ouvrir Incidents
-          </Link>
-          <Link href="/sla" className={buttonClassName("default")}>
-            Ouvrir SLA
-          </Link>
-          <Link href="/workspaces" className={buttonClassName("default")}>
-            Ouvrir Workspaces
-          </Link>
+        <div className="flex flex-wrap gap-2">
+          {entitlementItems.map(([label, enabled]) => (
+            <span
+              key={label}
+              className={badgeClassName(enabled ? "success" : "default")}
+            >
+              {label}: {enabled ? "ON" : "OFF"}
+            </span>
+          ))}
         </div>
 
         <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-          <div className={metaLabelClassName()}>Agency quick read</div>
+          <div className={metaLabelClassName()}>Quick read</div>
           <div className="mt-2 text-sm leading-6 text-zinc-300">
-            Cette home agence sert de cockpit d’entrée pour piloter les flows,
-            surveiller les incidents, lire la pression SLA et basculer rapidement
-            entre les espaces clients ou internes.
+            Le détail technique du workspace et les capacités actives restent
+            visibles, mais passent derrière la lecture métier agence.
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function AgencyPortfolioSection({
+  memberships,
+  activeWorkspaceId,
+}: {
+  memberships: WorkspaceSummary[];
+  activeWorkspaceId: string;
+}) {
+  return (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className={cardClassName()}>
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className={sectionLabelClassName()}>Memberships</div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
+              Espaces accessibles
+            </div>
+          </div>
+
+          <Link href="/workspace/select" className={buttonClassName("soft")}>
+            Changer d’espace
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          {memberships.map((workspace) => (
+            <WorkspaceCard
+              key={workspace.workspaceId}
+              workspace={workspace}
+              isActive={workspace.workspaceId === activeWorkspaceId}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">Navigation</div>
+
+        <div className="grid grid-cols-1 gap-3">
+          <Link href="/flows" className={buttonClassName("primary")}>
+            Ouvrir la lane principale
+          </Link>
+
+          <Link href="/workspace/select" className={buttonClassName("soft")}>
+            Changer d’espace
+          </Link>
+
+          <Link href="/overview" className={buttonClassName("default")}>
+            Ouvrir Overview
+          </Link>
+
+          <Link href="/settings" className={buttonClassName("default")}>
+            Ouvrir Settings
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function GenericWorkspaceSection({
+  activeWorkspace,
+  defaultLane,
+  entitlements,
+}: {
+  activeWorkspace: WorkspaceSummary;
+  defaultLane: string;
+  entitlements?: WorkspaceEntitlements | null;
+}) {
+  const entitlementItems = getEntitlementItems(entitlements);
+
+  return (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">
+          Active workspace
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <MetaCard
+            label="Workspace ID"
+            value={text(activeWorkspace.workspaceId)}
+            breakAll
+          />
+          <MetaCard label="Name" value={text(activeWorkspace.name)} />
+          <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
+          <MetaCard label="Category" value={text(activeWorkspace.category)} />
+          <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
+          <MetaCard
+            label="Membership role"
+            value={text(activeWorkspace.membershipRole)}
+          />
+          <MetaCard
+            label="Membership status"
+            value={text(activeWorkspace.membershipStatus)}
+          />
+          <MetaCard label="Default lane" value={defaultLane} breakAll />
+        </div>
+      </div>
+
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">Entitlements</div>
+
+        <div className="flex flex-wrap gap-2">
+          {entitlementItems.map(([label, enabled]) => (
+            <span
+              key={label}
+              className={badgeClassName(enabled ? "success" : "default")}
+            >
+              {label}: {enabled ? "ON" : "OFF"}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={metaLabelClassName()}>Quick read</div>
+          <div className="mt-2 text-sm leading-6 text-zinc-300">
+            Cet écran sert de hub dédié avant d’ouvrir la lane principale de la
+            catégorie active.
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function GenericSurfacesSection({ cards }: { cards: HubCard[] }) {
+  return (
+    <section className="space-y-4">
+      <div className={sectionLabelClassName()}>Dedicated surfaces</div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {cards.map((item) => (
+          <CompactLaneCard key={`${item.title}-${item.href}`} item={item} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function GenericPortfolioSection({
+  memberships,
+  activeWorkspaceId,
+  defaultLane,
+}: {
+  memberships: WorkspaceSummary[];
+  activeWorkspaceId: string;
+  defaultLane: string;
+}) {
+  return (
+    <>
+      <section className={cardClassName()}>
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className={sectionLabelClassName()}>Memberships</div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
+              Espaces accessibles
+            </div>
+          </div>
+
+          <Link href="/workspace/select" className={buttonClassName("soft")}>
+            Changer d’espace
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {memberships.map((workspace) => (
+            <WorkspaceCard
+              key={workspace.workspaceId}
+              workspace={workspace}
+              isActive={workspace.workspaceId === activeWorkspaceId}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section className={cardClassName()}>
+        <div className="mb-4 text-lg font-medium text-white">Navigation</div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Link href={defaultLane} className={buttonClassName("primary")}>
+            Ouvrir la lane principale
+          </Link>
+
+          <Link href="/workspace/select" className={buttonClassName("soft")}>
+            Changer d’espace
+          </Link>
+
+          <Link href="/overview" className={buttonClassName("default")}>
+            Ouvrir Overview
+          </Link>
+
+          <Link href="/settings" className={buttonClassName("default")}>
+            Ouvrir Settings
+          </Link>
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -507,7 +802,6 @@ export default async function WorkspaceHomePage() {
   const category = activeWorkspace.category;
   const cards = getCategoryCards(category);
   const defaultLane = getDashboardRouteForCategory(category);
-  const entitlementItems = getEntitlementItems(session.context?.entitlements);
 
   return (
     <main className={pageWrapClassName()}>
@@ -546,153 +840,53 @@ export default async function WorkspaceHomePage() {
         </section>
 
         <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <div className={cardClassName()}>
-            <div className="text-sm text-zinc-400">Category</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
-              {activeWorkspace.category}
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="text-sm text-zinc-400">Plan</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
-              {activeWorkspace.plan}
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="text-sm text-zinc-400">Default lane</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-sky-300">
-              {defaultLane}
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="text-sm text-zinc-400">Memberships</div>
-            <div className="mt-3 text-4xl font-semibold tracking-tight text-white">
-              {memberships.length}
-            </div>
-          </div>
+          <StatCard label="Category" value={activeWorkspace.category} />
+          <StatCard label="Plan" value={activeWorkspace.plan} />
+          <StatCard
+            label="Default lane"
+            value={defaultLane}
+            toneClass="text-sky-300"
+          />
+          <StatCard label="Memberships" value={memberships.length} />
         </section>
 
         {category === "agency" ? (
-          <AgencyOperatingView
-            memberships={memberships}
-            entitlements={session.context?.entitlements}
-          />
-        ) : null}
+          <>
+            <AgencyOperatingView
+              memberships={memberships}
+              entitlements={session.context?.entitlements}
+            />
 
-        <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-          <div className={cardClassName()}>
-            <div className="mb-5 text-lg font-medium text-white">
-              Active workspace
-            </div>
+            <AgencyPrioritySection />
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <MetaCard
-                label="Workspace ID"
-                value={text(activeWorkspace.workspaceId)}
-                breakAll
-              />
-              <MetaCard label="Name" value={text(activeWorkspace.name)} />
-              <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
-              <MetaCard label="Category" value={text(activeWorkspace.category)} />
-              <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
-              <MetaCard
-                label="Membership role"
-                value={text(activeWorkspace.membershipRole)}
-              />
-              <MetaCard
-                label="Membership status"
-                value={text(activeWorkspace.membershipStatus)}
-              />
-              <MetaCard label="Default lane" value={defaultLane} breakAll />
-            </div>
-          </div>
+            <AgencyWorkspaceSection
+              activeWorkspace={activeWorkspace}
+              defaultLane={defaultLane}
+              entitlements={session.context?.entitlements}
+            />
 
-          <div className={cardClassName()}>
-            <div className="mb-5 text-lg font-medium text-white">Entitlements</div>
+            <AgencyPortfolioSection
+              memberships={memberships}
+              activeWorkspaceId={activeWorkspace.workspaceId}
+            />
+          </>
+        ) : (
+          <>
+            <GenericWorkspaceSection
+              activeWorkspace={activeWorkspace}
+              defaultLane={defaultLane}
+              entitlements={session.context?.entitlements}
+            />
 
-            <div className="flex flex-wrap gap-2">
-              {entitlementItems.map(([label, enabled]) => (
-                <span
-                  key={label}
-                  className={badgeClassName(enabled ? "success" : "default")}
-                >
-                  {label}: {enabled ? "ON" : "OFF"}
-                </span>
-              ))}
-            </div>
+            <GenericSurfacesSection cards={cards} />
 
-            <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-              <div className={metaLabelClassName()}>Quick read</div>
-              <div className="mt-2 text-sm leading-6 text-zinc-300">
-                Cet écran sert de hub dédié avant d’ouvrir la lane principale de la
-                catégorie active.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <div className={sectionLabelClassName()}>Dedicated surfaces</div>
-
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            {cards.map((item) => (
-              <ActionCard
-                key={`${activeWorkspace.workspaceId}-${item.title}`}
-                item={item}
-              />
-            ))}
-          </div>
-        </section>
-
-        <section className={cardClassName()}>
-          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className={sectionLabelClassName()}>Memberships</div>
-              <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
-                Espaces accessibles
-              </div>
-            </div>
-
-            <Link href="/workspace/select" className={buttonClassName("soft")}>
-              Changer d’espace
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-            {memberships.map((workspace) => (
-              <WorkspaceCard
-                key={workspace.workspaceId}
-                workspace={workspace}
-                isActive={workspace.workspaceId === activeWorkspace.workspaceId}
-              />
-            ))}
-          </div>
-        </section>
-
-        <section className={cardClassName()}>
-          <div className="mb-4 text-lg font-medium text-white">Navigation</div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Link href={defaultLane} className={buttonClassName("primary")}>
-              Ouvrir la lane principale
-            </Link>
-
-            <Link href="/workspace/select" className={buttonClassName("soft")}>
-              Changer d’espace
-            </Link>
-
-            <Link href="/overview" className={buttonClassName("default")}>
-              Ouvrir Overview
-            </Link>
-
-            <Link href="/settings" className={buttonClassName("default")}>
-              Ouvrir Settings
-            </Link>
-          </div>
-        </section>
+            <GenericPortfolioSection
+              memberships={memberships}
+              activeWorkspaceId={activeWorkspace.workspaceId}
+              defaultLane={defaultLane}
+            />
+          </>
+        )}
       </div>
     </main>
   );
