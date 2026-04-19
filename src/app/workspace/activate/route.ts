@@ -7,6 +7,11 @@ import {
   getDashboardRouteForWorkspaceCategory,
   resolveWorkspaceAccess,
 } from "@/lib/workspaces/resolver";
+import {
+  WORKSPACE_ROUTE_MEMORY_COOKIE_NAME,
+  getRememberedRouteForWorkspace,
+  readWorkspaceRememberedRoutes,
+} from "@/lib/workspaces/route-memory";
 
 const AUTH_COOKIE_NAME =
   (process.env.BOSAI_AUTH_COOKIE_NAME || "bosai_auth").trim() || "bosai_auth";
@@ -68,9 +73,11 @@ function buildRedirectUrl(request: NextRequest, path: string): URL {
 
 function buildLoginUrl(request: NextRequest, nextPath: string): URL {
   const url = buildRedirectUrl(request, AUTH_LOGIN_ROUTE);
+
   if (text(nextPath)) {
     url.searchParams.set("next", nextPath);
   }
+
   return url;
 }
 
@@ -107,20 +114,44 @@ export async function GET(request: NextRequest) {
     resolution.memberships.map((item) => text(item.workspaceId))
   );
 
+  const rememberedRoutes = readWorkspaceRememberedRoutes(
+    request.cookies.get(WORKSPACE_ROUTE_MEMORY_COOKIE_NAME)?.value
+  );
+
   const explicitNext = text(request.nextUrl.searchParams.get("next"));
+  const rememberedTarget = getRememberedRouteForWorkspace(
+    rememberedRoutes,
+    activeWorkspaceId
+  );
   const fallbackDashboard = getDashboardRouteForWorkspaceCategory(
     resolution.activeWorkspace.category
   );
 
-  const finalTarget = explicitNext || fallbackDashboard || "/overview";
-  const response = NextResponse.redirect(buildRedirectUrl(request, finalTarget));
+  const finalTarget =
+    explicitNext || rememberedTarget || fallbackDashboard || "/overview";
+
+  const response = NextResponse.redirect(
+    buildRedirectUrl(request, finalTarget)
+  );
 
   const options = cookieOptions();
 
   response.cookies.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, options);
-  response.cookies.set(WORKSPACE_ACTIVE_COOKIE_NAME, activeWorkspaceId, options);
-  response.cookies.set(WORKSPACE_ALIAS_COOKIE_NAME, activeWorkspaceId, options);
-  response.cookies.set(WORKSPACE_LEGACY_COOKIE_NAME, activeWorkspaceId, options);
+  response.cookies.set(
+    WORKSPACE_ACTIVE_COOKIE_NAME,
+    activeWorkspaceId,
+    options
+  );
+  response.cookies.set(
+    WORKSPACE_ALIAS_COOKIE_NAME,
+    activeWorkspaceId,
+    options
+  );
+  response.cookies.set(
+    WORKSPACE_LEGACY_COOKIE_NAME,
+    activeWorkspaceId,
+    options
+  );
   response.cookies.set(
     WORKSPACE_ALLOWED_COOKIE_NAME,
     JSON.stringify(allowedWorkspaceIds),
