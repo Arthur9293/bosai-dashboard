@@ -7,9 +7,20 @@ import {
   resolveAuthSession,
 } from "@/lib/auth/resolve-auth-session";
 import { resolveWorkspaceAccess } from "@/lib/workspaces/resolver";
+import type { WorkspaceEntitlements } from "@/lib/workspaces/types";
 
 type DashboardLayoutProps = {
   children: ReactNode;
+};
+
+const FALLBACK_ENTITLEMENTS: WorkspaceEntitlements = {
+  canAccessDashboard: true,
+  canRunHttp: false,
+  canViewIncidents: false,
+  canManagePolicies: false,
+  canManageTools: false,
+  canManageWorkspaces: false,
+  canManageBilling: false,
 };
 
 export default async function DashboardLayout({
@@ -34,8 +45,11 @@ export default async function DashboardLayout({
     redirect(resolution.redirectTo);
   }
 
+  const entitlements =
+    resolution.context?.entitlements || FALLBACK_ENTITLEMENTS;
+
   return (
-    <AppShell>
+    <AppShell workspace={activeWorkspace} entitlements={entitlements}>
       <WorkspaceRouteMemory workspaceId={activeWorkspace.workspaceId} />
       {children}
     </AppShell>
