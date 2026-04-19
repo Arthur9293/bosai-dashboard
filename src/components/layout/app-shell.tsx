@@ -4,12 +4,22 @@ import type { ReactNode } from "react";
 import { Sidebar } from "./sidebar";
 import { MobileShell } from "./mobile-shell";
 import { Topbar } from "./topbar";
+import type {
+  WorkspaceEntitlements,
+  WorkspaceSummary,
+} from "@/lib/workspaces/types";
 
 type AppShellProps = {
   children: ReactNode;
+  workspace: WorkspaceSummary;
+  entitlements: WorkspaceEntitlements;
 };
 
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({
+  children,
+  workspace,
+  entitlements,
+}: AppShellProps) {
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-black text-white">
       <div
@@ -19,14 +29,18 @@ export function AppShell({ children }: AppShellProps) {
 
       <div className="relative flex min-h-screen">
         <div className="hidden xl:block xl:w-[312px] xl:shrink-0">
-          <Sidebar variant="desktop" />
+          <Sidebar
+            variant="desktop"
+            workspace={workspace}
+            entitlements={entitlements}
+          />
         </div>
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-transparent">
-          <MobileShell />
+          <MobileShell workspace={workspace} entitlements={entitlements} />
 
           <div className="hidden xl:block">
-            <Topbar />
+            <Topbar workspace={workspace} />
           </div>
 
           <main className="flex-1 px-4 py-5 sm:px-5 lg:px-6 lg:py-6 xl:px-8">
