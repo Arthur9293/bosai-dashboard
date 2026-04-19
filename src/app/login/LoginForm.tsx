@@ -3,25 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-type LoginResponse = {
-  ok?: boolean;
-  error?: string;
-  redirectTo?: string;
-  activeWorkspaceId?: string;
-  allowedWorkspaceIds?: string[];
-  dedicatedSpace?: string;
-};
-
-function normalizeRedirect(value?: string): string {
-  const text = String(value || "").trim();
-
-  if (!text) return "/overview";
-  if (!text.startsWith("/")) return "/overview";
-  if (text.startsWith("//")) return "/overview";
-
-  return text;
-}
-
 export default function LoginForm() {
   const router = useRouter();
 
@@ -47,7 +28,11 @@ export default function LoginForm() {
         }),
       });
 
-      const data = (await response.json()) as LoginResponse;
+      const data = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        route?: string;
+      };
 
       if (!response.ok || !data.ok) {
         setError(data.error || "Connexion impossible.");
@@ -55,8 +40,7 @@ export default function LoginForm() {
         return;
       }
 
-      const target = normalizeRedirect(data.redirectTo);
-      router.replace(target);
+      router.replace(data.route || "/workspace/home");
       router.refresh();
     } catch {
       setError("Erreur réseau ou serveur.");
