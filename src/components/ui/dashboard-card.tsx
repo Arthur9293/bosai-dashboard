@@ -1,41 +1,59 @@
 import type { ReactNode } from "react";
 
 type DashboardCardProps = {
-  title?: string;
-  subtitle?: string;
-  children: ReactNode;
+  title?: ReactNode;
+  subtitle?: ReactNode;
   rightSlot?: ReactNode;
+  footer?: ReactNode;
   className?: string;
+  children?: ReactNode;
 };
 
 export function DashboardCard({
   title,
   subtitle,
-  children,
   rightSlot,
+  footer,
   className = "",
+  children,
 }: DashboardCardProps) {
+  const hasHeader = Boolean(title || subtitle || rightSlot);
+  const hasContent = Boolean(children);
+  const hasFooter = Boolean(footer);
+
   return (
     <section
-      className={`rounded-2xl border border-white/10 bg-white/5 p-5 ${className}`}
+      className={[
+        "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
+        className,
+      ].join(" ")}
     >
-      {(title || subtitle || rightSlot) && (
-        <div className="mb-4 flex items-start justify-between gap-4">
-          <div>
+      {hasHeader ? (
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
             {title ? (
-              <h2 className="text-lg font-semibold text-white">{title}</h2>
+              <h2 className="text-xl font-semibold tracking-tight text-white">
+                {title}
+              </h2>
             ) : null}
 
             {subtitle ? (
-              <p className="mt-1 text-sm text-zinc-400">{subtitle}</p>
+              <p className="mt-1 text-sm leading-6 text-zinc-400">{subtitle}</p>
             ) : null}
           </div>
 
-          {rightSlot ? <div>{rightSlot}</div> : null}
+          {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
         </div>
-      )}
+      ) : null}
 
-      {children}
+      {hasContent ? (
+        <div className={hasHeader ? "mt-5" : ""}>{children}</div>
+      ) : null}
+
+      {hasFooter ? (
+        <div className={hasContent || hasHeader ? "mt-5" : ""}>{footer}</div>
+      ) : null}
     </section>
   );
 }
