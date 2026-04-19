@@ -16,6 +16,13 @@ type HubCard = {
   tone?: "default" | "primary" | "soft";
 };
 
+type FocusCard = {
+  label: string;
+  title: string;
+  value: string;
+  helper: string;
+};
+
 function text(value?: string | null): string {
   return String(value || "").trim();
 }
@@ -294,6 +301,42 @@ function shouldShowPlanBadge(workspace: WorkspaceSummary): boolean {
   return category !== plan;
 }
 
+function getAgencyFocusCards(
+  memberships: WorkspaceSummary[],
+  entitlements?: WorkspaceEntitlements | null
+): FocusCard[] {
+  const incidentAccess = entitlements?.canViewIncidents ? "ON" : "OFF";
+  const policyAccess = entitlements?.canManagePolicies ? "ON" : "OFF";
+  const workspaceAccess = entitlements?.canManageWorkspaces ? "ON" : "OFF";
+
+  return [
+    {
+      label: "Ops mode",
+      title: "Pilotage agence",
+      value: "Agency",
+      helper: "Flows, incidents, SLA et surfaces d’orchestration.",
+    },
+    {
+      label: "Workspace portfolio",
+      title: "Espaces pilotables",
+      value: String(memberships.length),
+      helper: "Nombre d’espaces visibles depuis le hub actif.",
+    },
+    {
+      label: "Incident access",
+      title: "Incidents",
+      value: incidentAccess,
+      helper: "Capacité de lecture des incidents opérationnels.",
+    },
+    {
+      label: "Control surface",
+      title: "Policies / Workspaces",
+      value: `${policyAccess} / ${workspaceAccess}`,
+      helper: "Niveau de contrôle sur gouvernance et espaces.",
+    },
+  ];
+}
+
 function ActionCard({ item }: { item: HubCard }) {
   return (
     <article className={cardClassName()}>
@@ -368,6 +411,78 @@ function WorkspaceCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function FocusCardItem({ item }: { item: FocusCard }) {
+  return (
+    <article className={cardClassName()}>
+      <div className="space-y-3">
+        <div className={sectionLabelClassName()}>{item.label}</div>
+        <div className="text-xl font-semibold tracking-tight text-white">
+          {item.title}
+        </div>
+        <div className="text-4xl font-semibold tracking-tight text-sky-300">
+          {item.value}
+        </div>
+        <div className="text-sm leading-6 text-zinc-400">{item.helper}</div>
+      </div>
+    </article>
+  );
+}
+
+function AgencyOperatingView({
+  memberships,
+  entitlements,
+}: {
+  memberships: WorkspaceSummary[];
+  entitlements?: WorkspaceEntitlements | null;
+}) {
+  const focusCards = getAgencyFocusCards(memberships, entitlements);
+
+  return (
+    <section className="space-y-4">
+      <div className={sectionLabelClassName()}>Agency operating view</div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {focusCards.map((item) => (
+          <FocusCardItem
+            key={`${item.label}-${item.title}-${item.value}`}
+            item={item}
+          />
+        ))}
+      </div>
+
+      <div className={cardClassName()}>
+        <div className="mb-4 text-lg font-medium text-white">
+          Priorité opérationnelle agence
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Link href="/flows" className={buttonClassName("primary")}>
+            Ouvrir Flows
+          </Link>
+          <Link href="/incidents" className={buttonClassName("soft")}>
+            Ouvrir Incidents
+          </Link>
+          <Link href="/sla" className={buttonClassName("default")}>
+            Ouvrir SLA
+          </Link>
+          <Link href="/workspaces" className={buttonClassName("default")}>
+            Ouvrir Workspaces
+          </Link>
+        </div>
+
+        <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className={metaLabelClassName()}>Agency quick read</div>
+          <div className="mt-2 text-sm leading-6 text-zinc-300">
+            Cette home agence sert de cockpit d’entrée pour piloter les flows,
+            surveiller les incidents, lire la pression SLA et basculer rapidement
+            entre les espaces clients ou internes.
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -460,6 +575,13 @@ export default async function WorkspaceHomePage() {
           </div>
         </section>
 
+        {category === "agency" ? (
+          <AgencyOperatingView
+            memberships={memberships}
+            entitlements={session.context?.entitlements}
+          />
+        ) : null}
+
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
           <div className={cardClassName()}>
             <div className="mb-5 text-lg font-medium text-white">
@@ -517,7 +639,10 @@ export default async function WorkspaceHomePage() {
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {cards.map((item) => (
-              <ActionCard key={`${activeWorkspace.workspaceId}-${item.title}`} item={item} />
+              <ActionCard
+                key={`${activeWorkspace.workspaceId}-${item.title}`}
+                item={item}
+              />
             ))}
           </div>
         </section>
