@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type {
+  WorkspaceCategory,
+  WorkspaceEntitlements,
+  WorkspaceSummary,
+} from "@/lib/workspaces/types";
 
 type NavItem = {
   href: string;
@@ -14,37 +19,27 @@ type NavSection = {
 };
 
 type SidebarProps = {
+  workspace: WorkspaceSummary;
+  entitlements: WorkspaceEntitlements;
   onNavigate?: () => void;
   variant?: "desktop" | "drawer";
 };
 
-const navSections: NavSection[] = [
-  {
-    title: "Control Plane",
-    items: [
-      { href: "/", label: "Overview" },
-      { href: "/flows", label: "Flows" },
-      { href: "/runs", label: "Runs" },
-      { href: "/commands", label: "Commands" },
-      { href: "/events", label: "Events" },
-      { href: "/incidents", label: "Incidents" },
-      { href: "/sla", label: "SLA" },
-    ],
-  },
-  {
-    title: "Configuration",
-    items: [
-      { href: "/policies", label: "Policies" },
-      { href: "/tools", label: "Tools" },
-      { href: "/workspaces", label: "Workspaces" },
-      { href: "/settings", label: "Settings" },
-    ],
-  },
-];
+function text(value?: string | null): string {
+  return String(value || "").trim();
+}
 
 function isActivePath(pathname: string, href: string): boolean {
-  if (href === "/") {
-    return pathname === "/";
+  if (href === "/overview") {
+    return (
+      pathname === "/" ||
+      pathname === "/overview" ||
+      pathname.startsWith("/overview/")
+    );
+  }
+
+  if (href === "/workspace") {
+    return pathname === "/workspace" || pathname.startsWith("/workspace/");
   }
 
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -58,12 +53,172 @@ function navLinkClassName(active: boolean): string {
   return "group flex items-center justify-between rounded-2xl border border-transparent px-4 py-3 text-sm font-medium text-zinc-300 transition hover:border-white/10 hover:bg-white/[0.04] hover:text-white";
 }
 
+function badgeClassName(
+  variant: "default" | "success" | "info" | "violet" = "default"
+): string {
+  if (variant === "success") {
+    return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/12 px-2.5 py-1 text-xs font-medium text-emerald-300";
+  }
+
+  if (variant === "info") {
+    return "inline-flex rounded-full border border-sky-500/20 bg-sky-500/12 px-2.5 py-1 text-xs font-medium text-sky-300";
+  }
+
+  if (variant === "violet") {
+    return "inline-flex rounded-full border border-violet-500/20 bg-violet-500/12 px-2.5 py-1 text-xs font-medium text-violet-300";
+  }
+
+  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
+}
+
+function categoryBadgeTone(
+  category: WorkspaceCategory
+): "default" | "success" | "info" | "violet" {
+  if (category === "agency") return "violet";
+  if (category === "company") return "info";
+  if (category === "freelance") return "success";
+  return "default";
+}
+
+function dedupeItems(items: NavItem[]): NavItem[] {
+  const seen = new Set<string>();
+
+  return items.filter((item) => {
+    const key = text(item.href);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function getPrimaryItems(
+  workspace: WorkspaceSummary,
+  entitlements: WorkspaceEntitlements
+): NavItem[] {
+  const category = workspace.category;
+
+  if (category === "agency") {
+    return dedupeItems([
+      { href: "/workspace", label: "Workspace Hub" },
+      { href: "/flows", label: "Flows" },
+      { href: "/overview", label: "Overview" },
+      { href: "/commands", label: "Commands" },
+      { href: "/events", label: "Events" },
+      entitlements.canViewIncidents
+        ? { href: "/incidents", label: "Incidents" }
+        : null,
+      { href: "/runs", label: "Runs" },
+      entitlements.canViewIncidents ? { href: "/sla", label: "SLA" } : null,
+    ].filter(Boolean) as NavItem[]);
+  }
+
+  if (category === "freelance") {
+    return dedupeItems([
+      { href: "/workspace", label: "Workspace Hub" },
+      { href: "/commands", label: "Commands" },
+      { href: "/overview", label: "Overview" },
+      { href: "/events", label: "Events" },
+      entitlements.canViewIncidents
+        ? { href: "/incidents", label: "Incidents" }
+        : null,
+    ].filter(Boolean) as NavItem[]);
+  }
+
+  if (category === "company") {
+    return dedupeItems([
+      { href: "/workspace", label: "Workspace Hub" },
+      { href: "/overview", label: "Overview" },
+      entitlements.canManageWorkspaces
+        ? { href: "/workspaces", label: "Workspaces" }
+        : null,
+      entitlements.canRunHttp ? { href: "/commands", label: "Commands" } : null,
+      { href: "/events", label: "Events" },
+      entitlements.canViewIncidents
+        ? { href: "/incidents", label: "Incidents" }
+        : null,
+    ].filter(Boolean) as NavItem[]);
+  }
+
+  return dedupeItems([
+    { href: "/workspace", label: "Workspace Hub" },
+    { href: "/overview", label: "Overview" },
+    { href: "/events", label: "Events" },
+  ]);
+}
+
+function getConfigItems(
+  workspace: WorkspaceSummary,
+  entitlements: WorkspaceEntitlements
+): NavItem[] {
+  const primaryHrefs = new Set(
+    getPrimaryItems(workspace, entitlements).map((item) => item.href)
+  );
+
+  const items = dedupeItems([
+    entitlements.canManagePolicies ? { href: "/policies", label: "Policies" } : null,
+    entitlements.canManageTools ? { href: "/tools", label: "Tools" } : null,
+    entitlements.canManageWorkspaces
+      ? { href: "/workspaces", label: "Workspaces" }
+      : null,
+    { href: "/settings", label: "Settings" },
+  ].filter(Boolean) as NavItem[]);
+
+  return items.filter((item) => !primaryHrefs.has(item.href));
+}
+
+function getUtilityItems(): NavItem[] {
+  return [
+    { href: "/workspace/select", label: "Changer d’espace" },
+  ];
+}
+
+function getWorkspaceSubtitle(workspace: WorkspaceSummary): string {
+  if (workspace.category === "agency") {
+    return "Hub agence orienté flows et exploitation";
+  }
+
+  if (workspace.category === "company") {
+    return "Hub entreprise orienté cockpit et surfaces métier";
+  }
+
+  if (workspace.category === "freelance") {
+    return "Hub freelance orienté commands et exécution";
+  }
+
+  return "Hub personnel orienté lecture simple et accès rapide";
+}
+
+function getNavSections(
+  workspace: WorkspaceSummary,
+  entitlements: WorkspaceEntitlements
+): NavSection[] {
+  return [
+    {
+      title: "Workspace",
+      items: getPrimaryItems(workspace, entitlements),
+    },
+    {
+      title: "Configuration",
+      items: getConfigItems(workspace, entitlements),
+    },
+    {
+      title: "Utility",
+      items: getUtilityItems(),
+    },
+  ].filter((section) => section.items.length > 0);
+}
+
 export function Sidebar({
+  workspace,
+  entitlements,
   onNavigate,
   variant = "desktop",
 }: SidebarProps) {
   const pathname = usePathname();
   const isDesktop = variant === "desktop";
+  const navSections = getNavSections(workspace, entitlements);
 
   return (
     <aside
@@ -82,19 +237,22 @@ export function Sidebar({
               </div>
 
               <div className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                Control Plane
+                {workspace.name}
               </div>
 
               <div className="mt-2 text-sm leading-6 text-zinc-400">
-                Anti-Chaos AI Ops Layer
+                {getWorkspaceSubtitle(workspace)}
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <span className="inline-flex rounded-full border border-sky-500/20 bg-sky-500/12 px-2.5 py-1 text-xs font-medium text-sky-300">
-                  Workspace · Production
+                <span className={badgeClassName(categoryBadgeTone(workspace.category))}>
+                  {workspace.category.toUpperCase()}
                 </span>
-                <span className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/12 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                  Stable
+                <span className={badgeClassName("success")}>
+                  {workspace.membershipRole.toUpperCase()}
+                </span>
+                <span className={badgeClassName("success")}>
+                  {workspace.status.toUpperCase()}
                 </span>
               </div>
             </div>
@@ -144,21 +302,25 @@ export function Sidebar({
           <div className="border-t border-white/10 px-5 py-5">
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
               <div className="text-[11px] uppercase tracking-[0.2em] text-white/30">
-                Control plane status
+                Active workspace
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <span className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/12 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                  Worker healthy
+                <span className={badgeClassName(categoryBadgeTone(workspace.category))}>
+                  {workspace.slug}
                 </span>
-                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300">
-                  Core stable
+                <span className={badgeClassName("default")}>
+                  Plan · {workspace.plan}
                 </span>
               </div>
 
-              <div className="mt-4 space-y-1 text-xs text-zinc-500">
-                <div>Version: v2.5.5-rebuild</div>
-                <div>Workspace: production</div>
+              <div className="mt-4">
+                <Link
+                  href="/workspace/select"
+                  className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
+                >
+                  Changer d’espace
+                </Link>
               </div>
             </div>
           </div>
