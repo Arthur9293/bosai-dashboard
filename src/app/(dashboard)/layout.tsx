@@ -27,15 +27,16 @@ export default async function DashboardLayout({
     nextPath: session.homeRoute || "/overview",
   });
 
-  if (resolution.kind !== "allow_dashboard") {
+  const activeWorkspace =
+    resolution.kind === "allow_dashboard" ? resolution.activeWorkspace : null;
+
+  if (resolution.kind !== "allow_dashboard" || !activeWorkspace) {
     redirect(resolution.redirectTo);
   }
 
   return (
     <AppShell>
-      <WorkspaceRouteMemory
-        workspaceId={resolution.activeWorkspace.workspaceId}
-      />
+      <WorkspaceRouteMemory workspaceId={activeWorkspace.workspaceId} />
       {children}
     </AppShell>
   );
