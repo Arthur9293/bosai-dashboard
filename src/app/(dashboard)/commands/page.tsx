@@ -115,6 +115,25 @@ function firstParam(value?: string | string[]) {
   return value || "";
 }
 
+function normalizeText(value?: string | null): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function buildHref(
+  pathname: string,
+  params: Record<string, string | undefined>
+): string {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    const text = String(value || "").trim();
+    if (text) search.set(key, text);
+  }
+
+  const query = search.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
 function parseMaybeJson(value: unknown): Record<string, unknown> {
   if (!value) return {};
 
@@ -137,7 +156,7 @@ function parseMaybeJson(value: unknown): Record<string, unknown> {
 }
 
 function humanStatusLabel(status?: string): string {
-  const normalized = (status || "").trim().toLowerCase();
+  const normalized = normalizeText(status);
 
   if (
     ["processed", "done", "success", "completed", "resolved"].includes(
@@ -147,7 +166,7 @@ function humanStatusLabel(status?: string): string {
     return "Succès";
   }
 
-  if (["queued", "pending", "new"].includes(normalized)) {
+  if (["queued", "queue", "pending", "new"].includes(normalized)) {
     return "En file";
   }
 
@@ -369,30 +388,41 @@ function commandMatchesFlowFilters(
   return filterValues.some((filterValue) => commandValues.includes(filterValue));
 }
 
-function getBackToFlowsHref(filters: {
-  flowId: string;
-  rootEventId: string;
-  sourceEventId: string;
-}) {
+function getBackToFlowsHref(
+  filters: {
+    flowId: string;
+    rootEventId: string;
+    sourceEventId: string;
+  },
+  workspaceId: string
+) {
   if (filters.flowId) {
-    return `/flows/${encodeURIComponent(filters.flowId)}`;
+    return buildHref(`/flows/${encodeURIComponent(filters.flowId)}`, {
+      workspace_id: workspaceId || undefined,
+    });
   }
 
   if (filters.rootEventId) {
-    return `/flows/${encodeURIComponent(filters.rootEventId)}`;
+    return buildHref(`/flows/${encodeURIComponent(filters.rootEventId)}`, {
+      workspace_id: workspaceId || undefined,
+    });
   }
 
   if (filters.sourceEventId) {
-    return `/flows/${encodeURIComponent(filters.sourceEventId)}`;
+    return buildHref(`/flows/${encodeURIComponent(filters.sourceEventId)}`, {
+      workspace_id: workspaceId || undefined,
+    });
   }
 
-  return "/flows";
+  return buildHref("/flows", {
+    workspace_id: workspaceId || undefined,
+  });
 }
 
 function getCommandStatusBucket(command: CommandItem) {
-  const normalized = getCommandStatus(command).toLowerCase();
+  const normalized = normalizeText(getCommandStatus(command));
 
-  if (["queued", "pending", "new"].includes(normalized)) return "queued";
+  if (["queued", "queue", "pending", "new"].includes(normalized)) return "queued";
   if (["running", "processing"].includes(normalized)) return "running";
   if (["retry", "retriable"].includes(normalized)) return "retry";
   if (["error", "failed", "dead", "blocked"].includes(normalized)) return "failed";
@@ -432,12 +462,13 @@ function getCommandPriority(command: CommandItem): number {
 }
 
 function getCommandTimestamp(command: CommandItem): number {
-  return new Date(
+  const value =
     getCommandFinishedAt(command) ||
-      getCommandStartedAt(command) ||
-      getCommandCreatedAt(command) ||
-      0
-  ).getTime();
+    getCommandStartedAt(command) ||
+    getCommandCreatedAt(command);
+
+  const timestamp = new Date(value || 0).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function getCommandPeriodKey(command: CommandItem): string {
@@ -457,9 +488,9 @@ function getCommandPeriodKey(command: CommandItem): string {
 function parseCommandFilters(
   searchParams?: Record<string, string | string[] | undefined>
 ): CommandFilters {
-  const bucket = firstParam(searchParams?.bucket).trim().toLowerCase();
-  const capability = firstParam(searchParams?.capability).trim().toLowerCase();
-  const workspaceId = firstParam(searchParams?.workspace_id).trim().toLowerCase();
+  const bucket = normalizeText(firstParam(searchParams?.bucket));
+  const capability = normalizeText(firstParam(searchParams?.capability));
+  const workspaceId = firstParam(searchParams?.workspace_id).trim();
   const periodKey = firstParam(searchParams?.period_key).trim();
   const rawLimit = Number.parseInt(firstParam(searchParams?.limit), 10);
 
@@ -491,13 +522,13 @@ function commandMatchesCommandFilters(
   }
 
   if (filters.capability) {
-    const capability = getCommandCapability(command).toLowerCase();
-    if (!capability.includes(filters.capability)) return false;
+    const capability = normalizeText(getCommandCapability(command));
+    if (!capability.includes(normalizeText(filters.capability))) return false;
   }
 
   if (filters.workspace_id) {
-    const workspace = getCommandWorkspace(command).toLowerCase();
-    if (!workspace.includes(filters.workspace_id)) return false;
+    const workspace = normalizeText(getCommandWorkspace(command));
+    if (!workspace.includes(normalizeText(filters.workspace_id))) return false;
   }
 
   if (filters.period_key) {
@@ -517,6 +548,10 @@ function sortCommands(items: CommandItem[]) {
 }
 
 function sortDoneCommands(items: CommandItem[]) {
+  return [...items].sort((a, b) => getCommandTimestamp(b) - getCommandTimestamp(a));
+}
+
+function sortOtherCommands(items: CommandItem[]) {
   return [...items].sort((a, b) => getCommandTimestamp(b) - getCommandTimestamp(a));
 }
 
@@ -616,7 +651,13 @@ function HeroActionCard({
   );
 }
 
-function CommandCard({ command }: { command: CommandItem }) {
+function CommandCard({
+  command,
+  activeWorkspaceId,
+}: {
+  command: CommandItem;
+  activeWorkspaceId: string;
+}) {
   const id = String(command.id || "");
   const title = getCommandTitle(command);
   const status = getCommandStatus(command);
@@ -631,6 +672,14 @@ function CommandCard({ command }: { command: CommandItem }) {
   const toolMode = getCommandToolMode(command);
   const errorText = getCommandError(command);
 
+  const detailHref = buildHref(`/commands/${encodeURIComponent(id)}`, {
+    workspace_id: activeWorkspaceId || undefined,
+    flow_id: flowId || undefined,
+    root_event_id: rootEventId || undefined,
+    source_event_id: sourceEventId || undefined,
+    from: "commands",
+  });
+
   return (
     <article className={cardClassName()}>
       <div className="flex h-full flex-col gap-5">
@@ -641,7 +690,7 @@ function CommandCard({ command }: { command: CommandItem }) {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <Link
-                  href={`/commands/${encodeURIComponent(id)}`}
+                  href={detailHref}
                   className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
                 >
                   {title}
@@ -730,10 +779,7 @@ function CommandCard({ command }: { command: CommandItem }) {
         </div>
 
         <div className="space-y-3">
-          <Link
-            href={`/commands/${encodeURIComponent(id)}`}
-            className={actionLinkClassName("primary")}
-          >
+          <Link href={detailHref} className={actionLinkClassName("primary")}>
             Ouvrir le détail
           </Link>
         </div>
@@ -753,13 +799,16 @@ export default async function CommandsPage({ searchParams }: PageProps) {
   const from = firstParam(resolvedSearchParams.from).trim();
 
   const commandFilters = parseCommandFilters(resolvedSearchParams);
+  const activeWorkspaceId = commandFilters.workspace_id;
 
   let data: CommandsResponse | null = null;
+  let fetchFailed = false;
 
   try {
     data = await fetchCommands(300);
   } catch {
     data = null;
+    fetchFailed = true;
   }
 
   const commands: CommandItem[] = Array.isArray(data?.commands)
@@ -778,44 +827,86 @@ export default async function CommandsPage({ searchParams }: PageProps) {
       )
     : commands;
 
-  const visibleCommands = flowVisibleCommands
-    .filter((command) => commandMatchesCommandFilters(command, commandFilters))
-    .slice(0, commandFilters.limit);
+  const matchingCommands = flowVisibleCommands.filter((command) =>
+    commandMatchesCommandFilters(command, commandFilters)
+  );
 
-  const queuedCommands = visibleCommands.filter(
+  const queuedCommandsAll = matchingCommands.filter(
     (item) => getCommandStatusBucket(item) === "queued"
   );
 
-  const runningCommands = visibleCommands.filter(
+  const runningCommandsAll = matchingCommands.filter(
     (item) => getCommandStatusBucket(item) === "running"
   );
 
-  const retryCommands = visibleCommands.filter(
+  const retryCommandsAll = matchingCommands.filter(
     (item) => getCommandStatusBucket(item) === "retry"
   );
 
-  const failedCommands = visibleCommands.filter(
+  const failedCommandsAll = matchingCommands.filter(
     (item) => getCommandStatusBucket(item) === "failed"
   );
 
-  const doneCommands = visibleCommands.filter(
+  const doneCommandsAll = matchingCommands.filter(
     (item) => getCommandStatusBucket(item) === "done"
   );
 
-  const needsAttentionCommands = sortCommands(
-    visibleCommands.filter((item) =>
+  const otherCommandsAll = matchingCommands.filter(
+    (item) => getCommandStatusBucket(item) === "other"
+  );
+
+  const needsAttentionAll = sortCommands(
+    matchingCommands.filter((item) =>
       ["queued", "running", "retry", "failed"].includes(
         getCommandStatusBucket(item)
       )
     )
   );
 
-  const completedCommands = sortDoneCommands(doneCommands);
+  const completedAll = sortDoneCommands(doneCommandsAll);
+  const otherAll = sortOtherCommands(otherCommandsAll);
+
+  let remaining = commandFilters.limit;
+  const needsAttentionCommands = needsAttentionAll.slice(0, remaining);
+  remaining = Math.max(0, remaining - needsAttentionCommands.length);
+
+  const completedCommands = completedAll.slice(0, remaining);
+  remaining = Math.max(0, remaining - completedCommands.length);
+
+  const otherCommands = otherAll.slice(0, remaining);
+
+  const displayedCount =
+    needsAttentionCommands.length +
+    completedCommands.length +
+    otherCommands.length;
 
   const backToFlowsHref =
     from === "flows" || from === "flow_detail"
-      ? getBackToFlowsHref({ flowId, rootEventId, sourceEventId })
-      : "/flows";
+      ? getBackToFlowsHref(
+          { flowId, rootEventId, sourceEventId },
+          activeWorkspaceId
+        )
+      : buildHref("/flows", {
+          workspace_id: activeWorkspaceId || undefined,
+        });
+
+  const flowsHref = buildHref("/flows", {
+    workspace_id: activeWorkspaceId || undefined,
+  });
+
+  const runsHref = buildHref("/runs", {
+    workspace_id: activeWorkspaceId || undefined,
+  });
+
+  const overviewHref = buildHref("/", {
+    workspace_id: activeWorkspaceId || undefined,
+  });
+
+  const allCommandsHref = buildHref("/commands", {
+    workspace_id: activeWorkspaceId || undefined,
+  });
+
+  const hasDisplayLimit = matchingCommands.length > displayedCount;
 
   return (
     <div className="space-y-8">
@@ -835,18 +926,18 @@ export default async function CommandsPage({ searchParams }: PageProps) {
 
           <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <HeroActionCard
-              href="/flows"
+              href={flowsHref}
               title="Ouvrir Flows"
               description="Lire les chaînes liées aux commands et remonter aux flows."
             />
             <HeroActionCard
-              href="/runs"
+              href={runsHref}
               title="Voir Runs"
               description="Comparer l’activité commands avec les runs observés."
             />
             <div className="sm:col-span-2">
               <HeroActionCard
-                href="/"
+                href={overviewHref}
                 title="Retour Overview"
                 description="Revenir au cockpit principal et aux signaux prioritaires."
                 tone="primary"
@@ -868,32 +959,56 @@ export default async function CommandsPage({ searchParams }: PageProps) {
           <div className="mt-5 grid grid-cols-2 gap-3">
             <SignalMiniStat
               label="Queued"
-              value={String(queuedCommands.length)}
+              value={String(queuedCommandsAll.length)}
               toneClass="text-amber-300"
             />
             <SignalMiniStat
               label="Running"
-              value={String(runningCommands.length)}
+              value={String(runningCommandsAll.length)}
               toneClass="text-sky-300"
             />
             <SignalMiniStat
               label="Failed"
-              value={String(failedCommands.length)}
+              value={String(failedCommandsAll.length)}
               toneClass="text-red-300"
             />
             <SignalMiniStat
               label="Done"
-              value={String(doneCommands.length)}
+              value={String(doneCommandsAll.length)}
               toneClass="text-emerald-300"
             />
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className={compactCardClassName()}>
+              <div className={metaLabelClassName()}>Workspace scope</div>
+              <div className="mt-2 break-all text-sm text-zinc-100">
+                {activeWorkspaceId || "all"}
+              </div>
+            </div>
+
+            <div className={compactCardClassName()}>
+              <div className={metaLabelClassName()}>Matching records</div>
+              <div className="mt-2 text-sm text-zinc-100">
+                {matchingCommands.length}
+              </div>
+            </div>
+
+            <div className={compactCardClassName()}>
+              <div className={metaLabelClassName()}>Displayed</div>
+              <div className="mt-2 text-sm text-zinc-100">
+                {displayedCount}
+                {hasDisplayLimit ? ` / ${matchingCommands.length}` : ""}
+              </div>
+            </div>
           </div>
 
           <div className="mt-4 rounded-[20px] border border-white/10 bg-black/20 px-4 py-3.5">
             <div className={metaLabelClassName()}>Quick read</div>
             <div className="mt-2 text-sm leading-6 text-zinc-400">
-              {failedCommands.length > 0 || retryCommands.length > 0
+              {failedCommandsAll.length > 0 || retryCommandsAll.length > 0
                 ? "Priorité : ouvrir les commands en échec ou en retry."
-                : runningCommands.length > 0 || queuedCommands.length > 0
+                : runningCommandsAll.length > 0 || queuedCommandsAll.length > 0
                   ? "Priorité : suivre la file active et les commands en cours."
                   : "La file visible est principalement stable ou terminée."}
             </div>
@@ -925,6 +1040,12 @@ export default async function CommandsPage({ searchParams }: PageProps) {
                 source_event_id: {sourceEventId}
               </span>
             ) : null}
+
+            {activeWorkspaceId ? (
+              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-200">
+                workspace_id: {activeWorkspaceId}
+              </span>
+            ) : null}
           </div>
 
           <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -932,7 +1053,7 @@ export default async function CommandsPage({ searchParams }: PageProps) {
               Retour aux flows
             </Link>
 
-            <Link href="/commands" className={actionLinkClassName("primary")}>
+            <Link href={allCommandsHref} className={actionLinkClassName("primary")}>
               Voir toutes les commands
             </Link>
           </div>
@@ -952,32 +1073,37 @@ export default async function CommandsPage({ searchParams }: PageProps) {
       <section className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-5">
         <StatCard
           label="Queued"
-          value={queuedCommands.length}
+          value={queuedCommandsAll.length}
           toneClass="text-amber-300"
         />
         <StatCard
           label="Running"
-          value={runningCommands.length}
+          value={runningCommandsAll.length}
           toneClass="text-sky-300"
         />
         <StatCard
           label="Retry"
-          value={retryCommands.length}
+          value={retryCommandsAll.length}
           toneClass="text-violet-300"
         />
         <StatCard
           label="Failed"
-          value={failedCommands.length}
+          value={failedCommandsAll.length}
           toneClass="text-red-300"
         />
         <StatCard
           label="Done"
-          value={doneCommands.length}
+          value={doneCommandsAll.length}
           toneClass="text-emerald-300"
         />
       </section>
 
-      {visibleCommands.length === 0 ? (
+      {fetchFailed ? (
+        <EmptyStatePanel
+          title="Lecture Commands indisponible"
+          description="Le Dashboard n’a pas pu charger la surface Commands. La vue est protégée, mais il faut vérifier la lecture API côté worker / helper."
+        />
+      ) : matchingCommands.length === 0 ? (
         <EmptyStatePanel
           title="Aucune command visible"
           description="Le Dashboard n’a remonté aucune command sur la vue actuelle."
@@ -987,7 +1113,7 @@ export default async function CommandsPage({ searchParams }: PageProps) {
           <SectionBlock
             title="Needs attention"
             description="Commands à surveiller en priorité : en file, en cours, en retry ou en échec."
-            count={needsAttentionCommands.length}
+            count={needsAttentionAll.length}
             countTone="warning"
           >
             {needsAttentionCommands.length === 0 ? (
@@ -998,7 +1124,11 @@ export default async function CommandsPage({ searchParams }: PageProps) {
             ) : (
               <div className="space-y-4">
                 {needsAttentionCommands.map((command) => (
-                  <CommandCard key={String(command.id)} command={command} />
+                  <CommandCard
+                    key={String(command.id)}
+                    command={command}
+                    activeWorkspaceId={activeWorkspaceId}
+                  />
                 ))}
               </div>
             )}
@@ -1007,7 +1137,7 @@ export default async function CommandsPage({ searchParams }: PageProps) {
           <SectionBlock
             title="Completed commands"
             description="Historique des commands terminées avec succès, triées de la plus récente à la plus ancienne."
-            count={completedCommands.length}
+            count={completedAll.length}
             countTone="success"
           >
             {completedCommands.length === 0 ? (
@@ -1018,11 +1148,41 @@ export default async function CommandsPage({ searchParams }: PageProps) {
             ) : (
               <div className="space-y-4">
                 {completedCommands.map((command) => (
-                  <CommandCard key={String(command.id)} command={command} />
+                  <CommandCard
+                    key={String(command.id)}
+                    command={command}
+                    activeWorkspaceId={activeWorkspaceId}
+                  />
                 ))}
               </div>
             )}
           </SectionBlock>
+
+          {otherAll.length > 0 ? (
+            <SectionBlock
+              title="Other commands"
+              description="Commands visibles avec un statut non standard ou non classé."
+              count={otherAll.length}
+              countTone="muted"
+            >
+              {otherCommands.length === 0 ? (
+                <EmptyStatePanel
+                  title="Aucune command additionnelle affichée"
+                  description="Des commands non standard existent, mais elles ne sont pas affichées dans la limite actuelle."
+                />
+              ) : (
+                <div className="space-y-4">
+                  {otherCommands.map((command) => (
+                    <CommandCard
+                      key={String(command.id)}
+                      command={command}
+                      activeWorkspaceId={activeWorkspaceId}
+                    />
+                  ))}
+                </div>
+              )}
+            </SectionBlock>
+          ) : null}
         </div>
       )}
     </div>
