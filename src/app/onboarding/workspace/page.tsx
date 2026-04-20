@@ -19,7 +19,6 @@ type PlanConfig = {
   workspaceMode: string;
   activationMode: string;
   supportLevel: string;
-  finalHref: string;
 };
 
 function pageFrameClassName() {
@@ -119,27 +118,10 @@ function firstParam(value?: string | string[]): string {
   return value || "";
 }
 
-function buildHref(
-  pathname: string,
-  params: Record<string, string | undefined>
-): string {
-  const search = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(params)) {
-    const text = String(value || "").trim();
-    if (text) {
-      search.set(key, text);
-    }
-  }
-
-  const query = search.toString();
-  return query ? `${pathname}?${query}` : pathname;
-}
-
-function getSuggestedWorkspaceName(plan: PlanConfig): string {
-  if (plan.code === "agency") return "BOSAI Agency Workspace";
-  if (plan.code === "custom") return "BOSAI Custom Workspace";
-  if (plan.code === "pro") return "BOSAI Pro Workspace";
+function getSuggestedWorkspaceName(planCode: string): string {
+  if (planCode === "agency") return "BOSAI Agency Workspace";
+  if (planCode === "custom") return "BOSAI Custom Workspace";
+  if (planCode === "pro") return "BOSAI Pro Workspace";
   return "BOSAI Starter Workspace";
 }
 
@@ -153,7 +135,6 @@ const plans: Record<string, PlanConfig> = {
     workspaceMode: "1 workspace essentiel",
     activationMode: "Activation simple",
     supportLevel: "Support standard",
-    finalHref: "/workspace",
   },
   pro: {
     code: "pro",
@@ -164,7 +145,6 @@ const plans: Record<string, PlanConfig> = {
     workspaceMode: "Jusqu’à 3 workspaces",
     activationMode: "Activation renforcée",
     supportLevel: "Support prioritaire léger",
-    finalHref: "/workspace",
   },
   agency: {
     code: "agency",
@@ -175,7 +155,6 @@ const plans: Record<string, PlanConfig> = {
     workspaceMode: "Mode agency / multi-client",
     activationMode: "Activation multi-espace",
     supportLevel: "Support agency",
-    finalHref: "/workspace",
   },
   custom: {
     code: "custom",
@@ -186,7 +165,6 @@ const plans: Record<string, PlanConfig> = {
     workspaceMode: "Workspace sur mesure",
     activationMode: "Activation après cadrage",
     supportLevel: "Accompagnement dédié",
-    finalHref: "/workspace",
   },
 };
 
@@ -202,11 +180,7 @@ export default async function OnboardingWorkspacePage({
   const hasValidPlan = selectedPlan !== null;
 
   const activationHref = hasValidPlan
-    ? buildHref(selectedPlan.finalHref, {
-        plan: selectedPlan.code,
-        workspace_status: "active",
-        onboarding_completed: "1",
-      })
+    ? `/onboarding/continue?step=activate&plan=${selectedPlan.code}&next=/workspace`
     : "";
 
   const provisioningHref = hasValidPlan
@@ -214,7 +188,7 @@ export default async function OnboardingWorkspacePage({
     : "/onboarding/provisioning";
 
   const suggestedName = hasValidPlan
-    ? getSuggestedWorkspaceName(selectedPlan)
+    ? getSuggestedWorkspaceName(selectedPlan.code)
     : "BOSAI Workspace";
 
   return (
@@ -279,7 +253,7 @@ export default async function OnboardingWorkspacePage({
                 <div className={secondaryCardClassName()}>
                   <div className={metaLabelClassName()}>Account status</div>
                   <div className="mt-2 text-2xl font-semibold text-sky-300">
-                    {hasValidPlan ? "provisioning_pending" : "plan_missing"}
+                    {hasValidPlan ? "ready_to_activate" : "plan_missing"}
                   </div>
                 </div>
 
@@ -383,7 +357,7 @@ export default async function OnboardingWorkspacePage({
                     </div>
 
                     <div className={metaBoxClassName()}>
-                      <div className={metaLabelClassName()}>Next route</div>
+                      <div className={metaLabelClassName()}>Activation route</div>
                       <div className="mt-2 break-all text-zinc-100">{activationHref}</div>
                     </div>
                   </div>
@@ -473,7 +447,7 @@ export default async function OnboardingWorkspacePage({
                     <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
                       <div className={metaLabelClassName()}>Recommandation</div>
                       <p className="mt-2 text-sm leading-7 text-zinc-400">
-                        Active maintenant le workspace pour fermer le flux commercial v1 et passer ensuite au vrai gating cockpit.
+                        Active maintenant le workspace pour fermer le flux commercial v1 et ouvrir ensuite le cockpit via le guard global.
                       </p>
                     </div>
 
