@@ -179,18 +179,12 @@ export default async function OnboardingWorkspacePage({
   const selectedPlan = plans[planCode] ?? null;
   const hasValidPlan = selectedPlan !== null;
 
-  const createTarget = hasValidPlan
-    ? `/workspace/create?source=onboarding&plan=${selectedPlan.code}`
-    : "/workspace/create?source=onboarding";
-
-  const activationHref = hasValidPlan
-    ? `/onboarding/continue?step=activate&plan=${
-        selectedPlan.code
-      }&next=${encodeURIComponent(createTarget)}`
-    : "";
+  const workspaceCreateHref = hasValidPlan
+    ? `/workspace/create?plan=${encodeURIComponent(selectedPlan.code)}`
+    : "/workspace/create";
 
   const provisioningHref = hasValidPlan
-    ? `/onboarding/provisioning?plan=${selectedPlan.code}`
+    ? `/onboarding/provisioning?plan=${encodeURIComponent(selectedPlan.code)}`
     : "/onboarding/provisioning";
 
   const suggestedName = hasValidPlan
@@ -237,7 +231,7 @@ export default async function OnboardingWorkspacePage({
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 {hasValidPlan ? (
-                  <Link href={activationHref} className={buttonClassName("primary")}>
+                  <Link href={workspaceCreateHref} className={buttonClassName("primary")}>
                     Continuer vers la création
                   </Link>
                 ) : (
@@ -253,34 +247,34 @@ export default async function OnboardingWorkspacePage({
             </div>
 
             <div className={sectionCardClassName()}>
-              <div className={eyebrowClassName()}>État final avant cockpit</div>
+              <div className={eyebrowClassName()}>État final avant création</div>
 
               <div className="mt-5 space-y-4">
                 <div className={secondaryCardClassName()}>
                   <div className={metaLabelClassName()}>Account status</div>
                   <div className="mt-2 text-2xl font-semibold text-sky-300">
-                    {hasValidPlan ? "ready_to_create" : "plan_missing"}
+                    {hasValidPlan ? "ready_to_activate" : "plan_missing"}
                   </div>
                 </div>
 
                 <div className={secondaryCardClassName()}>
                   <div className={metaLabelClassName()}>Workspace status</div>
                   <div className="mt-2 text-xl font-semibold text-white">
-                    {hasValidPlan ? "active (onboarding non finalisé)" : "non créé"}
+                    {hasValidPlan ? "ready_to_activate" : "non créé"}
                   </div>
                 </div>
 
                 <div className={secondaryCardClassName()}>
                   <div className={metaLabelClassName()}>Cockpit access</div>
                   <div className="mt-2 text-xl font-semibold text-white">
-                    {hasValidPlan ? "Bloqué jusqu’à la création réelle" : "Bloqué"}
+                    Bloqué avant création
                   </div>
                 </div>
 
                 <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
                   <div className={metaLabelClassName()}>Lecture produit</div>
                   <p className="mt-2 text-sm leading-7 text-zinc-400">
-                    Cette étape ferme la partie commerciale, puis transfère vers une création contrôlée du workspace au lieu d’ouvrir directement le legacy selector.
+                    Cette étape transforme un simple provisioning en création contrôlée avant l’ouverture du cockpit.
                   </p>
                 </div>
               </div>
@@ -296,7 +290,7 @@ export default async function OnboardingWorkspacePage({
                     Paramètres initiaux du workspace
                   </h2>
                   <p className="mt-4 max-w-2xl text-base leading-8 text-zinc-400">
-                    Cette vue fixe les valeurs de départ du workspace avant sa création effective dans le flux commercial v1.
+                    Cette vue fixe les valeurs de départ du workspace avant sa création contrôlée puis son activation.
                   </p>
                 </div>
 
@@ -364,7 +358,7 @@ export default async function OnboardingWorkspacePage({
 
                     <div className={metaBoxClassName()}>
                       <div className={metaLabelClassName()}>Next route</div>
-                      <div className="mt-2 break-all text-zinc-100">{createTarget}</div>
+                      <div className="mt-2 break-all text-zinc-100">{workspaceCreateHref}</div>
                     </div>
                   </div>
                 </div>
@@ -374,7 +368,7 @@ export default async function OnboardingWorkspacePage({
                 <div className="max-w-3xl">
                   <div className={eyebrowClassName()}>Checklist finale</div>
                   <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                    Ce qui devient vrai après cette étape
+                    Ce qui devient vrai après création
                   </h2>
                 </div>
 
@@ -388,17 +382,17 @@ export default async function OnboardingWorkspacePage({
                     [
                       "2",
                       "Flux commercial fermé",
-                      "Le parcours plan -> checkout -> provisioning -> workspace est complet.",
+                      "Le parcours plan -> checkout -> provisioning -> workspace -> create reste cohérent.",
                     ],
                     [
                       "3",
-                      "Création contrôlée",
-                      "Le prochain écran doit créer l’espace au lieu d’ouvrir le cockpit brut.",
+                      "Activation possible",
+                      "L’espace peut ensuite être activé proprement.",
                     ],
                     [
                       "4",
                       "Base v1 propre",
-                      "Vous partez d’un workspace cadré plutôt que d’un espace vide.",
+                      "Vous partez d’un flux contrôlé plutôt que d’un cockpit ouvert trop tôt.",
                     ],
                   ].map(([step, title, desc]) => (
                     <div key={step} className={secondaryCardClassName()}>
@@ -409,68 +403,6 @@ export default async function OnboardingWorkspacePage({
                       <p className="mt-3 text-sm leading-7 text-zinc-400">{desc}</p>
                     </div>
                   ))}
-                </div>
-              </section>
-
-              <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-                <div className={sectionCardClassName()}>
-                  <div className={eyebrowClassName()}>Repères</div>
-                  <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                    Valeurs initiales proposées
-                  </h2>
-
-                  <div className="mt-6 space-y-4">
-                    <div className={secondaryCardClassName()}>
-                      <div className={metaLabelClassName()}>Nom suggéré</div>
-                      <p className="mt-2 text-sm leading-7 text-zinc-400">
-                        {suggestedName}
-                      </p>
-                    </div>
-
-                    <div className={secondaryCardClassName()}>
-                      <div className={metaLabelClassName()}>Usage conseillé</div>
-                      <p className="mt-2 text-sm leading-7 text-zinc-400">
-                        {selectedPlan.workspaceMode}
-                      </p>
-                    </div>
-
-                    <div className={secondaryCardClassName()}>
-                      <div className={metaLabelClassName()}>Support</div>
-                      <p className="mt-2 text-sm leading-7 text-zinc-400">
-                        {selectedPlan.supportLevel}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className={sectionCardClassName()}>
-                  <div className={eyebrowClassName()}>Actions</div>
-                  <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                    Continuer ou ajuster
-                  </h2>
-
-                  <div className="mt-6 space-y-4">
-                    <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
-                      <div className={metaLabelClassName()}>Recommandation</div>
-                      <p className="mt-2 text-sm leading-7 text-zinc-400">
-                        Continue maintenant vers la création réelle du workspace. Le cockpit restera bloqué tant que cette création n’est pas finalisée.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-col gap-3">
-                      <Link href={activationHref} className={buttonClassName("primary")}>
-                        Continuer vers la création
-                      </Link>
-
-                      <Link href={provisioningHref} className={buttonClassName("soft")}>
-                        Retour provisioning
-                      </Link>
-
-                      <Link href="/onboarding/plan" className={buttonClassName("ghost")}>
-                        Changer de plan
-                      </Link>
-                    </div>
-                  </div>
                 </div>
               </section>
             </>
