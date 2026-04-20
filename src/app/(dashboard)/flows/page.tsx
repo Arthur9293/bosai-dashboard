@@ -141,17 +141,21 @@ export default async function FlowsPage({
                 href={buildHref("/workspace", {
                   workspace_id: workspaceId || undefined,
                 })}
-                className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                className="inline-flex min-h-[40px] items-center justify-center rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-zinc-50"
               >
-                Retour au hub
+                <span className="block leading-none text-zinc-700">
+                  Retour au hub
+                </span>
               </Link>
               <Link
                 href={buildHref("/overview", {
                   workspace_id: workspaceId || undefined,
                 })}
-                className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                className="inline-flex min-h-[40px] items-center justify-center rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-zinc-50"
               >
-                Overview
+                <span className="block leading-none text-zinc-700">
+                  Overview
+                </span>
               </Link>
             </div>
           </div>
@@ -329,18 +333,22 @@ export default async function FlowsPage({
                   "/flows",
                   workspaceId ? { workspace_id: workspaceId } : {},
                 )}
-                className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                className="inline-flex min-h-[40px] items-center justify-center rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-zinc-50"
               >
-                Réinitialiser les filtres
+                <span className="block leading-none text-zinc-700">
+                  Réinitialiser les filtres
+                </span>
               </Link>
               <Link
                 href={buildHref(
                   "/commands",
                   workspaceId ? { workspace_id: workspaceId } : {},
                 )}
-                className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                className="inline-flex min-h-[40px] items-center justify-center rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-zinc-50"
               >
-                Voir les commandes
+                <span className="block leading-none text-zinc-700">
+                  Voir les commandes
+                </span>
               </Link>
             </div>
           </div>
@@ -630,13 +638,20 @@ function FilterPill({
     <Link
       href={href}
       className={[
-        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-3 py-2 text-sm font-medium shadow-sm transition",
+        "inline-flex min-h-[40px] shrink-0 items-center justify-center whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium shadow-sm transition",
         active
-          ? "border-zinc-900 bg-zinc-900 text-white"
-          : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
+          ? "border-zinc-900 bg-zinc-900 hover:bg-zinc-800"
+          : "border-zinc-200 bg-white hover:bg-zinc-50",
       ].join(" ")}
     >
-      {children}
+      <span
+        className={[
+          "block leading-none",
+          active ? "text-white" : "text-zinc-700",
+        ].join(" ")}
+      >
+        {children}
+      </span>
     </Link>
   );
 }
@@ -651,9 +666,9 @@ function LinkButton({
   return (
     <Link
       href={href}
-      className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+      className="inline-flex min-h-[40px] items-center justify-center rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-zinc-50"
     >
-      {children}
+      <span className="block leading-none text-zinc-700">{children}</span>
     </Link>
   );
 }
@@ -743,7 +758,9 @@ function normalizeCommand(raw: any): CommandItem | null {
   );
 
   const status = normalizeFlowStatus(
-    asString(pickValue(raw, ["status", "Status_select", "Status", "state", "State"])),
+    asString(
+      pickValue(raw, ["status", "Status_select", "Status", "state", "State"]),
+    ),
   );
 
   const workspaceId = asString(
@@ -937,7 +954,10 @@ function finalizeFlowGroup(group: FlowGroup): FlowGroup {
 
   let status: FlowStatus = "unknown";
 
-  if (commandStatuses.has("failed") || (registryOnly && hasOpenIncident && hasCriticalIncident)) {
+  if (
+    commandStatuses.has("failed") ||
+    (registryOnly && hasOpenIncident && hasCriticalIncident)
+  ) {
     status = "failed";
   } else if (commandStatuses.has("retry")) {
     status = "retry";
