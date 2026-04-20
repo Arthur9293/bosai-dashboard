@@ -25,10 +25,21 @@ type PageProps = {
   searchParams?: Promise<SearchParams> | SearchParams;
 };
 
+type RunsScopeInfo = {
+  requested_workspace_id?: string | null;
+  received?: number;
+  visible?: number;
+  dropped_by_scope?: number;
+};
+
 type FlexibleRunsResponse = {
+  ok?: boolean;
   count?: number;
   runs?: RunRecord[];
   stats?: Record<string, number | undefined>;
+  scope?: RunsScopeInfo;
+  source?: unknown;
+  ts?: string;
 };
 
 type RunStatusGroup = "running" | "done" | "error" | "unsupported" | "other";
@@ -620,10 +631,20 @@ export default async function RunsPage({ searchParams }: PageProps) {
   }
 
   const runsUnfiltered: RunRecord[] = Array.isArray(data?.runs) ? data.runs : [];
+  const runsScope = data?.scope ?? null;
 
-  const runs = runsUnfiltered.filter((run) =>
-    workspaceMatchesOrUnscoped(getRunWorkspaceId(run), activeWorkspaceId)
-  );
+  /**
+   * Ultra-safe behavior:
+   * - if the worker now returns scope metadata, trust the worker-scoped list
+   * - otherwise keep the old local fallback filter
+   */
+  const trustWorkerScope = Boolean(runsScope);
+
+  const runs = trustWorkerScope
+    ? runsUnfiltered
+    : runsUnfiltered.filter((run) =>
+        workspaceMatchesOrUnscoped(getRunWorkspaceId(run), activeWorkspaceId)
+      );
 
   const stats = buildStats(runs);
   const totalRuns = runs.length;
@@ -646,17 +667,33 @@ export default async function RunsPage({ searchParams }: PageProps) {
     : "";
 
   const serverCount =
-    typeof data?.count === "number" && Number.isFinite(data.count)
-      ? data.count
-      : runsUnfiltered.length;
+    typeof runsScope?.received === "number" && Number.isFinite(runsScope.received)
+      ? runsScope.received
+      : typeof data?.count === "number" && Number.isFinite(data.count)
+        ? data.count
+        : runsUnfiltered.length;
 
   const pageState =
     fetchError.length > 0 ? "Degraded" : totalRuns > 0 ? "Ready" : "Empty";
 
-  const debugWorkspaceId = activeWorkspaceId || "∅";
-  const debugRunsReceived = runsUnfiltered.length;
-  const debugRunsVisible = runs.length;
-  const debugDroppedByScope = Math.max(0, debugRunsReceived - debugRunsVisible);
+  const debugWorkspaceId =
+    toText(runsScope?.requested_workspace_id, "") || activeWorkspaceId || "∅";
+
+  const debugRunsReceived =
+    typeof runsScope?.received === "number" && Number.isFinite(runsScope.received)
+      ? runsScope.received
+      : runsUnfiltered.length;
+
+  const debugRunsVisible =
+    typeof runsScope?.visible === "number" && Number.isFinite(runsScope.visible)
+      ? runsScope.visible
+      : runs.length;
+
+  const debugDroppedByScope =
+    typeof runsScope?.dropped_by_scope === "number" &&
+    Number.isFinite(runsScope.dropped_by_scope)
+      ? runsScope.dropped_by_scope
+      : Math.max(0, debugRunsReceived - debugRunsVisible);
 
   const quickRead = fetchError
     ? "Runs data could not be fully loaded. The page stayed safe, kept the workspace scope, and exposed the current degraded state."
