@@ -15,8 +15,8 @@ type MobileShellProps = {
 };
 
 function getPageTitle(pathname: string): string {
-  if (pathname === "/" || pathname === "/overview") return "Overview";
-  if (pathname.startsWith("/workspace")) return "Workspace Hub";
+  if (pathname === "/" || pathname === "/overview") return "Vue d’ensemble";
+  if (pathname.startsWith("/workspace")) return "Accueil workspace";
   if (pathname.startsWith("/flows")) return "Flows";
   if (pathname.startsWith("/runs")) return "Runs";
   if (pathname.startsWith("/commands")) return "Commands";
@@ -26,7 +26,7 @@ function getPageTitle(pathname: string): string {
   if (pathname.startsWith("/policies")) return "Policies";
   if (pathname.startsWith("/tools")) return "Tools";
   if (pathname.startsWith("/workspaces")) return "Workspaces";
-  if (pathname.startsWith("/settings")) return "Settings";
+  if (pathname.startsWith("/settings")) return "Réglages";
   return "Dashboard";
 }
 
@@ -71,7 +71,7 @@ export function MobileShell({
         <div className="flex items-center justify-between px-4 py-4">
           <button
             type="button"
-            aria-label="Open navigation"
+            aria-label="Ouvrir la navigation"
             aria-expanded={open}
             aria-controls={navId}
             onClick={() => setOpen(true)}
@@ -103,7 +103,7 @@ export function MobileShell({
       >
         <button
           type="button"
-          aria-label="Close navigation overlay"
+          aria-label="Fermer le fond de navigation"
           onClick={() => setOpen(false)}
           className={`absolute inset-0 bg-black/75 backdrop-blur-[2px] transition-opacity duration-200 ${
             open ? "opacity-100" : "opacity-0"
@@ -114,7 +114,7 @@ export function MobileShell({
           id={navId}
           role="dialog"
           aria-modal="true"
-          aria-label="BOSAI mobile navigation"
+          aria-label="Navigation mobile BOSAI"
           className={`relative z-10 flex h-full w-[88%] max-w-[320px] flex-col border-r border-white/10 bg-[#040816]/95 shadow-[0_20px_80px_rgba(0,0,0,0.6)] backdrop-blur-2xl transition-transform duration-200 ease-out ${
             open ? "translate-x-0" : "-translate-x-full"
           }`}
@@ -126,7 +126,8 @@ export function MobileShell({
                   {workspace.name}
                 </p>
                 <p className="mt-1 text-sm text-white/55">
-                  {workspace.category.toUpperCase()} · {workspace.membershipRole.toUpperCase()}
+                  {workspace.category.toUpperCase()} ·{" "}
+                  {workspace.membershipRole.toUpperCase()}
                 </p>
 
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -141,7 +142,7 @@ export function MobileShell({
 
               <button
                 type="button"
-                aria-label="Close navigation"
+                aria-label="Fermer la navigation"
                 onClick={() => setOpen(false)}
                 className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white transition hover:bg-white/[0.08] active:scale-[0.98]"
               >
@@ -162,7 +163,7 @@ export function MobileShell({
           <div className="border-t border-white/10 px-4 py-4">
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
               <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-                Active workspace
+                Workspace actif
               </p>
               <p className="mt-1 truncate text-sm text-white/65">
                 {workspace.name}
