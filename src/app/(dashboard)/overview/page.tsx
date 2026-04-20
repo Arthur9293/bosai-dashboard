@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import {
   fetchCommands,
   fetchEvents,
@@ -16,6 +17,11 @@ import {
   type RunsResponse,
   type SlaResponse,
 } from "@/lib/api";
+import {
+  appendWorkspaceIdToHref,
+  resolveWorkspaceContext,
+  workspaceMatchesOrUnscoped,
+} from "@/lib/workspace";
 
 type BadgeVariant =
   | "default"
@@ -24,6 +30,12 @@ type BadgeVariant =
   | "danger"
   | "info"
   | "violet";
+
+type SearchParams = Record<string, string | string[] | undefined>;
+
+type PageProps = {
+  searchParams?: Promise<SearchParams> | SearchParams;
+};
 
 function formatNumber(value?: number | null): string {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -69,6 +81,26 @@ function toTs(value?: string | number | null): number {
 
   const ts = new Date(value).getTime();
   return Number.isNaN(ts) ? 0 : ts;
+}
+
+function firstParam(value?: string | string[]): string {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
+function buildHref(
+  pathname: string,
+  params: Record<string, string | undefined>
+): string {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    const text = String(value || "").trim();
+    if (text) search.set(key, text);
+  }
+
+  const query = search.toString();
+  return query ? `${pathname}?${query}` : pathname;
 }
 
 function cardClassName(): string {
@@ -336,12 +368,16 @@ function getIncidentSeverity(incident: IncidentItem): string {
   return raw;
 }
 
-function getIncidentWorkspace(incident: IncidentItem): string {
+function getIncidentWorkspaceScope(incident: IncidentItem): string {
   return (
     toText((incident as Record<string, unknown>).workspace_id) ||
     toText((incident as Record<string, unknown>).workspace) ||
-    "production"
+    ""
   );
+}
+
+function getIncidentWorkspace(incident: IncidentItem): string {
+  return getIncidentWorkspaceScope(incident) || "—";
 }
 
 function getIncidentFlowId(incident: IncidentItem): string {
@@ -387,7 +423,7 @@ function getIncidentActivityLabel(incident: IncidentItem): string {
 }
 
 function getIncidentBusinessKey(incident: IncidentItem): string {
-  const workspace = getIncidentWorkspace(incident);
+  const workspace = getIncidentWorkspaceScope(incident);
   const title = getIncidentTitle(incident).toLowerCase();
   const flowId = getIncidentFlowId(incident);
   const rootEventId = getIncidentRootEventId(incident);
@@ -568,7 +604,7 @@ function getCommandCapability(command: CommandItem): string {
   );
 }
 
-function getCommandWorkspace(command: CommandItem): string {
+function getCommandWorkspaceScope(command: CommandItem): string {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
 
@@ -578,8 +614,12 @@ function getCommandWorkspace(command: CommandItem): string {
     toText((input as Record<string, unknown>).workspaceId) ||
     toText(result.workspace_id) ||
     toText((result as Record<string, unknown>).workspaceId) ||
-    "—"
+    ""
   );
+}
+
+function getCommandWorkspace(command: CommandItem): string {
+  return getCommandWorkspaceScope(command) || "—";
 }
 
 function getCommandTitle(command: CommandItem): string {
@@ -600,6 +640,41 @@ function getCommandFlowId(command: CommandItem): string {
     toText((input as Record<string, unknown>).flowId) ||
     toText(result.flow_id) ||
     toText((result as Record<string, unknown>).flowId) ||
+    ""
+  );
+}
+
+function getCommandRootEventId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
+
+  return (
+    toText(record.root_event_id) ||
+    toText(input.root_event_id) ||
+    toText((input as Record<string, unknown>).rootEventId) ||
+    toText(result.root_event_id) ||
+    toText((result as Record<string, unknown>).rootEventId) ||
+    ""
+  );
+}
+
+function getCommandSourceEventId(command: CommandItem): string {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
+
+  return (
+    toText(record.source_event_id) ||
+    toText(record.Source_Event_ID) ||
+    toText(input.source_event_id) ||
+    toText((input as Record<string, unknown>).sourceEventId) ||
+    toText(input.event_id) ||
+    toText((input as Record<string, unknown>).eventId) ||
+    toText(result.source_event_id) ||
+    toText((result as Record<string, unknown>).sourceEventId) ||
+    toText(result.event_id) ||
+    toText((result as Record<string, unknown>).eventId) ||
     ""
   );
 }
@@ -798,7 +873,13 @@ function QuickLinkCard({
   );
 }
 
-function AttentionIncidentCard({ incident }: { incident: IncidentItem }) {
+function AttentionIncidentCard({
+  incident,
+  activeWorkspaceId,
+}: {
+  incident: IncidentItem;
+  activeWorkspaceId: string;
+}) {
   const incidentTitle = getIncidentTitle(incident);
   const incidentSeverity = getIncidentSeverity(incident);
   const incidentStatus = getIncidentStatus(incident);
@@ -806,11 +887,20 @@ function AttentionIncidentCard({ incident }: { incident: IncidentItem }) {
   const incidentFlow =
     getIncidentFlowId(incident) || getIncidentRootEventId(incident) || "—";
 
+  const detailHref = buildHref(
+    `/incidents/${encodeURIComponent(String((incident as Record<string, unknown>).id || ""))}`,
+    {
+      workspace_id: activeWorkspaceId || getIncidentWorkspaceScope(incident) || undefined,
+      flow_id: getIncidentFlowId(incident) || undefined,
+      root_event_id: getIncidentRootEventId(incident) || undefined,
+      source_record_id: getIncidentSourceRecordId(incident) || undefined,
+      command_id: getIncidentCommandId(incident) || undefined,
+      from: "overview",
+    }
+  );
+
   return (
-    <Link
-      href={`/incidents/${encodeURIComponent(String((incident as Record<string, unknown>).id || ""))}`}
-      className={rowCardClassName()}
-    >
+    <Link href={detailHref} className={rowCardClassName()}>
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
@@ -840,16 +930,30 @@ function AttentionIncidentCard({ incident }: { incident: IncidentItem }) {
   );
 }
 
-function AttentionCommandCard({ command }: { command: CommandItem }) {
+function AttentionCommandCard({
+  command,
+  activeWorkspaceId,
+}: {
+  command: CommandItem;
+  activeWorkspaceId: string;
+}) {
   const status = getCommandStatus(command);
   const title = getCommandTitle(command);
   const flowId = getCommandFlowId(command);
 
+  const detailHref = buildHref(
+    `/commands/${encodeURIComponent(String((command as Record<string, unknown>).id || ""))}`,
+    {
+      workspace_id: activeWorkspaceId || getCommandWorkspaceScope(command) || undefined,
+      flow_id: getCommandFlowId(command) || undefined,
+      root_event_id: getCommandRootEventId(command) || undefined,
+      source_event_id: getCommandSourceEventId(command) || undefined,
+      from: "overview",
+    }
+  );
+
   return (
-    <Link
-      href={`/commands/${encodeURIComponent(String((command as Record<string, unknown>).id || ""))}`}
-      className={rowCardClassName()}
-    >
+    <Link href={detailHref} className={rowCardClassName()}>
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
@@ -885,14 +989,24 @@ function AttentionCommandCard({ command }: { command: CommandItem }) {
 
 function RecentCommandCard({
   command,
+  activeWorkspaceId,
 }: {
   command: CommandItem;
+  activeWorkspaceId: string;
 }) {
+  const detailHref = buildHref(
+    `/commands/${encodeURIComponent(String((command as Record<string, unknown>).id || ""))}`,
+    {
+      workspace_id: activeWorkspaceId || getCommandWorkspaceScope(command) || undefined,
+      flow_id: getCommandFlowId(command) || undefined,
+      root_event_id: getCommandRootEventId(command) || undefined,
+      source_event_id: getCommandSourceEventId(command) || undefined,
+      from: "overview",
+    }
+  );
+
   return (
-    <Link
-      href={`/commands/${encodeURIComponent(String((command as Record<string, unknown>).id || ""))}`}
-      className={compactRowCardClassName()}
-    >
+    <Link href={detailHref} className={compactRowCardClassName()}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
@@ -1028,7 +1142,33 @@ function SignalMiniStat({
   );
 }
 
-export default async function OverviewPage() {
+export default async function OverviewPage({ searchParams }: PageProps) {
+  const resolvedSearchParams = searchParams
+    ? await Promise.resolve(searchParams)
+    : {};
+
+  const cookieStore = await cookies();
+
+  const workspaceContext = resolveWorkspaceContext({
+    searchParams: resolvedSearchParams,
+    cookieValues: {
+      bosai_active_workspace_id:
+        cookieStore.get("bosai_active_workspace_id")?.value,
+      bosai_workspace_id: cookieStore.get("bosai_workspace_id")?.value,
+      workspace_id: cookieStore.get("workspace_id")?.value,
+      bosai_allowed_workspace_ids:
+        cookieStore.get("bosai_allowed_workspace_ids")?.value,
+      allowed_workspace_ids:
+        cookieStore.get("allowed_workspace_ids")?.value,
+    },
+  });
+
+  const activeWorkspaceId =
+    firstParam(resolvedSearchParams.workspace_id).trim() ||
+    firstParam(resolvedSearchParams.workspaceId).trim() ||
+    workspaceContext.activeWorkspaceId ||
+    "";
+
   let health: HealthScoreResponse | null = null;
   let runs: RunsResponse | null = null;
   let commands: CommandsResponse | null = null;
@@ -1037,27 +1177,44 @@ export default async function OverviewPage() {
   let sla: SlaResponse | null = null;
 
   try {
-    health = await fetchHealthScore();
+    health = await fetchHealthScore({
+      workspaceId: activeWorkspaceId || undefined,
+    });
   } catch {}
 
   try {
-    runs = await fetchRuns();
+    runs = await fetchRuns({
+      workspaceId: activeWorkspaceId || undefined,
+      limit: 100,
+    });
   } catch {}
 
   try {
-    commands = await fetchCommands();
+    commands = await fetchCommands({
+      workspaceId: activeWorkspaceId || undefined,
+      limit: 300,
+    });
   } catch {}
 
   try {
-    events = await fetchEvents();
+    events = await fetchEvents({
+      workspaceId: activeWorkspaceId || undefined,
+      limit: 300,
+    });
   } catch {}
 
   try {
-    incidents = await fetchIncidents();
+    incidents = await fetchIncidents({
+      workspaceId: activeWorkspaceId || undefined,
+      limit: 300,
+    });
   } catch {}
 
   try {
-    sla = await fetchSla(100);
+    sla = await fetchSla({
+      workspaceId: activeWorkspaceId || undefined,
+      limit: 100,
+    });
   } catch {}
 
   const healthScore = health?.score ?? 0;
@@ -1073,7 +1230,11 @@ export default async function OverviewPage() {
     ? commands.commands
     : [];
 
-  const commandItems = dedupeCommands(rawCommandItems);
+  const scopedCommandItems = rawCommandItems.filter((item) =>
+    workspaceMatchesOrUnscoped(getCommandWorkspaceScope(item), activeWorkspaceId)
+  );
+
+  const commandItems = dedupeCommands(scopedCommandItems);
 
   const queuedCommandItems = commandItems.filter((item) =>
     ["queued", "pending", "new"].includes(getCommandStatus(item))
@@ -1113,14 +1274,21 @@ export default async function OverviewPage() {
   const queuedEvents = events?.stats?.queued ?? 0;
   const processedEvents = events?.stats?.processed ?? 0;
   const eventErrors = events?.stats?.error ?? 0;
-  const totalEvents = newEvents + queuedEvents + processedEvents + eventErrors;
+  const totalEvents =
+    Array.isArray(events?.events) && events?.events.length > 0
+      ? events.events.length
+      : newEvents + queuedEvents + processedEvents + eventErrors;
 
   const rawIncidentItems: IncidentItem[] = Array.isArray(incidents?.incidents)
     ? incidents.incidents
     : [];
 
+  const scopedIncidentItems = rawIncidentItems.filter((item) =>
+    workspaceMatchesOrUnscoped(getIncidentWorkspaceScope(item), activeWorkspaceId)
+  );
+
   const incidentItems = dedupeIncidents(
-    rawIncidentItems.filter((item) => !isLegacyNoiseIncident(item))
+    scopedIncidentItems.filter((item) => !isLegacyNoiseIncident(item))
   );
 
   const openIncidentItems = incidentItems.filter((item) => isOpenIncident(item));
@@ -1224,6 +1392,13 @@ export default async function OverviewPage() {
     healthScore,
   });
 
+  const flowsHref = appendWorkspaceIdToHref("/flows", activeWorkspaceId);
+  const incidentsHref = appendWorkspaceIdToHref("/incidents", activeWorkspaceId);
+  const commandsHref = appendWorkspaceIdToHref("/commands", activeWorkspaceId);
+  const eventsHref = appendWorkspaceIdToHref("/events", activeWorkspaceId);
+  const runsHref = appendWorkspaceIdToHref("/runs", activeWorkspaceId);
+  const slaHref = appendWorkspaceIdToHref("/sla", activeWorkspaceId);
+
   return (
     <div className="space-y-10">
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_0.95fr]">
@@ -1237,6 +1412,9 @@ export default async function OverviewPage() {
             </span>
             <span className={badgeClassName("info")}>
               {formatNumber(flowsUnderAttention)} flow(s) sous attention
+            </span>
+            <span className={badgeClassName("default")}>
+              Workspace {activeWorkspaceId || "all"}
             </span>
           </div>
 
@@ -1255,19 +1433,19 @@ export default async function OverviewPage() {
 
           <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <HeroActionCard
-              href="/flows"
+              href={flowsHref}
               title="Ouvrir Flows"
               description="Lire les chaînes d’exécution et les flows sous attention."
             />
             <HeroActionCard
-              href="/incidents"
+              href={incidentsHref}
               title="Voir Incidents"
               description="Ouvrir les incidents actifs, escaladés et prioritaires."
               tone="danger"
             />
             <div className="sm:col-span-2">
               <HeroActionCard
-                href="/commands"
+                href={commandsHref}
                 title="Voir Commands"
                 description="Contrôler l’activité récente et les commands critiques."
                 tone="primary"
@@ -1371,7 +1549,7 @@ export default async function OverviewPage() {
                 </div>
               </div>
 
-              <Link href="/incidents" className={ctaCompactClassName()}>
+              <Link href={incidentsHref} className={ctaCompactClassName()}>
                 Voir tout
               </Link>
             </div>
@@ -1381,6 +1559,7 @@ export default async function OverviewPage() {
                 <AttentionIncidentCard
                   key={String((incident as Record<string, unknown>).id)}
                   incident={incident}
+                  activeWorkspaceId={activeWorkspaceId}
                 />
               ))}
 
@@ -1401,7 +1580,7 @@ export default async function OverviewPage() {
                 </div>
               </div>
 
-              <Link href="/commands" className={ctaCompactClassName()}>
+              <Link href={commandsHref} className={ctaCompactClassName()}>
                 Voir tout
               </Link>
             </div>
@@ -1411,6 +1590,7 @@ export default async function OverviewPage() {
                 <AttentionCommandCard
                   key={String((command as Record<string, unknown>).id)}
                   command={command}
+                  activeWorkspaceId={activeWorkspaceId}
                 />
               ))}
 
@@ -1433,7 +1613,7 @@ export default async function OverviewPage() {
           <QuickLinkCard
             title="Flows"
             subtitle={`${formatNumber(flowsUnderAttention)} flow(s) sous attention`}
-            href="/flows"
+            href={flowsHref}
             badge={<span className={badgeClassName("info")}>Flows</span>}
           />
           <QuickLinkCard
@@ -1441,7 +1621,7 @@ export default async function OverviewPage() {
             subtitle={`${formatNumber(openIncidents)} ouverts · ${formatNumber(
               criticalIncidents
             )} critiques`}
-            href="/incidents"
+            href={incidentsHref}
             badge={<span className={badgeClassName("danger")}>Incidents</span>}
           />
           <QuickLinkCard
@@ -1449,7 +1629,7 @@ export default async function OverviewPage() {
             subtitle={`${formatNumber(activeCommands)} actives · ${formatNumber(
               doneCommands
             )} terminées`}
-            href="/commands"
+            href={commandsHref}
             badge={<span className={badgeClassName("violet")}>Commands</span>}
           />
           <QuickLinkCard
@@ -1457,7 +1637,7 @@ export default async function OverviewPage() {
             subtitle={`${formatNumber(processedEvents)} traités · ${formatNumber(
               eventErrors
             )} erreurs`}
-            href="/events"
+            href={eventsHref}
             badge={<span className={badgeClassName("warning")}>Events</span>}
           />
           <QuickLinkCard
@@ -1465,7 +1645,7 @@ export default async function OverviewPage() {
             subtitle={`${formatNumber(runningRuns)} running · ${formatNumber(
               errorRuns
             )} error`}
-            href="/runs"
+            href={runsHref}
             badge={<span className={badgeClassName("info")}>Runs</span>}
           />
           <QuickLinkCard
@@ -1473,7 +1653,7 @@ export default async function OverviewPage() {
             subtitle={`${formatNumber(slaBreached)} breached · ${formatNumber(
               slaEscalated
             )} escalated`}
-            href="/sla"
+            href={slaHref}
             badge={<span className={badgeClassName("danger")}>SLA</span>}
           />
         </div>
@@ -1551,7 +1731,7 @@ export default async function OverviewPage() {
         title="Répartition SLA"
         description="Répartition actuelle des signaux SLA."
         action={
-          <Link href="/sla" className={ctaCompactClassName()}>
+          <Link href={slaHref} className={ctaCompactClassName()}>
             Ouvrir la vue SLA
           </Link>
         }
@@ -1595,7 +1775,7 @@ export default async function OverviewPage() {
         title="Dernières commands"
         description="Dernières commands observées par BOSAI."
         action={
-          <Link href="/commands" className={ctaCompactClassName()}>
+          <Link href={commandsHref} className={ctaCompactClassName()}>
             Voir toutes les commands
           </Link>
         }
@@ -1605,6 +1785,7 @@ export default async function OverviewPage() {
             <RecentCommandCard
               key={String((command as Record<string, unknown>).id)}
               command={command}
+              activeWorkspaceId={activeWorkspaceId}
             />
           ))}
 
