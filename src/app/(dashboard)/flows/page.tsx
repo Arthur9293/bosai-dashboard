@@ -177,7 +177,9 @@ export default async function FlowsPage({
             />
             <StatCard
               label="Registry-only"
-              value={String(filteredFlows.filter((flow) => flow.registryOnly).length)}
+              value={String(
+                filteredFlows.filter((flow) => flow.registryOnly).length,
+              )}
               hint="Lecture partielle assumée"
             />
             <StatCard
@@ -392,12 +394,12 @@ function FlowSection({
   flows: FlowGroup[];
 }) {
   return (
-    <section className="space-y-4">
-      <div className="rounded-[24px] border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-zinc-950">{title}</h2>
-          <p className="text-sm leading-6 text-zinc-600">{subtitle}</p>
-        </div>
+    <section className="space-y-3">
+      <div className="space-y-1 px-1">
+        <h2 className="text-base font-semibold text-zinc-950 sm:text-lg">
+          {title}
+        </h2>
+        <p className="max-w-3xl text-sm leading-6 text-zinc-600">{subtitle}</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -412,7 +414,7 @@ function FlowSection({
 function FlowCard({ flow }: { flow: FlowGroup }) {
   return (
     <article className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm transition hover:shadow-md">
-      <div className="space-y-5 p-5 sm:p-6">
+      <div className="space-y-4 p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -493,7 +495,7 @@ function FlowCard({ flow }: { flow: FlowGroup }) {
           </div>
         ) : null}
 
-        <div className="flex flex-wrap gap-2 pt-1">
+        <div className="flex flex-wrap gap-2 pt-0.5">
           {flow.flowId ? (
             <LinkButton href={buildHref("/commands", { flow_id: flow.flowId })}>
               Voir les commandes
@@ -638,7 +640,7 @@ function FilterPill({
     <Link
       href={href}
       className={[
-        "inline-flex min-h-[40px] shrink-0 items-center justify-center whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium shadow-sm transition",
+        "inline-flex min-h-[38px] shrink-0 items-center justify-center whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium shadow-sm transition",
         active
           ? "border-zinc-900 bg-zinc-900 hover:bg-zinc-800"
           : "border-zinc-200 bg-white hover:bg-zinc-50",
@@ -666,7 +668,7 @@ function LinkButton({
   return (
     <Link
       href={href}
-      className="inline-flex min-h-[40px] items-center justify-center rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-zinc-50"
+      className="inline-flex min-h-[34px] items-center justify-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition hover:bg-zinc-50"
     >
       <span className="block leading-none text-zinc-700">{children}</span>
     </Link>
@@ -767,7 +769,9 @@ function normalizeCommand(raw: any): CommandItem | null {
     pickValue(raw, ["workspace_id", "Workspace_ID", "workspaceId", "WorkspaceId"]),
   );
 
-  const flowId = asString(pickValue(raw, ["flow_id", "Flow_ID", "flowId", "FlowId"]));
+  const flowId = asString(
+    pickValue(raw, ["flow_id", "Flow_ID", "flowId", "FlowId"]),
+  );
   const rootEventId = asString(
     pickValue(raw, ["root_event_id", "Root_Event_ID", "rootEventId", "RootEventId"]),
   );
@@ -856,7 +860,9 @@ function normalizeIncident(raw: any): IncidentItem | null {
     workspaceId: asString(
       pickValue(raw, ["workspace_id", "Workspace_ID", "workspaceId", "WorkspaceId"]),
     ),
-    flowId: asString(pickValue(raw, ["flow_id", "Flow_ID", "flowId", "FlowId"])),
+    flowId: asString(
+      pickValue(raw, ["flow_id", "Flow_ID", "flowId", "FlowId"]),
+    ),
     rootEventId: asString(
       pickValue(raw, ["root_event_id", "Root_Event_ID", "rootEventId", "RootEventId"]),
     ),
@@ -883,7 +889,10 @@ function normalizeIncident(raw: any): IncidentItem | null {
   };
 }
 
-function buildFlows(commands: CommandItem[], incidents: IncidentItem[]): FlowGroup[] {
+function buildFlows(
+  commands: CommandItem[],
+  incidents: IncidentItem[],
+): FlowGroup[] {
   const map = new Map<string, FlowGroup>();
 
   for (const command of commands) {
@@ -945,8 +954,12 @@ function finalizeFlowGroup(group: FlowGroup): FlowGroup {
 
   const registryOnly = group.commands.length === 0 && group.incidents.length > 0;
 
-  const commandStatuses = new Set(group.commands.map((command) => command.status));
-  const hasOpenIncident = group.incidents.some((incident) => incident.status === "open");
+  const commandStatuses = new Set(
+    group.commands.map((command) => command.status),
+  );
+  const hasOpenIncident = group.incidents.some(
+    (incident) => incident.status === "open",
+  );
   const hasCriticalIncident = group.incidents.some(
     (incident) =>
       incident.severity === "critical" || incident.severity === "high",
@@ -1059,7 +1072,9 @@ function derivePageError(
   commandsResult: FetchResult<unknown>,
   incidentsResult: FetchResult<unknown>,
 ): string {
-  const errors = [commandsResult.error, incidentsResult.error].filter(Boolean) as string[];
+  const errors = [commandsResult.error, incidentsResult.error].filter(
+    Boolean,
+  ) as string[];
 
   if (errors.length === 0) return "";
   return errors.join(" ");
@@ -1188,7 +1203,10 @@ function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-function buildWorkerUrl(path: string, params: Record<string, string | undefined>): string {
+function buildWorkerUrl(
+  path: string,
+  params: Record<string, string | undefined>,
+): string {
   const url = new URL(`${WORKER_BASE_URL}${path}`);
   for (const [key, value] of Object.entries(params)) {
     if (value) url.searchParams.set(key, value);
@@ -1196,7 +1214,10 @@ function buildWorkerUrl(path: string, params: Record<string, string | undefined>
   return url.toString();
 }
 
-function buildHref(path: string, params: Record<string, string | undefined>): string {
+function buildHref(
+  path: string,
+  params: Record<string, string | undefined>,
+): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value) search.set(key, value);
@@ -1205,7 +1226,9 @@ function buildHref(path: string, params: Record<string, string | undefined>): st
   return query ? `${path}?${query}` : path;
 }
 
-function mergeParams(input: Record<string, string | undefined>): Record<string, string | undefined> {
+function mergeParams(
+  input: Record<string, string | undefined>,
+): Record<string, string | undefined> {
   const output: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(input)) {
     if (value) output[key] = value;
