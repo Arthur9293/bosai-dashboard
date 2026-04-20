@@ -25,20 +25,6 @@ const FALLBACK_ENTITLEMENTS: WorkspaceEntitlements = {
   canManageBilling: false,
 };
 
-function hasCommercialOnboardingSignals(
-  cookieValues: Record<string, string | undefined>
-): boolean {
-  return [
-    cookieValues.bosai_plan_code,
-    cookieValues.plan_code,
-    cookieValues.selected_plan,
-    cookieValues.bosai_workspace_status,
-    cookieValues.workspace_status,
-    cookieValues.bosai_onboarding_completed,
-    cookieValues.onboarding_completed,
-  ].some((value) => String(value || "").trim() !== "");
-}
-
 export default async function DashboardLayout({
   children,
 }: DashboardLayoutProps) {
@@ -61,17 +47,12 @@ export default async function DashboardLayout({
     onboarding_completed: cookieStore.get("onboarding_completed")?.value,
   };
 
-  const shouldApplyCommercialGuard =
-    hasCommercialOnboardingSignals(onboardingCookieValues);
+  const accessState = resolveBosaiAccessState({
+    cookieValues: onboardingCookieValues,
+  });
 
-  if (shouldApplyCommercialGuard) {
-    const accessState = resolveBosaiAccessState({
-      cookieValues: onboardingCookieValues,
-    });
-
-    if (!accessState.canAccessCockpit && accessState.redirectPath) {
-      redirect(accessState.redirectPath);
-    }
+  if (!accessState.canAccessCockpit) {
+    redirect(accessState.redirectPath || "/pricing");
   }
 
   const resolution = await resolveWorkspaceAccess({
