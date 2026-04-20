@@ -1006,9 +1006,7 @@ function InfoBox({
   return (
     <div className={metaBoxClassName()}>
       <div className={metaLabelClassName()}>{label}</div>
-      <div
-        className={`mt-2 text-zinc-100 ${breakAll ? "break-all" : ""}`}
-      >
+      <div className={`mt-2 text-zinc-100 ${breakAll ? "break-all" : ""}`}>
         {value || "—"}
       </div>
     </div>
@@ -1178,9 +1176,7 @@ function buildIncidentHref(
   relatedIncidents: IncidentItem[],
   activeWorkspaceId: string
 ): string {
-  const incidentId = relatedIncidents[0]
-    ? getIncidentId(relatedIncidents[0])
-    : "";
+  const incidentId = relatedIncidents[0] ? getIncidentId(relatedIncidents[0]) : "";
 
   if (!incidentId) return "";
 
@@ -1368,6 +1364,21 @@ export default async function RunDetailPage({ params, searchParams }: PageProps)
     relatedEvents.length > 0 ||
     relatedIncidents.length > 0;
 
+  const relatedCommandIds = uniq(
+    relatedCommands.map((item) => getCommandId(item)).filter(Boolean)
+  );
+  const relatedEventIds = uniq(
+    relatedEvents.map((item) => getEventId(item)).filter(Boolean)
+  );
+  const relatedIncidentIds = uniq(
+    relatedIncidents.map((item) => getIncidentId(item)).filter(Boolean)
+  );
+
+  const debugMatchKeys = runMatchKeys.join(" · ") || "—";
+  const debugRelatedCommandIds = relatedCommandIds.join(" · ") || "—";
+  const debugRelatedEventIds = relatedEventIds.join(" · ") || "—";
+  const debugRelatedIncidentIds = relatedIncidentIds.join(" · ") || "—";
+
   return (
     <ControlPlaneShell
       eyebrow="BOSAI Control Plane"
@@ -1511,6 +1522,67 @@ export default async function RunDetailPage({ params, searchParams }: PageProps)
           <InfoBox label="Mode" value={modeLabel} />
           <InfoBox label="Priority" value={priority} />
           <InfoBox label="Workspace" value={runWorkspace} />
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Debug matching"
+        description="Bloc temporaire pour vérifier comment le run essaie de retrouver commands, events, incidents et flow liés."
+        tone="neutral"
+        className={sectionFrameClassName("neutral")}
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <InfoBox label="Active workspace" value={activeWorkspaceId || "—"} />
+          <InfoBox label="Run record ID" value={recordId || "—"} breakAll />
+          <InfoBox label="Run ID" value={runId || "—"} breakAll />
+          <InfoBox label="Flow ID" value={flowId || "—"} breakAll />
+          <InfoBox label="Root event ID" value={rootEventId || "—"} breakAll />
+          <InfoBox label="Source event ID" value={sourceEventId || "—"} breakAll />
+          <InfoBox
+            label="Linked command ID"
+            value={linkedCommandId || "—"}
+            breakAll
+          />
+          <InfoBox
+            label="Related commands found"
+            value={String(relatedCommands.length)}
+          />
+          <InfoBox
+            label="Related events found"
+            value={String(relatedEvents.length)}
+          />
+          <InfoBox
+            label="Related incidents found"
+            value={String(relatedIncidents.length)}
+          />
+          <InfoBox label="Flow href" value={flowHref || "—"} breakAll />
+          <InfoBox label="Command href" value={commandHref || "—"} breakAll />
+          <InfoBox label="Event href" value={eventHref || "—"} breakAll />
+          <InfoBox label="Incident href" value={incidentHref || "—"} breakAll />
+          <div className="md:col-span-2 xl:col-span-3">
+            <InfoBox label="Run match keys" value={debugMatchKeys} breakAll />
+          </div>
+          <div className="md:col-span-2 xl:col-span-3">
+            <InfoBox
+              label="Related command IDs"
+              value={debugRelatedCommandIds}
+              breakAll
+            />
+          </div>
+          <div className="md:col-span-2 xl:col-span-3">
+            <InfoBox
+              label="Related event IDs"
+              value={debugRelatedEventIds}
+              breakAll
+            />
+          </div>
+          <div className="md:col-span-2 xl:col-span-3">
+            <InfoBox
+              label="Related incident IDs"
+              value={debugRelatedIncidentIds}
+              breakAll
+            />
+          </div>
         </div>
       </SectionCard>
 
