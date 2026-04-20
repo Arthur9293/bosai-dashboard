@@ -153,9 +153,6 @@ export default async function WorkspaceCreatePage({
   }
 
   const memberships = session.context?.memberships ?? [];
-  if (memberships.length > 0) {
-    redirect("/workspace/select");
-  }
 
   const planCode =
     firstParam(resolvedSearchParams.plan).trim().toLowerCase() ||
@@ -171,6 +168,19 @@ export default async function WorkspaceCreatePage({
     activatedValue === "true" ||
     activatedValue === "yes" ||
     accessState.canAccessCockpit;
+
+  /**
+   * IMPORTANT:
+   * Pendant l’onboarding commercial, on NE DOIT PAS quitter cette page
+   * juste parce que des memberships mock/live existent déjà.
+   * Sinon le flux reboucle via /workspace/select -> guard -> /onboarding/workspace.
+   *
+   * On autorise donc l’affichage tant que l’activation commerciale finale
+   * n’est pas validée.
+   */
+  if (activated && memberships.length > 0) {
+    redirect("/workspace/select");
+  }
 
   const suggestedName = getSuggestedWorkspaceName(planCode);
 
@@ -246,7 +256,8 @@ export default async function WorkspaceCreatePage({
                 <div className={compactCardClassName()}>
                   <div className={sectionLabelClassName()}>Workspace status</div>
                   <div className="mt-3 text-2xl font-semibold text-white">
-                    {accessState.workspaceStatus || (activated ? "active" : "ready_to_activate")}
+                    {accessState.workspaceStatus ||
+                      (activated ? "active" : "ready_to_activate")}
                   </div>
                 </div>
 
