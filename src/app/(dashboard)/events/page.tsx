@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { fetchEvents, type EventItem } from "@/lib/api";
 import {
@@ -12,6 +13,17 @@ import {
   DashboardStatusBadge,
   type DashboardStatusKind,
 } from "@/components/dashboard/StatusBadge";
+import {
+  appendWorkspaceIdToHref,
+  resolveWorkspaceContext,
+  workspaceMatchesOrUnscoped,
+} from "@/lib/workspace";
+
+type SearchParams = Record<string, string | string[] | undefined>;
+
+type PageProps = {
+  searchParams?: Promise<SearchParams> | SearchParams;
+};
 
 type EventStats = {
   new?: number;
@@ -113,6 +125,26 @@ function toTextOrEmpty(value: unknown): string {
   return toText(value, "");
 }
 
+function firstParam(value?: string | string[]) {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
+function buildHref(
+  pathname: string,
+  params: Record<string, string | undefined>
+): string {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    const text = String(value || "").trim();
+    if (text) search.set(key, text);
+  }
+
+  const query = search.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
 function getEventPayload(event: EventItem): Record<string, unknown> {
   return toRecord(event.payload);
 }
@@ -144,7 +176,8 @@ function getEventCapability(event: EventItem): string {
 }
 
 function getEventStatus(event: EventItem): string {
-  return toTextOrEmpty(event.status) || "unknown";
+  const payload = getEventPayload(event);
+  return toTextOrEmpty(event.status) || toTextOrEmpty(payload.status) || "unknown";
 }
 
 function getEventDate(event: EventItem): string {
@@ -217,6 +250,7 @@ function getFlowTarget(event: EventItem): string {
 
 function getLinkedCommand(event: EventItem): string {
   if (toTextOrEmpty(event.command_id)) return toTextOrEmpty(event.command_id);
+  if (toTextOrEmpty(event.linked_command)) return toTextOrEmpty(event.linked_command);
 
   const record = event as Record<string, unknown>;
   const raw = record.linked_command;
@@ -240,7 +274,10 @@ function getSource(event: EventItem): string {
   const record = event as Record<string, unknown>;
   const payload = getEventPayload(event);
 
-  return toTextOrEmpty(record.source) || toTextOrEmpty(payload.source) || "—";
+  return toTextOrEmpty(event.source) ||
+    toTextOrEmpty(record.source) ||
+    toTextOrEmpty(payload.source) ||
+    "—";
 }
 
 function hasCommandCreated(event: EventItem): boolean {
@@ -248,6 +285,13 @@ function hasCommandCreated(event: EventItem): boolean {
   const direct = record.command_created;
 
   if (typeof direct === "boolean") return direct;
+  if (typeof direct === "string") {
+    const normalized = direct.trim().toLowerCase();
+    if (["true", "1", "yes", "oui"].includes(normalized)) return true;
+    if (["false", "0", "no", "non"].includes(normalized)) return false;
+  }
+  if (typeof direct === "number") return direct === 1;
+
   return Boolean(getLinkedCommand(event));
 }
 
@@ -255,8 +299,12 @@ function getEventStatusBucket(event: EventItem): string {
   const s = getEventStatus(event).trim().toLowerCase();
 
   if (["new"].includes(s)) return "new";
-  if (["queued", "pending"].includes(s)) return "queued";
-  if (["processed", "done", "success", "completed"].includes(s)) return "processed";
+  if (["queued", "queue", "pending", "running", "processing", "retry", "retriable"].includes(s)) {
+    return "queued";
+  }
+  if (["processed", "done", "success", "completed", "resolved"].includes(s)) {
+    return "processed";
+  }
   if (["ignored"].includes(s)) return "ignored";
   if (["error", "failed", "dead", "blocked"].includes(s)) return "error";
   return "other";
@@ -273,16 +321,19 @@ function getEventStatusBadgeKind(event: EventItem): DashboardStatusKind {
 }
 
 function getEventStatusLabel(event: EventItem): string {
+  const raw = getEventStatus(event).trim().toLowerCase();
   const bucket = getEventStatusBucket(event);
 
+  if (raw === "running" || raw === "processing") return "RUNNING";
+  if (raw === "retry" || raw === "retriable") return "RETRY";
   if (bucket === "new") return "NEW";
   if (bucket === "queued") return "QUEUED";
   if (bucket === "processed") return "PROCESSED";
   if (bucket === "ignored") return "IGNORED";
   if (bucket === "error") return "ERROR";
 
-  const raw = getEventStatus(event);
-  return raw ? raw.toUpperCase() : "UNKNOWN";
+  const safe = getEventStatus(event);
+  return safe ? safe.toUpperCase() : "UNKNOWN";
 }
 
 function latestByBucket(events: EventItem[], bucket: string): EventItem | null {
@@ -299,11 +350,14 @@ function latestByBucket(events: EventItem[], bucket: string): EventItem | null {
 
 function getAttentionPriority(event: EventItem): number {
   const bucket = getEventStatusBucket(event);
+  const raw = getEventStatus(event).trim().toLowerCase();
 
   if (bucket === "error") return 0;
-  if (bucket === "queued") return 1;
-  if (bucket === "new") return 2;
-  return 3;
+  if (raw === "retry" || raw === "retriable") return 1;
+  if (raw === "running" || raw === "processing") return 2;
+  if (bucket === "queued") return 3;
+  if (bucket === "new") return 4;
+  return 5;
 }
 
 function sortEvents(events: EventItem[]): EventItem[] {
@@ -326,34 +380,34 @@ function sortAttentionEvents(events: EventItem[]): EventItem[] {
   });
 }
 
-function buildEventFlowHref(event: EventItem): string {
-  const target = getFlowTarget(event);
-  if (!target) return "";
-  return `/flows?selected=${encodeURIComponent(target)}`;
+function buildEventDetailHref(event: EventItem, workspaceId: string): string {
+  return buildHref(`/events/${encodeURIComponent(String(event.id))}`, {
+    workspace_id: workspaceId || undefined,
+    flow_id: getFlowId(event) || undefined,
+    root_event_id: getRootEventId(event) || undefined,
+    source_event_id: getSourceRecordId(event) || undefined,
+    from: "events",
+  });
 }
 
-function buildEventCommandsHref(event: EventItem): string {
-  const params = new URLSearchParams();
+function buildEventFlowHref(event: EventItem, workspaceId: string): string {
+  const target = getFlowTarget(event);
+  if (!target) return "";
 
-  const flowId = getFlowId(event);
-  const rootEventId = getRootEventId(event) || String(event.id);
-  const sourceEventId = getSourceRecordId(event) || String(event.id);
+  return appendWorkspaceIdToHref(
+    `/flows/${encodeURIComponent(target)}`,
+    workspaceId || getWorkspace(event)
+  );
+}
 
-  if (flowId) {
-    params.set("flow_id", flowId);
-  }
-
-  if (rootEventId) {
-    params.set("root_event_id", rootEventId);
-  }
-
-  if (sourceEventId) {
-    params.set("source_event_id", sourceEventId);
-  }
-
-  params.set("from", "events");
-
-  return `/commands?${params.toString()}`;
+function buildEventCommandsHref(event: EventItem, workspaceId: string): string {
+  return buildHref("/commands", {
+    workspace_id: workspaceId || getWorkspace(event) || undefined,
+    flow_id: getFlowId(event) || undefined,
+    root_event_id: getRootEventId(event) || String(event.id),
+    source_event_id: getSourceRecordId(event) || String(event.id),
+    from: "events",
+  });
 }
 
 function EventMiniStat({
@@ -375,12 +429,19 @@ function EventMiniStat({
   );
 }
 
-function EventListCard({ event }: { event: EventItem }) {
+function EventListCard({
+  event,
+  activeWorkspaceId,
+}: {
+  event: EventItem;
+  activeWorkspaceId: string;
+}) {
   const statusLabel = getEventStatusLabel(event);
   const capability = getEventCapability(event);
   const linkedCommand = getLinkedCommand(event);
-  const flowHref = buildEventFlowHref(event);
-  const commandsHref = buildEventCommandsHref(event);
+  const flowHref = buildEventFlowHref(event, activeWorkspaceId);
+  const commandsHref = buildEventCommandsHref(event, activeWorkspaceId);
+  const detailHref = buildEventDetailHref(event, activeWorkspaceId);
 
   return (
     <article className={cardClassName()}>
@@ -394,7 +455,7 @@ function EventListCard({ event }: { event: EventItem }) {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <Link
-                  href={`/events/${encodeURIComponent(String(event.id))}`}
+                  href={detailHref}
                   className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
                 >
                   {getEventType(event)}
@@ -423,7 +484,7 @@ function EventListCard({ event }: { event: EventItem }) {
               ) : null}
 
               <span className={chipClassName()}>
-                Workspace · {getWorkspace(event)}
+                Workspace · {activeWorkspaceId || getWorkspace(event)}
               </span>
             </div>
           </div>
@@ -480,10 +541,7 @@ function EventListCard({ event }: { event: EventItem }) {
         </div>
 
         <div className="mt-auto flex flex-col gap-2.5 pt-1">
-          <Link
-            href={`/events/${encodeURIComponent(String(event.id))}`}
-            className={actionLinkClassName("primary")}
-          >
+          <Link href={detailHref} className={actionLinkClassName("primary")}>
             Ouvrir l’event
           </Link>
 
@@ -539,25 +597,53 @@ function SectionBlock({
   );
 }
 
-export default async function EventsPage() {
+export default async function EventsPage({ searchParams }: PageProps) {
+  const resolvedSearchParams = (await Promise.resolve(
+    searchParams ?? {}
+  )) as SearchParams;
+
+  const cookieStore = await cookies();
+
+  const workspaceContext = resolveWorkspaceContext({
+    searchParams: resolvedSearchParams,
+    cookieValues: {
+      bosai_active_workspace_id:
+        cookieStore.get("bosai_active_workspace_id")?.value,
+      bosai_workspace_id: cookieStore.get("bosai_workspace_id")?.value,
+      workspace_id: cookieStore.get("workspace_id")?.value,
+      bosai_allowed_workspace_ids:
+        cookieStore.get("bosai_allowed_workspace_ids")?.value,
+      allowed_workspace_ids:
+        cookieStore.get("allowed_workspace_ids")?.value,
+    },
+  });
+
+  const activeWorkspaceId = workspaceContext.activeWorkspaceId || "";
+
   let events: EventItem[] = [];
   let stats: EventStats = {};
   let sourceConnected = false;
   let sourceReachable = false;
+  let fetchFailed = false;
 
   try {
-    const data = await fetchEvents();
+    const data = await fetchEvents({
+      limit: 500,
+      workspaceId: activeWorkspaceId || undefined,
+    });
     sourceReachable = data !== null && data !== undefined;
 
     if (Array.isArray(data?.events)) {
-      events = data.events;
+      events = data.events.filter((item) =>
+        workspaceMatchesOrUnscoped(getWorkspace(item), activeWorkspaceId)
+      );
     }
 
     if (data?.stats && typeof data.stats === "object") {
       stats = data.stats as EventStats;
     }
 
-    const hasEvents = Array.isArray(data?.events) && data.events.length > 0;
+    const hasEvents = events.length > 0;
     const hasPositiveStats =
       !!data?.stats &&
       typeof data.stats === "object" &&
@@ -571,6 +657,7 @@ export default async function EventsPage() {
     stats = {};
     sourceConnected = false;
     sourceReachable = false;
+    fetchFailed = true;
   }
 
   const sortedEvents = sortEvents(events);
@@ -622,8 +709,15 @@ export default async function EventsPage() {
     sortedEvents[0] ??
     null;
 
-  const focusEventCommandsHref = focusEvent ? buildEventCommandsHref(focusEvent) : "";
-  const focusEventFlowHref = focusEvent ? buildEventFlowHref(focusEvent) : "";
+  const focusEventCommandsHref = focusEvent
+    ? buildEventCommandsHref(focusEvent, activeWorkspaceId)
+    : "";
+  const focusEventFlowHref = focusEvent
+    ? buildEventFlowHref(focusEvent, activeWorkspaceId)
+    : "";
+  const focusEventDetailHref = focusEvent
+    ? buildEventDetailHref(focusEvent, activeWorkspaceId)
+    : "";
 
   const quickRead =
     errorCount > 0
@@ -633,6 +727,9 @@ export default async function EventsPage() {
         : processedCount > 0
           ? "Le pipeline visible paraît principalement traité et stable."
           : "Aucune activité event significative n’est visible pour le moment.";
+
+  const flowsHref = appendWorkspaceIdToHref("/flows", activeWorkspaceId);
+  const commandsHref = appendWorkspaceIdToHref("/commands", activeWorkspaceId);
 
   return (
     <ControlPlaneShell
@@ -652,11 +749,11 @@ export default async function EventsPage() {
       ]}
       actions={
         <>
-          <Link href="/flows" className={actionLinkClassName("soft")}>
+          <Link href={flowsHref} className={actionLinkClassName("soft")}>
             Ouvrir Flows
           </Link>
 
-          <Link href="/commands" className={actionLinkClassName("primary")}>
+          <Link href={commandsHref} className={actionLinkClassName("primary")}>
             Voir Commands
           </Link>
         </>
@@ -688,6 +785,12 @@ export default async function EventsPage() {
               </div>
 
               <div className="space-y-2 text-sm leading-6 text-white/65">
+                <div>
+                  Workspace :{" "}
+                  <span className="text-white/90">
+                    {activeWorkspaceId || "all"}
+                  </span>
+                </div>
                 <div>
                   Source :{" "}
                   <span className="text-white/90">
@@ -760,7 +863,9 @@ export default async function EventsPage() {
                 <div className="space-y-2 text-sm leading-6 text-white/65">
                   <div>
                     Workspace :{" "}
-                    <span className="text-white/90">{getWorkspace(focusEvent)}</span>
+                    <span className="text-white/90">
+                      {activeWorkspaceId || getWorkspace(focusEvent)}
+                    </span>
                   </div>
                   <div>
                     Flow :{" "}
@@ -778,7 +883,7 @@ export default async function EventsPage() {
 
                 <div className="flex flex-col gap-2">
                   <Link
-                    href={`/events/${encodeURIComponent(String(focusEvent.id))}`}
+                    href={focusEventDetailHref}
                     className={actionLinkClassName("primary")}
                   >
                     Ouvrir l’event
@@ -810,7 +915,12 @@ export default async function EventsPage() {
         </>
       }
     >
-      {sortedEvents.length === 0 ? (
+      {fetchFailed ? (
+        <EmptyStatePanel
+          title="Lecture Events indisponible"
+          description="Le Dashboard n’a pas pu charger la surface Events. La vue est protégée, mais il faut vérifier la lecture API côté worker / helper."
+        />
+      ) : sortedEvents.length === 0 ? (
         <EmptyStatePanel
           title="Aucun événement visible"
           description="Le Dashboard n’a remonté aucun event sur la source actuelle."
@@ -903,7 +1013,11 @@ export default async function EventsPage() {
             ) : (
               <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
                 {attentionEvents.slice(0, 20).map((event) => (
-                  <EventListCard key={String(event.id)} event={event} />
+                  <EventListCard
+                    key={String(event.id)}
+                    event={event}
+                    activeWorkspaceId={activeWorkspaceId}
+                  />
                 ))}
               </div>
             )}
@@ -924,7 +1038,11 @@ export default async function EventsPage() {
             ) : (
               <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
                 {stableEvents.slice(0, 20).map((event) => (
-                  <EventListCard key={String(event.id)} event={event} />
+                  <EventListCard
+                    key={String(event.id)}
+                    event={event}
+                    activeWorkspaceId={activeWorkspaceId}
+                  />
                 ))}
               </div>
             )}
