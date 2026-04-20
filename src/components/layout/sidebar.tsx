@@ -80,17 +80,21 @@ function categoryBadgeTone(
   return "default";
 }
 
-function dedupeItems(items: NavItem[]): NavItem[] {
+function dedupeItems(items: Array<NavItem | null>): NavItem[] {
   const seen = new Set<string>();
+  const cleaned: NavItem[] = [];
 
-  return items.filter((item) => {
-    const key = text(item.href);
-    if (!key || seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
+  for (const item of items) {
+    if (!item) continue;
+
+    const href = text(item.href);
+    if (!href || seen.has(href)) continue;
+
+    seen.add(href);
+    cleaned.push(item);
+  }
+
+  return cleaned;
 }
 
 function getPrimaryItems(
@@ -109,9 +113,7 @@ function getPrimaryItems(
       entitlements.canViewIncidents
         ? { href: "/incidents", label: "Incidents" }
         : null,
-      { href: "/runs", label: "Runs" },
-      entitlements.canViewIncidents ? { href: "/sla", label: "SLA" } : null,
-    ].filter(Boolean) as NavItem[]);
+    ]);
   }
 
   if (category === "freelance") {
@@ -123,7 +125,7 @@ function getPrimaryItems(
       entitlements.canViewIncidents
         ? { href: "/incidents", label: "Incidents" }
         : null,
-    ].filter(Boolean) as NavItem[]);
+    ]);
   }
 
   if (category === "company") {
@@ -138,7 +140,7 @@ function getPrimaryItems(
       entitlements.canViewIncidents
         ? { href: "/incidents", label: "Incidents" }
         : null,
-    ].filter(Boolean) as NavItem[]);
+    ]);
   }
 
   return dedupeItems([
@@ -163,13 +165,15 @@ function getConfigItems(
       ? { href: "/workspaces", label: "Workspaces" }
       : null,
     { href: "/settings", label: "Settings" },
-  ].filter(Boolean) as NavItem[]);
+  ]);
 
   return items.filter((item) => !primaryHrefs.has(item.href));
 }
 
 function getUtilityItems(): NavItem[] {
-  return [{ href: "/workspace/select", label: "Changer d’espace" }];
+  return dedupeItems([
+    { href: "/workspace/select", label: "Changer d’espace" },
+  ]);
 }
 
 function getWorkspaceSubtitle(workspace: WorkspaceSummary): string {
