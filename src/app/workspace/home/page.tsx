@@ -28,11 +28,11 @@ function text(value?: string | null): string {
 }
 
 function pageWrapClassName(): string {
-  return "min-h-screen bg-black px-4 py-8 text-white sm:px-6 lg:px-8";
+  return "min-h-screen bg-black px-4 py-6 text-white sm:px-6 lg:px-8 xl:py-8";
 }
 
 function shellClassName(): string {
-  return "mx-auto max-w-6xl space-y-8";
+  return "mx-auto max-w-7xl space-y-6 xl:space-y-8";
 }
 
 function sectionLabelClassName(): string {
@@ -61,7 +61,7 @@ function buttonClassName(
 }
 
 function cardClassName(): string {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-6";
 }
 
 function compactCardClassName(): string {
@@ -69,7 +69,7 @@ function compactCardClassName(): string {
 }
 
 function statCardClassName(): string {
-  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-5";
 }
 
 function badgeClassName(
@@ -504,16 +504,24 @@ function StatCard({
   value,
   toneClass = "text-white",
   helper,
+  breakAll = false,
+  valueClassName = "",
 }: {
   label: string;
   value: string | number;
   toneClass?: string;
   helper?: string;
+  breakAll?: boolean;
+  valueClassName?: string;
 }) {
   return (
-    <div className={statCardClassName()}>
+    <div className={`${statCardClassName()} min-w-0`}>
       <div className="text-sm text-zinc-400">{label}</div>
-      <div className={`mt-3 text-4xl font-semibold tracking-tight ${toneClass}`}>
+      <div
+        className={`mt-3 min-w-0 font-semibold tracking-tight ${toneClass} ${
+          valueClassName || "text-3xl sm:text-4xl"
+        } ${breakAll ? "break-all" : ""}`}
+      >
         {value}
       </div>
       {helper ? <div className="mt-2 text-sm text-zinc-400">{helper}</div> : null}
@@ -584,7 +592,7 @@ function FocusCardItem({ item }: { item: FocusCard }) {
         <div className="text-xl font-semibold tracking-tight text-white">
           {item.title}
         </div>
-        <div className="text-4xl font-semibold tracking-tight text-sky-300">
+        <div className="break-words text-4xl font-semibold tracking-tight text-sky-300">
           {item.value}
         </div>
         <div className="text-sm leading-6 text-zinc-400">{item.helper}</div>
@@ -1495,48 +1503,65 @@ export default async function WorkspaceHomePage() {
   return (
     <main className={pageWrapClassName()}>
       <div className={shellClassName()}>
-        <section className="space-y-4 border-b border-white/10 pb-6">
-          <div className={sectionLabelClassName()}>Workspace Home</div>
+        <section className={cardClassName()}>
+          <div className="space-y-4">
+            <div className={sectionLabelClassName()}>Workspace Home</div>
 
-          <div className="space-y-3">
-            <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-              {activeWorkspace.name}
-            </h1>
+            <div className="space-y-3">
+              <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl xl:text-[3.4rem]">
+                {activeWorkspace.name}
+              </h1>
 
-            <p className="max-w-3xl text-base text-zinc-400 sm:text-lg">
-              {getCategoryHeadline(category)}
-            </p>
-          </div>
+              <p className="max-w-3xl text-base text-zinc-400 sm:text-lg">
+                {getCategoryHeadline(category)}
+              </p>
+            </div>
 
-          <div className="flex flex-wrap gap-2">
-            <span className={badgeClassName(categoryTone(activeWorkspace.category))}>
-              {activeWorkspace.category.toUpperCase()}
-            </span>
-
-            {shouldShowPlanBadge(activeWorkspace) ? (
-              <span className={badgeClassName("violet")}>
-                {activeWorkspace.plan.toUpperCase()}
+            <div className="flex flex-wrap gap-2">
+              <span className={badgeClassName(categoryTone(activeWorkspace.category))}>
+                {activeWorkspace.category.toUpperCase()}
               </span>
-            ) : null}
 
-            <span className={badgeClassName(roleTone(activeWorkspace.membershipRole))}>
-              {activeWorkspace.membershipRole.toUpperCase()}
-            </span>
-            <span className={badgeClassName(statusTone(activeWorkspace.status))}>
-              {activeWorkspace.status.toUpperCase()}
-            </span>
+              {shouldShowPlanBadge(activeWorkspace) ? (
+                <span className={badgeClassName("violet")}>
+                  {activeWorkspace.plan.toUpperCase()}
+                </span>
+              ) : null}
+
+              <span className={badgeClassName(roleTone(activeWorkspace.membershipRole))}>
+                {activeWorkspace.membershipRole.toUpperCase()}
+              </span>
+              <span className={badgeClassName(statusTone(activeWorkspace.status))}>
+                {activeWorkspace.status.toUpperCase()}
+              </span>
+            </div>
           </div>
         </section>
 
-        <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <StatCard label="Category" value={activeWorkspace.category} />
-          <StatCard label="Plan" value={activeWorkspace.plan} />
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Category"
+            value={activeWorkspace.category}
+            helper="Type d’espace actif"
+          />
+          <StatCard
+            label="Plan"
+            value={activeWorkspace.plan}
+            helper="Plan courant"
+          />
           <StatCard
             label="Default lane"
             value={defaultLane}
             toneClass="text-sky-300"
+            breakAll
+            valueClassName="text-2xl sm:text-3xl"
+            helper="Lane principale"
           />
-          <StatCard label="Memberships" value={memberships.length} />
+          <StatCard
+            label="Memberships"
+            value={memberships.length}
+            helper="Espaces visibles"
+          />
         </section>
 
         {category === "agency" ? (
