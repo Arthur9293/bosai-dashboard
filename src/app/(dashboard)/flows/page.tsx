@@ -395,11 +395,13 @@ function FlowSection({
 }) {
   return (
     <section className="space-y-3">
-      <div className="space-y-1 px-1">
-        <h2 className="text-base font-semibold text-zinc-950 sm:text-lg">
+      <div className="rounded-[22px] border border-white/10 bg-zinc-950/70 px-4 py-4 shadow-sm backdrop-blur sm:px-5">
+        <h2 className="text-base font-semibold text-white sm:text-lg">
           {title}
         </h2>
-        <p className="max-w-3xl text-sm leading-6 text-zinc-600">{subtitle}</p>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-300">
+          {subtitle}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
