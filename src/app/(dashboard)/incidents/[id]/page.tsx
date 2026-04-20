@@ -148,6 +148,37 @@ function firstText(values: unknown[], fallback = ""): string {
   return fallback;
 }
 
+function firstParam(value?: string | string[]) {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
+function buildHref(
+  pathname: string,
+  params: Record<string, string | undefined>
+): string {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    const text = String(value || "").trim();
+    if (text) search.set(key, text);
+  }
+
+  const query = search.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+function appendWorkspaceAndParams(
+  pathname: string,
+  workspaceId?: string,
+  params?: Record<string, string | undefined>
+): string {
+  return buildHref(pathname, {
+    workspace_id: workspaceId || undefined,
+    ...(params || {}),
+  });
+}
+
 function formatDate(value?: string | number | null): string {
   if (value === null || value === undefined || value === "") return "—";
 
@@ -164,6 +195,10 @@ function formatDate(value?: string | number | null): string {
 
 function safeUpper(text: string): string {
   return text.trim() ? text.trim().toUpperCase() : "—";
+}
+
+function isRecordIdLike(value: string): boolean {
+  return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
 }
 
 function getIncidentTitle(incident: IncidentItem): string {
@@ -427,6 +462,16 @@ function getBestFlowTargetFromIncident(incident: IncidentItem): string {
   );
 }
 
+function getEventTargetFromIncident(incident: IncidentItem): string {
+  const sourceRecordId = getSourceRecordId(incident);
+  if (sourceRecordId && isRecordIdLike(sourceRecordId)) return sourceRecordId;
+
+  const rootEventId = getRootEventId(incident);
+  if (rootEventId && isRecordIdLike(rootEventId)) return rootEventId;
+
+  return "";
+}
+
 function getFlowHref(incident: IncidentItem, activeWorkspaceId?: string): string {
   const target = getBestFlowTargetFromIncident(incident);
   return target
@@ -446,6 +491,19 @@ function getCommandHref(
 
   return appendWorkspaceIdToHref(
     `/commands/${encodeURIComponent(commandRecord)}`,
+    activeWorkspaceId || getWorkspace(incident)
+  );
+}
+
+function getEventHref(
+  incident: IncidentItem,
+  activeWorkspaceId?: string
+): string {
+  const eventTarget = getEventTargetFromIncident(incident);
+  if (!eventTarget) return "";
+
+  return appendWorkspaceIdToHref(
+    `/events/${encodeURIComponent(eventTarget)}`,
     activeWorkspaceId || getWorkspace(incident)
   );
 }
@@ -637,11 +695,20 @@ export default async function IncidentDetailPage({
   const activeWorkspaceId = workspaceContext.activeWorkspaceId || "";
   const id = decodeURIComponent(resolvedParams.id);
 
+  const incomingFrom = firstParam(resolvedSearchParams.from).trim();
+  const incomingFlowId = firstParam(resolvedSearchParams.flow_id).trim();
+  const incomingRootEventId = firstParam(resolvedSearchParams.root_event_id).trim();
+  const incomingSourceRecordId =
+    firstParam(resolvedSearchParams.source_record_id).trim() ||
+    firstParam(resolvedSearchParams.source_event_id).trim();
+  const incomingCommandId = firstParam(resolvedSearchParams.command_id).trim();
+
   let data: IncidentsResponse | null = null;
 
   try {
     data = await fetchIncidents({
       workspaceId: activeWorkspaceId || undefined,
+      limit: 500,
     });
   } catch {
     data = null;
@@ -662,6 +729,8 @@ export default async function IncidentDetailPage({
   const incident =
     cleanIncidents.find((item) => String(item.id) === id) ||
     cleanIncidents.find((item) => toText(item.error_id, "") === id) ||
+    workspaceScoped.find((item) => String(item.id) === id) ||
+    workspaceScoped.find((item) => toText(item.error_id, "") === id) ||
     null;
 
   if (!incident) {
@@ -692,12 +761,33 @@ export default async function IncidentDetailPage({
   const nextAction = getNextAction(incident);
   const priorityScore = getPriorityScore(incident);
 
-  const flowHref = getFlowHref(incident, activeWorkspaceId);
-  const commandHref = getCommandHref(incident, activeWorkspaceId);
-  const incidentsHref = appendWorkspaceIdToHref("/incidents", activeWorkspaceId);
+  const effectiveWorkspaceId = activeWorkspaceId || (workspace !== "—" ? workspace : "");
+
+  const flowHref = getFlowHref(incident, effectiveWorkspaceId);
+  const commandHref = getCommandHref(incident, effectiveWorkspaceId);
+  const eventHref = getEventHref(incident, effectiveWorkspaceId);
+
+  const incidentsHref = appendWorkspaceAndParams(
+    "/incidents",
+    effectiveWorkspaceId,
+    {
+      from: incomingFrom || undefined,
+      flow_id: incomingFlowId || undefined,
+      root_event_id: incomingRootEventId || undefined,
+      source_record_id: incomingSourceRecordId || undefined,
+      command_id: incomingCommandId || undefined,
+    }
+  );
+
+  const allIncidentsHref = appendWorkspaceIdToHref(
+    "/incidents",
+    effectiveWorkspaceId
+  );
+
   const remainingMinutes = toNumber(incident.sla_remaining_minutes, Number.NaN);
 
   const flowTarget = flowId || sourceRecordId || rootEventId || "—";
+  const eventTarget = getEventTargetFromIncident(incident) || "—";
 
   const shellBadges: { label: string; tone?: ShellBadgeTone }[] = [
     { label: statusLabel, tone: getShellBadgeToneFromStatus(incident) },
@@ -780,7 +870,7 @@ export default async function IncidentDetailPage({
 
               <div className="space-y-2 text-sm leading-6 text-white/65">
                 <div>
-                  Workspace : <span className="text-white/90">{workspace}</span>
+                  Workspace : <span className="text-white/90">{effectiveWorkspaceId || workspace}</span>
                 </div>
                 <div>
                   Flow :{" "}
@@ -817,7 +907,7 @@ export default async function IncidentDetailPage({
                 Retour à la liste incidents
               </Link>
 
-              <Link href={incidentsHref} className={actionLinkClassName("primary")}>
+              <Link href={allIncidentsHref} className={actionLinkClassName("primary")}>
                 Voir tous les incidents
               </Link>
 
@@ -838,6 +928,16 @@ export default async function IncidentDetailPage({
               ) : (
                 <span className={actionLinkClassName("soft", true)}>
                   Ouvrir la command liée
+                </span>
+              )}
+
+              {eventHref ? (
+                <Link href={eventHref} className={actionLinkClassName("soft")}>
+                  Ouvrir l’event lié
+                </Link>
+              ) : (
+                <span className={actionLinkClassName("soft", true)}>
+                  Ouvrir l’event lié
                 </span>
               )}
             </div>
@@ -893,7 +993,7 @@ export default async function IncidentDetailPage({
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Workspace</div>
             <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
-              {workspace}
+              {effectiveWorkspaceId || workspace}
             </div>
           </div>
 
@@ -988,22 +1088,28 @@ export default async function IncidentDetailPage({
 
       <SectionCard
         title="Liens BOSAI"
-        description="Objets liés pour naviguer entre l’incident, le flow, la command et les identifiants techniques."
+        description="Objets liés pour naviguer entre l’incident, le flow, la command, l’event et les identifiants techniques."
         tone="neutral"
         className={sectionFrameClassName("neutral")}
       >
         <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-3">
           <MetaItem
             label="Flow"
-            value={
-              <MetaValueLink href={flowHref} value={flowTarget} />
-            }
+            value={<MetaValueLink href={flowHref} value={flowTarget} />}
             breakAll
           />
 
-          <MetaItem label="Root event" value={rootEventId || "—"} breakAll />
+          <MetaItem
+            label="Root event"
+            value={<MetaValueLink href={eventHref} value={rootEventId || "—"} />}
+            breakAll
+          />
 
-          <MetaItem label="Source record" value={sourceRecordId || "—"} breakAll />
+          <MetaItem
+            label="Source record"
+            value={<MetaValueLink href={eventHref} value={sourceRecordId || "—"} />}
+            breakAll
+          />
 
           <MetaItem label="Run record" value={runRecord} breakAll />
 
@@ -1013,7 +1119,11 @@ export default async function IncidentDetailPage({
             breakAll
           />
 
-          <MetaItem label="Record ID" value={String(incident.id)} breakAll />
+          <MetaItem
+            label="Record ID"
+            value={<MetaValueLink href={getIncidentHref(incident, effectiveWorkspaceId)} value={String(incident.id)} />}
+            breakAll
+          />
         </div>
       </SectionCard>
     </ControlPlaneShell>
