@@ -105,9 +105,9 @@ function getPrimaryItems(
 
   if (category === "agency") {
     return dedupeItems([
-      { href: "/workspace", label: "Workspace Hub" },
+      { href: "/workspace", label: "Accueil workspace" },
       { href: "/flows", label: "Flows" },
-      { href: "/overview", label: "Overview" },
+      { href: "/overview", label: "Vue d’ensemble" },
       { href: "/commands", label: "Commands" },
       { href: "/events", label: "Events" },
       entitlements.canViewIncidents
@@ -118,9 +118,9 @@ function getPrimaryItems(
 
   if (category === "freelance") {
     return dedupeItems([
-      { href: "/workspace", label: "Workspace Hub" },
+      { href: "/workspace", label: "Accueil workspace" },
       { href: "/commands", label: "Commands" },
-      { href: "/overview", label: "Overview" },
+      { href: "/overview", label: "Vue d’ensemble" },
       { href: "/events", label: "Events" },
       entitlements.canViewIncidents
         ? { href: "/incidents", label: "Incidents" }
@@ -130,11 +130,11 @@ function getPrimaryItems(
 
   if (category === "company") {
     return dedupeItems([
-      { href: "/workspace", label: "Workspace Hub" },
+      { href: "/workspace", label: "Accueil workspace" },
       entitlements.canManageWorkspaces
         ? { href: "/workspaces", label: "Workspaces" }
         : null,
-      { href: "/overview", label: "Overview" },
+      { href: "/overview", label: "Vue d’ensemble" },
       entitlements.canRunHttp ? { href: "/commands", label: "Commands" } : null,
       { href: "/events", label: "Events" },
       entitlements.canViewIncidents
@@ -144,8 +144,8 @@ function getPrimaryItems(
   }
 
   return dedupeItems([
-    { href: "/workspace", label: "Workspace Hub" },
-    { href: "/overview", label: "Overview" },
+    { href: "/workspace", label: "Accueil workspace" },
+    { href: "/overview", label: "Vue d’ensemble" },
     { href: "/events", label: "Events" },
   ]);
 }
@@ -164,32 +164,30 @@ function getConfigItems(
     entitlements.canManageWorkspaces
       ? { href: "/workspaces", label: "Workspaces" }
       : null,
-    { href: "/settings", label: "Settings" },
+    { href: "/settings", label: "Réglages" },
   ]);
 
   return items.filter((item) => !primaryHrefs.has(item.href));
 }
 
 function getUtilityItems(): NavItem[] {
-  return dedupeItems([
-    { href: "/workspace/select", label: "Changer d’espace" },
-  ]);
+  return dedupeItems([{ href: "/workspace/select", label: "Changer d’espace" }]);
 }
 
 function getWorkspaceSubtitle(workspace: WorkspaceSummary): string {
   if (workspace.category === "agency") {
-    return "Hub agence orienté flows et exploitation";
+    return "Espace agence orienté flows et pilotage opérationnel";
   }
 
   if (workspace.category === "company") {
-    return "Hub entreprise orienté cockpit et surfaces métier";
+    return "Espace entreprise orienté gouvernance et surfaces métier";
   }
 
   if (workspace.category === "freelance") {
-    return "Hub freelance orienté commands et exécution";
+    return "Espace freelance orienté commands et exécution";
   }
 
-  return "Hub personnel orienté lecture simple et accès rapide";
+  return "Espace personnel orienté lecture simple et accès rapide";
 }
 
 function getNavSections(
@@ -198,7 +196,7 @@ function getNavSections(
 ): NavSection[] {
   return [
     {
-      title: "Workspace",
+      title: "Navigation",
       items: getPrimaryItems(workspace, entitlements),
     },
     {
@@ -206,7 +204,7 @@ function getNavSections(
       items: getConfigItems(workspace, entitlements),
     },
     {
-      title: "Utility",
+      title: "Utilitaires",
       items: getUtilityItems(),
     },
   ].filter((section) => section.items.length > 0);
@@ -284,7 +282,7 @@ export function Sidebar({
 
                         {active ? (
                           <span className="rounded-full border border-sky-500/20 bg-sky-500/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-sky-300">
-                            Active
+                            Actif
                           </span>
                         ) : (
                           <span className="text-white/20 transition group-hover:text-white/40">
@@ -304,7 +302,7 @@ export function Sidebar({
           <div className="border-t border-white/10 px-5 py-5">
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
               <div className="text-[11px] uppercase tracking-[0.2em] text-white/30">
-                Active workspace
+                Workspace actif
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
