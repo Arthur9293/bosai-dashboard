@@ -27,7 +27,7 @@ function normalizeText(value: string | null | undefined): string {
   return String(value || "").trim();
 }
 
-function normalizePlanCode(value: string): BosaiPlanCode {
+function normalizePlanCode(value: string | null | undefined): BosaiPlanCode {
   const normalized = normalizeText(value).toLowerCase();
 
   if (normalized === "starter") return "starter";
@@ -38,7 +38,9 @@ function normalizePlanCode(value: string): BosaiPlanCode {
   return "";
 }
 
-function normalizeWorkspaceStatus(value: string): BosaiWorkspaceStatus {
+function normalizeWorkspaceStatus(
+  value: string | null | undefined
+): BosaiWorkspaceStatus {
   const normalized = normalizeText(value).toLowerCase();
 
   if (normalized === "draft") return "draft";
@@ -54,7 +56,7 @@ function normalizeWorkspaceStatus(value: string): BosaiWorkspaceStatus {
   return "";
 }
 
-function normalizeStep(value: string): ContinueStep {
+function normalizeStep(value: string | null | undefined): ContinueStep {
   const normalized = normalizeText(value).toLowerCase();
 
   if (normalized === "plan") return "plan";
@@ -81,7 +83,7 @@ function buildPath(
   return query ? `${pathname}?${query}` : pathname;
 }
 
-function normalizeInternalPath(value: string): string {
+function normalizeInternalPath(value: string | null | undefined): string {
   const text = normalizeText(value);
 
   if (!text.startsWith("/")) return "";
@@ -90,11 +92,7 @@ function normalizeInternalPath(value: string): string {
   return text;
 }
 
-function setCookie(
-  response: NextResponse,
-  name: string,
-  value: string
-): void {
+function setCookie(response: NextResponse, name: string, value: string): void {
   response.cookies.set(name, value, {
     path: "/",
     httpOnly: true,
@@ -149,14 +147,15 @@ function writeBooleanCookies(
 
 export async function GET(request: NextRequest) {
   const url = request.nextUrl;
+
   const step = normalizeStep(url.searchParams.get("step"));
   const planCode = normalizePlanCode(url.searchParams.get("plan"));
-  const nextPath = normalizeInternalPath(url.searchParams.get("next") || "");
+  const nextPath = normalizeInternalPath(url.searchParams.get("next"));
   const workspaceId = normalizeText(
     url.searchParams.get("workspace_id") || url.searchParams.get("workspaceId")
   );
   const requestedStatus = normalizeWorkspaceStatus(
-    url.searchParams.get("workspace_status") || ""
+    url.searchParams.get("workspace_status")
   );
 
   let redirectPath = "/onboarding/plan";
@@ -194,6 +193,7 @@ export async function GET(request: NextRequest) {
       "checkout_completed",
       "bosai_onboarding_completed",
       "onboarding_completed",
+      "bosai_pending_workspace_id",
     ].forEach((name) => clearCookie(response, name));
 
     return response;
