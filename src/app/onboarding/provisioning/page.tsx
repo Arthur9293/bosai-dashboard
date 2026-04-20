@@ -19,7 +19,6 @@ type PlanConfig = {
   subtitle: string;
   provisioningLabel: string;
   workspaceMode: string;
-  nextHref: string;
 };
 
 function pageFrameClassName() {
@@ -149,7 +148,6 @@ const plans: Record<string, PlanConfig> = {
     subtitle: "Lancer un premier espace BOSAI",
     provisioningLabel: "Provisioning simple",
     workspaceMode: "1 workspace essentiel",
-    nextHref: "/onboarding/workspace?plan=starter",
   },
   pro: {
     code: "pro",
@@ -160,7 +158,6 @@ const plans: Record<string, PlanConfig> = {
     subtitle: "Passer à un vrai usage opérationnel",
     provisioningLabel: "Provisioning renforcé",
     workspaceMode: "Jusqu’à 3 workspaces",
-    nextHref: "/onboarding/workspace?plan=pro",
   },
   agency: {
     code: "agency",
@@ -171,7 +168,6 @@ const plans: Record<string, PlanConfig> = {
     subtitle: "Piloter plusieurs espaces proprement",
     provisioningLabel: "Provisioning multi-espace",
     workspaceMode: "Mode agency / multi-client",
-    nextHref: "/onboarding/workspace?plan=agency",
   },
   custom: {
     code: "custom",
@@ -182,7 +178,6 @@ const plans: Record<string, PlanConfig> = {
     subtitle: "Construire une configuration dédiée",
     provisioningLabel: "Provisioning après cadrage",
     workspaceMode: "Workspace sur mesure",
-    nextHref: "/onboarding/workspace?plan=custom",
   },
 };
 
@@ -224,6 +219,12 @@ export default async function OnboardingProvisioningPage({
   const selectedPlan = plans[planCode] ?? null;
 
   const hasValidPlan = selectedPlan !== null;
+  const continueHref = hasValidPlan
+    ? `/onboarding/continue?step=provisioning&plan=${selectedPlan.code}`
+    : "";
+  const checkoutHref = hasValidPlan
+    ? `/onboarding/checkout?plan=${selectedPlan.code}`
+    : "/onboarding/checkout";
 
   return (
     <div className={pageFrameClassName()}>
@@ -265,7 +266,7 @@ export default async function OnboardingProvisioningPage({
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 {hasValidPlan ? (
-                  <Link href={selectedPlan.nextHref} className={buttonClassName("primary")}>
+                  <Link href={continueHref} className={buttonClassName("primary")}>
                     Continuer vers le workspace
                   </Link>
                 ) : (
@@ -274,7 +275,7 @@ export default async function OnboardingProvisioningPage({
                   </span>
                 )}
 
-                <Link href="/onboarding/checkout" className={buttonClassName("soft")}>
+                <Link href={checkoutHref} className={buttonClassName("soft")}>
                   Retour checkout
                 </Link>
               </div>
@@ -366,7 +367,7 @@ export default async function OnboardingProvisioningPage({
                       <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
                         <div className={metaLabelClassName()}>Next route</div>
                         <div className="mt-2 break-all text-sm text-zinc-300">
-                          {selectedPlan.nextHref}
+                          {continueHref}
                         </div>
                       </div>
                     </div>
@@ -486,14 +487,11 @@ export default async function OnboardingProvisioningPage({
                     </div>
 
                     <div className="flex flex-col gap-3">
-                      <Link href={selectedPlan.nextHref} className={buttonClassName("primary")}>
+                      <Link href={continueHref} className={buttonClassName("primary")}>
                         Continuer vers le workspace
                       </Link>
 
-                      <Link
-                        href={`/onboarding/checkout?plan=${selectedPlan.code}`}
-                        className={buttonClassName("soft")}
-                      >
+                      <Link href={checkoutHref} className={buttonClassName("soft")}>
                         Retour checkout
                       </Link>
 
