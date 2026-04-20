@@ -96,8 +96,6 @@ function categoryTone(category?: string | null): BadgeVariant {
   if (normalized === "agency") return "violet";
   if (normalized === "company") return "info";
   if (normalized === "freelance") return "success";
-  if (normalized === "personal") return "default";
-
   return "default";
 }
 
@@ -109,27 +107,6 @@ function shouldShowPlanBadge(
   const normalizedCategory = text(category).toLowerCase();
 
   return Boolean(normalizedPlan) && normalizedPlan !== normalizedCategory;
-}
-
-function getPrimaryAction(args: {
-  category?: string | null;
-  canManageWorkspaces: boolean;
-}): SurfaceLink {
-  const normalized = text(args.category).toLowerCase();
-
-  if (normalized === "agency") {
-    return { href: "/flows", label: "Ouvrir Flows", variant: "primary" };
-  }
-
-  if (normalized === "freelance") {
-    return { href: "/commands", label: "Ouvrir Commands", variant: "primary" };
-  }
-
-  if (normalized === "company" && args.canManageWorkspaces) {
-    return { href: "/workspaces", label: "Ouvrir Workspaces", variant: "primary" };
-  }
-
-  return { href: "/overview", label: "Ouvrir Overview", variant: "primary" };
 }
 
 function getWorkspaceDescription(category?: string | null): string {
@@ -150,15 +127,41 @@ function getWorkspaceDescription(category?: string | null): string {
   return "Hub du workspace actif. Cette vue sert de point d’entrée simple pour lire l’état du workspace et ouvrir les surfaces autorisées.";
 }
 
+function getPrimaryAction(args: {
+  category?: string | null;
+  canManageWorkspaces: boolean;
+}): SurfaceLink {
+  const normalized = text(args.category).toLowerCase();
+
+  if (normalized === "agency") {
+    return { href: "/flows", label: "Ouvrir Flows", variant: "primary" };
+  }
+
+  if (normalized === "freelance") {
+    return { href: "/commands", label: "Ouvrir Commands", variant: "primary" };
+  }
+
+  if (normalized === "company" && args.canManageWorkspaces) {
+    return {
+      href: "/workspaces",
+      label: "Ouvrir Workspaces",
+      variant: "primary",
+    };
+  }
+
+  return { href: "/overview", label: "Ouvrir Overview", variant: "primary" };
+}
+
 function buildSurfaceLinks(args: {
   category?: string | null;
+  canRunHttp: boolean;
   canViewIncidents: boolean;
   canManagePolicies: boolean;
   canManageWorkspaces: boolean;
 }): SurfaceLink[] {
   const normalizedCategory = text(args.category).toLowerCase();
 
-  const links: SurfaceLink[] = [
+  const items: Array<SurfaceLink | null> = [
     {
       href: "/workspace/select",
       label: "Changer d’espace",
@@ -169,54 +172,57 @@ function buildSurfaceLinks(args: {
       label: "Ouvrir Overview",
     },
     {
-      href: "/settings",
-      label: "Ouvrir Settings",
-    },
-    {
       href: "/events",
       label: "Ouvrir Events",
     },
+    {
+      href: "/settings",
+      label: "Ouvrir Settings",
+    },
   ];
 
-  if (normalizedCategory === "personal" || normalizedCategory === "agency") {
-    links.push({
-      href: "/commands",
-      label: "Ouvrir Commands",
-    });
+  if (normalizedCategory === "agency") {
+    items.push(
+      { href: "/commands", label: "Ouvrir Commands" },
+      args.canViewIncidents
+        ? { href: "/incidents", label: "Ouvrir Incidents" }
+        : null
+    );
+  } else if (normalizedCategory === "freelance") {
+    items.push(
+      args.canViewIncidents
+        ? { href: "/incidents", label: "Ouvrir Incidents" }
+        : null
+    );
+  } else if (normalizedCategory === "company") {
+    items.push(
+      args.canManageWorkspaces
+        ? { href: "/workspaces", label: "Ouvrir Workspaces" }
+        : null,
+      args.canRunHttp ? { href: "/commands", label: "Ouvrir Commands" } : null,
+      args.canViewIncidents
+        ? { href: "/incidents", label: "Ouvrir Incidents" }
+        : null,
+      args.canManagePolicies
+        ? { href: "/policies", label: "Ouvrir Policies" }
+        : null
+    );
   }
 
-  if (normalizedCategory === "company" && args.canManageWorkspaces) {
-    links.push({
-      href: "/workspaces",
-      label: "Ouvrir Workspaces",
-    });
+  const seen = new Set<string>();
+  const cleaned: SurfaceLink[] = [];
+
+  for (const item of items) {
+    if (!item) continue;
+
+    const href = text(item.href);
+    if (!href || seen.has(href)) continue;
+
+    seen.add(href);
+    cleaned.push(item);
   }
 
-  if (args.canViewIncidents) {
-    links.push({
-      href: "/incidents",
-      label: "Ouvrir Incidents",
-    });
-  }
-
-  if (args.canManagePolicies) {
-    links.push({
-      href: "/policies",
-      label: "Ouvrir Policies",
-    });
-  }
-
-  const deduped = new Map<string, SurfaceLink>();
-
-  for (const link of links) {
-    const href = text(link.href);
-    if (!href) continue;
-    if (!deduped.has(href)) {
-      deduped.set(href, link);
-    }
-  }
-
-  return Array.from(deduped.values());
+  return cleaned;
 }
 
 function MetricCard({
@@ -279,6 +285,7 @@ export default async function WorkspaceIndexPage() {
   const quota = resolution.context?.quota || null;
   const entitlements = resolution.context?.entitlements || null;
 
+  const canRunHttp = Boolean(entitlements?.canRunHttp);
   const canViewIncidents = Boolean(entitlements?.canViewIncidents);
   const canManagePolicies = Boolean(entitlements?.canManagePolicies);
   const canManageWorkspaces = Boolean(entitlements?.canManageWorkspaces);
@@ -290,10 +297,11 @@ export default async function WorkspaceIndexPage() {
 
   const secondaryLinks = buildSurfaceLinks({
     category: activeWorkspace.category,
+    canRunHttp,
     canViewIncidents,
     canManagePolicies,
     canManageWorkspaces,
-  }).filter((link) => link.href !== primaryAction.href);
+  }).filter((item) => item.href !== primaryAction.href);
 
   return (
     <main className={pageWrapClassName()}>
@@ -468,13 +476,13 @@ export default async function WorkspaceIndexPage() {
               {primaryAction.label}
             </Link>
 
-            {secondaryLinks.map((link) => (
+            {secondaryLinks.map((item) => (
               <Link
-                key={link.href}
-                href={link.href}
-                className={buttonClassName(link.variant || "default")}
+                key={item.href}
+                href={item.href}
+                className={buttonClassName(item.variant || "default")}
               >
-                {link.label}
+                {item.label}
               </Link>
             ))}
           </div>
