@@ -100,6 +100,23 @@ function buildPath(
   return query ? `${pathname}?${query}` : pathname;
 }
 
+export function hasCommercialOnboardingSignals(
+  cookieValues: Record<string, string | undefined> = {}
+): boolean {
+  return [
+    cookieValues.bosai_plan_code,
+    cookieValues.plan_code,
+    cookieValues.selected_plan,
+    cookieValues.bosai_workspace_status,
+    cookieValues.workspace_status,
+    cookieValues.bosai_checkout_completed,
+    cookieValues.checkout_completed,
+    cookieValues.bosai_onboarding_completed,
+    cookieValues.onboarding_completed,
+    cookieValues.bosai_pending_workspace_id,
+  ].some((value) => String(value || "").trim() !== "");
+}
+
 export function resolveBosaiAccessState(
   input: ResolveBosaiAccessInput = {}
 ): BosaiAccessState {
@@ -190,7 +207,10 @@ export function resolveBosaiAccessState(
     };
   }
 
-  if (workspaceStatus === "ready_to_activate") {
+  if (
+    workspaceStatus === "ready_to_activate" ||
+    (workspaceStatus === "active" && !onboardingCompleted)
+  ) {
     return {
       planCode,
       workspaceStatus,
@@ -199,21 +219,6 @@ export function resolveBosaiAccessState(
       canAccessCockpit: false,
       stage: "workspace",
       redirectPath: buildPath("/onboarding/workspace", {
-        plan: planCode,
-      }),
-    };
-  }
-
-  if (workspaceStatus === "active" && !onboardingCompleted) {
-    return {
-      planCode,
-      workspaceStatus,
-      checkoutCompleted,
-      onboardingCompleted,
-      canAccessCockpit: false,
-      stage: "workspace",
-      redirectPath: buildPath("/workspace/create", {
-        source: "onboarding",
         plan: planCode,
       }),
     };
