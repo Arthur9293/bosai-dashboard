@@ -72,7 +72,7 @@ type WorkspaceFilters = {
 
 function formatNumber(value?: number | null): string {
   return typeof value === "number" && Number.isFinite(value)
-    ? value.toString()
+    ? new Intl.NumberFormat("fr-FR").format(value)
     : "0";
 }
 
@@ -386,9 +386,7 @@ function UsageMiniStat({
       <div className={`mt-2 text-lg font-semibold ${getUsageTone(current, hard)}`}>
         {formatNumber(current)}
       </div>
-      <div className="mt-1 text-sm text-zinc-400">
-        / {formatNumber(hard)}
-      </div>
+      <div className="mt-1 text-sm text-zinc-400">/ {formatNumber(hard)}</div>
     </div>
   );
 }
@@ -566,7 +564,7 @@ export default async function WorkspacesPage({
   });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <PageHeader
         eyebrow="SaaS"
         title="Workspaces"
