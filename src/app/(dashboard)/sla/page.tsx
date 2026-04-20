@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import { fetchSla, type SlaItem } from "@/lib/api";
 import {
   ControlPlaneShell,
@@ -12,6 +13,17 @@ import {
   DashboardStatusBadge,
   type DashboardStatusKind,
 } from "@/components/dashboard/StatusBadge";
+import {
+  appendWorkspaceIdToHref,
+  resolveWorkspaceContext,
+  workspaceMatchesOrUnscoped,
+} from "@/lib/workspace";
+
+type SearchParams = Record<string, string | string[] | undefined>;
+
+type PageProps = {
+  searchParams?: Promise<SearchParams> | SearchParams;
+};
 
 function cardClassName() {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
@@ -105,6 +117,32 @@ function statValue(value?: number): number {
   return typeof value === "number" ? value : 0;
 }
 
+function firstParam(value?: string | string[]): string {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
+function buildHref(
+  pathname: string,
+  params: Record<string, string | undefined>
+): string {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    const text = String(value || "").trim();
+    if (text) {
+      search.set(key, text);
+    }
+  }
+
+  const query = search.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+function isRecordIdLike(value: string): boolean {
+  return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
+}
+
 function getSlaTitle(item: SlaItem): string {
   return (
     toTextOrEmpty(item.title) ||
@@ -184,8 +222,12 @@ function getLastCheck(item: SlaItem): string {
   );
 }
 
+function getWorkspaceScope(item: SlaItem): string {
+  return toTextOrEmpty(item.workspace_id) || toTextOrEmpty(item.workspace) || "";
+}
+
 function getWorkspace(item: SlaItem): string {
-  return toTextOrEmpty(item.workspace_id) || toTextOrEmpty(item.workspace) || "—";
+  return getWorkspaceScope(item) || "—";
 }
 
 function getFlowTarget(item: SlaItem): string {
@@ -203,6 +245,20 @@ function getCommandTarget(item: SlaItem): string {
     toTextOrEmpty(item.command_id) ||
     ""
   );
+}
+
+function getIncidentTarget(item: SlaItem): string {
+  return toTextOrEmpty(item.id);
+}
+
+function getEventTarget(item: SlaItem): string {
+  const sourceRecordId = toTextOrEmpty(item.source_record_id);
+  if (sourceRecordId && isRecordIdLike(sourceRecordId)) return sourceRecordId;
+
+  const rootEventId = toTextOrEmpty(item.root_event_id);
+  if (rootEventId && isRecordIdLike(rootEventId)) return rootEventId;
+
+  return "";
 }
 
 function getRunTarget(item: SlaItem): string {
@@ -298,6 +354,56 @@ function getQuickRead(params: {
   return "Aucun signal SLA significatif n’est visible pour le moment.";
 }
 
+function getFlowHref(item: SlaItem, activeWorkspaceId: string): string {
+  const target = getFlowTarget(item);
+  if (!target) return "";
+
+  return appendWorkspaceIdToHref(
+    `/flows/${encodeURIComponent(target)}`,
+    activeWorkspaceId || getWorkspaceScope(item)
+  );
+}
+
+function getCommandHref(item: SlaItem, activeWorkspaceId: string): string {
+  const target = getCommandTarget(item);
+  if (!target) return "";
+
+  return buildHref(`/commands/${encodeURIComponent(target)}`, {
+    workspace_id: activeWorkspaceId || getWorkspaceScope(item) || undefined,
+    flow_id: toTextOrEmpty(item.flow_id) || undefined,
+    root_event_id: toTextOrEmpty(item.root_event_id) || undefined,
+    source_event_id: toTextOrEmpty(item.source_record_id) || undefined,
+    from: "sla",
+  });
+}
+
+function getIncidentHref(item: SlaItem, activeWorkspaceId: string): string {
+  const target = getIncidentTarget(item);
+  if (!target) return "";
+
+  return buildHref(`/incidents/${encodeURIComponent(target)}`, {
+    workspace_id: activeWorkspaceId || getWorkspaceScope(item) || undefined,
+    flow_id: toTextOrEmpty(item.flow_id) || undefined,
+    root_event_id: toTextOrEmpty(item.root_event_id) || undefined,
+    source_record_id: toTextOrEmpty(item.source_record_id) || undefined,
+    command_id: getCommandTarget(item) || undefined,
+    from: "sla",
+  });
+}
+
+function getEventHref(item: SlaItem, activeWorkspaceId: string): string {
+  const target = getEventTarget(item);
+  if (!target) return "";
+
+  return buildHref(`/events/${encodeURIComponent(target)}`, {
+    workspace_id: activeWorkspaceId || getWorkspaceScope(item) || undefined,
+    flow_id: toTextOrEmpty(item.flow_id) || undefined,
+    root_event_id: toTextOrEmpty(item.root_event_id) || undefined,
+    source_event_id: toTextOrEmpty(item.source_record_id) || undefined,
+    from: "sla",
+  });
+}
+
 function SlaMiniStat({
   label,
   value,
@@ -317,13 +423,24 @@ function SlaMiniStat({
   );
 }
 
-function SlaListCard({ item }: { item: SlaItem }) {
+function SlaListCard({
+  item,
+  activeWorkspaceId,
+}: {
+  item: SlaItem;
+  activeWorkspaceId: string;
+}) {
   const id = String(item.id || "");
   const title = getSlaTitle(item);
   const flowTarget = getFlowTarget(item);
   const commandTarget = getCommandTarget(item);
-  const hasFlow = flowTarget !== "";
-  const hasCommand = commandTarget !== "";
+  const incidentTarget = getIncidentTarget(item);
+  const eventTarget = getEventTarget(item);
+
+  const flowHref = getFlowHref(item, activeWorkspaceId);
+  const commandHref = getCommandHref(item, activeWorkspaceId);
+  const incidentHref = getIncidentHref(item, activeWorkspaceId);
+  const eventHref = getEventHref(item, activeWorkspaceId);
 
   return (
     <article className={cardClassName()}>
@@ -336,9 +453,18 @@ function SlaListCard({ item }: { item: SlaItem }) {
           <div className="space-y-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
-                <div className="block break-words text-xl font-semibold tracking-tight text-white">
-                  {title}
-                </div>
+                {incidentHref ? (
+                  <Link
+                    href={incidentHref}
+                    className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
+                  >
+                    {title}
+                  </Link>
+                ) : (
+                  <div className="block break-words text-xl font-semibold tracking-tight text-white">
+                    {title}
+                  </div>
+                )}
 
                 <div className={`mt-2 text-sm font-medium ${getStatusTextTone(item)}`}>
                   {getSlaStatusLabel(item)}
@@ -362,7 +488,7 @@ function SlaListCard({ item }: { item: SlaItem }) {
 
             <div className="flex flex-wrap items-center gap-2">
               <span className={chipClassName()}>
-                Workspace · {getWorkspace(item)}
+                Workspace · {activeWorkspaceId || getWorkspace(item)}
               </span>
               <span className={chipClassName()}>
                 Remaining · {getRemainingMinutes(item)}
@@ -417,11 +543,18 @@ function SlaListCard({ item }: { item: SlaItem }) {
         </div>
 
         <div className="mt-auto flex flex-col gap-2.5 pt-1">
-          {hasFlow ? (
-            <Link
-              href={`/flows/${encodeURIComponent(flowTarget)}`}
-              className={actionLinkClassName("primary")}
-            >
+          {incidentHref ? (
+            <Link href={incidentHref} className={actionLinkClassName("danger")}>
+              Ouvrir l’incident lié
+            </Link>
+          ) : (
+            <span className={actionLinkClassName("danger", true)}>
+              Ouvrir l’incident lié
+            </span>
+          )}
+
+          {flowHref ? (
+            <Link href={flowHref} className={actionLinkClassName("primary")}>
               Ouvrir le flow lié
             </Link>
           ) : (
@@ -430,16 +563,23 @@ function SlaListCard({ item }: { item: SlaItem }) {
             </span>
           )}
 
-          {hasCommand ? (
-            <Link
-              href={`/commands/${encodeURIComponent(commandTarget)}`}
-              className={actionLinkClassName("soft")}
-            >
+          {commandHref ? (
+            <Link href={commandHref} className={actionLinkClassName("soft")}>
               Ouvrir la command liée
             </Link>
           ) : (
             <span className={actionLinkClassName("soft", true)}>
               Ouvrir la command liée
+            </span>
+          )}
+
+          {eventHref ? (
+            <Link href={eventHref} className={actionLinkClassName("soft")}>
+              Ouvrir l’event lié
+            </Link>
+          ) : (
+            <span className={actionLinkClassName("soft", true)}>
+              Ouvrir l’event lié
             </span>
           )}
         </div>
@@ -475,24 +615,67 @@ function SectionBlock({
   );
 }
 
-export default async function SlaPage() {
+export default async function SlaPage({ searchParams }: PageProps) {
+  const resolvedSearchParams = searchParams
+    ? await Promise.resolve(searchParams)
+    : {};
+
+  const cookieStore = await cookies();
+
+  const workspaceContext = resolveWorkspaceContext({
+    searchParams: resolvedSearchParams,
+    cookieValues: {
+      bosai_active_workspace_id:
+        cookieStore.get("bosai_active_workspace_id")?.value,
+      bosai_workspace_id: cookieStore.get("bosai_workspace_id")?.value,
+      workspace_id: cookieStore.get("workspace_id")?.value,
+      bosai_allowed_workspace_ids:
+        cookieStore.get("bosai_allowed_workspace_ids")?.value,
+      allowed_workspace_ids:
+        cookieStore.get("allowed_workspace_ids")?.value,
+    },
+  });
+
+  const activeWorkspaceId =
+    firstParam(resolvedSearchParams.workspace_id).trim() ||
+    firstParam(resolvedSearchParams.workspaceId).trim() ||
+    workspaceContext.activeWorkspaceId ||
+    "";
+
   let data: Awaited<ReturnType<typeof fetchSla>> | null = null;
+  let fetchFailed = false;
 
   try {
-    data = await fetchSla(100);
+    data = await fetchSla({
+      limit: 200,
+      workspaceId: activeWorkspaceId || undefined,
+    });
   } catch {
     data = null;
+    fetchFailed = true;
   }
 
-  const items: SlaItem[] = Array.isArray(data?.incidents) ? data.incidents : [];
+  const rawItems: SlaItem[] = Array.isArray(data?.incidents) ? data.incidents : [];
+
+  const items = rawItems.filter((item) =>
+    workspaceMatchesOrUnscoped(getWorkspaceScope(item), activeWorkspaceId)
+  );
+
   const stats = data?.stats ?? {};
 
-  const okCount = statValue(stats.ok);
-  const warningCount = statValue(stats.warning);
-  const breachedCount = statValue(stats.breached);
-  const escalatedCount = statValue(stats.escalated);
-  const queuedCount = statValue(stats.escalation_queued);
-  const unknownCount = statValue(stats.unknown);
+  const okItems = items.filter((item) => getSlaStatusNormalized(item) === "ok");
+  const warningItems = items.filter((item) => getSlaStatusNormalized(item) === "warning");
+  const breachedItems = items.filter((item) => getSlaStatusNormalized(item) === "breached");
+  const escalatedItems = items.filter((item) => getSlaStatusNormalized(item) === "escalated");
+  const unknownItems = items.filter((item) => getSlaStatusNormalized(item) === "unknown");
+  const queuedItems = items.filter((item) => Boolean(item.escalation_queued));
+
+  const okCount = statValue(stats.ok) || okItems.length;
+  const warningCount = statValue(stats.warning) || warningItems.length;
+  const breachedCount = statValue(stats.breached) || breachedItems.length;
+  const escalatedCount = statValue(stats.escalated) || escalatedItems.length;
+  const queuedCount = statValue(stats.escalation_queued) || queuedItems.length;
+  const unknownCount = statValue(stats.unknown) || unknownItems.length;
 
   const attentionItems = sortAttentionItems(
     items.filter((item) => {
@@ -513,7 +696,8 @@ export default async function SlaPage() {
 
   const focusItem = attentionItems[0] ?? stableItems[0] ?? items[0] ?? null;
 
-  const latestCheck = [...items].sort((a, b) => getSlaLatestTs(b) - getSlaLatestTs(a))[0] ?? null;
+  const latestCheck =
+    [...items].sort((a, b) => getSlaLatestTs(b) - getSlaLatestTs(a))[0] ?? null;
 
   const mostCritical =
     attentionItems.find((item) => getSlaStatusNormalized(item) === "escalated") ||
@@ -533,6 +717,14 @@ export default async function SlaPage() {
 
   const focusRemaining = focusItem ? getRemainingMinutesValue(focusItem) : null;
 
+  const flowsHref = appendWorkspaceIdToHref("/flows", activeWorkspaceId);
+  const commandsHref = appendWorkspaceIdToHref("/commands", activeWorkspaceId);
+  const incidentsHref = appendWorkspaceIdToHref("/incidents", activeWorkspaceId);
+
+  const criticalFlowHref = mostCritical
+    ? getFlowHref(mostCritical, activeWorkspaceId)
+    : "";
+
   return (
     <ControlPlaneShell
       eyebrow="BOSAI Control Plane"
@@ -542,6 +734,7 @@ export default async function SlaPage() {
         { label: "SLA machine", tone: "muted" },
         { label: "Blue queue aware", tone: "info" },
         { label: "Flow-linked", tone: "warning" },
+        { label: `Workspace ${activeWorkspaceId || "all"}`, tone: "muted" },
       ]}
       metrics={[
         { label: "OK", value: okCount, toneClass: "text-emerald-300" },
@@ -551,15 +744,15 @@ export default async function SlaPage() {
       ]}
       actions={
         <>
-          <Link href="/flows" className={actionLinkClassName("soft")}>
+          <Link href={flowsHref} className={actionLinkClassName("soft")}>
             Ouvrir Flows
           </Link>
 
-          <Link href="/commands" className={actionLinkClassName("soft")}>
+          <Link href={commandsHref} className={actionLinkClassName("soft")}>
             Voir Commands
           </Link>
 
-          <Link href="/incidents" className={actionLinkClassName("danger")}>
+          <Link href={incidentsHref} className={actionLinkClassName("danger")}>
             Voir Incidents
           </Link>
         </>
@@ -584,6 +777,10 @@ export default async function SlaPage() {
               </div>
 
               <div className="space-y-2 text-sm leading-6 text-white/65">
+                <div>
+                  Workspace :{" "}
+                  <span className="text-white/90">{activeWorkspaceId || "all"}</span>
+                </div>
                 <div>
                   Latest check :{" "}
                   <span className="text-white/90">
@@ -640,7 +837,9 @@ export default async function SlaPage() {
                 <div className="space-y-2 text-sm leading-6 text-white/65">
                   <div>
                     Workspace :{" "}
-                    <span className="text-white/90">{getWorkspace(focusItem)}</span>
+                    <span className="text-white/90">
+                      {activeWorkspaceId || getWorkspace(focusItem)}
+                    </span>
                   </div>
                   <div>
                     Remaining :{" "}
@@ -656,9 +855,9 @@ export default async function SlaPage() {
                   </div>
                 </div>
 
-                {mostCritical && getFlowTarget(mostCritical) ? (
+                {criticalFlowHref ? (
                   <Link
-                    href={`/flows/${encodeURIComponent(getFlowTarget(mostCritical))}`}
+                    href={criticalFlowHref}
                     className={actionLinkClassName("primary")}
                   >
                     Ouvrir le flow critique
@@ -676,79 +875,84 @@ export default async function SlaPage() {
         </>
       }
     >
-      <SectionCard
-        title="SLA posture"
-        description="Lecture rapide de la pression SLA visible sur le cockpit."
-        action={<SectionCountPill value={items.length} tone="info" />}
-      >
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-          <SlaMiniStat label="OK" value={okCount} toneClass="text-emerald-300" />
-          <SlaMiniStat
-            label="Warning"
-            value={warningCount}
-            toneClass="text-amber-300"
-          />
-          <SlaMiniStat
-            label="Breached"
-            value={breachedCount}
-            toneClass="text-red-300"
-          />
-          <SlaMiniStat
-            label="Escalated"
-            value={escalatedCount}
-            toneClass="text-rose-300"
-          />
-          <SlaMiniStat
-            label="Queued"
-            value={queuedCount}
-            toneClass="text-sky-300"
-          />
-          <SlaMiniStat
-            label="Unknown"
-            value={unknownCount}
-            toneClass="text-zinc-300"
-          />
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Latest check</div>
-            <div className="mt-2 text-zinc-100">
-              {formatDate(latestCheck ? getLastCheck(latestCheck) : "")}
-            </div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Critical signals</div>
-            <div className="mt-2 text-zinc-100">{breachedCount + escalatedCount}</div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Queue active</div>
-            <div className="mt-2 text-sky-300">{queuedCount}</div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Focus remaining</div>
-            <div className="mt-2 text-zinc-100">
-              {focusRemaining === null ? "—" : `${focusRemaining} min`}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
-          <div className={metaLabelClassName()}>Quick read</div>
-          <div className="mt-2 text-sm leading-6 text-zinc-300">{quickRead}</div>
-        </div>
-      </SectionCard>
-
-      {items.length === 0 ? (
+      {fetchFailed ? (
+        <EmptyStatePanel
+          title="Lecture SLA indisponible"
+          description="Le Dashboard n’a pas pu charger la surface SLA. La vue est protégée, mais il faut vérifier la lecture API côté worker / helper."
+        />
+      ) : items.length === 0 ? (
         <EmptyStatePanel
           title="Aucun signal SLA visible"
           description="Le Dashboard n’a remonté aucun signal SLA sur la source actuelle."
         />
       ) : (
         <>
+          <SectionCard
+            title="SLA posture"
+            description="Lecture rapide de la pression SLA visible sur le cockpit."
+            action={<SectionCountPill value={items.length} tone="info" />}
+          >
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
+              <SlaMiniStat label="OK" value={okCount} toneClass="text-emerald-300" />
+              <SlaMiniStat
+                label="Warning"
+                value={warningCount}
+                toneClass="text-amber-300"
+              />
+              <SlaMiniStat
+                label="Breached"
+                value={breachedCount}
+                toneClass="text-red-300"
+              />
+              <SlaMiniStat
+                label="Escalated"
+                value={escalatedCount}
+                toneClass="text-rose-300"
+              />
+              <SlaMiniStat
+                label="Queued"
+                value={queuedCount}
+                toneClass="text-sky-300"
+              />
+              <SlaMiniStat
+                label="Unknown"
+                value={unknownCount}
+                toneClass="text-zinc-300"
+              />
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Latest check</div>
+                <div className="mt-2 text-zinc-100">
+                  {formatDate(latestCheck ? getLastCheck(latestCheck) : "")}
+                </div>
+              </div>
+
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Critical signals</div>
+                <div className="mt-2 text-zinc-100">{breachedCount + escalatedCount}</div>
+              </div>
+
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Queue active</div>
+                <div className="mt-2 text-sky-300">{queuedCount}</div>
+              </div>
+
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Focus remaining</div>
+                <div className="mt-2 text-zinc-100">
+                  {focusRemaining === null ? "—" : `${focusRemaining} min`}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+              <div className={metaLabelClassName()}>Quick read</div>
+              <div className="mt-2 text-sm leading-6 text-zinc-300">{quickRead}</div>
+            </div>
+          </SectionCard>
+
           <SectionBlock
             title="Needs attention"
             description="Signaux SLA à surveiller en priorité : warning, breached, escalated ou queue active."
@@ -764,7 +968,11 @@ export default async function SlaPage() {
             ) : (
               <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
                 {attentionItems.map((item) => (
-                  <SlaListCard key={String(item.id)} item={item} />
+                  <SlaListCard
+                    key={String(item.id)}
+                    item={item}
+                    activeWorkspaceId={activeWorkspaceId}
+                  />
                 ))}
               </div>
             )}
@@ -785,7 +993,11 @@ export default async function SlaPage() {
             ) : (
               <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
                 {stableItems.map((item) => (
-                  <SlaListCard key={String(item.id)} item={item} />
+                  <SlaListCard
+                    key={String(item.id)}
+                    item={item}
+                    activeWorkspaceId={activeWorkspaceId}
+                  />
                 ))}
               </div>
             )}
