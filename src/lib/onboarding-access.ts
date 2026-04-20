@@ -83,7 +83,10 @@ function normalizeWorkspaceStatus(value: string): BosaiWorkspaceStatus {
   return "";
 }
 
-function buildPath(pathname: string, params?: Record<string, string | undefined>): string {
+function buildPath(
+  pathname: string,
+  params?: Record<string, string | undefined>
+): string {
   if (!params) return pathname;
 
   const search = new URLSearchParams();
@@ -187,10 +190,7 @@ export function resolveBosaiAccessState(
     };
   }
 
-  if (
-    workspaceStatus === "ready_to_activate" ||
-    (workspaceStatus === "active" && !onboardingCompleted)
-  ) {
+  if (workspaceStatus === "ready_to_activate") {
     return {
       planCode,
       workspaceStatus,
@@ -199,6 +199,21 @@ export function resolveBosaiAccessState(
       canAccessCockpit: false,
       stage: "workspace",
       redirectPath: buildPath("/onboarding/workspace", {
+        plan: planCode,
+      }),
+    };
+  }
+
+  if (workspaceStatus === "active" && !onboardingCompleted) {
+    return {
+      planCode,
+      workspaceStatus,
+      checkoutCompleted,
+      onboardingCompleted,
+      canAccessCockpit: false,
+      stage: "workspace",
+      redirectPath: buildPath("/workspace/create", {
+        source: "onboarding",
         plan: planCode,
       }),
     };
