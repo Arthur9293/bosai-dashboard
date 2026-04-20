@@ -42,12 +42,10 @@ export function AppShell({
           <MobileShell workspace={workspace} entitlements={entitlements} />
 
           <div className="hidden xl:block">
-            <div className="sticky top-0 z-30">
-              <Topbar workspace={workspace} entitlements={entitlements} />
-            </div>
+            <Topbar workspace={workspace} entitlements={entitlements} />
           </div>
 
-          <main className="min-w-0 flex-1 px-4 py-5 sm:px-5 lg:px-6 lg:py-6 xl:px-8">
+          <main className="min-w-0 flex-1 px-4 py-5 sm:px-5 lg:px-6 lg:py-6 xl:px-8 xl:py-8">
             <div className="mx-auto min-w-0 max-w-[1600px]">{children}</div>
           </main>
         </div>
