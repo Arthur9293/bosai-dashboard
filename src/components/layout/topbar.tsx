@@ -12,6 +12,8 @@ type TopbarProps = {
   entitlements: WorkspaceEntitlements;
 };
 
+type BadgeVariant = "default" | "success" | "info" | "violet";
+
 function text(value?: string | null): string {
   return String(value || "").trim();
 }
@@ -34,9 +36,7 @@ function getPageTitle(pathname: string): string {
   return "Dashboard";
 }
 
-function badgeClassName(
-  variant: "default" | "success" | "info" | "violet" = "default"
-): string {
+function badgeClassName(variant: BadgeVariant = "default"): string {
   if (variant === "success") {
     return "inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/12 px-3 py-1.5 text-xs font-medium text-emerald-300";
   }
@@ -52,9 +52,22 @@ function badgeClassName(
   return "inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-300";
 }
 
+function actionClassName(
+  variant: "default" | "soft" = "default"
+): string {
+  const base =
+    "inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium transition";
+
+  if (variant === "soft") {
+    return `${base} border border-sky-500/20 bg-sky-500/12 text-sky-300 hover:bg-sky-500/18`;
+  }
+
+  return `${base} border border-white/10 bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white`;
+}
+
 function categoryTone(
   category: WorkspaceSummary["category"]
-): "default" | "success" | "info" | "violet" {
+): BadgeVariant {
   if (category === "agency") return "violet";
   if (category === "company") return "info";
   if (category === "freelance") return "success";
@@ -113,7 +126,7 @@ export function Topbar({ workspace, entitlements }: TopbarProps) {
   const capabilityCount = countCapabilities(entitlements);
 
   return (
-    <header className="border-b border-white/10 bg-[#040816]/55 backdrop-blur-xl">
+    <header className="sticky top-0 z-30 border-b border-white/10 bg-[#040816]/55 backdrop-blur-xl">
       <div className="flex items-center justify-between gap-6 px-6 py-4">
         <div className="min-w-0">
           <p className="truncate text-[11px] uppercase tracking-[0.22em] text-white/30">
@@ -152,17 +165,11 @@ export function Topbar({ workspace, entitlements }: TopbarProps) {
             {capabilityCount} capacités
           </span>
 
-          <Link
-            href={primaryHref}
-            className="inline-flex items-center rounded-full border border-sky-500/20 bg-sky-500/12 px-3 py-1.5 text-xs font-medium text-sky-300 transition hover:bg-sky-500/18"
-          >
+          <Link href={primaryHref} className={actionClassName("soft")}>
             {primaryLabel}
           </Link>
 
-          <Link
-            href="/workspace/select"
-            className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
-          >
+          <Link href="/workspace/select" className={actionClassName()}>
             Changer d’espace
           </Link>
         </div>
