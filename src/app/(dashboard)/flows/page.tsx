@@ -1,1572 +1,1070 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
-import {
-  ControlPlaneShell,
-  SectionCard,
-  SidePanelCard,
-} from "@/components/dashboard/ControlPlaneShell";
-import { DashboardStatusBadge } from "@/components/dashboard/StatusBadge";
-import {
-  appendWorkspaceIdToHref,
-  extractWorkspaceId,
-  resolveWorkspaceContext,
-  workspaceMatchesOrUnscoped,
-} from "@/lib/workspace";
 
-type AnyRecord = Record<string, unknown>;
-type SearchParams = Record<string, string | string[] | undefined>;
+export const dynamic = "force-dynamic";
 
-type PageProps = {
-  searchParams?: Promise<SearchParams> | SearchParams;
-};
+type RawSearchParams = Record<string, string | string[] | undefined>;
 
-type FlowStatus = "running" | "failed" | "retry" | "success" | "unknown";
-type ReadingMode = "enriched" | "registry-only";
+type FlowView =
+  | "all"
+  | "attention"
+  | "running"
+  | "success"
+  | "registry"
+  | "partial";
 
-type FlowCard = {
-  key: string;
-  detailId: string;
-  flowId: string;
-  rootEventId: string;
-  workspaceId: string;
-  status: FlowStatus;
-  steps: number;
-  rootCapability: string;
-  terminalCapability: string;
-  durationMs: number;
-  lastActivityTs: number;
-  hasIncident: boolean;
-  incidentCount: number;
-  firstIncidentId?: string;
-  readingMode: ReadingMode;
-  sourceRecordId?: string;
-  isPartial: boolean;
-};
+type FlowStatus =
+  | "failed"
+  | "retry"
+  | "running"
+  | "queued"
+  | "success"
+  | "partial"
+  | "unknown";
 
-type NormalizedCommand = {
+type CommandItem = {
   id: string;
+  capability: string;
+  status: FlowStatus;
+  workspaceId: string;
+  flowId: string;
+  rootEventId: string;
+  parentCommandId: string;
+  stepIndex: number;
+  createdAt: string;
+  updatedAt: string;
+  endedAt: string;
+};
+
+type IncidentItem = {
+  id: string;
+  status: "open" | "resolved" | "unknown";
+  severity: "critical" | "high" | "medium" | "low" | "unknown";
+  workspaceId: string;
+  flowId: string;
+  rootEventId: string;
+  sourceRecordId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type FlowGroup = {
+  key: string;
+  displayName: string;
   flowId: string;
   rootEventId: string;
   workspaceId: string;
-  status: string;
-  capability: string;
-  parentCommandId: string;
-  activityTs: number;
-  startTs: number;
+  sourceRecordId: string;
+  commands: CommandItem[];
+  incidents: IncidentItem[];
+  status: FlowStatus;
+  registryOnly: boolean;
+  partial: boolean;
+  createdAt: string;
+  updatedAt: string;
+  capabilities: string[];
 };
 
-function cardClassName(isActive: boolean, compact = false) {
-  const base = [
-    "h-full rounded-[28px] border p-5 md:p-6 xl:p-5 2xl:p-6",
-    "bg-[linear-gradient(180deg,rgba(8,20,48,0.76)_0%,rgba(3,8,22,0.56)_100%)]",
-    "shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition",
-    compact
-      ? "min-h-[330px] xl:min-h-[308px] 2xl:min-h-[316px]"
-      : "min-h-[352px] xl:min-h-[320px] 2xl:min-h-[332px]",
-  ].join(" ");
-
-  const inactive =
-    "border-white/10 hover:border-white/15 hover:bg-[linear-gradient(180deg,rgba(9,22,53,0.8)_0%,rgba(4,10,26,0.60)_100%)]";
-  const active =
-    "border-emerald-400/35 bg-[linear-gradient(180deg,rgba(16,185,129,0.08)_0%,rgba(8,20,48,0.78)_18%,rgba(3,8,22,0.58)_100%)] shadow-[0_0_0_1px_rgba(16,185,129,0.08),0_18px_48px_rgba(16,185,129,0.08),inset_0_1px_0_rgba(255,255,255,0.05)]";
-
-  return `${base} ${isActive ? active : inactive}`;
-}
-
-function sectionFrameClassName(tone: "default" | "attention" | "neutral" = "default") {
-  if (tone === "attention") {
-    return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(245,158,11,0.08),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
-  }
-
-  if (tone === "neutral") {
-    return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.06),transparent_46%),linear-gradient(180deg,rgba(7,18,43,0.68)_0%,rgba(3,8,22,0.54)_100%)]";
-  }
-
-  return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.08),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
-}
-
-function asidePanelClassName() {
-  return "bg-[radial-gradient(100%_120%_at_100%_0%,rgba(14,165,233,0.08),transparent_52%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
-}
-
-function actionLinkClassName(
-  variant: "default" | "primary" | "danger" | "active" = "default"
-) {
-  if (variant === "primary") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 xl:py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
-  }
-
-  if (variant === "danger") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-rose-500/25 bg-rose-500/12 px-4 py-2.5 xl:py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/18";
-  }
-
-  if (variant === "active") {
-    return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/35 bg-emerald-500/16 px-4 py-2.5 xl:py-2 text-sm font-medium text-emerald-300";
-  }
-
-  return "inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 xl:py-2 text-sm font-medium text-white transition hover:bg-white/[0.08]";
-}
-
-function metaBoxClassName(compact = false) {
-  return [
-    "rounded-[22px] border border-white/10 bg-black/20 px-4",
-    compact ? "min-h-[84px] py-3" : "min-h-[92px] py-4",
-  ].join(" ");
-}
-
-function metaLabelClassName() {
-  return "text-[11px] uppercase tracking-[0.2em] text-white/35";
-}
-
-function titleClassName(isRegistryOnly: boolean) {
-  if (isRegistryOnly) {
-    return "break-words text-[1.42rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.6rem] xl:text-[1.28rem] 2xl:text-[1.38rem]";
-  }
-
-  return "break-words text-[1.5rem] font-semibold leading-tight tracking-tight text-white sm:text-[1.7rem] xl:text-[1.34rem] 2xl:text-[1.46rem]";
-}
-
-function text(value: unknown): string {
-  if (typeof value === "string") {
-    const v = value.trim();
-    return v || "";
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value).trim();
-  }
-
-  return "";
-}
-
-function toText(value: unknown, fallback = ""): string {
-  const v = text(value);
-  return v || fallback;
-}
-
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-
-  if (typeof value === "string" && value.trim() !== "") {
-    const n = Number(value);
-    if (Number.isFinite(n)) return n;
-  }
-
-  return fallback;
-}
-
-function decodeSearchParam(value: string | string[] | undefined): string {
-  const first = Array.isArray(value) ? value[0] : value;
-  if (!first) return "";
-
-  try {
-    return decodeURIComponent(first);
-  } catch {
-    return first;
-  }
-}
-
-function uniqueTexts(values: string[]): string[] {
-  return Array.from(new Set(values.map((v) => text(v)).filter(Boolean)));
-}
-
-function flattenTextValues(value: unknown): string[] {
-  if (value === null || value === undefined) return [];
-
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    const clean = text(value);
-    return clean ? [clean] : [];
-  }
-
-  if (Array.isArray(value)) {
-    return uniqueTexts(value.flatMap((item) => flattenTextValues(item)));
-  }
-
-  if (typeof value === "object") {
-    const rec = value as Record<string, unknown>;
-
-    return uniqueTexts([
-      ...flattenTextValues(rec.id),
-      ...flattenTextValues(rec.recordId),
-      ...flattenTextValues(rec.record_id),
-      ...flattenTextValues(rec.value),
-      ...flattenTextValues(rec.name),
-      ...flattenTextValues(rec.text),
-      ...flattenTextValues(rec.label),
-    ]);
-  }
-
-  return [];
-}
-
-function recordTexts(obj: unknown, keys: string[]): string[] {
-  const rec =
-    obj && typeof obj === "object" ? (obj as Record<string, unknown>) : {};
-
-  return uniqueTexts(keys.flatMap((key) => flattenTextValues(rec[key])));
-}
-
-function parseMaybeJson(value: unknown): Record<string, unknown> {
-  if (!value) return {};
-
-  if (typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-
-  if (typeof value !== "string") return {};
-
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {}
-
-  return {};
-}
-
-function toTs(value?: string | number | null): number {
-  if (value === null || value === undefined || value === "") return 0;
-  const ts = new Date(value).getTime();
-  return Number.isNaN(ts) ? 0 : ts;
-}
-
-function formatDate(ts?: number): string {
-  if (!ts || Number.isNaN(ts)) return "—";
-
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(ts));
-}
-
-function formatDuration(ms?: number): string {
-  if (!ms || ms <= 0 || Number.isNaN(ms)) return "—";
-
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
-}
-
-function compactTechnicalId(value: string, max = 32): string {
-  const clean = toText(value);
-  if (!clean) return "Flow";
-  if (clean.length <= max) return clean;
-
-  const keepStart = Math.max(12, Math.floor((max - 3) / 2));
-  const keepEnd = Math.max(7, max - keepStart - 3);
-
-  return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
-}
-
-function humanStatusLabel(status: FlowStatus): string {
-  if (status === "running") return "En cours";
-  if (status === "failed") return "Échec";
-  if (status === "retry") return "Retry";
-  if (status === "success") return "Succès";
-  return "Inconnu";
-}
-
-function cleanCapabilityLabel(value: string): string {
-  const raw = toText(value);
-  if (!raw) return "Non disponible";
-
-  return raw.replace(/_/g, " ");
-}
-
-function getDisplayTitle(flow: FlowCard): string {
-  if (flow.readingMode === "enriched") {
-    const root = toText(flow.rootCapability);
-    const terminal = toText(flow.terminalCapability);
-
-    if (
-      root &&
-      terminal &&
-      root !== "Non disponible" &&
-      terminal !== "Non disponible"
-    ) {
-      if (root === terminal) {
-        return cleanCapabilityLabel(root);
-      }
-
-      return `${cleanCapabilityLabel(root)} → ${cleanCapabilityLabel(
-        terminal
-      )}`;
-    }
-
-    if (root && root !== "Non disponible") {
-      return cleanCapabilityLabel(root);
-    }
-  }
-
-  if (flow.readingMode === "registry-only") {
-    if (flow.hasIncident) {
-      return "Flow partiel avec incident";
-    }
-
-    return "Flow registre uniquement";
-  }
-
-  return (
-    toText(flow.flowId) ||
-    toText(flow.sourceRecordId) ||
-    toText(flow.rootEventId) ||
-    "Flow"
-  );
-}
-
-function getTechnicalSubtitle(flow: FlowCard): string {
-  if (flow.readingMode === "enriched") {
-    return toText(flow.flowId) || toText(flow.rootEventId) || "—";
-  }
-
-  return (
-    toText(flow.sourceRecordId) ||
-    toText(flow.rootEventId) ||
-    toText(flow.flowId) ||
-    "—"
-  );
-}
-
-function getFlowSummaryLine(flow: FlowCard): string {
-  if (flow.readingMode === "enriched") {
-    const parts = [
-      `${flow.steps} étape${flow.steps > 1 ? "s" : ""}`,
-      humanStatusLabel(flow.status),
-      flow.durationMs > 0 ? formatDuration(flow.durationMs) : "",
-    ].filter(Boolean);
-
-    return parts.join(" · ");
-  }
-
-  const parts = [
-    "Lecture partielle",
-    flow.hasIncident ? incidentLabel(flow) : "Sans incident actif",
-  ].filter(Boolean);
-
-  return parts.join(" · ");
-}
-
-function flowActivityLabel(flow: FlowCard): string {
-  return flow.lastActivityTs > 0 ? formatDate(flow.lastActivityTs) : "—";
-}
-
-function incidentLabel(flow: FlowCard): string {
-  if (!flow.hasIncident || flow.incidentCount <= 0) return "Aucun incident";
-  if (flow.incidentCount === 1) return "1 incident";
-  return `${flow.incidentCount} incidents`;
-}
-
-function getStatusKind(
-  status?: string
-): "done" | "running" | "failed" | "retry" | "other" {
-  const s = toText(status).toLowerCase();
-
-  if (["done", "success", "resolved", "ok", "completed", "processed"].includes(s)) {
-    return "done";
-  }
-
-  if (s === "retry") return "retry";
-
-  if (["running", "queued", "pending", "processing"].includes(s)) {
-    return "running";
-  }
-
-  if (["error", "failed", "dead", "blocked"].includes(s)) {
-    return "failed";
-  }
-
-  return "other";
-}
-
-function computeFlowStatus(commands: NormalizedCommand[]): FlowStatus {
-  const kinds = commands.map((cmd) => getStatusKind(cmd.status));
-
-  if (kinds.includes("running")) return "running";
-  if (kinds.includes("failed")) return "failed";
-  if (kinds.includes("retry")) return "retry";
-
-  if (
-    kinds.length > 0 &&
-    kinds.every((kind) => kind === "done" || kind === "other")
-  ) {
-    return "success";
-  }
-
-  return "unknown";
-}
-
-function getIncidentStatusKind(
-  incident: AnyRecord
-): "success" | "failed" | "retry" | "unknown" {
-  const status = toText(incident.status).toLowerCase();
-  const slaStatus = toText(incident.sla_status).toLowerCase();
-  const resolvedAt = toText(incident.resolved_at);
-
-  if (
-    resolvedAt ||
-    ["resolved", "closed", "done", "ok"].includes(status) ||
-    ["resolved"].includes(slaStatus)
-  ) {
-    return "success";
-  }
-
-  if (status === "retry") {
-    return "retry";
-  }
-
-  if (
-    [
-      "open",
-      "opened",
-      "new",
-      "active",
-      "escalated",
-      "escalade",
-      "escaladé",
-      "warning",
-      "failed",
-    ].includes(status) ||
-    ["open", "warning", "breached", "escalated"].includes(slaStatus)
-  ) {
-    return "failed";
-  }
-
-  return "unknown";
-}
-
-function computeIncidentOnlyStatus(group: AnyRecord[]): FlowStatus {
-  const kinds = group.map(getIncidentStatusKind);
-
-  if (kinds.includes("failed")) return "failed";
-  if (kinds.includes("retry")) return "retry";
-  if (kinds.length > 0 && kinds.every((kind) => kind === "success")) {
-    return "success";
-  }
-
-  return "unknown";
-}
-
-function getFlowStatusPriority(status: FlowStatus): number {
-  if (status === "running") return 0;
-  if (status === "failed") return 1;
-  if (status === "retry") return 2;
-  if (status === "success") return 3;
-  return 4;
-}
-
-function getCommandActivityTs(cmd: AnyRecord): number {
-  return Math.max(
-    toTs(cmd.finished_at as string | number | null | undefined),
-    toTs(cmd.updated_at as string | number | null | undefined),
-    toTs(cmd.started_at as string | number | null | undefined),
-    toTs(cmd.created_at as string | number | null | undefined)
-  );
-}
-
-function getCommandStartTs(cmd: AnyRecord): number {
-  return Math.max(
-    toTs(cmd.started_at as string | number | null | undefined),
-    toTs(cmd.created_at as string | number | null | undefined)
-  );
-}
-
-function getIncidentActivityTs(incident: AnyRecord): number {
-  return Math.max(
-    toTs(incident.resolved_at as string | number | null | undefined),
-    toTs(incident.updated_at as string | number | null | undefined),
-    toTs(incident.opened_at as string | number | null | undefined),
-    toTs(incident.created_at as string | number | null | undefined)
-  );
-}
-
-function normalizeCommand(cmd: AnyRecord): NormalizedCommand {
-  const inputParsed = parseMaybeJson(
-    cmd.input_json ??
-      cmd.payload_json ??
-      cmd.command_input_json ??
-      cmd.input ??
-      cmd.payload
-  );
-
-  const resultParsed = parseMaybeJson(
-    cmd.result_json ?? cmd.output_json ?? cmd.result ?? cmd.output
-  );
-
-  const merged = { ...cmd, ...inputParsed, ...resultParsed };
-
-  return {
-    id:
-      toText(cmd.id) ||
-      toText(cmd.record_id) ||
-      toText(cmd.command_id) ||
-      toText(cmd.Command_ID),
-    flowId:
-      toText(merged.flow_id) ||
-      toText(merged.flowId) ||
-      toText(merged.flowid),
-    rootEventId:
-      toText(merged.root_event_id) ||
-      toText(merged.rootEventId) ||
-      toText(merged.rooteventid) ||
-      toText(merged.event_id),
-    workspaceId:
-      toText(merged.workspace_id) ||
-      toText(merged.workspaceId) ||
-      toText(merged.Workspace_ID) ||
-      toText(merged.workspace) ||
-      "production",
-    status:
-      toText(merged.status) ||
-      toText(merged.Status) ||
-      toText(merged.status_select) ||
-      toText(merged.Status_select) ||
-      "unknown",
-    capability:
-      toText(merged.capability) ||
-      toText(merged.Capability) ||
-      toText(merged.mapped_capability) ||
-      "unknown_capability",
-    parentCommandId:
-      toText(merged.parent_command_id) ||
-      toText(merged.parentCommandId) ||
-      toText(merged.linked_command) ||
-      toText(merged.Linked_Command),
-    activityTs: getCommandActivityTs(cmd),
-    startTs: getCommandStartTs(cmd),
-  };
-}
-
-function getCommandIncidentKeys(cmd: NormalizedCommand): string[] {
-  return uniqueTexts([cmd.id, cmd.flowId, cmd.rootEventId, cmd.parentCommandId]);
-}
-
-function getIncidentCandidates(incident: AnyRecord): string[] {
-  const fields =
-    incident && typeof incident === "object"
-      ? (((incident as Record<string, unknown>).fields ?? {}) as Record<
-          string,
-          unknown
-        >)
-      : {};
-
-  const topLevel = (keys: string[]) => recordTexts(incident, keys);
-  const nestedFields = (keys: string[]) => recordTexts(fields, keys);
-
-  return uniqueTexts([
-    ...topLevel(["id"]),
-    ...topLevel(["title", "Title", "name", "Name"]),
-    ...topLevel(["flow_id", "flowId", "Flow_ID"]),
-    ...nestedFields(["flow_id", "flowId", "Flow_ID"]),
-    ...topLevel(["root_event_id", "rootEventId", "Root_Event_ID"]),
-    ...nestedFields(["root_event_id", "rootEventId", "Root_Event_ID"]),
-    ...topLevel(["source_record_id", "sourceRecordId", "Source_Record_ID"]),
-    ...nestedFields(["source_record_id", "sourceRecordId", "Source_Record_ID"]),
-    ...topLevel([
-      "linked_command",
-      "linkedCommand",
-      "linked_command_id",
-      "linkedCommandId",
-      "Linked_Command",
-      "Linked_Command_ID",
-      "command_id",
-      "commandId",
-      "Command_ID",
-    ]),
-    ...nestedFields([
-      "linked_command",
-      "linkedCommand",
-      "linked_command_id",
-      "linkedCommandId",
-      "Linked_Command",
-      "Linked_Command_ID",
-      "command_id",
-      "commandId",
-      "Command_ID",
-    ]),
-    ...topLevel([
-      "linked_run",
-      "linkedRun",
-      "run_record_id",
-      "runRecordId",
-      "run_id",
-      "runId",
-      "Linked_Run",
-      "Run_Record_ID",
-      "Run_ID",
-    ]),
-    ...nestedFields([
-      "linked_run",
-      "linkedRun",
-      "run_record_id",
-      "runRecordId",
-      "run_id",
-      "runId",
-      "Linked_Run",
-      "Run_Record_ID",
-      "Run_ID",
-    ]),
-    ...topLevel(["error_id", "errorId", "Error_ID"]),
-    ...nestedFields(["error_id", "errorId", "Error_ID"]),
-  ]);
-}
-
-function matchIncidents(
-  incidents: AnyRecord[],
-  input: {
-    flowId?: string;
-    rootEventId?: string;
-    sourceRecordId?: string;
-    commands?: NormalizedCommand[];
-  }
-): AnyRecord[] {
-  const lookup = new Set(
-    uniqueTexts([
-      input.flowId || "",
-      input.rootEventId || "",
-      input.sourceRecordId || "",
-      ...((input.commands ?? []).flatMap(getCommandIncidentKeys)),
-    ])
-  );
-
-  if (lookup.size === 0) return [];
-
-  return incidents.filter((incident) =>
-    getIncidentCandidates(incident).some((candidate) => lookup.has(candidate))
-  );
-}
-
-function buildExecutionOrder(commands: NormalizedCommand[]): NormalizedCommand[] {
-  const byId = new Map<string, NormalizedCommand>();
-  const childrenMap = new Map<string, NormalizedCommand[]>();
-
-  for (const cmd of commands) {
-    const id = cmd.id;
-    if (!id) continue;
-    byId.set(id, cmd);
-    childrenMap.set(id, []);
-  }
-
-  const roots: NormalizedCommand[] = [];
-
-  for (const cmd of commands) {
-    const parentId = cmd.parentCommandId;
-
-    if (parentId && byId.has(parentId)) {
-      childrenMap.get(parentId)?.push(cmd);
-    } else {
-      roots.push(cmd);
-    }
-  }
-
-  const sortByActivityAsc = (a: NormalizedCommand, b: NormalizedCommand) =>
-    a.activityTs - b.activityTs;
-
-  roots.sort(sortByActivityAsc);
-  childrenMap.forEach((children) => children.sort(sortByActivityAsc));
-
-  const ordered: NormalizedCommand[] = [];
-  const visited = new Set<string>();
-
-  function walk(cmd: NormalizedCommand) {
-    const id = cmd.id;
-    if (!id || visited.has(id)) return;
-
-    visited.add(id);
-    ordered.push(cmd);
-
-    const children = childrenMap.get(id) ?? [];
-    for (const child of children) {
-      walk(child);
-    }
-  }
-
-  for (const root of roots) {
-    walk(root);
-  }
-
-  const leftovers = commands
-    .filter((cmd) => cmd.id && !visited.has(cmd.id))
-    .sort(sortByActivityAsc);
-
-  for (const cmd of leftovers) {
-    walk(cmd);
-  }
-
-  return ordered;
-}
-
-function getTerminalCommand(
-  commands: NormalizedCommand[]
-): NormalizedCommand | null {
-  if (commands.length === 0) return null;
-
-  const referencedAsParent = new Set(
-    commands.map((cmd) => cmd.parentCommandId).filter(Boolean)
-  );
-
-  const leafCandidates = commands.filter(
-    (cmd) => !referencedAsParent.has(cmd.id)
-  );
-
-  const source = leafCandidates.length > 0 ? leafCandidates : commands;
-
-  return [...source].sort((a, b) => b.activityTs - a.activityTs)[0] ?? null;
-}
-
-function getFlowGroupKey(cmd: NormalizedCommand): string {
-  if (cmd.flowId) return `flow:${cmd.flowId}`;
-  if (cmd.rootEventId) return `root:${cmd.rootEventId}`;
-  return "";
-}
-
-function computeRegistryStatus(flow: AnyRecord): FlowStatus {
-  const stats =
-    flow.stats && typeof flow.stats === "object" && !Array.isArray(flow.stats)
-      ? (flow.stats as Record<string, unknown>)
-      : {};
-
-  const running = toNumber(stats.running, 0) + toNumber(stats.queued, 0) > 0;
-  const failed = toNumber(stats.error, 0) + toNumber(stats.dead, 0) > 0;
-  const retry = toNumber(stats.retry, 0) > 0;
-  const success = toNumber(stats.done, 0) > 0 && !running && !failed && !retry;
-
-  if (running) return "running";
-  if (failed) return "failed";
-  if (retry) return "retry";
-  if (success) return "success";
-
-  const rawStatus = toText(flow.status).toLowerCase();
-  if (rawStatus === "running") return "running";
-  if (rawStatus === "failed") return "failed";
-  if (rawStatus === "retry") return "retry";
-  if (["success", "done", "completed"].includes(rawStatus)) return "success";
-
-  return "unknown";
-}
-
-function buildEnrichedFlowCards(
-  commands: NormalizedCommand[],
-  incidents: AnyRecord[]
-): FlowCard[] {
-  const groups = new Map<string, NormalizedCommand[]>();
-
-  for (const cmd of commands) {
-    const key = getFlowGroupKey(cmd);
-    if (!key) continue;
-
-    const existing = groups.get(key) ?? [];
-    existing.push(cmd);
-    groups.set(key, existing);
-  }
-
-  const cards: FlowCard[] = [];
-
-  for (const [key, group] of groups.entries()) {
-    const ordered = buildExecutionOrder(group);
-    const rootCommand = ordered[0] ?? null;
-    const terminalCommand = getTerminalCommand(ordered);
-
-    const flowId = ordered.map((cmd) => cmd.flowId).find(Boolean) || "";
-    const rootEventId = ordered.map((cmd) => cmd.rootEventId).find(Boolean) || "";
-    const workspaceId =
-      ordered.map((cmd) => cmd.workspaceId).find(Boolean) || "production";
-
-    const lastActivityTs = Math.max(...ordered.map((cmd) => cmd.activityTs), 0);
-
-    const validStarts = ordered.map((cmd) => cmd.startTs).filter((ts) => ts > 0);
-
-    const earliestStartTs =
-      validStarts.length > 0 ? Math.min(...validStarts) : 0;
-
-    const durationMs =
-      earliestStartTs > 0 && lastActivityTs > 0
-        ? Math.max(0, lastActivityTs - earliestStartTs)
-        : 0;
-
-    const linkedIncidents = matchIncidents(incidents, {
-      flowId,
-      rootEventId,
-      commands: ordered,
-    });
-
-    const detailId = flowId || rootEventId || key;
-
-    cards.push({
-      key,
-      detailId,
-      flowId: flowId || detailId,
-      rootEventId: rootEventId || "—",
-      workspaceId,
-      status: computeFlowStatus(ordered),
-      steps: ordered.length,
-      rootCapability: rootCommand?.capability || "Non disponible",
-      terminalCapability: terminalCommand?.capability || "Non disponible",
-      durationMs,
-      lastActivityTs,
-      hasIncident: linkedIncidents.length > 0,
-      incidentCount: linkedIncidents.length,
-      firstIncidentId:
-        linkedIncidents.length > 0 ? toText(linkedIncidents[0].id) : undefined,
-      readingMode: "enriched",
-      sourceRecordId: undefined,
-      isPartial: false,
-    });
-  }
-
-  return cards;
-}
-
-function buildRegistryOnlyFlowCards(
-  registryFlows: AnyRecord[],
-  incidents: AnyRecord[]
-): FlowCard[] {
-  return registryFlows.map((flow) => {
-    const sourceRecordId =
-      toText(flow.id) ||
-      toText(flow.source_record_id) ||
-      toText(flow.sourceRecordId);
-
-    const flowId =
-      toText(flow.flow_id) ||
-      toText(flow.flowId) ||
-      sourceRecordId ||
-      toText(flow.root_event_id);
-
-    const rootEventId =
-      toText(flow.root_event_id) ||
-      toText(flow.rootEventId) ||
-      sourceRecordId ||
-      flowId ||
-      "—";
-
-    const workspaceId =
-      toText(flow.workspace_id) ||
-      toText(flow.workspaceId) ||
-      "production";
-
-    const linkedIncidents = matchIncidents(incidents, {
-      flowId,
-      rootEventId,
-      sourceRecordId,
-    });
-
-    const key = `registry:${sourceRecordId || flowId || rootEventId}`;
-    const detailId = sourceRecordId || flowId || rootEventId || key;
-
-    return {
-      key,
-      detailId,
-      flowId: flowId || detailId,
-      rootEventId: rootEventId || "—",
-      workspaceId,
-      status: computeRegistryStatus(flow),
-      steps: 0,
-      rootCapability: "Registre uniquement",
-      terminalCapability: "Registre uniquement",
-      durationMs: 0,
-      lastActivityTs: Math.max(
-        toTs(flow.last_activity_at as string | number | null | undefined),
-        toTs(flow.updated_at as string | number | null | undefined),
-        toTs(flow.created_at as string | number | null | undefined)
-      ),
-      hasIncident: linkedIncidents.length > 0,
-      incidentCount: linkedIncidents.length,
-      firstIncidentId:
-        linkedIncidents.length > 0 ? toText(linkedIncidents[0].id) : undefined,
-      readingMode: "registry-only",
-      sourceRecordId,
-      isPartial: true,
-    };
-  });
-}
-
-function incidentMatchesCard(incident: AnyRecord, card: FlowCard): boolean {
-  const incidentFlowId = toText(incident.flow_id);
-  const incidentRootEventId = toText(incident.root_event_id);
-  const incidentSourceRecordId = toText(incident.source_record_id);
-
-  return Boolean(
-    (card.flowId !== "" && incidentFlowId === card.flowId) ||
-      (card.rootEventId !== "" &&
-        card.rootEventId !== "—" &&
-        incidentRootEventId === card.rootEventId) ||
-      (toText(card.sourceRecordId) !== "" &&
-        incidentSourceRecordId === toText(card.sourceRecordId))
-  );
-}
-
-function buildIncidentOnlyFlowCards(
-  incidents: AnyRecord[],
-  existingCards: FlowCard[]
-): FlowCard[] {
-  const groups = new Map<string, AnyRecord[]>();
-
-  for (const incident of incidents) {
-    const flowId = toText(incident.flow_id);
-    const rootEventId = toText(incident.root_event_id);
-    const sourceRecordId =
-      toText(incident.source_record_id) || toText(incident.id);
-
-    if (!flowId && !rootEventId && !sourceRecordId) continue;
-
-    const shouldSkip = existingCards.some((card) =>
-      incidentMatchesCard(incident, card)
-    );
-
-    if (shouldSkip) continue;
-
-    const key = `incident-only:${flowId || rootEventId || sourceRecordId}`;
-    const bucket = groups.get(key) ?? [];
-    bucket.push(incident);
-    groups.set(key, bucket);
-  }
-
-  const cards: FlowCard[] = [];
-
-  for (const [key, group] of groups.entries()) {
-    const latest =
-      [...group].sort(
-        (a, b) => getIncidentActivityTs(b) - getIncidentActivityTs(a)
-      )[0] ?? null;
-
-    if (!latest) continue;
-
-    const flowId =
-      toText(latest.flow_id) ||
-      toText(latest.root_event_id) ||
-      `incident-${toText(latest.id)}`;
-
-    const rootEventId = toText(latest.root_event_id) || flowId;
-    const sourceRecordId = toText(latest.source_record_id) || toText(latest.id);
-
-    cards.push({
-      key,
-      detailId: sourceRecordId || flowId || rootEventId || key,
-      flowId,
-      rootEventId,
-      workspaceId: toText(latest.workspace_id) || "production",
-      status: computeIncidentOnlyStatus(group),
-      steps: 0,
-      rootCapability: "Registre uniquement",
-      terminalCapability: "Registre uniquement",
-      durationMs: 0,
-      lastActivityTs: Math.max(...group.map(getIncidentActivityTs), 0),
-      hasIncident: true,
-      incidentCount: group.length,
-      firstIncidentId: toText(latest.id),
-      readingMode: "registry-only",
-      sourceRecordId,
-      isPartial: true,
-    });
-  }
-
-  return cards;
-}
-
-function sortFlowCards(cards: FlowCard[]): FlowCard[] {
-  return [...cards].sort((a, b) => {
-    const priorityDiff =
-      getFlowStatusPriority(a.status) - getFlowStatusPriority(b.status);
-    if (priorityDiff !== 0) return priorityDiff;
-    return b.lastActivityTs - a.lastActivityTs;
-  });
-}
-
-function buildIncidentsHref(flow: FlowCard, activeWorkspaceId?: string): string {
-  const params = new URLSearchParams();
-
-  if (flow.flowId) {
-    params.set("flow_id", flow.flowId);
-  }
-
-  if (flow.rootEventId && flow.rootEventId !== "—") {
-    params.set("root_event_id", flow.rootEventId);
-  }
-
-  if (flow.sourceRecordId) {
-    params.set("source_record_id", flow.sourceRecordId);
-  }
-
-  params.set("from", "flows");
-
-  const baseHref = params.toString() ? `/incidents?${params.toString()}` : "/incidents";
-  return appendWorkspaceIdToHref(baseHref, activeWorkspaceId || flow.workspaceId);
-}
-
-function buildSelectHref(flow: FlowCard, activeWorkspaceId?: string): string {
-  const params = new URLSearchParams();
-  params.set("selected", flow.detailId);
-  return appendWorkspaceIdToHref(
-    `/flows?${params.toString()}`,
-    activeWorkspaceId || flow.workspaceId
-  );
-}
-
-function buildDetailHref(flow: FlowCard, activeWorkspaceId?: string): string {
-  return appendWorkspaceIdToHref(
-    `/flows/${encodeURIComponent(flow.detailId)}`,
-    activeWorkspaceId || flow.workspaceId
-  );
-}
-
-function isNeedsAttention(flow: FlowCard): boolean {
-  return (
-    flow.hasIncident ||
-    flow.status === "running" ||
-    flow.status === "failed" ||
-    flow.status === "retry"
-  );
-}
-
-function isFlowActive(flow: FlowCard, activeKey: string): boolean {
-  return flow.key === activeKey;
-}
-
-function matchesActiveSelection(flow: FlowCard, selected: string): boolean {
-  if (!selected) return false;
-
-  const candidates = [
-    flow.detailId,
-    flow.flowId,
-    flow.rootEventId,
-    flow.sourceRecordId || "",
-    flow.key,
-  ]
-    .map((value) => toText(value))
-    .filter(Boolean);
-
-  return candidates.includes(selected);
-}
-
-function CountPill({ value }: { value: number }) {
-  return (
-    <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-300">
-      {value}
-    </span>
-  );
-}
-
-function FlowListCard({
-  flow,
-  activeKey,
-  activeWorkspaceId,
+type FetchResult<T> = {
+  ok: boolean;
+  data: T | null;
+  error?: string;
+};
+
+const WORKER_BASE_URL = stripTrailingSlash(
+  process.env.BOSAI_WORKER_BASE_URL ||
+    process.env.NEXT_PUBLIC_BOSAI_WORKER_URL ||
+    process.env.WORKER_BASE_URL ||
+    process.env.NEXT_PUBLIC_WORKER_URL ||
+    "",
+);
+
+export default async function FlowsPage({
+  searchParams,
 }: {
-  flow: FlowCard;
-  activeKey: string;
-  activeWorkspaceId?: string;
+  searchParams?: Promise<RawSearchParams> | RawSearchParams;
 }) {
-  const isActive = isFlowActive(flow, activeKey);
-  const isRegistryOnly = flow.readingMode === "registry-only";
-  const title = getDisplayTitle(flow);
-  const technicalSubtitle = getTechnicalSubtitle(flow);
-  const summaryLine = getFlowSummaryLine(flow);
-  const incidentHref = buildIncidentsHref(flow, activeWorkspaceId);
-  const selectHref = buildSelectHref(flow, activeWorkspaceId);
-  const detailHref = buildDetailHref(flow, activeWorkspaceId);
+  const params = await Promise.resolve(searchParams ?? {});
+  const workspaceId = readSearchParam(params.workspace_id);
+  const view = (readSearchParam(params.view) || "all") as FlowView;
+  const query = readSearchParam(params.q).trim();
+
+  const [commandsResult, incidentsResult] = await Promise.all([
+    fetchJson("/commands", workspaceId ? { workspace_id: workspaceId } : {}),
+    fetchJson("/incidents", workspaceId ? { workspace_id: workspaceId } : {}),
+  ]);
+
+  const commands = normalizeCommandList(commandsResult.data);
+  const incidents = normalizeIncidentList(incidentsResult.data);
+
+  const flows = buildFlows(commands, incidents);
+  const filteredFlows = flows.filter((flow) => matchesView(flow, view)).filter((flow) => matchesQuery(flow, query));
+
+  const needsAttention = filteredFlows.filter((flow) =>
+    ["failed", "retry", "running", "partial"].includes(flow.status),
+  );
+  const healthyFlows = filteredFlows.filter(
+    (flow) => !flow.registryOnly && !["failed", "retry", "running", "partial"].includes(flow.status),
+  );
+  const registryOnlyFlows = filteredFlows.filter((flow) => flow.registryOnly);
+
+  const pageError = derivePageError(commandsResult, incidentsResult);
 
   return (
-    <article className={cardClassName(isActive, isRegistryOnly)}>
-      <div className="flex h-full flex-col gap-4 xl:gap-4">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <DashboardStatusBadge
-              label={humanStatusLabel(flow.status).toUpperCase()}
-              status={flow.status}
-            />
+    <div className="mx-auto w-full max-w-7xl space-y-6 px-4 pb-10 pt-4 sm:px-6 lg:px-8">
+      <section className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+        <div className="space-y-5 p-5 sm:p-6 lg:p-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-3">
+              <div className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300">
+                Surface principale · Workspace-aware
+              </div>
 
-            {flow.isPartial ? <DashboardStatusBadge kind="partial" /> : null}
+              <div className="space-y-2">
+                <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-white sm:text-3xl">
+                  Flows
+                </h1>
+                <p className="max-w-3xl text-sm leading-6 text-zinc-600 dark:text-zinc-300 sm:text-base">
+                  Lecture unifiée des exécutions BOSAI. Cette surface regroupe les flows actifs,
+                  les flows à surveiller et les lectures partielles issues du registre, sans casser
+                  la baseline workspace/shell validée.
+                </p>
+              </div>
+            </div>
 
-            <DashboardStatusBadge
-              kind={flow.hasIncident ? "incident" : "no-incident"}
-              label={flow.hasIncident ? incidentLabel(flow) : "Aucun incident"}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={buildHref("/workspace", { workspace_id: workspaceId || undefined })}
+                className="inline-flex items-center rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.04]"
+              >
+                Retour au hub
+              </Link>
+              <Link
+                href={buildHref("/overview", { workspace_id: workspaceId || undefined })}
+                className="inline-flex items-center rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.04]"
+              >
+                Overview
+              </Link>
+            </div>
           </div>
 
-          <div className="space-y-2.5">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">
-              {flow.readingMode === "enriched"
-                ? "Flow enrichi"
-                : "Flow registre uniquement"}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Flows visibles"
+              value={String(filteredFlows.length)}
+              hint={workspaceId ? `Workspace: ${workspaceId}` : "Tous workspaces"}
+            />
+            <StatCard
+              label="Needs attention"
+              value={String(
+                filteredFlows.filter((flow) =>
+                  ["failed", "retry", "running", "partial"].includes(flow.status),
+                ).length,
+              )}
+              hint="Running, retry, failed, partial"
+            />
+            <StatCard
+              label="Registry-only"
+              value={String(filteredFlows.filter((flow) => flow.registryOnly).length)}
+              hint="Lecture partielle assumée"
+            />
+            <StatCard
+              label="Flows réussis"
+              value={String(filteredFlows.filter((flow) => flow.status === "success").length)}
+              hint="Chaînes terminées proprement"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+        <div className="space-y-5 p-5 sm:p-6 lg:p-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-2">
+              <h2 className="text-lg font-semibold text-zinc-950 dark:text-white">Lecture & navigation</h2>
+              <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                Filtrage simple, safe et cohérent desktop/mobile. Aucun changement de logique shell.
+              </p>
             </div>
 
-            <h3 className={titleClassName(isRegistryOnly)}>{title}</h3>
-
-            {!isRegistryOnly ? (
-              <div className="break-all text-sm text-zinc-400">
-                Flow ID : <span className="text-zinc-200">{technicalSubtitle}</span>
-              </div>
-            ) : null}
-
-            <p className="text-sm leading-6 text-zinc-300">{summaryLine}</p>
+            <form method="GET" className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
+              {workspaceId ? <input type="hidden" name="workspace_id" value={workspaceId} /> : null}
+              {view && view !== "all" ? <input type="hidden" name="view" value={view} /> : null}
+              <input
+                type="text"
+                name="q"
+                defaultValue={query}
+                placeholder="Rechercher un flow, une capability, un ID…"
+                className="min-w-0 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none ring-0 placeholder:text-zinc-400 focus:border-zinc-400 dark:border-white/10 dark:bg-black/20 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-white/20 sm:min-w-[320px]"
+              />
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center rounded-2xl border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-100 dark:hover:bg-white/[0.04]"
+              >
+                Appliquer
+              </button>
+            </form>
           </div>
 
-          {!isRegistryOnly ? (
-            <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2">
-              <div className={metaBoxClassName(true)}>
-                <div className={metaLabelClassName()}>Activité</div>
-                <div className="mt-2 text-zinc-100">{flowActivityLabel(flow)}</div>
-              </div>
+          <div className="flex flex-wrap gap-2">
+            <FilterPill href={buildHref("/flows", mergeParams({ workspace_id: workspaceId, q: query }))} active={view === "all"}>
+              Tous
+            </FilterPill>
+            <FilterPill
+              href={buildHref("/flows", mergeParams({ workspace_id: workspaceId, q: query, view: "attention" }))}
+              active={view === "attention"}
+            >
+              Attention
+            </FilterPill>
+            <FilterPill
+              href={buildHref("/flows", mergeParams({ workspace_id: workspaceId, q: query, view: "running" }))}
+              active={view === "running"}
+            >
+              Running
+            </FilterPill>
+            <FilterPill
+              href={buildHref("/flows", mergeParams({ workspace_id: workspaceId, q: query, view: "success" }))}
+              active={view === "success"}
+            >
+              Success
+            </FilterPill>
+            <FilterPill
+              href={buildHref("/flows", mergeParams({ workspace_id: workspaceId, q: query, view: "registry" }))}
+              active={view === "registry"}
+            >
+              Registry-only
+            </FilterPill>
+            <FilterPill
+              href={buildHref("/flows", mergeParams({ workspace_id: workspaceId, q: query, view: "partial" }))}
+              active={view === "partial"}
+            >
+              Partial
+            </FilterPill>
+          </div>
 
-              <div className={metaBoxClassName(true)}>
-                <div className={metaLabelClassName()}>Incident</div>
-                <div className="mt-2 text-zinc-100">{incidentLabel(flow)}</div>
-              </div>
-
-              <div className={metaBoxClassName(true)}>
-                <div className={metaLabelClassName()}>Workspace</div>
-                <div className="mt-2 text-zinc-100">
-                  {flow.workspaceId || "production"}
-                </div>
-              </div>
-
-              <div className={metaBoxClassName(true)}>
-                <div className={metaLabelClassName()}>Étapes</div>
-                <div className="mt-2 text-zinc-100">{flow.steps}</div>
-              </div>
-
-              <div className={`${metaBoxClassName(true)} md:col-span-2`}>
-                <div className={metaLabelClassName()}>Chaîne</div>
-                <div className="mt-2 text-zinc-100">
-                  {cleanCapabilityLabel(flow.rootCapability)}
-                  {flow.rootCapability !== flow.terminalCapability
-                    ? ` → ${cleanCapabilityLabel(flow.terminalCapability)}`
-                    : ""}
-                </div>
-              </div>
+          {pageError ? (
+            <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
+              <div className="font-medium">Lecture partielle détectée</div>
+              <div className="mt-1 opacity-90">{pageError}</div>
             </div>
-          ) : (
-            <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2">
-              <div className={metaBoxClassName(true)}>
-                <div className={metaLabelClassName()}>Source / Root</div>
-                <div className="mt-2 break-all text-zinc-100">
-                  {technicalSubtitle}
-                </div>
-              </div>
+          ) : null}
+        </div>
+      </section>
 
-              <div className={metaBoxClassName(true)}>
-                <div className={metaLabelClassName()}>Activité</div>
-                <div className="mt-2 text-zinc-100">{flowActivityLabel(flow)}</div>
-              </div>
-
-              <div className={metaBoxClassName(true)}>
-                <div className={metaLabelClassName()}>Workspace</div>
-                <div className="mt-2 text-zinc-100">
-                  {flow.workspaceId || "production"}
-                </div>
-              </div>
-
-              <div className={metaBoxClassName(true)}>
-                <div className={metaLabelClassName()}>Incident</div>
-                <div className="mt-2 text-zinc-100">{incidentLabel(flow)}</div>
-              </div>
+      {filteredFlows.length === 0 ? (
+        <section className="rounded-[28px] border border-dashed border-zinc-300 bg-white p-8 text-center shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+          <div className="mx-auto max-w-2xl space-y-3">
+            <div className="text-lg font-semibold text-zinc-950 dark:text-white">Aucun flow visible</div>
+            <p className="text-sm leading-6 text-zinc-600 dark:text-zinc-300">
+              Aucun élément ne correspond à la vue actuelle. Le shell et la logique workspace restent
+              intacts ; ici la page remonte simplement un état vide propre et lisible.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              <Link
+                href={buildHref("/flows", workspaceId ? { workspace_id: workspaceId } : {})}
+                className="inline-flex items-center rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.04]"
+              >
+                Réinitialiser les filtres
+              </Link>
+              <Link
+                href={buildHref("/commands", workspaceId ? { workspace_id: workspaceId } : {})}
+                className="inline-flex items-center rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.04]"
+              >
+                Voir les commandes
+              </Link>
             </div>
-          )}
+          </div>
+        </section>
+      ) : null}
+
+      {needsAttention.length > 0 ? (
+        <FlowSection
+          title="Needs attention"
+          subtitle="Flows à surveiller en priorité. Cette section remonte ce qui mérite une lecture immédiate sans réécrire la logique métier."
+          flows={needsAttention}
+        />
+      ) : null}
+
+      {healthyFlows.length > 0 ? (
+        <FlowSection
+          title="Flows actifs / récents"
+          subtitle="Flows enrichis lisibles proprement, avec une hiérarchie plus cohérente avec le shell et le workspace hub."
+          flows={healthyFlows}
+        />
+      ) : null}
+
+      {registryOnlyFlows.length > 0 ? (
+        <FlowSection
+          title="Registry-only / partiels"
+          subtitle="Lecture assumée quand le graphe causal complet n’est pas disponible. On garde l’information visible sans inventer une causalité absente."
+          flows={registryOnlyFlows}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function FlowSection({
+  title,
+  subtitle,
+  flows,
+}: {
+  title: string;
+  subtitle: string;
+  flows: FlowGroup[];
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-zinc-950 dark:text-white">{title}</h2>
+        <p className="text-sm text-zinc-600 dark:text-zinc-300">{subtitle}</p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {flows.map((flow) => (
+          <FlowCard key={flow.key} flow={flow} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FlowCard({ flow }: { flow: FlowGroup }) {
+  return (
+    <article className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm transition hover:shadow-md dark:border-white/10 dark:bg-white/[0.03]">
+      <div className="space-y-5 p-5 sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge status={flow.status} />
+              {flow.registryOnly ? <SoftBadge>Registry-only</SoftBadge> : null}
+              {flow.partial ? <SoftBadge>Partial</SoftBadge> : null}
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="truncate text-lg font-semibold text-zinc-950 dark:text-white">{flow.displayName}</h3>
+              <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                {flow.workspaceId ? `Workspace ${flow.workspaceId}` : "Workspace non remonté"}
+                {flow.capabilities.length > 0 ? ` · ${flow.capabilities.slice(0, 3).join(" · ")}` : ""}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-right">
+            <MiniMetric label="Cmd" value={String(flow.commands.length)} />
+            <MiniMetric label="Inc" value={String(flow.incidents.length)} />
+            <MiniMetric label="Maj" value={formatCompactTime(flow.updatedAt)} />
+          </div>
         </div>
 
-        <div className="mt-auto flex flex-col gap-2.5 pt-1">
-          <Link
-            href={selectHref}
-            className={actionLinkClassName(isActive ? "active" : "default")}
-          >
-            {isActive ? "Flow actif" : "Sélectionner"}
-          </Link>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <IdentityRow label="Flow ID" value={flow.flowId} />
+          <IdentityRow label="Root event" value={flow.rootEventId} />
+          <IdentityRow label="Source record" value={flow.sourceRecordId} />
+          <IdentityRow label="Timeline" value={formatTimeline(flow.createdAt, flow.updatedAt)} />
+        </div>
 
-          {flow.hasIncident ? (
-            <Link href={incidentHref} className={actionLinkClassName("danger")}>
-              {flow.incidentCount > 1 ? "Voir les incidents" : "Voir l’incident"}
-            </Link>
+        {flow.capabilities.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {flow.capabilities.map((capability) => (
+              <span
+                key={capability}
+                className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200"
+              >
+                {capability}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {flow.commands.length > 0 ? (
+          <div className="space-y-3 rounded-3xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-white/10 dark:bg-black/20">
+            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Execution timeline</div>
+            <div className="flex flex-wrap gap-2">
+              {flow.commands
+                .slice()
+                .sort((a, b) => a.stepIndex - b.stepIndex)
+                .slice(0, 8)
+                .map((command) => (
+                  <div
+                    key={command.id}
+                    className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200"
+                  >
+                    <span className="font-medium">#{command.stepIndex}</span>
+                    <span className="truncate">{command.capability || "unknown"}</span>
+                    <span className="opacity-70">·</span>
+                    <span>{statusLabel(command.status)}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2 pt-1">
+          {flow.flowId ? (
+            <LinkButton href={buildHref("/commands", { flow_id: flow.flowId })}>Voir les commandes</LinkButton>
+          ) : (
+            <LinkButton
+              href={buildHref("/commands", flow.rootEventId ? { root_event_id: flow.rootEventId } : {})}
+            >
+              Voir les commandes
+            </LinkButton>
+          )}
+
+          {flow.flowId ? (
+            <LinkButton href={buildHref("/incidents", { flow_id: flow.flowId })}>Voir les incidents</LinkButton>
+          ) : (
+            <LinkButton
+              href={buildHref(
+                "/incidents",
+                flow.rootEventId ? { root_event_id: flow.rootEventId } : flow.sourceRecordId ? { source_record_id: flow.sourceRecordId } : {},
+              )}
+            >
+              Voir les incidents
+            </LinkButton>
+          )}
+
+          {flow.rootEventId ? (
+            <LinkButton href={buildHref("/events", { root_event_id: flow.rootEventId })}>Voir les événements</LinkButton>
           ) : null}
-
-          <Link href={detailHref} className={actionLinkClassName("default")}>
-            Voir le détail
-          </Link>
         </div>
       </div>
     </article>
   );
 }
 
-function SectionBlock({
-  title,
-  description,
-  flows,
-  activeKey,
-  tone = "default",
-  activeWorkspaceId,
+function StatCard({
+  label,
+  value,
+  hint,
 }: {
-  title: string;
-  description: string;
-  flows: FlowCard[];
-  activeKey: string;
-  tone?: "default" | "attention" | "neutral";
-  activeWorkspaceId?: string;
+  label: string;
+  value: string;
+  hint: string;
 }) {
-  if (flows.length === 0) return null;
-
   return (
-    <SectionCard
-      title={title}
-      description={description}
-      tone={tone}
-      className={sectionFrameClassName(tone)}
-      action={<CountPill value={flows.length} />}
-    >
-      <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-2">
-        {flows.map((flow) => (
-          <FlowListCard
-            key={flow.key}
-            flow={flow}
-            activeKey={activeKey}
-            activeWorkspaceId={activeWorkspaceId}
-          />
-        ))}
+    <div className="rounded-3xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-white/10 dark:bg-black/20">
+      <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+        {label}
       </div>
-    </SectionCard>
+      <div className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 dark:text-white">{value}</div>
+      <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">{hint}</div>
+    </div>
   );
 }
 
-function EmptyFlowsState() {
+function MiniMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   return (
-    <SectionCard
-      title="Aucun flow"
-      description="Le Dashboard n’a remonté aucun flow sur la source actuelle."
-      tone="neutral"
-      className={sectionFrameClassName("neutral")}
-    >
-      <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-10 text-sm text-white/55">
-        Aucun flow disponible pour le moment.
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-white/10 dark:bg-black/20">
+      <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+        {label}
       </div>
-    </SectionCard>
+      <div className="mt-1 text-sm font-semibold text-zinc-950 dark:text-white">{value}</div>
+    </div>
   );
 }
 
-export default async function FlowsPage({ searchParams }: PageProps) {
-  const resolvedSearchParams = (await Promise.resolve(
-    searchParams ?? {}
-  )) as SearchParams;
-
-  const selected = decodeSearchParam(resolvedSearchParams.selected);
-  const cookieStore = await cookies();
-
-  const workspace = resolveWorkspaceContext({
-    searchParams: resolvedSearchParams,
-    cookieValues: {
-      bosai_active_workspace_id:
-        cookieStore.get("bosai_active_workspace_id")?.value,
-      bosai_workspace_id: cookieStore.get("bosai_workspace_id")?.value,
-      workspace_id: cookieStore.get("workspace_id")?.value,
-      bosai_allowed_workspace_ids:
-        cookieStore.get("bosai_allowed_workspace_ids")?.value,
-      allowed_workspace_ids:
-        cookieStore.get("allowed_workspace_ids")?.value,
-    },
-  });
-
-  const activeWorkspaceId = workspace.activeWorkspaceId || "";
-
-  const api = await import("@/lib/api");
-
-  const fetchCommands = (api as AnyRecord).fetchCommands as
-    | undefined
-    | ((input?: number | { workspaceId?: string | null; limit?: number }) => Promise<unknown>);
-  const fetchIncidents = (api as AnyRecord).fetchIncidents as
-    | undefined
-    | ((input?: number | { workspaceId?: string | null; limit?: number }) => Promise<unknown>);
-  const fetchFlows = (api as AnyRecord).fetchFlows as
-    | undefined
-    | ((input?: { workspaceId?: string | null; limit?: number }) => Promise<unknown>);
-
-  let commandsData: unknown = null;
-  let incidentsData: unknown = null;
-  let flowsData: unknown = null;
-
-  try {
-    commandsData = fetchCommands
-      ? await fetchCommands({ workspaceId: activeWorkspaceId || undefined })
-      : null;
-  } catch {
-    commandsData = null;
-  }
-
-  try {
-    incidentsData = fetchIncidents
-      ? await fetchIncidents({ workspaceId: activeWorkspaceId || undefined })
-      : null;
-  } catch {
-    incidentsData = null;
-  }
-
-  try {
-    flowsData = fetchFlows
-      ? await fetchFlows({ workspaceId: activeWorkspaceId || undefined })
-      : null;
-  } catch {
-    flowsData = null;
-  }
-
-  const rawCommandsUnfiltered: AnyRecord[] =
-    commandsData &&
-    typeof commandsData === "object" &&
-    !Array.isArray(commandsData) &&
-    Array.isArray((commandsData as Record<string, unknown>).commands)
-      ? ((commandsData as Record<string, unknown>).commands as AnyRecord[])
-      : Array.isArray(commandsData)
-        ? (commandsData as AnyRecord[])
-        : [];
-
-  const rawIncidentsUnfiltered: AnyRecord[] =
-    incidentsData &&
-    typeof incidentsData === "object" &&
-    !Array.isArray(incidentsData) &&
-    Array.isArray((incidentsData as Record<string, unknown>).incidents)
-      ? ((incidentsData as Record<string, unknown>).incidents as AnyRecord[])
-      : Array.isArray(incidentsData)
-        ? (incidentsData as AnyRecord[])
-        : [];
-
-  const rawFlowsUnfiltered: AnyRecord[] =
-    flowsData &&
-    typeof flowsData === "object" &&
-    !Array.isArray(flowsData) &&
-    Array.isArray((flowsData as Record<string, unknown>).flows)
-      ? ((flowsData as Record<string, unknown>).flows as AnyRecord[])
-      : Array.isArray(flowsData)
-        ? (flowsData as AnyRecord[])
-        : [];
-
-  const rawCommands = rawCommandsUnfiltered.filter((record) =>
-    workspaceMatchesOrUnscoped(extractWorkspaceId(record), activeWorkspaceId)
+function IdentityRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-3 dark:border-white/10 dark:bg-black/20">
+      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+        {label}
+      </div>
+      <div className="mt-1 truncate text-sm text-zinc-900 dark:text-zinc-100">{value || "—"}</div>
+    </div>
   );
+}
 
-  const rawIncidents = rawIncidentsUnfiltered.filter((record) =>
-    workspaceMatchesOrUnscoped(extractWorkspaceId(record), activeWorkspaceId)
-  );
-
-  const rawFlows = rawFlowsUnfiltered.filter((record) =>
-    workspaceMatchesOrUnscoped(extractWorkspaceId(record), activeWorkspaceId)
-  );
-
-  const normalizedCommands = rawCommands
-    .map(normalizeCommand)
-    .filter((cmd) =>
-      workspaceMatchesOrUnscoped(cmd.workspaceId, activeWorkspaceId)
-    );
-
-  const enrichedFlows = sortFlowCards(
-    buildEnrichedFlowCards(normalizedCommands, rawIncidents)
-  );
-
-  const registryOnlyFlows = sortFlowCards(
-    buildRegistryOnlyFlowCards(rawFlows, rawIncidents)
-  );
-
-  const incidentOnlyFlows = sortFlowCards(
-    buildIncidentOnlyFlowCards(rawIncidents, [
-      ...enrichedFlows,
-      ...registryOnlyFlows,
-    ])
-  );
-
-  const registrySectionFlows = sortFlowCards([
-    ...registryOnlyFlows,
-    ...incidentOnlyFlows,
-  ]);
-
-  const allFlows = sortFlowCards([...enrichedFlows, ...registrySectionFlows]);
-
-  const needsAttentionFlows = sortFlowCards(
-    allFlows.filter((flow) => isNeedsAttention(flow))
-  );
-
-  const stableEnrichedFlows = sortFlowCards(
-    enrichedFlows.filter((flow) => !isNeedsAttention(flow))
-  );
-
-  const stableRegistryFlows = sortFlowCards(
-    registrySectionFlows.filter((flow) => !isNeedsAttention(flow))
-  );
-
-  const activeFlow =
-    allFlows.find((flow) => matchesActiveSelection(flow, selected)) ??
-    needsAttentionFlows[0] ??
-    allFlows[0] ??
-    null;
-
-  const activeKey = activeFlow?.key || "";
-
-  const runningCount = allFlows.filter((flow) => flow.status === "running").length;
-  const retryCount = allFlows.filter((flow) => flow.status === "retry").length;
-  const failedCount = allFlows.filter((flow) => flow.status === "failed").length;
-  const partialCount = allFlows.filter((flow) => flow.isPartial).length;
+function StatusBadge({ status }: { status: FlowStatus }) {
+  const map: Record<FlowStatus, string> = {
+    failed:
+      "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200",
+    retry:
+      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200",
+    running:
+      "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-200",
+    queued:
+      "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200",
+    success:
+      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200",
+    partial:
+      "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-200",
+    unknown:
+      "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200",
+  };
 
   return (
-    <ControlPlaneShell
-      eyebrow="BOSAI Control Plane"
-      title="Flows"
-      description="Vue de pilotage BOSAI pour suivre les flows enrichis, les flows registre uniquement et les signaux qui demandent une attention immédiate."
-      badges={[
-        { label: "Needs Attention", tone: "warning" },
-        { label: "Enriched + Registry-only", tone: "info" },
-        { label: "Mobile préservé", tone: "muted" },
-      ]}
-      metrics={[
-        { label: "Running", value: runningCount },
-        { label: "Retry", value: retryCount },
-        { label: "Failed", value: failedCount },
-        { label: "Registry-only", value: partialCount },
-      ]}
-      aside={
-        <div className="xl:sticky xl:top-6 xl:space-y-6">
-          <SidePanelCard title="Lecture opérationnelle" className={asidePanelClassName()}>
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <DashboardStatusBadge kind="running" />
-                <DashboardStatusBadge kind="failed" />
-                <DashboardStatusBadge kind="retry" />
-                <DashboardStatusBadge kind="partial" />
-              </div>
+    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${map[status]}`}>
+      {statusLabel(status)}
+    </span>
+  );
+}
 
-              <div className="space-y-2 text-sm leading-6 text-white/65">
-                <p>
-                  <span className="text-white/90">Needs Attention</span> regroupe
-                  les flows à surveiller en priorité.
-                </p>
-                <p>
-                  <span className="text-white/90">Flows enrichis</span> gardent la
-                  lecture causale détaillée.
-                </p>
-                <p>
-                  <span className="text-white/90">Registry-only</span> assume une
-                  lecture partielle mais exploitable.
-                </p>
-              </div>
-            </div>
-          </SidePanelCard>
+function SoftBadge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200">
+      {children}
+    </span>
+  );
+}
 
-          <SidePanelCard title="Flow actif" className={asidePanelClassName()}>
-            {activeFlow ? (
-              <div className="space-y-4">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.18em] text-white/35">
-                    Titre
-                  </div>
-                  <div className="mt-2 text-sm font-medium leading-6 text-white">
-                    {getDisplayTitle(activeFlow)}
-                  </div>
-                </div>
+function FilterPill({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={[
+        "inline-flex items-center rounded-full border px-3 py-2 text-sm font-medium transition",
+        active
+          ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-zinc-950"
+          : "border-zinc-200 text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.04]",
+      ].join(" ")}
+    >
+      {children}
+    </Link>
+  );
+}
 
-                <div className="flex flex-wrap gap-2">
-                  <DashboardStatusBadge
-                    label={humanStatusLabel(activeFlow.status)}
-                    status={activeFlow.status}
-                  />
-                  {activeFlow.isPartial ? (
-                    <DashboardStatusBadge kind="registry-only" />
-                  ) : (
-                    <DashboardStatusBadge label="Enriched" kind="running" />
-                  )}
-                  {activeFlow.hasIncident ? (
-                    <DashboardStatusBadge
-                      kind="incident"
-                      label={incidentLabel(activeFlow)}
-                    />
-                  ) : (
-                    <DashboardStatusBadge kind="no-incident" label="Sans incident" />
-                  )}
-                </div>
+function LinkButton({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex items-center rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.04]"
+    >
+      {children}
+    </Link>
+  );
+}
 
-                <div className="space-y-2 text-sm leading-6 text-white/65">
-                  <div>
-                    Workspace :{" "}
-                    <span className="text-white/90">
-                      {activeFlow.workspaceId || "production"}
-                    </span>
-                  </div>
-                  <div>
-                    Activité :{" "}
-                    <span className="text-white/90">
-                      {flowActivityLabel(activeFlow)}
-                    </span>
-                  </div>
-                  <div>
-                    Identifiant :{" "}
-                    <span className="break-all text-white/90">
-                      {compactTechnicalId(
-                        activeFlow.sourceRecordId ||
-                          activeFlow.flowId ||
-                          activeFlow.rootEventId
-                      )}
-                    </span>
-                  </div>
-                </div>
+async function fetchJson(
+  path: string,
+  params: Record<string, string | undefined>,
+): Promise<FetchResult<unknown>> {
+  if (!WORKER_BASE_URL) {
+    return {
+      ok: false,
+      data: null,
+      error: "WORKER_BASE_URL manquante. La page reste rendue, mais les données distantes ne peuvent pas être récupérées.",
+    };
+  }
 
-                <div className="flex flex-col gap-2">
-                  <Link
-                    href={buildDetailHref(activeFlow, activeWorkspaceId)}
-                    className={actionLinkClassName("default")}
-                  >
-                    Ouvrir le détail
-                  </Link>
+  const url = buildWorkerUrl(path, params);
 
-                  <Link
-                    href={buildIncidentsHref(activeFlow, activeWorkspaceId)}
-                    className={actionLinkClassName(
-                      activeFlow.hasIncident ? "danger" : "default"
-                    )}
-                  >
-                    {activeFlow.hasIncident
-                      ? activeFlow.incidentCount > 1
-                        ? "Voir les incidents liés"
-                        : "Voir l’incident lié"
-                      : "Voir les incidents"}
-                  </Link>
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-white/55">Aucun flow sélectionné.</div>
-            )}
-          </SidePanelCard>
-        </div>
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        data: null,
+        error: `Lecture distante en erreur (${response.status}) sur ${path}.`,
+      };
+    }
+
+    const text = await response.text();
+
+    try {
+      return {
+        ok: true,
+        data: text ? JSON.parse(text) : null,
+      };
+    } catch {
+      return {
+        ok: false,
+        data: null,
+        error: `Réponse non JSON sur ${path}.`,
+      };
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      data: null,
+      error: error instanceof Error ? error.message : `Erreur réseau sur ${path}.`,
+    };
+  }
+}
+
+function normalizeCommandList(input: unknown): CommandItem[] {
+  return extractArray(input)
+    .map((raw) => normalizeCommand(raw))
+    .filter((item): item is CommandItem => Boolean(item && item.id));
+}
+
+function normalizeIncidentList(input: unknown): IncidentItem[] {
+  return extractArray(input)
+    .map((raw) => normalizeIncident(raw))
+    .filter((item): item is IncidentItem => Boolean(item && item.id));
+}
+
+function normalizeCommand(raw: any): CommandItem | null {
+  const id = asString(raw?.id || pickValue(raw, ["Command_ID", "ID", "Id"]));
+  if (!id) return null;
+
+  const capability = asString(
+    pickValue(raw, ["capability", "Capability", "Tool_Key", "Tool Mode", "Tool_Mode", "Name"]),
+  );
+
+  const status = normalizeFlowStatus(
+    asString(pickValue(raw, ["status", "Status_select", "Status", "state", "State"])),
+  );
+
+  const workspaceId = asString(
+    pickValue(raw, ["workspace_id", "Workspace_ID", "workspaceId", "WorkspaceId"]),
+  );
+
+  const flowId = asString(pickValue(raw, ["flow_id", "Flow_ID", "flowId", "FlowId"]));
+  const rootEventId = asString(
+    pickValue(raw, ["root_event_id", "Root_Event_ID", "rootEventId", "RootEventId"]),
+  );
+  const parentCommandId = asString(
+    pickValue(raw, ["parent_command_id", "Parent_Command_ID", "parentCommandId", "ParentCommandId"]),
+  );
+
+  const stepIndex = asInt(
+    pickValue(raw, ["step_index", "Step_Index", "stepIndex", "StepIndex"]),
+  );
+
+  const createdAt = firstDateLike(raw, ["created_at", "Created_At", "createdAt", "CreatedAt"]);
+  const updatedAt = firstDateLike(raw, ["updated_at", "Updated_At", "updatedAt", "UpdatedAt", "started_at", "Started_At"]);
+  const endedAt = firstDateLike(raw, ["ended_at", "Ended_At", "endedAt", "EndedAt"]);
+
+  return {
+    id,
+    capability,
+    status,
+    workspaceId,
+    flowId,
+    rootEventId,
+    parentCommandId,
+    stepIndex,
+    createdAt,
+    updatedAt,
+    endedAt,
+  };
+}
+
+function normalizeIncident(raw: any): IncidentItem | null {
+  const id = asString(raw?.id || pickValue(raw, ["Incident_ID", "ID", "Id"]));
+  if (!id) return null;
+
+  const statusRaw = asString(
+    pickValue(raw, ["status", "Status_select", "Status", "state", "State"]),
+  ).toLowerCase();
+
+  const severityRaw = asString(
+    pickValue(raw, ["severity", "Severity", "Urgence IA", "Urgence_IA"]),
+  ).toLowerCase();
+
+  const status: IncidentItem["status"] =
+    statusRaw.includes("resolve") || statusRaw.includes("closed")
+      ? "resolved"
+      : statusRaw
+      ? "open"
+      : "unknown";
+
+  const severity: IncidentItem["severity"] = severityRaw.includes("crit")
+    ? "critical"
+    : severityRaw.includes("high") || severityRaw.includes("élev")
+    ? "high"
+    : severityRaw.includes("medium") || severityRaw.includes("moy")
+    ? "medium"
+    : severityRaw.includes("low") || severityRaw.includes("faib")
+    ? "low"
+    : "unknown";
+
+  return {
+    id,
+    status,
+    severity,
+    workspaceId: asString(
+      pickValue(raw, ["workspace_id", "Workspace_ID", "workspaceId", "WorkspaceId"]),
+    ),
+    flowId: asString(pickValue(raw, ["flow_id", "Flow_ID", "flowId", "FlowId"])),
+    rootEventId: asString(
+      pickValue(raw, ["root_event_id", "Root_Event_ID", "rootEventId", "RootEventId"]),
+    ),
+    sourceRecordId: asString(
+      pickValue(raw, ["source_record_id", "Source_Record_ID", "sourceRecordId", "SourceRecordId"]),
+    ),
+    createdAt: firstDateLike(raw, ["created_at", "Created_At", "createdAt", "CreatedAt"]),
+    updatedAt: firstDateLike(raw, ["updated_at", "Updated_At", "updatedAt", "UpdatedAt"]),
+  };
+}
+
+function buildFlows(commands: CommandItem[], incidents: IncidentItem[]): FlowGroup[] {
+  const map = new Map<string, FlowGroup>();
+
+  for (const command of commands) {
+    const key = command.flowId
+      ? `flow:${command.flowId}`
+      : command.rootEventId
+      ? `root:${command.rootEventId}`
+      : `cmd:${command.id}`;
+
+    const existing = map.get(key) || createEmptyGroup(key);
+
+    existing.flowId ||= command.flowId;
+    existing.rootEventId ||= command.rootEventId;
+    existing.workspaceId ||= command.workspaceId;
+    existing.createdAt = earliestDate(existing.createdAt, command.createdAt);
+    existing.updatedAt = latestDate(existing.updatedAt, command.endedAt || command.updatedAt || command.createdAt);
+    existing.commands.push(command);
+
+    map.set(key, existing);
+  }
+
+  for (const incident of incidents) {
+    const key = incident.flowId
+      ? `flow:${incident.flowId}`
+      : incident.rootEventId
+      ? `root:${incident.rootEventId}`
+      : incident.sourceRecordId
+      ? `source:${incident.sourceRecordId}`
+      : `incident:${incident.id}`;
+
+    const existing = map.get(key) || createEmptyGroup(key);
+
+    existing.flowId ||= incident.flowId;
+    existing.rootEventId ||= incident.rootEventId;
+    existing.workspaceId ||= incident.workspaceId;
+    existing.sourceRecordId ||= incident.sourceRecordId;
+    existing.createdAt = earliestDate(existing.createdAt, incident.createdAt);
+    existing.updatedAt = latestDate(existing.updatedAt, incident.updatedAt || incident.createdAt);
+    existing.incidents.push(incident);
+
+    map.set(key, existing);
+  }
+
+  return Array.from(map.values())
+    .map((group) => finalizeFlowGroup(group))
+    .sort((a, b) => toMillis(b.updatedAt) - toMillis(a.updatedAt));
+}
+
+function finalizeFlowGroup(group: FlowGroup): FlowGroup {
+  const capabilities = Array.from(
+    new Set(group.commands.map((command) => command.capability).filter(Boolean)),
+  );
+
+  const registryOnly = group.commands.length === 0 && group.incidents.length > 0;
+
+  const commandStatuses = new Set(group.commands.map((command) => command.status));
+  const hasOpenIncident = group.incidents.some((incident) => incident.status === "open");
+  const hasCriticalIncident = group.incidents.some(
+    (incident) => incident.severity === "critical" || incident.severity === "high",
+  );
+
+  let status: FlowStatus = "unknown";
+
+  if (commandStatuses.has("failed") || (registryOnly && hasOpenIncident && hasCriticalIncident)) {
+    status = "failed";
+  } else if (commandStatuses.has("retry")) {
+    status = "retry";
+  } else if (commandStatuses.has("running")) {
+    status = "running";
+  } else if (registryOnly && group.incidents.length > 0) {
+    status = "partial";
+  } else if (commandStatuses.has("queued")) {
+    status = "queued";
+  } else if (group.commands.length > 0 && Array.from(commandStatuses).every((value) => value === "success")) {
+    status = "success";
+  }
+
+  const partial =
+    registryOnly ||
+    (!group.flowId && !!group.rootEventId) ||
+    (!group.flowId && !group.rootEventId && group.incidents.length > 0);
+
+  const displayName = group.flowId
+    ? group.flowId
+    : group.rootEventId
+    ? `root:${group.rootEventId}`
+    : group.sourceRecordId
+    ? `registry:${group.sourceRecordId}`
+    : group.key;
+
+  return {
+    ...group,
+    displayName,
+    capabilities,
+    registryOnly,
+    partial,
+    status,
+  };
+}
+
+function createEmptyGroup(key: string): FlowGroup {
+  return {
+    key,
+    displayName: key,
+    flowId: "",
+    rootEventId: "",
+    workspaceId: "",
+    sourceRecordId: "",
+    commands: [],
+    incidents: [],
+    status: "unknown",
+    registryOnly: false,
+    partial: false,
+    createdAt: "",
+    updatedAt: "",
+    capabilities: [],
+  };
+}
+
+function matchesView(flow: FlowGroup, view: FlowView): boolean {
+  switch (view) {
+    case "attention":
+      return ["failed", "retry", "running", "partial"].includes(flow.status);
+    case "running":
+      return flow.status === "running";
+    case "success":
+      return flow.status === "success";
+    case "registry":
+      return flow.registryOnly;
+    case "partial":
+      return flow.partial;
+    case "all":
+    default:
+      return true;
+  }
+}
+
+function matchesQuery(flow: FlowGroup, query: string): boolean {
+  if (!query) return true;
+
+  const haystack = [
+    flow.displayName,
+    flow.flowId,
+    flow.rootEventId,
+    flow.sourceRecordId,
+    flow.workspaceId,
+    flow.status,
+    ...flow.capabilities,
+    ...flow.commands.map((command) => command.id),
+    ...flow.commands.map((command) => command.capability),
+    ...flow.incidents.map((incident) => incident.id),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(query.toLowerCase());
+}
+
+function derivePageError(
+  commandsResult: FetchResult<unknown>,
+  incidentsResult: FetchResult<unknown>,
+): string {
+  const errors = [commandsResult.error, incidentsResult.error].filter(Boolean) as string[];
+
+  if (errors.length === 0) return "";
+  return errors.join(" ");
+}
+
+function statusLabel(status: FlowStatus): string {
+  switch (status) {
+    case "failed":
+      return "Failed";
+    case "retry":
+      return "Retry";
+    case "running":
+      return "Running";
+    case "queued":
+      return "Queued";
+    case "success":
+      return "Success";
+    case "partial":
+      return "Partial";
+    case "unknown":
+    default:
+      return "Unknown";
+  }
+}
+
+function normalizeFlowStatus(input: string): FlowStatus {
+  const value = input.toLowerCase();
+
+  if (
+    value.includes("error") ||
+    value.includes("fail") ||
+    value.includes("dead") ||
+    value.includes("block")
+  ) {
+    return "failed";
+  }
+
+  if (value.includes("retry")) {
+    return "retry";
+  }
+
+  if (value.includes("running") || value.includes("progress")) {
+    return "running";
+  }
+
+  if (value.includes("queue") || value.includes("pending")) {
+    return "queued";
+  }
+
+  if (
+    value.includes("done") ||
+    value.includes("success") ||
+    value.includes("complete") ||
+    value.includes("resolved")
+  ) {
+    return "success";
+  }
+
+  return "unknown";
+}
+
+function extractArray(input: unknown): any[] {
+  if (Array.isArray(input)) return input;
+
+  const containerCandidates = [
+    input,
+    (input as any)?.data,
+    (input as any)?.result,
+    (input as any)?.payload,
+  ];
+
+  for (const candidate of containerCandidates) {
+    if (Array.isArray(candidate)) return candidate;
+    if (!candidate || typeof candidate !== "object") continue;
+
+    for (const key of ["items", "commands", "incidents", "records", "rows"]) {
+      if (Array.isArray((candidate as any)[key])) {
+        return (candidate as any)[key];
       }
-    >
-      {allFlows.length === 0 ? <EmptyFlowsState /> : null}
+    }
+  }
 
-      <SectionBlock
-        title="Needs Attention"
-        description="Flows prioritaires à surveiller maintenant : incidents actifs, exécutions en cours, retries et échecs."
-        flows={needsAttentionFlows}
-        activeKey={activeKey}
-        tone="attention"
-        activeWorkspaceId={activeWorkspaceId}
-      />
+  return [];
+}
 
-      <SectionBlock
-        title="Flows enrichis"
-        description="Flows avec lecture causale détaillée disponible : structure, étapes, graphe et navigation complète."
-        flows={stableEnrichedFlows}
-        activeKey={activeKey}
-        tone="default"
-        activeWorkspaceId={activeWorkspaceId}
-      />
+function pickValue(raw: any, keys: string[]): unknown {
+  const fields = raw?.fields ?? {};
 
-      <SectionBlock
-        title="Flows registre uniquement"
-        description="Flows présents dans le registre BOSAI mais sans lecture causale détaillée disponible pour le moment."
-        flows={stableRegistryFlows}
-        activeKey={activeKey}
-        tone="neutral"
-        activeWorkspaceId={activeWorkspaceId}
-      />
-    </ControlPlaneShell>
-  );
+  for (const key of keys) {
+    if (raw?.[key] !== undefined && raw?.[key] !== null && raw?.[key] !== "") return raw[key];
+    if (fields?.[key] !== undefined && fields?.[key] !== null && fields?.[key] !== "") return fields[key];
+  }
+
+  return undefined;
+}
+
+function firstDateLike(raw: any, keys: string[]): string {
+  const value = pickValue(raw, keys);
+  return asString(value);
+}
+
+function asString(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
+}
+
+function asInt(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function readSearchParam(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value[0] ?? "";
+  return value ?? "";
+}
+
+function stripTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function buildWorkerUrl(path: string, params: Record<string, string | undefined>): string {
+  const url = new URL(`${WORKER_BASE_URL}${path}`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value) url.searchParams.set(key, value);
+  }
+  return url.toString();
+}
+
+function buildHref(path: string, params: Record<string, string | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) search.set(key, value);
+  }
+  const query = search.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+function mergeParams(input: Record<string, string | undefined>): Record<string, string | undefined> {
+  const output: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (value) output[key] = value;
+  }
+  return output;
+}
+
+function earliestDate(a: string, b: string): string {
+  if (!a) return b;
+  if (!b) return a;
+  return toMillis(a) <= toMillis(b) ? a : b;
+}
+
+function latestDate(a: string, b: string): string {
+  if (!a) return b;
+  if (!b) return a;
+  return toMillis(a) >= toMillis(b) ? a : b;
+}
+
+function toMillis(value: string): number {
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : 0;
+}
+
+function formatCompactTime(value: string): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatTimeline(createdAt: string, updatedAt: string): string {
+  const created = formatCompactTime(createdAt);
+  const updated = formatCompactTime(updatedAt);
+
+  if (created === "—" && updated === "—") return "—";
+  if (created === "—") return `Maj ${updated}`;
+  if (updated === "—") return `Créé ${created}`;
+  return `${created} → ${updated}`;
 }
