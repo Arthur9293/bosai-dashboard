@@ -205,6 +205,35 @@ function normalizeStatsObject(
   return normalized;
 }
 
+function normalizeRunsScope(value: unknown): RunsScopeInfo | undefined {
+  const record = toRecord(value);
+
+  if (Object.keys(record).length === 0) {
+    return undefined;
+  }
+
+  return {
+    requested_workspace_id:
+      asString(
+        firstDefined(record, [
+          "requested_workspace_id",
+          "requestedWorkspaceId",
+          "workspace_id",
+          "Workspace_ID",
+        ])
+      ) ?? null,
+    received: asNumber(firstDefined(record, ["received", "Received"])),
+    visible: asNumber(firstDefined(record, ["visible", "Visible"])),
+    dropped_by_scope: asNumber(
+      firstDefined(record, [
+        "dropped_by_scope",
+        "droppedByScope",
+        "Dropped_By_Scope",
+      ])
+    ),
+  };
+}
+
 function parseJsonRecord(value: unknown): JsonRecord {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as JsonRecord;
@@ -460,7 +489,15 @@ export type RunItem = {
   [key: string]: unknown;
 };
 
+export type RunsScopeInfo = {
+  requested_workspace_id?: string | null;
+  received?: number;
+  visible?: number;
+  dropped_by_scope?: number;
+};
+
 export type RunsResponse = {
+  ok?: boolean;
   count?: number;
   runs?: RunItem[];
   stats?: {
@@ -472,6 +509,9 @@ export type RunsResponse = {
     other?: number;
     [key: string]: number | undefined;
   };
+  scope?: RunsScopeInfo;
+  source?: unknown;
+  ts?: string;
 };
 
 export type CommandItem = {
@@ -1734,9 +1774,11 @@ export async function fetchRuns(
     normalizeRunItem(item)
   );
   const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
+  const scopeInfo = normalizeRunsScope(firstDefined(data, ["scope", "Scope"]));
 
   return {
     ...data,
+    ok: asBoolean(firstDefined(data, ["ok", "OK"])),
     count: asNumber(firstDefined(data, ["count", "Count"])) ?? runs.length,
     runs,
     stats: {
@@ -1748,6 +1790,9 @@ export async function fetchRuns(
       other: stats.other,
       ...stats,
     },
+    scope: scopeInfo,
+    source: firstDefined(data, ["source", "Source"]),
+    ts: asString(firstDefined(data, ["ts", "TS"])),
   };
 }
 
