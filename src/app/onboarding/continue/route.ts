@@ -173,7 +173,12 @@ export async function GET(request: NextRequest) {
       ? buildPath("/onboarding/workspace", { plan: planCode })
       : "/onboarding/plan";
   } else if (step === "activate") {
-    redirectPath = nextPath || "/workspace";
+    redirectPath =
+      nextPath ||
+      buildPath("/workspace/create", {
+        source: "onboarding",
+        plan: planCode || undefined,
+      });
   } else if (step === "reset") {
     redirectPath = nextPath || "/pricing";
   } else {
@@ -271,7 +276,7 @@ export async function GET(request: NextRequest) {
     writeBooleanCookies(
       response,
       ["bosai_onboarding_completed", "onboarding_completed"],
-      true
+      false
     );
     writeWorkspaceStatusCookies(response, requestedStatus || "active");
     return response;
