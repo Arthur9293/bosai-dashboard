@@ -445,8 +445,8 @@ function buildSyntheticFlowDetail(
       matchedCommands.length > 0
         ? matchedCommands.length
         : matchedEvents.length > 0
-        ? matchedEvents.length
-        : matchedIncidents.length,
+          ? matchedEvents.length
+          : matchedIncidents.length,
     commands: matchedCommands,
     stats,
     reading_mode: matchedCommands.length > 0 ? "enriched" : "registry-only",
@@ -490,6 +490,13 @@ export type RunItem = {
 };
 
 export type RunsScopeInfo = {
+  requested_workspace_id?: string | null;
+  received?: number;
+  visible?: number;
+  dropped_by_scope?: number;
+};
+
+export type CommandsScopeInfo = {
   requested_workspace_id?: string | null;
   received?: number;
   visible?: number;
@@ -541,6 +548,7 @@ export type CommandItem = {
 };
 
 export type CommandsResponse = {
+  ok?: boolean;
   count?: number;
   commands?: CommandItem[];
   stats?: {
@@ -551,8 +559,13 @@ export type CommandsResponse = {
     dead?: number;
     done?: number;
     error?: number;
+    failed?: number;
+    other?: number;
     [key: string]: number | undefined;
   };
+  scope?: CommandsScopeInfo;
+  source?: unknown;
+  ts?: string;
 };
 
 export type EventItem = {
@@ -809,10 +822,20 @@ function normalizeRunItem(raw: unknown): RunItem {
     ) || sourceEventId;
 
   const priorityNumber = asNumber(
-    firstDefined(record, ["priority", "Priority", "priority_score", "Priority_Score"])
+    firstDefined(record, [
+      "priority",
+      "Priority",
+      "priority_score",
+      "Priority_Score",
+    ])
   );
   const priorityString = asString(
-    firstDefined(record, ["priority", "Priority", "priority_score", "Priority_Score"])
+    firstDefined(record, [
+      "priority",
+      "Priority",
+      "priority_score",
+      "Priority_Score",
+    ])
   );
 
   return {
@@ -822,7 +845,12 @@ function normalizeRunItem(raw: unknown): RunItem {
       firstDefinedMany(contextRecords, ["run_id", "Run_ID", "runId", "RunId"])
     ),
     capability: asString(
-      firstDefinedMany(contextRecords, ["capability", "Capability", "name", "Name"])
+      firstDefinedMany(contextRecords, [
+        "capability",
+        "Capability",
+        "name",
+        "Name",
+      ])
     ),
     status: asString(
       firstDefined(record, [
@@ -850,7 +878,12 @@ function normalizeRunItem(raw: unknown): RunItem {
       firstDefined(record, ["app_name", "App_Name", "appName", "AppName"])
     ),
     app_version: asString(
-      firstDefined(record, ["app_version", "App_Version", "appVersion", "AppVersion"])
+      firstDefined(record, [
+        "app_version",
+        "App_Version",
+        "appVersion",
+        "AppVersion",
+      ])
     ),
     idempotency_key: asString(
       firstDefined(record, [
@@ -860,7 +893,8 @@ function normalizeRunItem(raw: unknown): RunItem {
       ])
     ),
     dry_run:
-      asBoolean(firstDefined(record, ["dry_run", "Dry_Run", "dryRun"])) ?? false,
+      asBoolean(firstDefined(record, ["dry_run", "Dry_Run", "dryRun"])) ??
+      false,
     created_at: asString(
       firstDefined(record, [
         "created_at",
@@ -992,9 +1026,8 @@ function normalizeCommandItem(raw: unknown): CommandItem {
   return {
     ...record,
     id:
-      asString(
-        firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
-      ) || "",
+      asString(firstDefined(record, ["id", "ID", "record_id", "Record_ID"])) ||
+      "",
     name: asString(firstDefined(record, ["name", "Name", "title", "Title"])),
     status: asString(
       firstDefined(record, [
@@ -1119,7 +1152,8 @@ function normalizeEventItem(raw: unknown): EventItem {
   const contextRecords = [record, payloadRecord];
 
   const eventId =
-    asString(firstDefined(record, ["id", "ID", "record_id", "Record_ID"])) || "";
+    asString(firstDefined(record, ["id", "ID", "record_id", "Record_ID"])) ||
+    "";
 
   const sourceEventId =
     asString(
@@ -1260,9 +1294,8 @@ function normalizeIncidentItem(raw: unknown): IncidentItem {
   return {
     ...record,
     id:
-      asString(
-        firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
-      ) || "",
+      asString(firstDefined(record, ["id", "ID", "record_id", "Record_ID"])) ||
+      "",
     title: asString(firstDefined(record, ["title", "Title", "name", "Name"])),
     name: asString(firstDefined(record, ["name", "Name", "title", "Title"])),
     status,
@@ -1394,9 +1427,8 @@ function normalizeSlaItem(raw: unknown): SlaItem {
   return {
     ...record,
     id:
-      asString(
-        firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
-      ) || "",
+      asString(firstDefined(record, ["id", "ID", "record_id", "Record_ID"])) ||
+      "",
     title: asString(firstDefined(record, ["title", "Title", "name", "Name"])),
     name: asString(firstDefined(record, ["name", "Name", "title", "Title"])),
     status: asString(
@@ -1551,9 +1583,8 @@ function normalizeToolItem(raw: unknown): ToolItem {
   return {
     ...record,
     id:
-      asString(
-        firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
-      ) || "",
+      asString(firstDefined(record, ["id", "ID", "record_id", "Record_ID"])) ||
+      "",
     name: asString(firstDefined(record, ["name", "Name", "title", "Title"])),
     description: asString(firstDefined(record, ["description", "Description"])),
     status: asString(firstDefined(record, ["status", "Status"])),
@@ -1574,9 +1605,8 @@ function normalizePolicyItem(raw: unknown): PolicyItem {
   return {
     ...record,
     id:
-      asString(
-        firstDefined(record, ["id", "ID", "record_id", "Record_ID"])
-      ) || "",
+      asString(firstDefined(record, ["id", "ID", "record_id", "Record_ID"])) ||
+      "",
     name: asString(firstDefined(record, ["name", "Name", "title", "Title"])),
     description: asString(firstDefined(record, ["description", "Description"])),
     status: asString(firstDefined(record, ["status", "Status"])),
@@ -1809,13 +1839,32 @@ export async function fetchCommands(
   const commands = asArray(firstDefined(data, ["commands", "Commands"])).map(
     (item) => normalizeCommandItem(item)
   );
-  const stats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
+
+  const rawStats = normalizeStatsObject(firstDefined(data, ["stats", "Stats"]));
+  const fallbackStats = buildCommandStats(commands);
+  const scopeInfo = normalizeRunsScope(firstDefined(data, ["scope", "Scope"]));
 
   return {
     ...data,
+    ok: asBoolean(firstDefined(data, ["ok", "OK"])),
     count: asNumber(firstDefined(data, ["count", "Count"])) ?? commands.length,
     commands,
-    stats,
+    stats: {
+      ...fallbackStats,
+      ...rawStats,
+      queue: rawStats.queue ?? rawStats.queued ?? fallbackStats.queued,
+      queued: rawStats.queued ?? rawStats.queue ?? fallbackStats.queued,
+      running: rawStats.running ?? fallbackStats.running,
+      retry: rawStats.retry ?? fallbackStats.retry,
+      dead: rawStats.dead ?? fallbackStats.dead,
+      done: rawStats.done ?? fallbackStats.done,
+      error: rawStats.error ?? rawStats.failed ?? fallbackStats.error,
+      failed: rawStats.failed ?? rawStats.error ?? fallbackStats.error,
+      other: rawStats.other ?? fallbackStats.other,
+    },
+    scope: scopeInfo,
+    source: firstDefined(data, ["source", "Source"]),
+    ts: asString(firstDefined(data, ["ts", "TS"])),
   };
 }
 
