@@ -1573,15 +1573,15 @@ export default async function WorkspaceHomePage() {
 
             <AgencyPrioritySection />
 
+            <AgencyPortfolioSection
+              memberships={memberships}
+              activeWorkspaceId={activeWorkspace.workspaceId}
+            />
+
             <AgencyWorkspaceSection
               activeWorkspace={activeWorkspace}
               defaultLane={defaultLane}
               entitlements={session.context?.entitlements}
-            />
-
-            <AgencyPortfolioSection
-              memberships={memberships}
-              activeWorkspaceId={activeWorkspace.workspaceId}
             />
           </>
         ) : category === "company" ? (
@@ -1593,15 +1593,15 @@ export default async function WorkspaceHomePage() {
 
             <CompanyPrioritySection />
 
+            <CompanyPortfolioSection
+              memberships={memberships}
+              activeWorkspaceId={activeWorkspace.workspaceId}
+            />
+
             <CompanyWorkspaceSection
               activeWorkspace={activeWorkspace}
               defaultLane={defaultLane}
               entitlements={session.context?.entitlements}
-            />
-
-            <CompanyPortfolioSection
-              memberships={memberships}
-              activeWorkspaceId={activeWorkspace.workspaceId}
             />
           </>
         ) : category === "freelance" ? (
@@ -1613,15 +1613,15 @@ export default async function WorkspaceHomePage() {
 
             <FreelancePrioritySection />
 
+            <FreelancePortfolioSection
+              memberships={memberships}
+              activeWorkspaceId={activeWorkspace.workspaceId}
+            />
+
             <FreelanceWorkspaceSection
               activeWorkspace={activeWorkspace}
               defaultLane={defaultLane}
               entitlements={session.context?.entitlements}
-            />
-
-            <FreelancePortfolioSection
-              memberships={memberships}
-              activeWorkspaceId={activeWorkspace.workspaceId}
             />
           </>
         ) : category === "personal" ? (
@@ -1633,31 +1633,31 @@ export default async function WorkspaceHomePage() {
 
             <PersonalPrioritySection />
 
+            <PersonalPortfolioSection
+              memberships={memberships}
+              activeWorkspaceId={activeWorkspace.workspaceId}
+            />
+
             <PersonalWorkspaceSection
               activeWorkspace={activeWorkspace}
               defaultLane={defaultLane}
               entitlements={session.context?.entitlements}
             />
-
-            <PersonalPortfolioSection
-              memberships={memberships}
-              activeWorkspaceId={activeWorkspace.workspaceId}
-            />
           </>
         ) : (
           <>
-            <GenericWorkspaceSection
-              activeWorkspace={activeWorkspace}
-              defaultLane={defaultLane}
-              entitlements={session.context?.entitlements}
-            />
-
             <GenericSurfacesSection cards={cards} />
 
             <GenericPortfolioSection
               memberships={memberships}
               activeWorkspaceId={activeWorkspace.workspaceId}
               defaultLane={defaultLane}
+            />
+
+            <GenericWorkspaceSection
+              activeWorkspace={activeWorkspace}
+              defaultLane={defaultLane}
+              entitlements={session.context?.entitlements}
             />
           </>
         )}
