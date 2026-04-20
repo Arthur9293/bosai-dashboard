@@ -5,29 +5,11 @@ import {
   AUTH_LOGIN_ROUTE,
   resolveAuthSession,
 } from "@/lib/auth/resolve-auth-session";
-import { resolveBosaiAccessState } from "@/lib/onboarding-access";
+import {
+  hasCommercialOnboardingSignals,
+  resolveBosaiAccessState,
+} from "@/lib/onboarding-access";
 import { resolveWorkspaceAccess } from "@/lib/workspaces/resolver";
-
-function text(value?: string | null): string {
-  return String(value || "").trim();
-}
-
-function hasCommercialOnboardingSignals(
-  cookieValues: Record<string, string | undefined>
-): boolean {
-  return [
-    cookieValues.bosai_plan_code,
-    cookieValues.plan_code,
-    cookieValues.selected_plan,
-    cookieValues.bosai_workspace_status,
-    cookieValues.workspace_status,
-    cookieValues.bosai_checkout_completed,
-    cookieValues.checkout_completed,
-    cookieValues.bosai_onboarding_completed,
-    cookieValues.onboarding_completed,
-    cookieValues.bosai_pending_workspace_id,
-  ].some((value) => text(value) !== "");
-}
 
 export default async function LoginPage() {
   const session = await resolveAuthSession();
@@ -51,7 +33,10 @@ export default async function LoginPage() {
         cookieStore.get("bosai_pending_workspace_id")?.value,
     };
 
-    if (hasCommercialOnboardingSignals(onboardingCookieValues)) {
+    const shouldApplyCommercialGuard =
+      hasCommercialOnboardingSignals(onboardingCookieValues);
+
+    if (shouldApplyCommercialGuard) {
       const accessState = resolveBosaiAccessState({
         cookieValues: onboardingCookieValues,
       });
