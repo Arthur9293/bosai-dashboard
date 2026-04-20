@@ -27,6 +27,8 @@ type SearchParams = {
   flow_id?: string | string[];
   root_event_id?: string | string[];
   source_record_id?: string | string[];
+  source_event_id?: string | string[];
+  command_id?: string | string[];
   from?: string | string[];
   workspace_id?: string | string[];
   workspaceId?: string | string[];
@@ -68,6 +70,10 @@ function metaLabelClassName(): string {
 
 function metaBoxClassName(): string {
   return "rounded-[20px] border border-white/10 bg-black/20 px-4 py-4";
+}
+
+function statCardClassName(): string {
+  return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function compactTechnicalId(value: string, max = 34): string {
@@ -130,6 +136,25 @@ function firstParam(value?: string | string[]): string {
 
 function safeUpper(text: string): string {
   return text.trim() ? text.trim().toUpperCase() : "—";
+}
+
+function buildHref(
+  pathname: string,
+  params: Record<string, string | undefined>
+): string {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    const text = String(value || "").trim();
+    if (text) search.set(key, text);
+  }
+
+  const query = search.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+function isRecordIdLike(value: string): boolean {
+  return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
 }
 
 function getIncidentTitle(incident: IncidentItem): string {
@@ -372,6 +397,21 @@ function sortResolvedIncidents(items: IncidentItem[]): IncidentItem[] {
   });
 }
 
+function latestIncidentByStatus(
+  items: IncidentItem[],
+  status: "open" | "escalated" | "resolved"
+): IncidentItem | null {
+  const filtered = items.filter(
+    (item) => getIncidentStatusNormalized(item) === status
+  );
+  const sorted =
+    status === "resolved"
+      ? sortResolvedIncidents(filtered)
+      : sortActiveIncidents(filtered);
+
+  return sorted[0] || null;
+}
+
 function isLegacyNoiseIncident(incident: IncidentItem): boolean {
   const title = getIncidentTitle(incident).trim().toLowerCase();
   const category = getCategory(incident).trim().toLowerCase();
@@ -422,9 +462,15 @@ function incidentMatchesFilters(
     flowId: string;
     rootEventId: string;
     sourceRecordId: string;
+    commandId: string;
   }
 ): boolean {
-  const filterValues = [filters.flowId, filters.rootEventId, filters.sourceRecordId]
+  const filterValues = [
+    filters.flowId,
+    filters.rootEventId,
+    filters.sourceRecordId,
+    filters.commandId,
+  ]
     .map((value) => value.trim())
     .filter(Boolean);
 
@@ -533,14 +579,36 @@ function getDecisionBadgeKind(
   return "unknown";
 }
 
+function getEventTargetFromIncident(incident: IncidentItem): string {
+  const sourceRecordId = getSourceRecordId(incident);
+  if (sourceRecordId && isRecordIdLike(sourceRecordId)) return sourceRecordId;
+
+  const rootEventId = getRootEventId(incident);
+  if (rootEventId && isRecordIdLike(rootEventId)) return rootEventId;
+
+  return "";
+}
+
 function getIncidentHref(
   incident: IncidentItem,
-  activeWorkspaceId?: string
+  activeWorkspaceId?: string,
+  context?: {
+    flowId?: string;
+    rootEventId?: string;
+    sourceRecordId?: string;
+    commandId?: string;
+    from?: string;
+  }
 ): string {
-  return appendWorkspaceIdToHref(
-    `/incidents/${encodeURIComponent(incident.id)}`,
-    activeWorkspaceId || getIncidentWorkspaceId(incident)
-  );
+  return buildHref(`/incidents/${encodeURIComponent(incident.id)}`, {
+    workspace_id: activeWorkspaceId || getIncidentWorkspaceId(incident) || undefined,
+    flow_id: context?.flowId || getFlowId(incident) || undefined,
+    root_event_id: context?.rootEventId || getRootEventId(incident) || undefined,
+    source_record_id:
+      context?.sourceRecordId || getSourceRecordId(incident) || undefined,
+    command_id: context?.commandId || getCommandRecord(incident) || undefined,
+    from: context?.from || "incidents",
+  });
 }
 
 function getFlowHref(
@@ -561,12 +629,31 @@ function getCommandHref(
   activeWorkspaceId?: string
 ): string {
   const commandRecord = getCommandRecord(incident);
-  return commandRecord && commandRecord !== "—"
-    ? appendWorkspaceIdToHref(
-        `/commands/${encodeURIComponent(commandRecord)}`,
-        activeWorkspaceId || getIncidentWorkspaceId(incident)
-      )
-    : "";
+  if (!commandRecord || commandRecord === "—") return "";
+
+  return buildHref(`/commands/${encodeURIComponent(commandRecord)}`, {
+    workspace_id: activeWorkspaceId || getIncidentWorkspaceId(incident) || undefined,
+    flow_id: getFlowId(incident) || undefined,
+    root_event_id: getRootEventId(incident) || undefined,
+    source_event_id: getSourceRecordId(incident) || undefined,
+    from: "incidents",
+  });
+}
+
+function getEventHref(
+  incident: IncidentItem,
+  activeWorkspaceId?: string
+): string {
+  const eventTarget = getEventTargetFromIncident(incident);
+  if (!eventTarget) return "";
+
+  return buildHref(`/events/${encodeURIComponent(eventTarget)}`, {
+    workspace_id: activeWorkspaceId || getIncidentWorkspaceId(incident) || undefined,
+    flow_id: getFlowId(incident) || undefined,
+    root_event_id: getRootEventId(incident) || undefined,
+    source_event_id: getSourceRecordId(incident) || undefined,
+    from: "incidents",
+  });
 }
 
 function MetaItem({
@@ -582,6 +669,25 @@ function MetaItem({
     <div className={breakAll ? "break-all" : undefined}>
       <div className={metaLabelClassName()}>{label}</div>
       <div className="mt-1 text-zinc-200">{value}</div>
+    </div>
+  );
+}
+
+function IncidentMiniStat({
+  label,
+  value,
+  toneClass,
+}: {
+  label: string;
+  value: number | string;
+  toneClass: string;
+}) {
+  return (
+    <div className={statCardClassName()}>
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className={`mt-3 text-3xl font-semibold tracking-tight ${toneClass}`}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -605,6 +711,8 @@ function IncidentListCard({
   const suggestedAction = getSuggestedAction(incident);
   const flowHref = getFlowHref(incident, activeWorkspaceId);
   const commandHref = getCommandHref(incident, activeWorkspaceId);
+  const eventHref = getEventHref(incident, activeWorkspaceId);
+  const detailHref = getIncidentHref(incident, activeWorkspaceId);
 
   return (
     <article className={cardClassName()}>
@@ -616,7 +724,7 @@ function IncidentListCard({
 
           <div className="space-y-3">
             <Link
-              href={getIncidentHref(incident, activeWorkspaceId)}
+              href={detailHref}
               className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
             >
               {title}
@@ -710,6 +818,23 @@ function IncidentListCard({
             breakAll
           />
 
+          <MetaItem
+            label="Event"
+            value={
+              eventHref ? (
+                <Link
+                  href={eventHref}
+                  className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                >
+                  {getEventTargetFromIncident(incident)}
+                </Link>
+              ) : (
+                "—"
+              )
+            }
+            breakAll
+          />
+
           <MetaItem label="Reason" value={getReason(incident)} breakAll />
           <MetaItem label="Resolved" value={formatDate(getResolvedAt(incident))} />
 
@@ -744,10 +869,7 @@ function IncidentListCard({
         </div>
 
         <div className="mt-auto flex flex-col gap-2.5 pt-1">
-          <Link
-            href={getIncidentHref(incident, activeWorkspaceId)}
-            className={actionLinkClassName("primary")}
-          >
+          <Link href={detailHref} className={actionLinkClassName("primary")}>
             Ouvrir le détail
           </Link>
 
@@ -760,6 +882,12 @@ function IncidentListCard({
           {commandHref ? (
             <Link href={commandHref} className={actionLinkClassName("soft")}>
               Ouvrir la command liée
+            </Link>
+          ) : null}
+
+          {eventHref ? (
+            <Link href={eventHref} className={actionLinkClassName("soft")}>
+              Ouvrir l’event lié
             </Link>
           ) : null}
         </div>
@@ -820,19 +948,23 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
   const flowId = firstParam(resolvedSearchParams.flow_id).trim();
   const rootEventId = firstParam(resolvedSearchParams.root_event_id).trim();
-  const sourceRecordId = firstParam(
-    resolvedSearchParams.source_record_id
-  ).trim();
+  const sourceRecordId =
+    firstParam(resolvedSearchParams.source_record_id).trim() ||
+    firstParam(resolvedSearchParams.source_event_id).trim();
+  const commandId = firstParam(resolvedSearchParams.command_id).trim();
   const from = firstParam(resolvedSearchParams.from).trim();
 
   let data: IncidentsResponse | null = null;
+  let fetchFailed = false;
 
   try {
     data = await fetchIncidents({
       workspaceId: activeWorkspaceId || undefined,
+      limit: 500,
     });
   } catch {
     data = null;
+    fetchFailed = true;
   }
 
   const incidentsUnfiltered: IncidentItem[] = Array.isArray(data?.incidents)
@@ -847,7 +979,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     (item) => !isLegacyNoiseIncident(item)
   );
 
-  const hasFilters = Boolean(flowId || rootEventId || sourceRecordId);
+  const hasFilters = Boolean(flowId || rootEventId || sourceRecordId || commandId);
 
   const visibleIncidents = hasFilters
     ? cleanNormalized.filter((incident) =>
@@ -855,6 +987,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
           flowId,
           rootEventId,
           sourceRecordId,
+          commandId,
         })
       )
     : cleanNormalized;
@@ -879,6 +1012,16 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
   const sortedResolvedIncidents = sortResolvedIncidents(resolvedIncidents);
 
+  const latestOpenIncident = latestIncidentByStatus(visibleIncidents, "open");
+  const latestEscalatedIncident = latestIncidentByStatus(
+    visibleIncidents,
+    "escalated"
+  );
+  const latestResolvedIncident = latestIncidentByStatus(
+    visibleIncidents,
+    "resolved"
+  );
+
   const backToFlowsHref =
     from === "flows" || from === "flow_detail"
       ? getBackToFlowsHref({ flowId, rootEventId, sourceRecordId }, activeWorkspaceId)
@@ -889,6 +1032,30 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
   const focusIncident =
     activeIncidents[0] ?? sortedResolvedIncidents[0] ?? visibleIncidents[0] ?? null;
+
+  const focusIncidentDetailHref = focusIncident
+    ? getIncidentHref(focusIncident, activeWorkspaceId)
+    : "";
+  const focusIncidentFlowHref = focusIncident
+    ? getFlowHref(focusIncident, activeWorkspaceId)
+    : "";
+  const focusIncidentCommandHref = focusIncident
+    ? getCommandHref(focusIncident, activeWorkspaceId)
+    : "";
+  const focusIncidentEventHref = focusIncident
+    ? getEventHref(focusIncident, activeWorkspaceId)
+    : "";
+
+  const quickRead =
+    escalatedIncidents.length > 0
+      ? "Priorité : ouvrir les incidents escaladés et vérifier les flows liés."
+      : criticalIncidents.length > 0
+        ? "Priorité : traiter les incidents critiques avant extension du backlog."
+        : openIncidents.length > 0
+          ? "Priorité : surveiller les incidents ouverts et leur progression SLA."
+          : resolvedIncidents.length > 0
+            ? "La vue visible est principalement composée d’incidents résolus."
+            : "Aucune activité incident significative n’est visible pour le moment.";
 
   return (
     <ControlPlaneShell
@@ -950,6 +1117,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
               </div>
 
               <div className="space-y-2 text-sm leading-6 text-white/65">
+                <div>
+                  Workspace :{" "}
+                  <span className="text-white/90">
+                    {activeWorkspaceId || "all"}
+                  </span>
+                </div>
                 <p>
                   <span className="text-white/90">Needs Attention</span> regroupe
                   les incidents à traiter en priorité.
@@ -962,6 +1135,15 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   <span className="text-white/90">SLA</span> aide à repérer les
                   risques de breach ou d’escalade.
                 </p>
+              </div>
+
+              <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                  Quick read
+                </div>
+                <div className="mt-2 text-sm leading-6 text-white/70">
+                  {quickRead}
+                </div>
               </div>
             </div>
           </SidePanelCard>
@@ -997,7 +1179,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   <div>
                     Workspace :{" "}
                     <span className="text-white/90">
-                      {getWorkspace(focusIncident)}
+                      {activeWorkspaceId || getWorkspace(focusIncident)}
                     </span>
                   </div>
                   <div>
@@ -1020,18 +1202,36 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
                 <div className="flex flex-col gap-2">
                   <Link
-                    href={getIncidentHref(focusIncident, activeWorkspaceId)}
+                    href={focusIncidentDetailHref}
                     className={actionLinkClassName("primary")}
                   >
                     Ouvrir le détail
                   </Link>
 
-                  {getFlowHref(focusIncident, activeWorkspaceId) ? (
+                  {focusIncidentFlowHref ? (
                     <Link
-                      href={getFlowHref(focusIncident, activeWorkspaceId)}
+                      href={focusIncidentFlowHref}
                       className={actionLinkClassName("soft")}
                     >
                       Ouvrir le flow lié
+                    </Link>
+                  ) : null}
+
+                  {focusIncidentCommandHref ? (
+                    <Link
+                      href={focusIncidentCommandHref}
+                      className={actionLinkClassName("soft")}
+                    >
+                      Ouvrir la command liée
+                    </Link>
+                  ) : null}
+
+                  {focusIncidentEventHref ? (
+                    <Link
+                      href={focusIncidentEventHref}
+                      className={actionLinkClassName("soft")}
+                    >
+                      Ouvrir l’event lié
                     </Link>
                   ) : null}
                 </div>
@@ -1061,6 +1261,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   source_record_id: {sourceRecordId}
                 </span>
               ) : null}
+              {commandId ? (
+                <span className={chipClassName()}>
+                  command_id: {commandId}
+                </span>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
@@ -1076,13 +1281,105 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
         </SectionCard>
       ) : null}
 
-      {visibleIncidents.length === 0 ? (
+      {fetchFailed ? (
+        <EmptyStatePanel
+          title="Lecture Incidents indisponible"
+          description="Le Dashboard n’a pas pu charger la surface Incidents. La vue est protégée, mais il faut vérifier la lecture API côté worker / helper."
+        />
+      ) : visibleIncidents.length === 0 ? (
         <EmptyStatePanel
           title="Aucun incident visible"
           description="Le Dashboard n’a remonté aucun incident sur la vue actuelle."
         />
       ) : (
         <>
+          <SectionCard
+            title="Incident posture"
+            description="Lecture rapide de l’activité récente de la surface Incidents."
+            action={<SectionCountPill value={visibleIncidents.length} tone="info" />}
+          >
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+              <IncidentMiniStat
+                label="Open"
+                value={openIncidents.length}
+                toneClass="text-sky-300"
+              />
+              <IncidentMiniStat
+                label="Escalated"
+                value={escalatedIncidents.length}
+                toneClass="text-amber-300"
+              />
+              <IncidentMiniStat
+                label="Critical"
+                value={criticalIncidents.length}
+                toneClass="text-red-300"
+              />
+              <IncidentMiniStat
+                label="Resolved"
+                value={resolvedIncidents.length}
+                toneClass="text-emerald-300"
+              />
+              <IncidentMiniStat
+                label="Visible"
+                value={visibleIncidents.length}
+                toneClass="text-white"
+              />
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Latest open</div>
+                <div className="mt-2 text-zinc-100">
+                  {formatDate(
+                    latestOpenIncident
+                      ? getUpdatedAt(latestOpenIncident) || getOpenedAt(latestOpenIncident)
+                      : undefined
+                  )}
+                </div>
+              </div>
+
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Latest escalated</div>
+                <div className="mt-2 text-zinc-100">
+                  {formatDate(
+                    latestEscalatedIncident
+                      ? getUpdatedAt(latestEscalatedIncident) ||
+                          getOpenedAt(latestEscalatedIncident)
+                      : undefined
+                  )}
+                </div>
+              </div>
+
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Latest resolved</div>
+                <div className="mt-2 text-zinc-100">
+                  {formatDate(
+                    latestResolvedIncident
+                      ? getResolvedAt(latestResolvedIncident) ||
+                          getUpdatedAt(latestResolvedIncident)
+                      : undefined
+                  )}
+                </div>
+              </div>
+
+              <div className={metaBoxClassName()}>
+                <div className={metaLabelClassName()}>Critical ratio</div>
+                <div className="mt-2 text-zinc-100">
+                  {visibleIncidents.length > 0
+                    ? `${criticalIncidents.length}/${visibleIncidents.length}`
+                    : "0/0"}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+              <div className={metaLabelClassName()}>Quick read</div>
+              <div className="mt-2 text-sm leading-6 text-zinc-300">
+                {quickRead}
+              </div>
+            </div>
+          </SectionCard>
+
           <SectionBlock
             title="Needs Attention"
             description="Incidents à surveiller en priorité : ouverts, escaladés, critiques ou encore non résolus."
