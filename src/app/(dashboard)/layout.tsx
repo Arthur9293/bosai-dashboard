@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppShell } from "../../components/layout/app-shell";
 import { WorkspaceRouteMemory } from "@/components/workspaces/workspace-route-memory";
@@ -6,6 +7,7 @@ import {
   AUTH_LOGIN_ROUTE,
   resolveAuthSession,
 } from "@/lib/auth/resolve-auth-session";
+import { resolveBosaiAccessState } from "@/lib/onboarding-access";
 import { resolveWorkspaceAccess } from "@/lib/workspaces/resolver";
 import type { WorkspaceEntitlements } from "@/lib/workspaces/types";
 
@@ -23,6 +25,20 @@ const FALLBACK_ENTITLEMENTS: WorkspaceEntitlements = {
   canManageBilling: false,
 };
 
+function hasCommercialOnboardingSignals(
+  cookieValues: Record<string, string | undefined>
+): boolean {
+  return [
+    cookieValues.bosai_plan_code,
+    cookieValues.plan_code,
+    cookieValues.selected_plan,
+    cookieValues.bosai_workspace_status,
+    cookieValues.workspace_status,
+    cookieValues.bosai_onboarding_completed,
+    cookieValues.onboarding_completed,
+  ].some((value) => String(value || "").trim() !== "");
+}
+
 export default async function DashboardLayout({
   children,
 }: DashboardLayoutProps) {
@@ -30,6 +46,32 @@ export default async function DashboardLayout({
 
   if (!session.isAuthenticated) {
     redirect(AUTH_LOGIN_ROUTE);
+  }
+
+  const cookieStore = await cookies();
+
+  const onboardingCookieValues = {
+    bosai_plan_code: cookieStore.get("bosai_plan_code")?.value,
+    plan_code: cookieStore.get("plan_code")?.value,
+    selected_plan: cookieStore.get("selected_plan")?.value,
+    bosai_workspace_status: cookieStore.get("bosai_workspace_status")?.value,
+    workspace_status: cookieStore.get("workspace_status")?.value,
+    bosai_onboarding_completed:
+      cookieStore.get("bosai_onboarding_completed")?.value,
+    onboarding_completed: cookieStore.get("onboarding_completed")?.value,
+  };
+
+  const shouldApplyCommercialGuard =
+    hasCommercialOnboardingSignals(onboardingCookieValues);
+
+  if (shouldApplyCommercialGuard) {
+    const accessState = resolveBosaiAccessState({
+      cookieValues: onboardingCookieValues,
+    });
+
+    if (!accessState.canAccessCockpit && accessState.redirectPath) {
+      redirect(accessState.redirectPath);
+    }
   }
 
   const resolution = await resolveWorkspaceAccess({
