@@ -37,6 +37,10 @@ function eyebrowClassName() {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
 
+function metaLabelClassName() {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
 function paragraphClassName() {
   return "text-base leading-8 text-zinc-400";
 }
@@ -59,26 +63,24 @@ function buttonClassName(
   return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
-function badgeClassName(
-  tone: "default" | "recommended" | "custom" = "default"
-) {
-  if (tone === "recommended") {
+function badgeClassName(variant: "default" | "recommended" | "custom" = "default") {
+  if (variant === "recommended") {
     return "inline-flex rounded-full border border-emerald-500/25 bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300";
   }
 
-  if (tone === "custom") {
+  if (variant === "custom") {
     return "inline-flex rounded-full border border-violet-500/25 bg-violet-500/15 px-3 py-1 text-xs font-medium text-violet-300";
   }
 
   return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-zinc-300";
 }
 
-function planCardClassName(tone: "default" | "recommended" | "custom" = "default") {
-  if (tone === "recommended") {
+function planCardClassName(variant: "default" | "recommended" | "custom" = "default") {
+  if (variant === "recommended") {
     return "rounded-[30px] border border-emerald-500/25 bg-[linear-gradient(180deg,rgba(16,185,129,0.10)_0%,rgba(255,255,255,0.04)_100%)] p-6 shadow-[0_0_0_1px_rgba(16,185,129,0.08)]";
   }
 
-  if (tone === "custom") {
+  if (variant === "custom") {
     return "rounded-[30px] border border-violet-500/20 bg-[linear-gradient(180deg,rgba(139,92,246,0.10)_0%,rgba(255,255,255,0.04)_100%)] p-6";
   }
 
@@ -382,8 +384,8 @@ export default function PricingPage() {
                           plan.tone === "custom"
                             ? "danger"
                             : plan.tone === "recommended"
-                            ? "primary"
-                            : "soft"
+                              ? "primary"
+                              : "soft"
                         )}
                       >
                         {plan.ctaLabel}
