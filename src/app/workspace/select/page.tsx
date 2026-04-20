@@ -177,7 +177,7 @@ function WorkspaceSelectCard({
           </span>
 
           {isActive ? (
-            <span className={badgeClassName("info")}>ACTIVE SPACE</span>
+            <span className={badgeClassName("info")}>ESPACE ACTIF</span>
           ) : null}
         </div>
 
@@ -197,7 +197,7 @@ function WorkspaceSelectCard({
           </Link>
 
           <Link href={laneHref} className={buttonClassName("soft")}>
-            Ouvrir la lane
+            Ouvrir la surface principale
           </Link>
         </div>
       </div>
@@ -250,7 +250,7 @@ export default async function WorkspaceSelectPage() {
     <main className={pageWrapClassName()}>
       <div className={shellClassName()}>
         <section className="space-y-4 border-b border-white/10 pb-6">
-          <div className={sectionLabelClassName()}>Workspace Resolver</div>
+          <div className={sectionLabelClassName()}>Sélecteur d’espace</div>
 
           <div className="space-y-3">
             <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
@@ -258,8 +258,8 @@ export default async function WorkspaceSelectPage() {
             </h1>
 
             <p className="max-w-3xl text-base text-zinc-400 sm:text-lg">
-              Sélectionne l’espace actif. Ton hub et les surfaces visibles
-              dépendront du workspace activé.
+              Sélectionne l’espace actif. L’accueil workspace et les surfaces
+              visibles dépendront de l’espace activé.
             </p>
           </div>
 
@@ -275,7 +275,7 @@ export default async function WorkspaceSelectPage() {
             ) : null}
 
             <span className={badgeClassName("info")}>
-              {sortedMemberships.length} workspace(s)
+              {sortedMemberships.length} espace(s)
             </span>
           </div>
         </section>
@@ -291,7 +291,7 @@ export default async function WorkspaceSelectPage() {
 
             {activeWorkspaceId ? (
               <span className={badgeClassName("info")}>
-                Actif: {activeWorkspaceId}
+                Actif : {activeWorkspaceId}
               </span>
             ) : null}
           </div>
