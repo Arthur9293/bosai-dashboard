@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   AUTH_LOGIN_ROUTE,
   resolveAuthSession,
 } from "@/lib/auth/resolve-auth-session";
+import { resolveBosaiAccessState } from "@/lib/onboarding-access";
 import { resolveWorkspaceAccess } from "@/lib/workspaces/resolver";
 
 type ButtonVariant = "default" | "primary" | "soft";
@@ -264,6 +266,27 @@ export default async function WorkspaceIndexPage() {
 
   if (!session.isAuthenticated) {
     redirect(AUTH_LOGIN_ROUTE);
+  }
+
+  const cookieStore = await cookies();
+
+  const onboardingCookieValues = {
+    bosai_plan_code: cookieStore.get("bosai_plan_code")?.value,
+    plan_code: cookieStore.get("plan_code")?.value,
+    selected_plan: cookieStore.get("selected_plan")?.value,
+    bosai_workspace_status: cookieStore.get("bosai_workspace_status")?.value,
+    workspace_status: cookieStore.get("workspace_status")?.value,
+    bosai_onboarding_completed:
+      cookieStore.get("bosai_onboarding_completed")?.value,
+    onboarding_completed: cookieStore.get("onboarding_completed")?.value,
+  };
+
+  const accessState = resolveBosaiAccessState({
+    cookieValues: onboardingCookieValues,
+  });
+
+  if (!accessState.canAccessCockpit) {
+    redirect(accessState.redirectPath || "/pricing");
   }
 
   const resolution = await resolveWorkspaceAccess({
