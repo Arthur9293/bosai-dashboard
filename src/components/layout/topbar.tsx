@@ -19,10 +19,12 @@ function text(value?: string | null): string {
 }
 
 function getPageTitle(pathname: string): string {
-  if (pathname === "/" || pathname === "/overview") return "Overview";
+  if (pathname === "/" || pathname === "/overview") return "Vue d’ensemble";
+
   if (pathname === "/workspace" || pathname.startsWith("/workspace/")) {
-    return "Workspace Hub";
+    return "Accueil workspace";
   }
+
   if (pathname.startsWith("/flows")) return "Flows";
   if (pathname.startsWith("/runs")) return "Runs";
   if (pathname.startsWith("/commands")) return "Commands";
@@ -32,7 +34,8 @@ function getPageTitle(pathname: string): string {
   if (pathname.startsWith("/policies")) return "Policies";
   if (pathname.startsWith("/tools")) return "Tools";
   if (pathname.startsWith("/workspaces")) return "Workspaces";
-  if (pathname.startsWith("/settings")) return "Settings";
+  if (pathname.startsWith("/settings")) return "Réglages";
+
   return "Dashboard";
 }
 
@@ -52,9 +55,7 @@ function badgeClassName(variant: BadgeVariant = "default"): string {
   return "inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-300";
 }
 
-function actionClassName(
-  variant: "default" | "soft" = "default"
-): string {
+function actionClassName(variant: "default" | "soft" = "default"): string {
   const base =
     "inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium transition";
 
@@ -65,9 +66,7 @@ function actionClassName(
   return `${base} border border-white/10 bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white`;
 }
 
-function categoryTone(
-  category: WorkspaceSummary["category"]
-): BadgeVariant {
+function categoryTone(category: WorkspaceSummary["category"]): BadgeVariant {
   if (category === "agency") return "violet";
   if (category === "company") return "info";
   if (category === "freelance") return "success";
@@ -103,7 +102,7 @@ function getPrimarySurfaceLabel(
   if (href === "/flows") return "Flows";
   if (href === "/commands") return "Commands";
   if (href === "/workspaces") return "Workspaces";
-  return "Overview";
+  return "Vue d’ensemble";
 }
 
 function countCapabilities(entitlements: WorkspaceEntitlements): number {
