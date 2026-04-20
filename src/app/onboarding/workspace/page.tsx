@@ -179,8 +179,14 @@ export default async function OnboardingWorkspacePage({
   const selectedPlan = plans[planCode] ?? null;
   const hasValidPlan = selectedPlan !== null;
 
+  const createTarget = hasValidPlan
+    ? `/workspace/create?source=onboarding&plan=${selectedPlan.code}`
+    : "/workspace/create?source=onboarding";
+
   const activationHref = hasValidPlan
-    ? `/onboarding/continue?step=activate&plan=${selectedPlan.code}&next=/workspace`
+    ? `/onboarding/continue?step=activate&plan=${
+        selectedPlan.code
+      }&next=${encodeURIComponent(createTarget)}`
     : "";
 
   const provisioningHref = hasValidPlan
@@ -220,19 +226,19 @@ export default async function OnboardingWorkspacePage({
 
                 <p className="mt-4 max-w-3xl text-lg leading-8 text-zinc-300">
                   {hasValidPlan
-                    ? "Vous êtes à l’étape finale avant l’activation. Cette page fixe l’identité et le cadre de départ de votre espace BOSAI."
+                    ? "Vous êtes à l’étape finale avant la création réelle. Cette page fixe l’identité et le cadre de départ de votre espace BOSAI."
                     : "La configuration du workspace nécessite un plan valide. Revenez au provisioning ou au choix du plan pour continuer correctement."}
                 </p>
 
                 <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-500">
-                  L’accès cockpit s’ouvre seulement après cette étape, quand le workspace est considéré comme prêt et actif.
+                  L’accès cockpit ne doit pas s’ouvrir ici. Le flux continue d’abord vers la création contrôlée du workspace.
                 </p>
               </div>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 {hasValidPlan ? (
                   <Link href={activationHref} className={buttonClassName("primary")}>
-                    Activer mon workspace
+                    Continuer vers la création
                   </Link>
                 ) : (
                   <span className={buttonClassName("primary", true)}>
@@ -253,28 +259,28 @@ export default async function OnboardingWorkspacePage({
                 <div className={secondaryCardClassName()}>
                   <div className={metaLabelClassName()}>Account status</div>
                   <div className="mt-2 text-2xl font-semibold text-sky-300">
-                    {hasValidPlan ? "ready_to_activate" : "plan_missing"}
+                    {hasValidPlan ? "ready_to_create" : "plan_missing"}
                   </div>
                 </div>
 
                 <div className={secondaryCardClassName()}>
                   <div className={metaLabelClassName()}>Workspace status</div>
                   <div className="mt-2 text-xl font-semibold text-white">
-                    {hasValidPlan ? "ready_to_activate" : "non créé"}
+                    {hasValidPlan ? "active (onboarding non finalisé)" : "non créé"}
                   </div>
                 </div>
 
                 <div className={secondaryCardClassName()}>
                   <div className={metaLabelClassName()}>Cockpit access</div>
                   <div className="mt-2 text-xl font-semibold text-white">
-                    {hasValidPlan ? "Ouverture après activation" : "Bloqué"}
+                    {hasValidPlan ? "Bloqué jusqu’à la création réelle" : "Bloqué"}
                   </div>
                 </div>
 
                 <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
                   <div className={metaLabelClassName()}>Lecture produit</div>
                   <p className="mt-2 text-sm leading-7 text-zinc-400">
-                    Cette étape transforme un simple provisioning en espace exploitable et cohérent avant l’ouverture du cockpit.
+                    Cette étape ferme la partie commerciale, puis transfère vers une création contrôlée du workspace au lieu d’ouvrir directement le legacy selector.
                   </p>
                 </div>
               </div>
@@ -290,7 +296,7 @@ export default async function OnboardingWorkspacePage({
                     Paramètres initiaux du workspace
                   </h2>
                   <p className="mt-4 max-w-2xl text-base leading-8 text-zinc-400">
-                    Cette vue fixe les valeurs de départ du workspace avant son activation dans le flux commercial v1.
+                    Cette vue fixe les valeurs de départ du workspace avant sa création effective dans le flux commercial v1.
                   </p>
                 </div>
 
@@ -357,8 +363,8 @@ export default async function OnboardingWorkspacePage({
                     </div>
 
                     <div className={metaBoxClassName()}>
-                      <div className={metaLabelClassName()}>Activation route</div>
-                      <div className="mt-2 break-all text-zinc-100">{activationHref}</div>
+                      <div className={metaLabelClassName()}>Next route</div>
+                      <div className="mt-2 break-all text-zinc-100">{createTarget}</div>
                     </div>
                   </div>
                 </div>
@@ -368,7 +374,7 @@ export default async function OnboardingWorkspacePage({
                 <div className="max-w-3xl">
                   <div className={eyebrowClassName()}>Checklist finale</div>
                   <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                    Ce qui devient vrai après activation
+                    Ce qui devient vrai après cette étape
                   </h2>
                 </div>
 
@@ -376,7 +382,7 @@ export default async function OnboardingWorkspacePage({
                   {[
                     [
                       "1",
-                      "Workspace identifiable",
+                      "Workspace cadré",
                       "L’espace a un nom, un cadre et une logique de départ lisibles.",
                     ],
                     [
@@ -386,13 +392,13 @@ export default async function OnboardingWorkspacePage({
                     ],
                     [
                       "3",
-                      "Cockpit autorisable",
-                      "L’espace peut désormais ouvrir l’accès au cockpit BOSAI.",
+                      "Création contrôlée",
+                      "Le prochain écran doit créer l’espace au lieu d’ouvrir le cockpit brut.",
                     ],
                     [
                       "4",
                       "Base v1 propre",
-                      "Vous partez d’un workspace activé plutôt que d’un espace vide.",
+                      "Vous partez d’un workspace cadré plutôt que d’un espace vide.",
                     ],
                   ].map(([step, title, desc]) => (
                     <div key={step} className={secondaryCardClassName()}>
@@ -440,20 +446,20 @@ export default async function OnboardingWorkspacePage({
                 <div className={sectionCardClassName()}>
                   <div className={eyebrowClassName()}>Actions</div>
                   <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                    Activer ou ajuster
+                    Continuer ou ajuster
                   </h2>
 
                   <div className="mt-6 space-y-4">
                     <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
                       <div className={metaLabelClassName()}>Recommandation</div>
                       <p className="mt-2 text-sm leading-7 text-zinc-400">
-                        Active maintenant le workspace pour fermer le flux commercial v1 et ouvrir ensuite le cockpit via le guard global.
+                        Continue maintenant vers la création réelle du workspace. Le cockpit restera bloqué tant que cette création n’est pas finalisée.
                       </p>
                     </div>
 
                     <div className="flex flex-col gap-3">
                       <Link href={activationHref} className={buttonClassName("primary")}>
-                        Activer mon workspace
+                        Continuer vers la création
                       </Link>
 
                       <Link href={provisioningHref} className={buttonClassName("soft")}>
