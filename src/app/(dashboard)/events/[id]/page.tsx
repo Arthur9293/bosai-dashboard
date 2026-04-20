@@ -14,6 +14,14 @@ import {
   type DashboardStatusKind,
 } from "@/components/dashboard/StatusBadge";
 
+type SearchParams = {
+  workspace_id?: string | string[];
+  flow_id?: string | string[];
+  root_event_id?: string | string[];
+  source_event_id?: string | string[];
+  from?: string | string[];
+};
+
 type PageProps = {
   params:
     | Promise<{
@@ -22,6 +30,7 @@ type PageProps = {
     | {
         id: string;
       };
+  searchParams?: Promise<SearchParams> | SearchParams;
 };
 
 function cardClassName() {
@@ -49,6 +58,10 @@ function actionLinkClassName(
 
   if (variant === "danger") {
     return `${base} border border-rose-500/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15`;
+  }
+
+  if (variant === "soft") {
+    return `${base} border border-white/10 bg-black/20 text-zinc-200 hover:bg-white/[0.06]`;
   }
 
   return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
@@ -102,6 +115,26 @@ function formatDateParts(value?: string | null): { date: string; time: string } 
   };
 }
 
+function firstParam(value?: string | string[]) {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
+function buildHref(
+  pathname: string,
+  params: Record<string, string | undefined>
+): string {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    const text = String(value || "").trim();
+    if (text) search.set(key, text);
+  }
+
+  const query = search.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
 function parseMaybeJson(value: unknown): Record<string, unknown> {
   if (!value) return {};
 
@@ -150,15 +183,42 @@ function toTextOrEmpty(value: unknown): string {
   return toText(value, "");
 }
 
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function isRecordIdLike(value: string): boolean {
+  return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
+}
+
+function compactTechnicalId(value: string, max = 34): string {
+  const clean = value.trim();
+  if (!clean) return "—";
+  if (clean.length <= max) return clean;
+
+  const keepStart = Math.max(12, Math.floor((max - 3) / 2));
+  const keepEnd = Math.max(8, max - keepStart - 3);
+
+  return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
+}
+
 function getStatusBucket(status?: string): string {
   const normalized = (status || "").trim().toLowerCase();
 
-  if (["processed", "done", "success", "completed"].includes(normalized)) {
+  if (["processed", "done", "success", "completed", "resolved"].includes(normalized)) {
     return "processed";
   }
 
-  if (["queued", "pending", "new"].includes(normalized)) {
+  if (["queued", "queue", "pending", "new"].includes(normalized)) {
     return "queued";
+  }
+
+  if (["running", "processing"].includes(normalized)) {
+    return "running";
+  }
+
+  if (["retry", "retriable"].includes(normalized)) {
+    return "retry";
   }
 
   if (["ignored"].includes(normalized)) {
@@ -177,6 +237,8 @@ function getStatusBadgeKind(status?: string): DashboardStatusKind {
 
   if (bucket === "processed") return "success";
   if (bucket === "queued") return "queued";
+  if (bucket === "running") return "running";
+  if (bucket === "retry") return "retry";
   if (bucket === "error") return "failed";
   if (bucket === "ignored") return "unknown";
   return "unknown";
@@ -187,22 +249,13 @@ function getStatusLabel(status?: string): string {
 
   if (bucket === "processed") return "PROCESSED";
   if (bucket === "queued") return "QUEUED";
+  if (bucket === "running") return "RUNNING";
+  if (bucket === "retry") return "RETRY";
   if (bucket === "ignored") return "IGNORED";
   if (bucket === "error") return "ERROR";
 
   const raw = (status || "").trim();
   return raw ? raw.toUpperCase() : "UNKNOWN";
-}
-
-function compactTechnicalId(value: string, max = 34): string {
-  const clean = value.trim();
-  if (!clean) return "—";
-  if (clean.length <= max) return clean;
-
-  const keepStart = Math.max(12, Math.floor((max - 3) / 2));
-  const keepEnd = Math.max(8, max - keepStart - 3);
-
-  return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
 }
 
 function getEventPayload(event: EventItem): Record<string, unknown> {
@@ -222,7 +275,8 @@ function getEventType(event: EventItem): string {
 }
 
 function getEventStatus(event: EventItem): string {
-  return toTextOrEmpty(event.status) || "unknown";
+  const payload = getEventPayload(event);
+  return toTextOrEmpty(event.status) || toTextOrEmpty(payload.status) || "unknown";
 }
 
 function getEventCapability(event: EventItem): string {
@@ -239,9 +293,12 @@ function getEventCapability(event: EventItem): string {
 
 function getEventWorkspace(event: EventItem): string {
   const payload = getEventPayload(event);
+  const record = event as Record<string, unknown>;
 
   return (
     toTextOrEmpty(event.workspace_id) ||
+    toTextOrEmpty(record.workspace_id) ||
+    toTextOrEmpty(record.Workspace_ID) ||
     toTextOrEmpty(payload.workspace_id) ||
     toTextOrEmpty(payload.workspaceId) ||
     "—"
@@ -252,7 +309,12 @@ function getEventSource(event: EventItem): string {
   const payload = getEventPayload(event);
   const record = event as Record<string, unknown>;
 
-  return toTextOrEmpty(record.source) || toTextOrEmpty(payload.source) || "—";
+  return (
+    toTextOrEmpty(event.source) ||
+    toTextOrEmpty(record.source) ||
+    toTextOrEmpty(payload.source) ||
+    "—"
+  );
 }
 
 function getEventRunId(event: EventItem): string {
@@ -260,8 +322,14 @@ function getEventRunId(event: EventItem): string {
   const record = event as Record<string, unknown>;
 
   return (
+    toTextOrEmpty(event.run_id) ||
     toTextOrEmpty(record.run_id) ||
+    toTextOrEmpty(record.Run_ID) ||
+    toTextOrEmpty(record.run_record_id) ||
+    toTextOrEmpty(record.Run_Record_ID) ||
     toTextOrEmpty(payload.run_id) ||
+    toTextOrEmpty(payload.runId) ||
+    toTextOrEmpty(payload.run_record_id) ||
     toTextOrEmpty(payload.runRecordId) ||
     "—"
   );
@@ -278,6 +346,7 @@ function getLinkedCommandValue(event: EventItem): string {
 
   return (
     toTextOrEmpty(event.command_id) ||
+    toTextOrEmpty(event.linked_command) ||
     toTextOrEmpty(record.command_id) ||
     toTextOrEmpty(record.Command_ID) ||
     toTextOrEmpty(record.linked_command) ||
@@ -355,7 +424,11 @@ function getFlowNavigationTarget(event: EventItem): string {
 function getCreatedAt(event: EventItem): string {
   const record = event as Record<string, unknown>;
 
-  return toTextOrEmpty(event.created_at) || toTextOrEmpty(record.Created_At) || "";
+  return (
+    toTextOrEmpty(event.created_at) ||
+    toTextOrEmpty(record.Created_At) ||
+    ""
+  );
 }
 
 function getUpdatedAt(event: EventItem): string {
@@ -478,15 +551,22 @@ function buildSyntheticEventFromCommand(id: string, command: CommandItem): Event
     workspace_id: getCommandWorkspace(command),
     flow_id: getCommandFlowId(command),
     root_event_id: getCommandRootEventId(command),
-    command_id: command.id,
+    source_record_id: getCommandSourceEventId(command),
+    source_event_id: getCommandSourceEventId(command),
+    command_id: String(command.id || ""),
+    linked_command: String(command.id || ""),
     created_at: getCommandStartedAt(command) || getCommandFinishedAt(command),
-    updated_at: getCommandStartedAt(command) || getCommandFinishedAt(command),
+    updated_at: getCommandFinishedAt(command) || getCommandStartedAt(command),
     processed_at: getCommandFinishedAt(command) || getCommandStartedAt(command),
     payload: {
       source: "synthetic_from_command",
-      command_id: command.id,
+      command_id: String(command.id || ""),
       reconstructed_from_command: true,
       capability: getCommandCapability(command),
+      flow_id: getCommandFlowId(command),
+      root_event_id: getCommandRootEventId(command),
+      source_event_id: getCommandSourceEventId(command),
+      workspace_id: getCommandWorkspace(command),
     },
   } as EventItem;
 }
@@ -516,9 +596,14 @@ function getIncidentIdCandidates(incident: IncidentItem): string[] {
   );
 }
 
-function buildIncidentHref(matchedIncident: IncidentItem | null): string {
+function buildIncidentHref(
+  matchedIncident: IncidentItem | null,
+  workspaceId: string
+): string {
   if (!matchedIncident?.id) return "";
-  return `/incidents/${encodeURIComponent(String(matchedIncident.id))}`;
+  return buildHref(`/incidents/${encodeURIComponent(String(matchedIncident.id))}`, {
+    workspace_id: workspaceId || undefined,
+  });
 }
 
 function MetaItem({
@@ -560,14 +645,31 @@ function MetricCard({
   );
 }
 
-export default async function EventDetailPage({ params }: PageProps) {
+export default async function EventDetailPage({
+  params,
+  searchParams,
+}: PageProps) {
   const resolvedParams = await Promise.resolve(params);
+  const resolvedSearchParams = searchParams
+    ? await Promise.resolve(searchParams)
+    : {};
+
   const id = decodeURIComponent(resolvedParams.id);
+  const activeWorkspaceId = firstParam(resolvedSearchParams.workspace_id).trim();
+  const incomingFlowId = firstParam(resolvedSearchParams.flow_id).trim();
+  const incomingRootEventId = firstParam(resolvedSearchParams.root_event_id).trim();
+  const incomingSourceEventId = firstParam(
+    resolvedSearchParams.source_event_id
+  ).trim();
+  const from = firstParam(resolvedSearchParams.from).trim();
 
   let event: EventItem | null = null;
 
   try {
-    const data = await fetchEvents();
+    const data = await fetchEvents({
+      limit: 500,
+      workspaceId: activeWorkspaceId || undefined,
+    });
     const events = Array.isArray(data?.events) ? data.events : [];
     event = events.find((item) => String(item.id) === id) || null;
   } catch {
@@ -576,7 +678,10 @@ export default async function EventDetailPage({ params }: PageProps) {
 
   if (!event) {
     try {
-      const commandsData = await fetchCommands();
+      const commandsData = await fetchCommands({
+        limit: 500,
+        workspaceId: activeWorkspaceId || undefined,
+      });
       const commands = Array.isArray(commandsData?.commands)
         ? commandsData.commands
         : [];
@@ -604,14 +709,20 @@ export default async function EventDetailPage({ params }: PageProps) {
   const flowDisplayTarget = getFlowDisplayTarget(event);
   const flowNavigationTarget = getFlowNavigationTarget(event);
   const rootEventId = getRootEventId(event);
+  const sourceRecordId = getSourceRecordId(event);
   const workspace = getEventWorkspace(event);
   const source = getEventSource(event);
   const capability = getEventCapability(event);
   const synthetic = isSyntheticEvent(event);
 
+  const effectiveWorkspaceId = activeWorkspaceId || (workspace !== "—" ? workspace : "");
+
   let matchedIncident: IncidentItem | null = null;
   try {
-    const incidentsData = await fetchIncidents(300);
+    const incidentsData = await fetchIncidents({
+      limit: 300,
+      workspaceId: effectiveWorkspaceId || undefined,
+    });
     const incidents = Array.isArray(incidentsData?.incidents)
       ? incidentsData.incidents
       : [];
@@ -622,7 +733,7 @@ export default async function EventDetailPage({ params }: PageProps) {
       flowDisplayTarget,
       flowNavigationTarget,
       rootEventId,
-      getSourceRecordId(event),
+      sourceRecordId,
     ].filter(Boolean);
 
     matchedIncident =
@@ -637,8 +748,36 @@ export default async function EventDetailPage({ params }: PageProps) {
 
   const hasCommand = linkedCommand !== "";
   const hasFlow = flowNavigationTarget !== "";
-  const incidentHref = buildIncidentHref(matchedIncident);
+  const incidentHref = buildIncidentHref(matchedIncident, effectiveWorkspaceId);
   const hasIncident = incidentHref !== "";
+
+  const eventsListHref = buildHref("/events", {
+    workspace_id: effectiveWorkspaceId || undefined,
+    flow_id: incomingFlowId || undefined,
+    root_event_id: incomingRootEventId || undefined,
+    source_event_id: incomingSourceEventId || undefined,
+    from: from || undefined,
+  });
+
+  const allEventsHref = buildHref("/events", {
+    workspace_id: effectiveWorkspaceId || undefined,
+  });
+
+  const commandHref = hasCommand
+    ? buildHref(`/commands/${encodeURIComponent(linkedCommand)}`, {
+        workspace_id: effectiveWorkspaceId || undefined,
+        flow_id: flowNavigationTarget || undefined,
+        root_event_id: rootEventId || undefined,
+        source_event_id: sourceRecordId || undefined,
+        from: "events",
+      })
+    : "";
+
+  const flowHref = hasFlow
+    ? buildHref(`/flows/${encodeURIComponent(flowNavigationTarget)}`, {
+        workspace_id: effectiveWorkspaceId || undefined,
+      })
+    : "";
 
   return (
     <div className="space-y-8">
@@ -647,7 +786,7 @@ export default async function EventDetailPage({ params }: PageProps) {
           <div className="space-y-2">
             <div className="text-base text-zinc-300">
               <Link
-                href="/events"
+                href={eventsListHref}
                 className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
               >
                 Events
@@ -677,6 +816,10 @@ export default async function EventDetailPage({ params }: PageProps) {
               <span className={neutralPillClassName()}>{capability}</span>
             ) : null}
 
+            <span className={neutralPillClassName()}>
+              {effectiveWorkspaceId || workspace || "—"}
+            </span>
+
             <DashboardStatusBadge
               kind={hasCommand ? "success" : "unknown"}
               label={hasCommand ? "COMMAND CREATED" : "COMMAND MISSING"}
@@ -701,15 +844,12 @@ export default async function EventDetailPage({ params }: PageProps) {
           ) : null}
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Link href="/events" className={actionLinkClassName("soft")}>
+            <Link href={eventsListHref} className={actionLinkClassName("soft")}>
               Retour aux events
             </Link>
 
             {hasCommand ? (
-              <Link
-                href={`/commands/${encodeURIComponent(linkedCommand)}`}
-                className={actionLinkClassName("primary")}
-              >
+              <Link href={commandHref} className={actionLinkClassName("primary")}>
                 Ouvrir la command liée
               </Link>
             ) : (
@@ -719,10 +859,7 @@ export default async function EventDetailPage({ params }: PageProps) {
             )}
 
             {hasFlow ? (
-              <Link
-                href={`/flows/${encodeURIComponent(flowNavigationTarget)}`}
-                className={actionLinkClassName("soft")}
-              >
+              <Link href={flowHref} className={actionLinkClassName("soft")}>
                 Ouvrir le flow lié
               </Link>
             ) : (
@@ -741,7 +878,7 @@ export default async function EventDetailPage({ params }: PageProps) {
         <div className={cardClassName()}>
           <div className="text-sm text-zinc-400">Workspace</div>
           <div className="mt-3 text-lg font-semibold tracking-tight text-white sm:text-xl">
-            {workspace || "—"}
+            {effectiveWorkspaceId || workspace || "—"}
           </div>
         </div>
       </section>
@@ -772,7 +909,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
               <div className={metaBoxClassName()}>
                 <div className={metaLabelClassName()}>Workspace</div>
-                <div className="mt-2 text-zinc-100">{workspace}</div>
+                <div className="mt-2 text-zinc-100">{effectiveWorkspaceId || workspace}</div>
               </div>
 
               <div className={metaBoxClassName()}>
@@ -787,7 +924,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
               <div className={metaBoxClassName()}>
                 <div className={metaLabelClassName()}>Run</div>
-                <div className="mt-2 text-zinc-100">{getEventRunId(event)}</div>
+                <div className="mt-2 break-all text-zinc-100">{getEventRunId(event)}</div>
               </div>
 
               <MetaItem
@@ -803,7 +940,7 @@ export default async function EventDetailPage({ params }: PageProps) {
                 label="Source record"
                 value={
                   <span className={technicalValueClassName()}>
-                    {getSourceRecordId(event) || "—"}
+                    {sourceRecordId || "—"}
                   </span>
                 }
                 breakAll
@@ -846,7 +983,11 @@ export default async function EventDetailPage({ params }: PageProps) {
                 }
                 breakAll
               />
-              <MetaItem label="Incident" value={matchedIncident?.id || "—"} breakAll />
+              <MetaItem
+                label="Incident"
+                value={matchedIncident?.id || "—"}
+                breakAll
+              />
               <MetaItem
                 label="Root event"
                 value={<span className={technicalValueClassName()}>{rootEventId || "—"}</span>}
@@ -856,7 +997,7 @@ export default async function EventDetailPage({ params }: PageProps) {
                 label="Source record"
                 value={
                   <span className={technicalValueClassName()}>
-                    {getSourceRecordId(event) || "—"}
+                    {sourceRecordId || "—"}
                   </span>
                 }
                 breakAll
@@ -955,19 +1096,16 @@ export default async function EventDetailPage({ params }: PageProps) {
 
           <div className="border-t border-white/10 pt-5">
             <div className="space-y-3">
-              <Link href="/events" className={actionLinkClassName("soft")}>
+              <Link href={eventsListHref} className={actionLinkClassName("soft")}>
                 Retour à la liste events
               </Link>
 
-              <Link href="/events" className={actionLinkClassName("primary")}>
+              <Link href={allEventsHref} className={actionLinkClassName("primary")}>
                 Voir tous les events
               </Link>
 
               {hasCommand ? (
-                <Link
-                  href={`/commands/${encodeURIComponent(linkedCommand)}`}
-                  className={actionLinkClassName("soft")}
-                >
+                <Link href={commandHref} className={actionLinkClassName("soft")}>
                   Ouvrir la command liée
                 </Link>
               ) : (
@@ -977,10 +1115,7 @@ export default async function EventDetailPage({ params }: PageProps) {
               )}
 
               {hasFlow ? (
-                <Link
-                  href={`/flows/${encodeURIComponent(flowNavigationTarget)}`}
-                  className={actionLinkClassName("soft")}
-                >
+                <Link href={flowHref} className={actionLinkClassName("soft")}>
                   Ouvrir le flow lié
                 </Link>
               ) : (
