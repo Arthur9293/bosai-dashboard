@@ -89,8 +89,8 @@ function formatDate(value?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "short",
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
 }
@@ -208,9 +208,18 @@ function getRunStatus(run: RunRecord): string {
 function getRunStatusGroup(run: RunRecord): RunStatusGroup {
   const status = getRunStatus(run).trim().toLowerCase();
 
-  if (["running", "processing"].includes(status)) return "running";
-  if (["done", "success", "completed", "processed"].includes(status)) return "done";
-  if (["error", "failed", "dead", "blocked"].includes(status)) return "error";
+  if (["running", "processing", "queued", "pending", "new"].includes(status)) {
+    return "running";
+  }
+
+  if (["done", "success", "completed", "processed"].includes(status)) {
+    return "done";
+  }
+
+  if (["error", "failed", "dead", "blocked", "retry", "retriable"].includes(status)) {
+    return "error";
+  }
+
   if (["unsupported"].includes(status)) return "unsupported";
 
   return "other";
@@ -333,11 +342,11 @@ function getStatusTextTone(status?: string): string {
     return "text-emerald-300";
   }
 
-  if (["running", "processing"].includes(group)) {
+  if (["running", "processing", "queued", "pending", "new"].includes(group)) {
     return "text-sky-300";
   }
 
-  if (["error", "failed", "dead", "blocked"].includes(group)) {
+  if (["error", "failed", "dead", "blocked", "retry", "retriable"].includes(group)) {
     return "text-rose-300";
   }
 
@@ -387,6 +396,26 @@ function sortRecentRuns(runs: RunRecord[]) {
   return [...runs].sort((a, b) => getRunLatestTs(b) - getRunLatestTs(a));
 }
 
+function normalizeRunsPayload(payload: unknown): FlexibleRunsResponse | null {
+  if (!payload) return null;
+
+  if (Array.isArray(payload)) {
+    return {
+      count: payload.length,
+      runs: payload.filter(
+        (item): item is RunRecord =>
+          Boolean(item) && typeof item === "object" && !Array.isArray(item)
+      ),
+    };
+  }
+
+  if (typeof payload === "object") {
+    return payload as FlexibleRunsResponse;
+  }
+
+  return null;
+}
+
 function RunMiniStat({
   label,
   value,
@@ -423,7 +452,7 @@ function RunListCard({
   const updatedAt = getRunUpdatedAt(run);
   const duration = formatDuration(startedAt, finishedAt, updatedAt);
   const href = getRunHref(run, activeWorkspaceId);
-  const workspaceId = getRunWorkspaceId(run) || activeWorkspaceId || "production";
+  const workspaceId = getRunWorkspaceId(run) || activeWorkspaceId || "default";
 
   const content = (
     <article className={cardClassName()}>
@@ -500,14 +529,14 @@ function RunListCard({
 
         <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-zinc-500">
-            Dernière activité :{" "}
+            Latest activity:{" "}
             <span className="text-zinc-300">
               {formatDate(finishedAt || updatedAt || startedAt)}
             </span>
           </div>
 
           <div className="text-sm font-medium text-zinc-300">
-            {href ? "Ouvrir le détail →" : "Détail indisponible"}
+            {href ? "Open details →" : "Details unavailable"}
           </div>
         </div>
       </div>
@@ -549,16 +578,21 @@ export default async function RunsPage({ searchParams }: PageProps) {
   const activeWorkspaceId = workspace.activeWorkspaceId || "";
 
   let data: FlexibleRunsResponse | null = null;
+  let fetchError = "";
 
   try {
     const fetchRunsFlexible = fetchRuns as unknown as (
       arg?: unknown
-    ) => Promise<FlexibleRunsResponse>;
+    ) => Promise<unknown>;
 
-    data = await fetchRunsFlexible({
+    const raw = await fetchRunsFlexible({
       workspaceId: activeWorkspaceId || undefined,
     });
-  } catch {
+
+    data = normalizeRunsPayload(raw);
+  } catch (error) {
+    fetchError =
+      error instanceof Error ? error.message : "Failed to load runs.";
     data = null;
   }
 
@@ -571,7 +605,6 @@ export default async function RunsPage({ searchParams }: PageProps) {
   const stats = buildStats(runs);
   const totalRuns = runs.length;
   const visibleRuns = sortRecentRuns(runs).slice(0, 50);
-
   const attentionRuns = sortAttentionRuns(
     visibleRuns.filter((run) =>
       ["running", "error", "unsupported", "other"].includes(
@@ -579,87 +612,100 @@ export default async function RunsPage({ searchParams }: PageProps) {
       )
     )
   );
-
   const completedRuns = sortRecentRuns(
     visibleRuns.filter((run) => getRunStatusGroup(run) === "done")
   );
 
   const latestRun = visibleRuns[0] ?? null;
-  const workspaceLabel = activeWorkspaceId || "production";
+  const workspaceLabel = activeWorkspaceId || "Default workspace";
   const latestRunHref = latestRun
     ? getRunHref(latestRun, activeWorkspaceId)
     : "";
 
+  const serverCount =
+    typeof data?.count === "number" && Number.isFinite(data.count)
+      ? data.count
+      : runsUnfiltered.length;
+
+  const pageState =
+    fetchError.length > 0 ? "Degraded" : totalRuns > 0 ? "Ready" : "Empty";
+
   const quickRead =
-    stats.error > 0
-      ? "Priorité : vérifier les runs en erreur avant de lire l’historique terminé."
-      : stats.running > 0
-        ? "Priorité : suivre les runs actifs et confirmer leur durée d’exécution."
-        : totalRuns > 0
-          ? "Le workspace visible paraît globalement stable avec un historique lisible."
-          : "Aucun run visible sur le workspace actif.";
+    fetchError
+      ? "Runs data could not be fully loaded. The page stayed safe, kept the workspace scope, and exposed the current degraded state."
+      : stats.error > 0
+        ? "Priority: inspect failed or retrying runs before reading completed history."
+        : stats.running > 0
+          ? "Priority: follow active execution and confirm that duration stays within expected limits."
+          : totalRuns > 0
+            ? "The active workspace looks stable. Recent execution history is readable and mostly completed."
+            : "No visible run is currently exposed for the active workspace.";
 
   return (
     <ControlPlaneShell
       eyebrow="Operations"
       title="Runs"
-      description="Historique d’exécution des capacités BOSAI. Cette vue affiche les runs, statuts, workers et signaux d’exécution."
+      description="Execution history for BOSAI capabilities. This surface keeps the workspace scope, exposes recent activity, and highlights attention-first runs without touching the validated shell."
       badges={[
-        { label: "Workspace scoped", tone: "info" },
-        { label: "Execution history", tone: "muted" },
-        { label: `${visibleRuns.length} visibles`, tone: "muted" },
+        { label: "Workspace aware", tone: "info" },
+        { label: `State · ${pageState}`, tone: fetchError ? "warning" : "muted" },
+        { label: `${visibleRuns.length} visible`, tone: "muted" },
       ]}
       metrics={[
         { label: "Total runs", value: totalRuns, toneClass: "text-white" },
         { label: "Running", value: stats.running, toneClass: "text-sky-300" },
         { label: "Done", value: stats.done, toneClass: "text-emerald-300" },
-        { label: "Error", value: stats.error, toneClass: "text-rose-300" },
+        {
+          label: "Attention",
+          value: stats.error + stats.unsupported + stats.other,
+          toneClass: "text-amber-300",
+        },
       ]}
       actions={
         <>
           <Link
-            href={appendWorkspaceIdToHref("/flows", activeWorkspaceId)}
+            href={appendWorkspaceIdToHref("/workspace", activeWorkspaceId)}
             className={actionLinkClassName("soft")}
           >
-            Ouvrir Flows
+            Workspace hub
           </Link>
 
           <Link
-            href={appendWorkspaceIdToHref("/incidents", activeWorkspaceId)}
-            className={actionLinkClassName("danger")}
+            href={appendWorkspaceIdToHref("/flows", activeWorkspaceId)}
+            className={actionLinkClassName("default")}
           >
-            Voir Incidents
+            Open Flows
           </Link>
 
           <Link
             href={appendWorkspaceIdToHref("/commands", activeWorkspaceId)}
             className={actionLinkClassName("primary")}
           >
-            Voir Commands
+            View Commands
           </Link>
         </>
       }
       aside={
         <div className="xl:sticky xl:top-6 xl:space-y-6">
           <SidePanelCard
-            title="Lecture opérationnelle"
+            title="Operational read"
             className={asidePanelClassName()}
           >
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 <DashboardStatusBadge kind="success" label="DONE" />
                 <DashboardStatusBadge kind="running" label="RUNNING" />
-                <DashboardStatusBadge kind="failed" label="ERROR" />
+                <DashboardStatusBadge kind="failed" label="ATTENTION" />
               </div>
 
               <div className="space-y-2 text-sm leading-6 text-white/65">
                 <p>
-                  <span className="text-white/90">Runs</span> montre l’historique
-                  récent des exécutions du worker BOSAI.
+                  <span className="text-white/90">Runs</span> exposes recent execution
+                  history for the active BOSAI workspace.
                 </p>
                 <p>
-                  <span className="text-white/90">Workspace</span> limite la lecture
-                  au périmètre actif sans casser l’ancien comportement.
+                  <span className="text-white/90">Scope</span> stays aligned with the
+                  active workspace without reopening the validated routing logic.
                 </p>
               </div>
 
@@ -674,7 +720,49 @@ export default async function RunsPage({ searchParams }: PageProps) {
             </div>
           </SidePanelCard>
 
-          <SidePanelCard title="Dernier run" className={asidePanelClassName()}>
+          <SidePanelCard title="Page state" className={asidePanelClassName()}>
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={
+                    fetchError
+                      ? "failed"
+                      : totalRuns > 0
+                        ? "success"
+                        : "unknown"
+                  }
+                  label={pageState.toUpperCase()}
+                />
+                <DashboardStatusBadge
+                  kind="queued"
+                  label={workspaceLabel.toUpperCase()}
+                />
+              </div>
+
+              <div className="space-y-2 text-sm leading-6 text-white/65">
+                <div>
+                  Visible records:{" "}
+                  <span className="text-white/90">{visibleRuns.length}</span>
+                </div>
+                <div>
+                  Source count:{" "}
+                  <span className="text-white/90">{serverCount}</span>
+                </div>
+                <div>
+                  Attention:{" "}
+                  <span className="text-white/90">{attentionRuns.length}</span>
+                </div>
+              </div>
+
+              {fetchError ? (
+                <div className="rounded-[18px] border border-rose-500/20 bg-rose-500/10 px-4 py-3.5 text-sm leading-6 text-rose-100/80">
+                  {fetchError}
+                </div>
+              ) : null}
+            </div>
+          </SidePanelCard>
+
+          <SidePanelCard title="Latest run" className={asidePanelClassName()}>
             {latestRun ? (
               <div className="space-y-4">
                 <div>
@@ -699,23 +787,23 @@ export default async function RunsPage({ searchParams }: PageProps) {
 
                 <div className="space-y-2 text-sm leading-6 text-white/65">
                   <div>
-                    Workspace :{" "}
+                    Workspace:{" "}
                     <span className="text-white/90">{workspaceLabel}</span>
                   </div>
                   <div>
-                    Worker :{" "}
+                    Worker:{" "}
                     <span className="text-white/90">
                       {getRunWorker(latestRun)}
                     </span>
                   </div>
                   <div>
-                    Started :{" "}
+                    Started:{" "}
                     <span className="text-white/90">
                       {formatDate(getRunStartedAt(latestRun))}
                     </span>
                   </div>
                   <div>
-                    Duration :{" "}
+                    Duration:{" "}
                     <span className="text-white/90">
                       {formatDuration(
                         getRunStartedAt(latestRun),
@@ -731,24 +819,38 @@ export default async function RunsPage({ searchParams }: PageProps) {
                     href={latestRunHref}
                     className={actionLinkClassName("soft")}
                   >
-                    Ouvrir le dernier run
+                    Open latest run
                   </Link>
                 ) : (
                   <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-center text-sm font-medium text-zinc-400">
-                    Détail indisponible
+                    Details unavailable
                   </div>
                 )}
               </div>
             ) : (
-              <div className="text-sm text-white/55">Aucun run disponible.</div>
+              <div className="text-sm text-white/55">No run available.</div>
             )}
           </SidePanelCard>
         </div>
       }
     >
+      {fetchError ? (
+        <SectionCard
+          title="Data state"
+          description="The page remains safe even when the runs source is degraded."
+          tone="neutral"
+          className={sectionFrameClassName("attention")}
+        >
+          <div className="rounded-[20px] border border-rose-500/20 bg-rose-500/10 px-4 py-4 text-sm leading-6 text-rose-100/85">
+            Runs could not be fully loaded for this workspace. The shell, workspace scope,
+            and navigation remain stable. Error: {fetchError}
+          </div>
+        </SectionCard>
+      ) : null}
+
       <SectionCard
         title="Run posture"
-        description="Vue rapide de l’état d’exécution sur le workspace actif."
+        description="Fast read of execution health for the active workspace."
         className={sectionFrameClassName("default")}
       >
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
@@ -764,7 +866,7 @@ export default async function RunsPage({ searchParams }: PageProps) {
             toneClass="text-emerald-300"
           />
           <RunMiniStat
-            label="Error"
+            label="Errors"
             value={stats.error}
             toneClass="text-rose-300"
           />
@@ -784,16 +886,16 @@ export default async function RunsPage({ searchParams }: PageProps) {
       </SectionCard>
 
       <SectionCard
-        title="Needs attention"
-        description="Runs actifs, en erreur ou atypiques à vérifier en priorité."
+        title="Active & attention runs"
+        description="Running, failed, retrying, unsupported or atypical runs to inspect first."
         tone="neutral"
         className={sectionFrameClassName("attention")}
         action={<SectionCountPill value={attentionRuns.length} tone="warning" />}
       >
         {attentionRuns.length === 0 ? (
           <EmptyStatePanel
-            title="Aucun run sous attention"
-            description="Aucun run actif ou en erreur n’est visible sur la vue actuelle."
+            title="No run needs attention"
+            description="No active, failed, unsupported or atypical run is visible on the current workspace."
           />
         ) : (
           <div className="grid grid-cols-1 gap-5">
@@ -814,15 +916,15 @@ export default async function RunsPage({ searchParams }: PageProps) {
 
       <SectionCard
         title="Completed runs"
-        description="Historique récent des runs terminés, triés par dernière activité."
+        description="Recent completed execution history, sorted by latest activity."
         tone="neutral"
         className={sectionFrameClassName("neutral")}
         action={<SectionCountPill value={completedRuns.length} tone="success" />}
       >
         {completedRuns.length === 0 ? (
           <EmptyStatePanel
-            title="Aucun run terminé"
-            description="Aucun run terminé n’est visible sur la vue actuelle."
+            title="No completed run"
+            description="No completed run is visible on the current workspace."
           />
         ) : (
           <div className="grid grid-cols-1 gap-5">
