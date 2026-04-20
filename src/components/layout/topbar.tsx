@@ -93,15 +93,28 @@ function getPrimarySurfaceLabel(
   return "Overview";
 }
 
+function countCapabilities(entitlements: WorkspaceEntitlements): number {
+  return [
+    entitlements.canAccessDashboard,
+    entitlements.canRunHttp,
+    entitlements.canViewIncidents,
+    entitlements.canManagePolicies,
+    entitlements.canManageTools,
+    entitlements.canManageWorkspaces,
+    entitlements.canManageBilling,
+  ].filter(Boolean).length;
+}
+
 export function Topbar({ workspace, entitlements }: TopbarProps) {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
   const primaryHref = getPrimarySurfaceHref(workspace, entitlements);
   const primaryLabel = getPrimarySurfaceLabel(workspace, entitlements);
+  const capabilityCount = countCapabilities(entitlements);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-white/10 bg-[#040816]/55 backdrop-blur-xl">
-      <div className="flex items-center justify-between gap-4 px-6 py-4">
+    <header className="border-b border-white/10 bg-[#040816]/55 backdrop-blur-xl">
+      <div className="flex items-center justify-between gap-6 px-6 py-4">
         <div className="min-w-0">
           <p className="truncate text-[11px] uppercase tracking-[0.22em] text-white/30">
             {text(workspace.name) || "Workspace"}
@@ -110,15 +123,33 @@ export function Topbar({ workspace, entitlements }: TopbarProps) {
           <div className="mt-1 truncate text-lg font-medium text-white">
             {title}
           </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className={badgeClassName(categoryTone(workspace.category))}>
+              {workspace.category.toUpperCase()}
+            </span>
+
+            <span className={badgeClassName("success")}>
+              {workspace.status.toUpperCase()}
+            </span>
+
+            <span className={badgeClassName("default")}>
+              {workspace.membershipRole.toUpperCase()}
+            </span>
+
+            <span className={badgeClassName("default")}>
+              {text(workspace.slug) || text(workspace.workspaceId)}
+            </span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className={badgeClassName(categoryTone(workspace.category))}>
-            {workspace.category.toUpperCase()}
+        <div className="hidden shrink-0 items-center gap-2 xl:flex">
+          <span className={badgeClassName("default")}>
+            Plan · {workspace.plan.toUpperCase()}
           </span>
 
-          <span className={badgeClassName("success")}>
-            {workspace.status.toUpperCase()}
+          <span className={badgeClassName("info")}>
+            {capabilityCount} capacités
           </span>
 
           <Link
