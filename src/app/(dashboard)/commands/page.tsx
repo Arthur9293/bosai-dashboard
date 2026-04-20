@@ -805,7 +805,10 @@ export default async function CommandsPage({ searchParams }: PageProps) {
   let fetchFailed = false;
 
   try {
-    data = await fetchCommands(300);
+    data = await fetchCommands({
+      limit: 300,
+      workspaceId: activeWorkspaceId || undefined,
+    });
   } catch {
     data = null;
     fetchFailed = true;
