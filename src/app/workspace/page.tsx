@@ -20,15 +20,15 @@ function text(value?: string | null): string {
 }
 
 function pageWrapClassName(): string {
-  return "min-h-screen bg-black px-4 py-8 text-white sm:px-6 lg:px-8";
+  return "min-h-screen bg-black px-4 py-6 text-white sm:px-6 lg:px-8 xl:py-8";
 }
 
 function shellClassName(): string {
-  return "mx-auto max-w-6xl space-y-8";
+  return "mx-auto max-w-7xl space-y-6 xl:space-y-8";
 }
 
 function cardClassName(): string {
-  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-6";
 }
 
 function compactCardClassName(): string {
@@ -306,87 +306,137 @@ export default async function WorkspaceIndexPage() {
   return (
     <main className={pageWrapClassName()}>
       <div className={shellClassName()}>
-        <section className="space-y-4 border-b border-white/10 pb-6">
-          <div className={sectionLabelClassName()}>Workspace Hub</div>
+        <section className={cardClassName()}>
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+            <div className="min-w-0 space-y-4">
+              <div className={sectionLabelClassName()}>Workspace Hub</div>
 
-          <div className="space-y-3">
-            <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-              {activeWorkspace.name}
-            </h1>
+              <div className="space-y-3">
+                <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl xl:text-[3.4rem]">
+                  {activeWorkspace.name}
+                </h1>
 
-            <p className="max-w-4xl text-base text-zinc-400 sm:text-lg">
-              {getWorkspaceDescription(activeWorkspace.category)}
-            </p>
-          </div>
+                <p className="max-w-4xl text-base text-zinc-400 sm:text-lg">
+                  {getWorkspaceDescription(activeWorkspace.category)}
+                </p>
+              </div>
 
-          <div className="flex flex-wrap gap-2">
-            <span className={badgeClassName(categoryTone(activeWorkspace.category))}>
-              {activeWorkspace.category.toUpperCase()}
-            </span>
+              <div className="flex flex-wrap gap-2">
+                <span
+                  className={badgeClassName(categoryTone(activeWorkspace.category))}
+                >
+                  {activeWorkspace.category.toUpperCase()}
+                </span>
 
-            <span className={badgeClassName("success")}>
-              {activeWorkspace.membershipRole.toUpperCase()}
-            </span>
+                <span className={badgeClassName("success")}>
+                  {activeWorkspace.membershipRole.toUpperCase()}
+                </span>
 
-            <span className={badgeClassName("success")}>
-              {activeWorkspace.status.toUpperCase()}
-            </span>
+                <span className={badgeClassName("success")}>
+                  {activeWorkspace.status.toUpperCase()}
+                </span>
 
-            {shouldShowPlanBadge(activeWorkspace.plan, activeWorkspace.category) ? (
-              <span className={badgeClassName("default")}>
-                {activeWorkspace.plan.toUpperCase()}
-              </span>
-            ) : null}
+                {shouldShowPlanBadge(
+                  activeWorkspace.plan,
+                  activeWorkspace.category
+                ) ? (
+                  <span className={badgeClassName("default")}>
+                    {activeWorkspace.plan.toUpperCase()}
+                  </span>
+                ) : null}
 
-            {session.user?.displayName ? (
-              <span className={badgeClassName("default")}>
-                {session.user.displayName}
-              </span>
-            ) : null}
+                {session.user?.displayName ? (
+                  <span className={badgeClassName("default")}>
+                    {session.user.displayName}
+                  </span>
+                ) : null}
 
-            {session.user?.email ? (
-              <span className={badgeClassName("default")}>
-                {session.user.email}
-              </span>
-            ) : null}
+                {session.user?.email ? (
+                  <span className={badgeClassName("default")}>
+                    {session.user.email}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex w-full flex-col gap-3 xl:w-auto xl:min-w-[260px]">
+              <Link
+                href={primaryAction.href}
+                className={buttonClassName(primaryAction.variant || "primary")}
+              >
+                {primaryAction.label}
+              </Link>
+
+              {secondaryLinks.length > 0 ? (
+                <Link
+                  href={secondaryLinks[0].href}
+                  className={buttonClassName(secondaryLinks[0].variant || "soft")}
+                >
+                  {secondaryLinks[0].label}
+                </Link>
+              ) : null}
+            </div>
           </div>
         </section>
 
-        <section className={cardClassName()}>
-          <div className="mb-5">
-            <div className={sectionLabelClassName()}>Active Workspace</div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
-              Détail du workspace courant
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className={cardClassName()}>
+            <div className="mb-5">
+              <div className={sectionLabelClassName()}>Active Workspace</div>
+              <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
+                Détail du workspace courant
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className={compactCardClassName()}>
+                <div className={sectionLabelClassName()}>Workspace ID</div>
+                <div className="mt-3 break-all text-2xl font-semibold text-white">
+                  {activeWorkspace.workspaceId}
+                </div>
+              </div>
+
+              <div className={compactCardClassName()}>
+                <div className={sectionLabelClassName()}>Slug</div>
+                <div className="mt-3 break-all text-2xl font-semibold text-white">
+                  {activeWorkspace.slug}
+                </div>
+              </div>
+
+              <div className={compactCardClassName()}>
+                <div className={sectionLabelClassName()}>Plan</div>
+                <div className="mt-3 text-2xl font-semibold text-white">
+                  {activeWorkspace.plan}
+                </div>
+              </div>
+
+              <div className={compactCardClassName()}>
+                <div className={sectionLabelClassName()}>Memberships</div>
+                <div className="mt-3 text-2xl font-semibold text-white">
+                  {resolution.memberships.length}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className={compactCardClassName()}>
-              <div className={sectionLabelClassName()}>Workspace ID</div>
-              <div className="mt-3 break-all text-2xl font-semibold text-white">
-                {activeWorkspace.workspaceId}
+          <div className={cardClassName()}>
+            <div className="mb-5">
+              <div className={sectionLabelClassName()}>Workspace Surfaces</div>
+              <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
+                Navigation rapide
               </div>
             </div>
 
-            <div className={compactCardClassName()}>
-              <div className={sectionLabelClassName()}>Slug</div>
-              <div className="mt-3 break-all text-2xl font-semibold text-white">
-                {activeWorkspace.slug}
-              </div>
-            </div>
-
-            <div className={compactCardClassName()}>
-              <div className={sectionLabelClassName()}>Plan</div>
-              <div className="mt-3 text-2xl font-semibold text-white">
-                {activeWorkspace.plan}
-              </div>
-            </div>
-
-            <div className={compactCardClassName()}>
-              <div className={sectionLabelClassName()}>Memberships</div>
-              <div className="mt-3 text-2xl font-semibold text-white">
-                {resolution.memberships.length}
-              </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-1">
+              {secondaryLinks.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={buttonClassName(item.variant || "default")}
+                >
+                  {item.label}
+                </Link>
+              ))}
             </div>
           </div>
         </section>
@@ -457,34 +507,6 @@ export default async function WorkspaceIndexPage() {
               label="Billing"
               enabled={Boolean(entitlements?.canManageBilling)}
             />
-          </div>
-        </section>
-
-        <section className={cardClassName()}>
-          <div className="mb-5">
-            <div className={sectionLabelClassName()}>Workspace Surfaces</div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
-              Navigation rapide
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <Link
-              href={primaryAction.href}
-              className={buttonClassName(primaryAction.variant || "primary")}
-            >
-              {primaryAction.label}
-            </Link>
-
-            {secondaryLinks.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={buttonClassName(item.variant || "default")}
-              >
-                {item.label}
-              </Link>
-            ))}
           </div>
         </section>
       </div>
