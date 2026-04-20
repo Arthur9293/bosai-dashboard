@@ -20,7 +20,6 @@ type PlanConfig = {
   description: string;
   features: string[];
   checkoutLabel: string;
-  nextHref: string;
 };
 
 function pageFrameClassName() {
@@ -130,7 +129,6 @@ const plans: Record<string, PlanConfig> = {
       "Provisioning simple",
     ],
     checkoutLabel: "Continuer avec Starter",
-    nextHref: "/onboarding/provisioning?plan=starter",
   },
   pro: {
     code: "pro",
@@ -149,7 +147,6 @@ const plans: Record<string, PlanConfig> = {
       "Provisioning prioritaire produit",
     ],
     checkoutLabel: "Continuer avec Pro",
-    nextHref: "/onboarding/provisioning?plan=pro",
   },
   agency: {
     code: "agency",
@@ -168,7 +165,6 @@ const plans: Record<string, PlanConfig> = {
       "Provisioning orienté multi-espace",
     ],
     checkoutLabel: "Continuer avec Agency",
-    nextHref: "/onboarding/provisioning?plan=agency",
   },
   custom: {
     code: "custom",
@@ -187,7 +183,6 @@ const plans: Record<string, PlanConfig> = {
       "Provisioning après cadrage",
     ],
     checkoutLabel: "Envoyer ma demande",
-    nextHref: "/onboarding/provisioning?plan=custom",
   },
 };
 
@@ -203,6 +198,9 @@ export default async function OnboardingCheckoutPage({
 
   const fallbackHref = "/onboarding/plan";
   const hasValidPlan = selectedPlan !== null;
+  const continueHref = hasValidPlan
+    ? `/onboarding/continue?step=checkout&plan=${selectedPlan.code}`
+    : "";
 
   return (
     <div className={pageFrameClassName()}>
@@ -239,7 +237,7 @@ export default async function OnboardingCheckoutPage({
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 {hasValidPlan ? (
                   <Link
-                    href={selectedPlan.nextHref}
+                    href={continueHref}
                     className={buttonClassName(
                       selectedPlan.tone === "custom" ? "danger" : "primary"
                     )}
@@ -366,7 +364,7 @@ export default async function OnboardingCheckoutPage({
                     <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
                       <div className={metaLabelClassName()}>Validation</div>
                       <p className="mt-2 text-sm leading-7 text-zinc-400">
-                        À ce stade, vous confirmez le plan. La prochaine page simulera l’étape de provisioning de l’espace.
+                        À ce stade, vous confirmez le plan. La prochaine étape écrit l’état checkout puis ouvre le provisioning.
                       </p>
                     </div>
                   </div>
@@ -390,18 +388,18 @@ export default async function OnboardingCheckoutPage({
                     ],
                     [
                       "2",
-                      "Provisioning",
-                      "Le système prépare le cadre technique et produit de l’espace.",
+                      "Checkout confirmé",
+                      "Le système enregistre la validation commerciale du plan.",
                     ],
                     [
                       "3",
-                      "Configuration",
-                      "Le workspace reçoit son nom, sa catégorie et ses préférences initiales.",
+                      "Provisioning",
+                      "Le workspace entre dans sa phase de préparation.",
                     ],
                     [
                       "4",
-                      "Cockpit",
-                      "L’accès s’ouvre seulement quand l’espace est prêt et actif.",
+                      "Cockpit plus tard",
+                      "L’accès ne s’ouvre qu’après activation finale.",
                     ],
                   ].map(([step, title, desc]) => (
                     <div key={step} className={secondaryCardClassName()}>
@@ -425,7 +423,7 @@ export default async function OnboardingCheckoutPage({
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <Link
-                    href={selectedPlan.nextHref}
+                    href={continueHref}
                     className={buttonClassName(
                       selectedPlan.tone === "custom" ? "danger" : "primary"
                     )}
