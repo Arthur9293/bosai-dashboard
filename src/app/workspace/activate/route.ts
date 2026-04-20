@@ -4,6 +4,10 @@ import {
   resolveAuthSession,
 } from "@/lib/auth/resolve-auth-session";
 import {
+  hasCommercialOnboardingSignals,
+  resolveBosaiAccessState,
+} from "@/lib/onboarding-access";
+import {
   getDashboardRouteForWorkspaceCategory,
   resolveWorkspaceAccess,
 } from "@/lib/workspaces/resolver";
@@ -91,6 +95,37 @@ export async function GET(request: NextRequest) {
 
   if (!session.isAuthenticated) {
     return NextResponse.redirect(buildLoginUrl(request, nextParam));
+  }
+
+  const onboardingCookieValues = {
+    bosai_plan_code: request.cookies.get("bosai_plan_code")?.value,
+    plan_code: request.cookies.get("plan_code")?.value,
+    selected_plan: request.cookies.get("selected_plan")?.value,
+    bosai_workspace_status: request.cookies.get("bosai_workspace_status")?.value,
+    workspace_status: request.cookies.get("workspace_status")?.value,
+    bosai_checkout_completed:
+      request.cookies.get("bosai_checkout_completed")?.value,
+    checkout_completed: request.cookies.get("checkout_completed")?.value,
+    bosai_onboarding_completed:
+      request.cookies.get("bosai_onboarding_completed")?.value,
+    onboarding_completed: request.cookies.get("onboarding_completed")?.value,
+    bosai_pending_workspace_id:
+      request.cookies.get("bosai_pending_workspace_id")?.value,
+  };
+
+  const shouldApplyCommercialGuard =
+    hasCommercialOnboardingSignals(onboardingCookieValues);
+
+  if (shouldApplyCommercialGuard) {
+    const accessState = resolveBosaiAccessState({
+      cookieValues: onboardingCookieValues,
+    });
+
+    if (!accessState.canAccessCockpit) {
+      return NextResponse.redirect(
+        buildRedirectUrl(request, accessState.redirectPath || "/pricing")
+      );
+    }
   }
 
   const requestedWorkspaceId =
