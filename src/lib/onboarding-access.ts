@@ -26,6 +26,7 @@ export type BosaiOnboardingStage =
 export type BosaiAccessState = {
   planCode: BosaiPlanCode;
   workspaceStatus: BosaiWorkspaceStatus;
+  checkoutCompleted: boolean;
   onboardingCompleted: boolean;
   canAccessCockpit: boolean;
   stage: BosaiOnboardingStage;
@@ -121,6 +122,15 @@ export function resolveBosaiAccessState(
     )
   );
 
+  const checkoutCompleted = parseBooleanLike(
+    firstNonEmpty(
+      firstParam(searchParams.checkout_completed),
+      firstParam(searchParams.checkoutCompleted),
+      cookieValues.bosai_checkout_completed,
+      cookieValues.checkout_completed
+    )
+  );
+
   const onboardingCompleted = parseBooleanLike(
     firstNonEmpty(
       firstParam(searchParams.onboarding_completed),
@@ -134,10 +144,25 @@ export function resolveBosaiAccessState(
     return {
       planCode,
       workspaceStatus,
+      checkoutCompleted,
       onboardingCompleted,
       canAccessCockpit: false,
       stage: "plan",
       redirectPath: "/onboarding/plan",
+    };
+  }
+
+  if (!checkoutCompleted) {
+    return {
+      planCode,
+      workspaceStatus,
+      checkoutCompleted,
+      onboardingCompleted,
+      canAccessCockpit: false,
+      stage: "checkout",
+      redirectPath: buildPath("/onboarding/checkout", {
+        plan: planCode,
+      }),
     };
   }
 
@@ -152,6 +177,7 @@ export function resolveBosaiAccessState(
     return {
       planCode,
       workspaceStatus,
+      checkoutCompleted,
       onboardingCompleted,
       canAccessCockpit: false,
       stage: "provisioning",
@@ -168,6 +194,7 @@ export function resolveBosaiAccessState(
     return {
       planCode,
       workspaceStatus,
+      checkoutCompleted,
       onboardingCompleted,
       canAccessCockpit: false,
       stage: "workspace",
@@ -181,6 +208,7 @@ export function resolveBosaiAccessState(
     return {
       planCode,
       workspaceStatus,
+      checkoutCompleted,
       onboardingCompleted,
       canAccessCockpit: true,
       stage: "active",
@@ -191,6 +219,7 @@ export function resolveBosaiAccessState(
   return {
     planCode,
     workspaceStatus,
+    checkoutCompleted,
     onboardingCompleted,
     canAccessCockpit: false,
     stage: "workspace",
