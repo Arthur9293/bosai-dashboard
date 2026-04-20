@@ -9,11 +9,20 @@ import {
   type CommandItem,
   type EventItem,
   type IncidentItem,
+  type WorkspaceScopeOptions,
 } from "@/lib/api";
 import {
   DashboardStatusBadge,
   type DashboardStatusKind,
 } from "@/components/dashboard/StatusBadge";
+
+type SearchParams = {
+  workspace_id?: string | string[];
+  flow_id?: string | string[];
+  root_event_id?: string | string[];
+  source_event_id?: string | string[];
+  from?: string | string[];
+};
 
 type PageProps = {
   params:
@@ -23,6 +32,7 @@ type PageProps = {
     | {
         id: string;
       };
+  searchParams?: Promise<SearchParams> | SearchParams;
 };
 
 function cardClassName() {
@@ -50,6 +60,10 @@ function actionLinkClassName(
 
   if (variant === "danger") {
     return `${base} border border-rose-500/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15`;
+  }
+
+  if (variant === "soft") {
+    return `${base} border border-white/10 bg-black/20 text-zinc-200 hover:bg-white/[0.06]`;
   }
 
   return `${base} border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]`;
@@ -89,6 +103,26 @@ function formatDate(value?: string | null): string {
     dateStyle: "short",
     timeStyle: "short",
   }).format(date);
+}
+
+function firstParam(value?: string | string[]) {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
+function buildHref(
+  pathname: string,
+  params: Record<string, string | undefined>
+): string {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    const text = String(value || "").trim();
+    if (text) search.set(key, text);
+  }
+
+  const query = search.toString();
+  return query ? `${pathname}?${query}` : pathname;
 }
 
 function parseMaybeJson(value: unknown): Record<string, unknown> {
@@ -192,7 +226,7 @@ function humanStatusLabel(status: string): string {
     return "En cours";
   }
 
-  if (["queued", "pending", "new"].includes(normalized)) {
+  if (["queued", "queue", "pending", "new"].includes(normalized)) {
     return "En file";
   }
 
@@ -214,7 +248,7 @@ function humanStatusLabel(status: string): string {
 function getCommandStatusBucketValue(status: string) {
   const normalized = status.trim().toLowerCase();
 
-  if (["queued", "pending", "new"].includes(normalized)) return "queued";
+  if (["queued", "queue", "pending", "new"].includes(normalized)) return "queued";
   if (["running", "processing"].includes(normalized)) return "running";
   if (["retry", "retriable"].includes(normalized)) return "retry";
   if (["error", "failed", "dead", "blocked"].includes(normalized)) return "failed";
@@ -704,24 +738,32 @@ function scoreIncidentMatch(incident: IncidentItem, command: CommandItem): numbe
 
 /* ------------------------------- Href helpers ----------------------------- */
 
-function buildFlowHref(command: CommandItem): string {
+function buildFlowHref(command: CommandItem, workspaceId: string): string {
   const flowId = getCommandFlowId(command);
   if (flowId) {
-    return `/flows/${encodeURIComponent(flowId)}`;
+    return buildHref(`/flows/${encodeURIComponent(flowId)}`, {
+      workspace_id: workspaceId || undefined,
+    });
   }
 
   const rootEventId = getCommandRootEventId(command);
   if (rootEventId) {
-    return `/flows/${encodeURIComponent(rootEventId)}`;
+    return buildHref(`/flows/${encodeURIComponent(rootEventId)}`, {
+      workspace_id: workspaceId || undefined,
+    });
   }
 
   const sourceEventId = getCommandSourceEventId(command);
   if (sourceEventId) {
-    return `/flows/${encodeURIComponent(sourceEventId)}`;
+    return buildHref(`/flows/${encodeURIComponent(sourceEventId)}`, {
+      workspace_id: workspaceId || undefined,
+    });
   }
 
   if (command.id) {
-    return `/flows/${encodeURIComponent(String(command.id))}`;
+    return buildHref(`/flows/${encodeURIComponent(String(command.id))}`, {
+      workspace_id: workspaceId || undefined,
+    });
   }
 
   return "";
@@ -729,28 +771,40 @@ function buildFlowHref(command: CommandItem): string {
 
 function buildSafeEventHref(
   matchedEvent: EventItem | null,
-  command: CommandItem
+  command: CommandItem,
+  workspaceId: string
 ): string {
   if (matchedEvent?.id) {
-    return `/events/${encodeURIComponent(matchedEvent.id)}`;
+    return buildHref(`/events/${encodeURIComponent(matchedEvent.id)}`, {
+      workspace_id: workspaceId || undefined,
+    });
   }
 
   const rootEventId = getCommandRootEventId(command);
   if (rootEventId && isRecordIdLike(rootEventId)) {
-    return `/events/${encodeURIComponent(rootEventId)}`;
+    return buildHref(`/events/${encodeURIComponent(rootEventId)}`, {
+      workspace_id: workspaceId || undefined,
+    });
   }
 
   const sourceEventId = getCommandSourceEventId(command);
   if (sourceEventId && isRecordIdLike(sourceEventId)) {
-    return `/events/${encodeURIComponent(sourceEventId)}`;
+    return buildHref(`/events/${encodeURIComponent(sourceEventId)}`, {
+      workspace_id: workspaceId || undefined,
+    });
   }
 
   return "";
 }
 
-function buildIncidentHref(matchedIncident: IncidentItem | null): string {
+function buildIncidentHref(
+  matchedIncident: IncidentItem | null,
+  workspaceId: string
+): string {
   if (!matchedIncident?.id) return "";
-  return `/incidents/${encodeURIComponent(matchedIncident.id)}`;
+  return buildHref(`/incidents/${encodeURIComponent(matchedIncident.id)}`, {
+    workspace_id: workspaceId || undefined,
+  });
 }
 
 function MetaItem({
@@ -804,19 +858,49 @@ function DiagnosticMeta({
   );
 }
 
-export default async function CommandDetailPage({ params }: PageProps) {
+async function tryFetchCommandByIdScoped(
+  id: string,
+  options?: WorkspaceScopeOptions
+): Promise<CommandItem | null> {
+  try {
+    return await fetchCommandById(id, {
+      limit: 500,
+      workspaceId: options?.workspaceId,
+    });
+  } catch {
+    return null;
+  }
+}
+
+export default async function CommandDetailPage({
+  params,
+  searchParams,
+}: PageProps) {
   const resolvedParams = await Promise.resolve(params);
+  const resolvedSearchParams = searchParams
+    ? await Promise.resolve(searchParams)
+    : {};
+
   const id = decodeURIComponent(resolvedParams.id);
+  const activeWorkspaceId = firstParam(resolvedSearchParams.workspace_id).trim();
+  const incomingFlowId = firstParam(resolvedSearchParams.flow_id).trim();
+  const incomingRootEventId = firstParam(resolvedSearchParams.root_event_id).trim();
+  const incomingSourceEventId = firstParam(
+    resolvedSearchParams.source_event_id
+  ).trim();
+  const from = firstParam(resolvedSearchParams.from).trim();
 
   let command: CommandItem | null = null;
 
-  try {
-    command = await fetchCommandById(id, 500);
-  } catch {
-    command = null;
+  if (activeWorkspaceId) {
+    command = await tryFetchCommandByIdScoped(id, {
+      workspaceId: activeWorkspaceId,
+    });
+  } else {
+    command = await tryFetchCommandByIdScoped(id);
   }
 
-  if (!command) {
+  if (!command && !activeWorkspaceId) {
     try {
       const commandsData = await fetchCommands(500);
       const commands = Array.isArray(commandsData?.commands)
@@ -846,32 +930,40 @@ export default async function CommandDetailPage({ params }: PageProps) {
   const toolKey = getCommandToolKey(command);
   const toolMode = getCommandToolMode(command);
 
+  const effectiveWorkspaceId =
+    activeWorkspaceId || (workspace !== "—" ? workspace : "");
+
   let matchedEvent: EventItem | null = null;
   try {
-    const eventsData = await fetchEvents(500);
+    const eventsData = await fetchEvents({
+      limit: 500,
+      workspaceId: effectiveWorkspaceId || undefined,
+    });
     const events = Array.isArray(eventsData?.events) ? eventsData.events : [];
-    matchedEvent = pickBestMatch(events, (event) => scoreEventMatch(event, command!));
+    matchedEvent = pickBestMatch(events, (event) => scoreEventMatch(event, command));
   } catch {
     matchedEvent = null;
   }
 
   let matchedIncident: IncidentItem | null = null;
   try {
-    const incidentsData = await fetchIncidents(300);
+    const incidentsData = await fetchIncidents({
+      limit: 300,
+      workspaceId: effectiveWorkspaceId || undefined,
+    });
     const incidents = Array.isArray(incidentsData?.incidents)
       ? incidentsData.incidents
       : [];
-    matchedIncident = pickBestMatch(
-      incidents,
-      (incident) => scoreIncidentMatch(incident, command!)
+    matchedIncident = pickBestMatch(incidents, (incident) =>
+      scoreIncidentMatch(incident, command)
     );
   } catch {
     matchedIncident = null;
   }
 
-  const flowHref = buildFlowHref(command);
-  const eventHref = buildSafeEventHref(matchedEvent, command);
-  const incidentHref = buildIncidentHref(matchedIncident);
+  const flowHref = buildFlowHref(command, effectiveWorkspaceId);
+  const eventHref = buildSafeEventHref(matchedEvent, command, effectiveWorkspaceId);
+  const incidentHref = buildIncidentHref(matchedIncident, effectiveWorkspaceId);
 
   const hasFlow = flowHref !== "";
   const hasEvent = eventHref !== "";
@@ -882,6 +974,18 @@ export default async function CommandDetailPage({ params }: PageProps) {
   const flowTarget =
     flowId || rootEventId || sourceEventId || commandIdText || "—";
 
+  const commandsListHref = buildHref("/commands", {
+    workspace_id: effectiveWorkspaceId || undefined,
+    flow_id: incomingFlowId || undefined,
+    root_event_id: incomingRootEventId || undefined,
+    source_event_id: incomingSourceEventId || undefined,
+    from: from || undefined,
+  });
+
+  const allCommandsHref = buildHref("/commands", {
+    workspace_id: effectiveWorkspaceId || undefined,
+  });
+
   return (
     <div className="space-y-8">
       <section className={cardClassName()}>
@@ -889,7 +993,7 @@ export default async function CommandDetailPage({ params }: PageProps) {
           <div className="space-y-2">
             <div className="text-base text-zinc-300">
               <Link
-                href="/commands"
+                href={commandsListHref}
                 className="underline decoration-white/20 underline-offset-4 transition hover:text-white"
               >
                 Commands
@@ -934,6 +1038,10 @@ export default async function CommandDetailPage({ params }: PageProps) {
                 {toolMode ? (
                   <span className={neutralPillClassName()}>MODE {toolMode}</span>
                 ) : null}
+
+                <span className={neutralPillClassName()}>
+                  {effectiveWorkspaceId || workspace}
+                </span>
               </div>
             </div>
           </div>
@@ -973,7 +1081,9 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
               <div className={metaBoxClassName()}>
                 <div className={metaLabelClassName()}>Workspace</div>
-                <div className="mt-2 text-zinc-100">{workspace}</div>
+                <div className="mt-2 text-zinc-100">
+                  {effectiveWorkspaceId || workspace}
+                </div>
               </div>
 
               <div className={metaBoxClassName()}>
@@ -1056,11 +1166,11 @@ export default async function CommandDetailPage({ params }: PageProps) {
 
           <div className="border-t border-white/10 pt-5">
             <div className="space-y-3">
-              <Link href="/commands" className={actionLinkClassName("soft")}>
+              <Link href={commandsListHref} className={actionLinkClassName("soft")}>
                 Retour à la liste commands
               </Link>
 
-              <Link href="/commands" className={actionLinkClassName("primary")}>
+              <Link href={allCommandsHref} className={actionLinkClassName("primary")}>
                 Voir toutes les commands
               </Link>
 
@@ -1129,7 +1239,10 @@ export default async function CommandDetailPage({ params }: PageProps) {
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <DiagnosticMeta label="Workspace" value={workspace} />
+                <DiagnosticMeta
+                  label="Workspace"
+                  value={effectiveWorkspaceId || workspace}
+                />
                 <DiagnosticMeta label="Run" value={runId} />
                 <DiagnosticMeta label="Flow target" value={flowTarget} />
                 <DiagnosticMeta
