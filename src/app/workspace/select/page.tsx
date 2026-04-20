@@ -5,6 +5,7 @@ import {
   AUTH_LOGIN_ROUTE,
   resolveAuthSession,
 } from "@/lib/auth/resolve-auth-session";
+import { resolveBosaiAccessState } from "@/lib/onboarding-access";
 import {
   getDashboardRouteForWorkspaceCategory,
   getWorkspaceActivateRoute,
@@ -212,6 +213,27 @@ export default async function WorkspaceSelectPage() {
     redirect(AUTH_LOGIN_ROUTE);
   }
 
+  const cookieStore = await cookies();
+
+  const onboardingCookieValues = {
+    bosai_plan_code: cookieStore.get("bosai_plan_code")?.value,
+    plan_code: cookieStore.get("plan_code")?.value,
+    selected_plan: cookieStore.get("selected_plan")?.value,
+    bosai_workspace_status: cookieStore.get("bosai_workspace_status")?.value,
+    workspace_status: cookieStore.get("workspace_status")?.value,
+    bosai_onboarding_completed:
+      cookieStore.get("bosai_onboarding_completed")?.value,
+    onboarding_completed: cookieStore.get("onboarding_completed")?.value,
+  };
+
+  const accessState = resolveBosaiAccessState({
+    cookieValues: onboardingCookieValues,
+  });
+
+  if (!accessState.canAccessCockpit) {
+    redirect(accessState.redirectPath || "/pricing");
+  }
+
   const user = session.user;
   const memberships = session.context?.memberships ?? [];
   const activeWorkspaceId =
@@ -233,7 +255,6 @@ export default async function WorkspaceSelectPage() {
     );
   }
 
-  const cookieStore = await cookies();
   const rememberedRoutes = readWorkspaceRememberedRoutes(
     cookieStore.get(WORKSPACE_ROUTE_MEMORY_COOKIE_NAME)?.value
   );
