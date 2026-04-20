@@ -39,6 +39,18 @@ function secondaryCardClassName() {
   return "rounded-[28px] border border-white/10 bg-black/20 p-5 md:p-6";
 }
 
+function planCardClassName(tone: PlanTone = "default") {
+  if (tone === "recommended") {
+    return "rounded-[30px] border border-emerald-500/25 bg-[linear-gradient(180deg,rgba(16,185,129,0.10)_0%,rgba(255,255,255,0.04)_100%)] p-6 shadow-[0_0_0_1px_rgba(16,185,129,0.08)]";
+  }
+
+  if (tone === "custom") {
+    return "rounded-[30px] border border-violet-500/20 bg-[linear-gradient(180deg,rgba(139,92,246,0.10)_0%,rgba(255,255,255,0.04)_100%)] p-6";
+  }
+
+  return "rounded-[30px] border border-white/10 bg-white/[0.04] p-6";
+}
+
 function eyebrowClassName() {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
