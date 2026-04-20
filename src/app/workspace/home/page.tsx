@@ -346,25 +346,25 @@ function getAgencyFocusCards(
 
   return [
     {
-      label: "Ops mode",
+      label: "Mode ops",
       title: "Pilotage agence",
       value: "Agency",
       helper: "Flows, incidents, SLA et surfaces d’orchestration.",
     },
     {
-      label: "Workspace portfolio",
+      label: "Portefeuille workspace",
       title: "Espaces pilotables",
       value: String(memberships.length),
       helper: "Nombre d’espaces visibles depuis le hub actif.",
     },
     {
-      label: "Incident access",
+      label: "Accès incidents",
       title: "Incidents",
       value: incidentAccess,
       helper: "Capacité de lecture des incidents opérationnels.",
     },
     {
-      label: "Control surface",
+      label: "Surface de contrôle",
       title: "Policies / Workspaces",
       value: `${policyAccess} / ${workspaceAccess}`,
       helper: "Niveau de contrôle sur gouvernance et espaces.",
@@ -382,25 +382,25 @@ function getCompanyFocusCards(
 
   return [
     {
-      label: "Governance mode",
+      label: "Mode gouvernance",
       title: "Pilotage entreprise",
       value: "Company",
       helper: "Tenants, settings, quotas et gouvernance visible.",
     },
     {
-      label: "Portfolio size",
+      label: "Taille du portefeuille",
       title: "Espaces suivis",
       value: String(memberships.length),
       helper: "Nombre d’espaces visibles dans le périmètre entreprise.",
     },
     {
-      label: "Workspace admin",
+      label: "Administration workspace",
       title: "Workspaces",
       value: workspacesAccess,
       helper: "Capacité à piloter les espaces et leur lecture détaillée.",
     },
     {
-      label: "Policy / Billing",
+      label: "Policies / Billing",
       title: "Policies / Billing",
       value: `${policiesAccess} / ${billingAccess}`,
       helper: "Niveau de contrôle sur la gouvernance et la couche business.",
@@ -418,25 +418,25 @@ function getFreelanceFocusCards(
 
   return [
     {
-      label: "Execution mode",
+      label: "Mode exécution",
       title: "Pilotage freelance",
       value: "Freelance",
       helper: "Commands, runs, events et exécution visible.",
     },
     {
-      label: "Workspace scope",
+      label: "Périmètre workspace",
       title: "Espaces visibles",
       value: String(memberships.length),
       helper: "Nombre d’espaces disponibles depuis le profil freelance.",
     },
     {
-      label: "Runtime access",
+      label: "Accès runtime",
       title: "HTTP / Dashboard",
       value: `${httpAccess} / ${dashboardAccess}`,
       helper: "Capacité à exécuter et relire l’activité du cockpit.",
     },
     {
-      label: "Incident visibility",
+      label: "Visibilité incidents",
       title: "Incidents",
       value: incidentsAccess,
       helper: "Lecture utile des incidents sans logique gouvernance lourde.",
@@ -454,25 +454,25 @@ function getPersonalFocusCards(
 
   return [
     {
-      label: "Personal mode",
+      label: "Mode personnel",
       title: "Lecture personnelle",
       value: "Personal",
       helper: "Vue simple pour lire le cockpit et accéder aux surfaces utiles.",
     },
     {
-      label: "Visible spaces",
+      label: "Espaces visibles",
       title: "Espaces disponibles",
       value: String(memberships.length),
       helper: "Nombre d’espaces accessibles depuis le profil personnel.",
     },
     {
-      label: "Light access",
+      label: "Accès léger",
       title: "Dashboard / HTTP",
       value: `${dashboardAccess} / ${httpAccess}`,
       helper: "Lecture cockpit et actions utiles, sans couche gouvernance lourde.",
     },
     {
-      label: "Signal visibility",
+      label: "Visibilité signaux",
       title: "Incidents",
       value: incidentsAccess,
       helper: "Lecture des signaux disponibles quand ils sont utiles.",
@@ -569,7 +569,7 @@ function CompactLaneCard({ item }: { item: HubCard }) {
   return (
     <article className={compactCardClassName()}>
       <div className="space-y-3">
-        <div className={sectionLabelClassName()}>Dedicated lane</div>
+        <div className={sectionLabelClassName()}>Surface dédiée</div>
         <div className="text-2xl font-semibold tracking-tight text-white">
           {item.title}
         </div>
@@ -612,7 +612,7 @@ function AgencyOperatingView({
 
   return (
     <section className="space-y-4">
-      <div className={sectionLabelClassName()}>Agency operating view</div>
+      <div className={sectionLabelClassName()}>Vue d’exploitation agence</div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {focusCards.map((item) => (
@@ -637,7 +637,7 @@ function CompanyOperatingView({
 
   return (
     <section className="space-y-4">
-      <div className={sectionLabelClassName()}>Company operating view</div>
+      <div className={sectionLabelClassName()}>Vue d’exploitation entreprise</div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {focusCards.map((item) => (
@@ -662,7 +662,7 @@ function FreelanceOperatingView({
 
   return (
     <section className="space-y-4">
-      <div className={sectionLabelClassName()}>Freelance operating view</div>
+      <div className={sectionLabelClassName()}>Vue d’exploitation freelance</div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {focusCards.map((item) => (
@@ -687,7 +687,7 @@ function PersonalOperatingView({
 
   return (
     <section className="space-y-4">
-      <div className={sectionLabelClassName()}>Personal operating view</div>
+      <div className={sectionLabelClassName()}>Vue d’exploitation personnelle</div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {focusCards.map((item) => (
@@ -724,7 +724,7 @@ function AgencyPrioritySection() {
       </div>
 
       <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-        <div className={metaLabelClassName()}>Agency quick read</div>
+        <div className={metaLabelClassName()}>Lecture rapide agence</div>
         <div className="mt-2 text-sm leading-6 text-zinc-300">
           Cette home agence sert de cockpit d’entrée pour piloter les flows,
           surveiller les incidents, lire la pression SLA et basculer rapidement
@@ -758,7 +758,7 @@ function CompanyPrioritySection() {
       </div>
 
       <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-        <div className={metaLabelClassName()}>Company quick read</div>
+        <div className={metaLabelClassName()}>Lecture rapide entreprise</div>
         <div className="mt-2 text-sm leading-6 text-zinc-300">
           Cette home company sert de cockpit de gouvernance pour piloter les
           workspaces, relire les réglages visibles, vérifier les politiques et
@@ -792,7 +792,7 @@ function FreelancePrioritySection() {
       </div>
 
       <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-        <div className={metaLabelClassName()}>Freelance quick read</div>
+        <div className={metaLabelClassName()}>Lecture rapide freelance</div>
         <div className="mt-2 text-sm leading-6 text-zinc-300">
           Cette home freelance sert de hub d’exécution pour relire les commands,
           suivre les runs, vérifier les events et garder un accès simple aux
@@ -826,7 +826,7 @@ function PersonalPrioritySection() {
       </div>
 
       <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-        <div className={metaLabelClassName()}>Personal quick read</div>
+        <div className={metaLabelClassName()}>Lecture rapide personnelle</div>
         <div className="mt-2 text-sm leading-6 text-zinc-300">
           Cette home personal sert d’entrée simple pour lire l’état global,
           ouvrir les réglages utiles et accéder rapidement aux actions visibles
@@ -851,7 +851,9 @@ function AgencyWorkspaceSection({
   return (
     <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
       <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">Workspace details</div>
+        <div className="mb-5 text-lg font-medium text-white">
+          Détails du workspace
+        </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <MetaCard
@@ -859,24 +861,21 @@ function AgencyWorkspaceSection({
             value={text(activeWorkspace.workspaceId)}
             breakAll
           />
-          <MetaCard label="Name" value={text(activeWorkspace.name)} />
+          <MetaCard label="Nom" value={text(activeWorkspace.name)} />
           <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
-          <MetaCard label="Category" value={text(activeWorkspace.category)} />
+          <MetaCard label="Catégorie" value={text(activeWorkspace.category)} />
           <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
+          <MetaCard label="Rôle membre" value={text(activeWorkspace.membershipRole)} />
           <MetaCard
-            label="Membership role"
-            value={text(activeWorkspace.membershipRole)}
-          />
-          <MetaCard
-            label="Membership status"
+            label="Statut membre"
             value={text(activeWorkspace.membershipStatus)}
           />
-          <MetaCard label="Default lane" value={defaultLane} breakAll />
+          <MetaCard label="Lane par défaut" value={defaultLane} breakAll />
         </div>
       </div>
 
       <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">Access layer</div>
+        <div className="mb-5 text-lg font-medium text-white">Couche d’accès</div>
 
         <div className="flex flex-wrap gap-2">
           {entitlementItems.map(([label, enabled]) => (
@@ -890,7 +889,7 @@ function AgencyWorkspaceSection({
         </div>
 
         <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-          <div className={metaLabelClassName()}>Quick read</div>
+          <div className={metaLabelClassName()}>Lecture rapide</div>
           <div className="mt-2 text-sm leading-6 text-zinc-300">
             Le détail technique du workspace et les capacités actives restent
             visibles, mais passent derrière la lecture métier agence.
@@ -916,7 +915,7 @@ function CompanyWorkspaceSection({
     <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
       <div className={cardClassName()}>
         <div className="mb-5 text-lg font-medium text-white">
-          Company workspace details
+          Détails du workspace entreprise
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -925,24 +924,23 @@ function CompanyWorkspaceSection({
             value={text(activeWorkspace.workspaceId)}
             breakAll
           />
-          <MetaCard label="Name" value={text(activeWorkspace.name)} />
+          <MetaCard label="Nom" value={text(activeWorkspace.name)} />
           <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
-          <MetaCard label="Category" value={text(activeWorkspace.category)} />
+          <MetaCard label="Catégorie" value={text(activeWorkspace.category)} />
           <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
+          <MetaCard label="Rôle membre" value={text(activeWorkspace.membershipRole)} />
           <MetaCard
-            label="Membership role"
-            value={text(activeWorkspace.membershipRole)}
-          />
-          <MetaCard
-            label="Membership status"
+            label="Statut membre"
             value={text(activeWorkspace.membershipStatus)}
           />
-          <MetaCard label="Default lane" value={defaultLane} breakAll />
+          <MetaCard label="Lane par défaut" value={defaultLane} breakAll />
         </div>
       </div>
 
       <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">Governance layer</div>
+        <div className="mb-5 text-lg font-medium text-white">
+          Couche de gouvernance
+        </div>
 
         <div className="flex flex-wrap gap-2">
           {entitlementItems.map(([label, enabled]) => (
@@ -956,7 +954,7 @@ function CompanyWorkspaceSection({
         </div>
 
         <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-          <div className={metaLabelClassName()}>Quick read</div>
+          <div className={metaLabelClassName()}>Lecture rapide</div>
           <div className="mt-2 text-sm leading-6 text-zinc-300">
             La couche company garde visibles les droits de gouvernance, les
             réglages et la lecture des workspaces, avec une logique plus pilotage
@@ -983,7 +981,7 @@ function FreelanceWorkspaceSection({
     <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
       <div className={cardClassName()}>
         <div className="mb-5 text-lg font-medium text-white">
-          Freelance workspace details
+          Détails du workspace freelance
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -992,24 +990,21 @@ function FreelanceWorkspaceSection({
             value={text(activeWorkspace.workspaceId)}
             breakAll
           />
-          <MetaCard label="Name" value={text(activeWorkspace.name)} />
+          <MetaCard label="Nom" value={text(activeWorkspace.name)} />
           <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
-          <MetaCard label="Category" value={text(activeWorkspace.category)} />
+          <MetaCard label="Catégorie" value={text(activeWorkspace.category)} />
           <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
+          <MetaCard label="Rôle membre" value={text(activeWorkspace.membershipRole)} />
           <MetaCard
-            label="Membership role"
-            value={text(activeWorkspace.membershipRole)}
-          />
-          <MetaCard
-            label="Membership status"
+            label="Statut membre"
             value={text(activeWorkspace.membershipStatus)}
           />
-          <MetaCard label="Default lane" value={defaultLane} breakAll />
+          <MetaCard label="Lane par défaut" value={defaultLane} breakAll />
         </div>
       </div>
 
       <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">Runtime layer</div>
+        <div className="mb-5 text-lg font-medium text-white">Couche runtime</div>
 
         <div className="flex flex-wrap gap-2">
           {entitlementItems.map(([label, enabled]) => (
@@ -1023,7 +1018,7 @@ function FreelanceWorkspaceSection({
         </div>
 
         <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-          <div className={metaLabelClassName()}>Quick read</div>
+          <div className={metaLabelClassName()}>Lecture rapide</div>
           <div className="mt-2 text-sm leading-6 text-zinc-300">
             La couche freelance garde visibles les capacités utiles à l’exécution
             et à la lecture runtime, sans transformer la home en cockpit
@@ -1050,7 +1045,7 @@ function PersonalWorkspaceSection({
     <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
       <div className={cardClassName()}>
         <div className="mb-5 text-lg font-medium text-white">
-          Personal workspace details
+          Détails du workspace personnel
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1059,24 +1054,23 @@ function PersonalWorkspaceSection({
             value={text(activeWorkspace.workspaceId)}
             breakAll
           />
-          <MetaCard label="Name" value={text(activeWorkspace.name)} />
+          <MetaCard label="Nom" value={text(activeWorkspace.name)} />
           <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
-          <MetaCard label="Category" value={text(activeWorkspace.category)} />
+          <MetaCard label="Catégorie" value={text(activeWorkspace.category)} />
           <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
+          <MetaCard label="Rôle membre" value={text(activeWorkspace.membershipRole)} />
           <MetaCard
-            label="Membership role"
-            value={text(activeWorkspace.membershipRole)}
-          />
-          <MetaCard
-            label="Membership status"
+            label="Statut membre"
             value={text(activeWorkspace.membershipStatus)}
           />
-          <MetaCard label="Default lane" value={defaultLane} breakAll />
+          <MetaCard label="Lane par défaut" value={defaultLane} breakAll />
         </div>
       </div>
 
       <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">Access layer light</div>
+        <div className="mb-5 text-lg font-medium text-white">
+          Couche d’accès légère
+        </div>
 
         <div className="flex flex-wrap gap-2">
           {entitlementItems.map(([label, enabled]) => (
@@ -1090,7 +1084,7 @@ function PersonalWorkspaceSection({
         </div>
 
         <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-          <div className={metaLabelClassName()}>Quick read</div>
+          <div className={metaLabelClassName()}>Lecture rapide</div>
           <div className="mt-2 text-sm leading-6 text-zinc-300">
             La couche personal garde visibles les éléments utiles du workspace,
             mais reste centrée sur une lecture simple et un accès rapide.
@@ -1136,7 +1130,9 @@ function AgencyPortfolioSection({
       </div>
 
       <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">Navigation</div>
+        <div className="mb-5 text-lg font-medium text-white">
+          Navigation rapide
+        </div>
 
         <div className="grid grid-cols-1 gap-3">
           <Link href="/flows" className={buttonClassName("primary")}>
@@ -1195,7 +1191,9 @@ function CompanyPortfolioSection({
       </div>
 
       <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">Navigation</div>
+        <div className="mb-5 text-lg font-medium text-white">
+          Navigation rapide
+        </div>
 
         <div className="grid grid-cols-1 gap-3">
           <Link href="/workspaces" className={buttonClassName("primary")}>
@@ -1254,7 +1252,9 @@ function FreelancePortfolioSection({
       </div>
 
       <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">Navigation</div>
+        <div className="mb-5 text-lg font-medium text-white">
+          Navigation rapide
+        </div>
 
         <div className="grid grid-cols-1 gap-3">
           <Link href="/commands" className={buttonClassName("primary")}>
@@ -1313,7 +1313,9 @@ function PersonalPortfolioSection({
       </div>
 
       <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">Navigation</div>
+        <div className="mb-5 text-lg font-medium text-white">
+          Navigation rapide
+        </div>
 
         <div className="grid grid-cols-1 gap-3">
           <Link href="/overview" className={buttonClassName("primary")}>
@@ -1352,7 +1354,7 @@ function GenericWorkspaceSection({
     <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
       <div className={cardClassName()}>
         <div className="mb-5 text-lg font-medium text-white">
-          Active workspace
+          Workspace actif
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1361,24 +1363,21 @@ function GenericWorkspaceSection({
             value={text(activeWorkspace.workspaceId)}
             breakAll
           />
-          <MetaCard label="Name" value={text(activeWorkspace.name)} />
+          <MetaCard label="Nom" value={text(activeWorkspace.name)} />
           <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
-          <MetaCard label="Category" value={text(activeWorkspace.category)} />
+          <MetaCard label="Catégorie" value={text(activeWorkspace.category)} />
           <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
+          <MetaCard label="Rôle membre" value={text(activeWorkspace.membershipRole)} />
           <MetaCard
-            label="Membership role"
-            value={text(activeWorkspace.membershipRole)}
-          />
-          <MetaCard
-            label="Membership status"
+            label="Statut membre"
             value={text(activeWorkspace.membershipStatus)}
           />
-          <MetaCard label="Default lane" value={defaultLane} breakAll />
+          <MetaCard label="Lane par défaut" value={defaultLane} breakAll />
         </div>
       </div>
 
       <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">Entitlements</div>
+        <div className="mb-5 text-lg font-medium text-white">Capacités</div>
 
         <div className="flex flex-wrap gap-2">
           {entitlementItems.map(([label, enabled]) => (
@@ -1392,7 +1391,7 @@ function GenericWorkspaceSection({
         </div>
 
         <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
-          <div className={metaLabelClassName()}>Quick read</div>
+          <div className={metaLabelClassName()}>Lecture rapide</div>
           <div className="mt-2 text-sm leading-6 text-zinc-300">
             Cet écran sert de hub dédié avant d’ouvrir la lane principale de la
             catégorie active.
@@ -1406,7 +1405,7 @@ function GenericWorkspaceSection({
 function GenericSurfacesSection({ cards }: { cards: HubCard[] }) {
   return (
     <section className="space-y-4">
-      <div className={sectionLabelClassName()}>Dedicated surfaces</div>
+      <div className={sectionLabelClassName()}>Surfaces dédiées</div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {cards.map((item) => (
@@ -1454,7 +1453,9 @@ function GenericPortfolioSection({
       </section>
 
       <section className={cardClassName()}>
-        <div className="mb-4 text-lg font-medium text-white">Navigation</div>
+        <div className="mb-4 text-lg font-medium text-white">
+          Navigation rapide
+        </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Link href={defaultLane} className={buttonClassName("primary")}>
@@ -1505,7 +1506,7 @@ export default async function WorkspaceHomePage() {
       <div className={shellClassName()}>
         <section className={cardClassName()}>
           <div className="space-y-4">
-            <div className={sectionLabelClassName()}>Workspace Home</div>
+            <div className={sectionLabelClassName()}>Accueil workspace</div>
 
             <div className="space-y-3">
               <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl xl:text-[3.4rem]">
@@ -1540,7 +1541,7 @@ export default async function WorkspaceHomePage() {
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
-            label="Category"
+            label="Catégorie"
             value={activeWorkspace.category}
             helper="Type d’espace actif"
           />
@@ -1550,12 +1551,12 @@ export default async function WorkspaceHomePage() {
             helper="Plan courant"
           />
           <StatCard
-            label="Default lane"
+            label="Lane par défaut"
             value={defaultLane}
             toneClass="text-sky-300"
             breakAll
             valueClassName="text-2xl sm:text-3xl"
-            helper="Lane principale"
+            helper="Surface principale"
           />
           <StatCard
             label="Memberships"
