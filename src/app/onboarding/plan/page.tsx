@@ -107,7 +107,7 @@ const plans: Plan[] = [
       "Bon point d’entrée pour solo",
     ],
     ctaLabel: "Choisir Starter",
-    ctaHref: "/onboarding/checkout?plan=starter",
+    ctaHref: "/onboarding/continue?step=plan&plan=starter",
   },
   {
     code: "pro",
@@ -126,7 +126,7 @@ const plans: Plan[] = [
       "Meilleur équilibre produit",
     ],
     ctaLabel: "Choisir Pro",
-    ctaHref: "/onboarding/checkout?plan=pro",
+    ctaHref: "/onboarding/continue?step=plan&plan=pro",
   },
   {
     code: "agency",
@@ -145,7 +145,7 @@ const plans: Plan[] = [
       "Pensé pour usage multi-client",
     ],
     ctaLabel: "Choisir Agency",
-    ctaHref: "/onboarding/checkout?plan=agency",
+    ctaHref: "/onboarding/continue?step=plan&plan=agency",
   },
   {
     code: "custom",
@@ -164,7 +164,7 @@ const plans: Plan[] = [
       "Cadrage personnalisé",
     ],
     ctaLabel: "Demander une configuration",
-    ctaHref: "/onboarding/checkout?plan=custom",
+    ctaHref: "/onboarding/continue?step=plan&plan=custom",
   },
 ];
 
