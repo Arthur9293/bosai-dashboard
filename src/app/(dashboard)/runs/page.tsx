@@ -216,7 +216,11 @@ function getRunStatusGroup(run: RunRecord): RunStatusGroup {
     return "done";
   }
 
-  if (["error", "failed", "dead", "blocked", "retry", "retriable"].includes(status)) {
+  if (
+    ["error", "failed", "dead", "blocked", "retry", "retriable"].includes(
+      status
+    )
+  ) {
     return "error";
   }
 
@@ -346,7 +350,11 @@ function getStatusTextTone(status?: string): string {
     return "text-sky-300";
   }
 
-  if (["error", "failed", "dead", "blocked", "retry", "retriable"].includes(group)) {
+  if (
+    ["error", "failed", "dead", "blocked", "retry", "retriable"].includes(
+      group
+    )
+  ) {
     return "text-rose-300";
   }
 
@@ -431,6 +439,21 @@ function RunMiniStat({
       <div className={`mt-3 text-3xl font-semibold tracking-tight ${toneClass}`}>
         {value}
       </div>
+    </div>
+  );
+}
+
+function DebugInfoBox({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className={metaBoxClassName()}>
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className="mt-2 break-all text-zinc-100">{value || "—"}</div>
     </div>
   );
 }
@@ -630,16 +653,20 @@ export default async function RunsPage({ searchParams }: PageProps) {
   const pageState =
     fetchError.length > 0 ? "Degraded" : totalRuns > 0 ? "Ready" : "Empty";
 
-  const quickRead =
-    fetchError
-      ? "Runs data could not be fully loaded. The page stayed safe, kept the workspace scope, and exposed the current degraded state."
-      : stats.error > 0
-        ? "Priority: inspect failed or retrying runs before reading completed history."
-        : stats.running > 0
-          ? "Priority: follow active execution and confirm that duration stays within expected limits."
-          : totalRuns > 0
-            ? "The active workspace looks stable. Recent execution history is readable and mostly completed."
-            : "No visible run is currently exposed for the active workspace.";
+  const debugWorkspaceId = activeWorkspaceId || "∅";
+  const debugRunsReceived = runsUnfiltered.length;
+  const debugRunsVisible = runs.length;
+  const debugDroppedByScope = Math.max(0, debugRunsReceived - debugRunsVisible);
+
+  const quickRead = fetchError
+    ? "Runs data could not be fully loaded. The page stayed safe, kept the workspace scope, and exposed the current degraded state."
+    : stats.error > 0
+      ? "Priority: inspect failed or retrying runs before reading completed history."
+      : stats.running > 0
+        ? "Priority: follow active execution and confirm that duration stays within expected limits."
+        : totalRuns > 0
+          ? "The active workspace looks stable. Recent execution history is readable and mostly completed."
+          : "No visible run is currently exposed for the active workspace.";
 
   return (
     <ControlPlaneShell
@@ -648,7 +675,10 @@ export default async function RunsPage({ searchParams }: PageProps) {
       description="Execution history for BOSAI capabilities. This surface keeps the workspace scope, exposes recent activity, and highlights attention-first runs without touching the validated shell."
       badges={[
         { label: "Workspace aware", tone: "info" },
-        { label: `State · ${pageState}`, tone: fetchError ? "warning" : "muted" },
+        {
+          label: `State · ${pageState}`,
+          tone: fetchError ? "warning" : "muted",
+        },
         { label: `${visibleRuns.length} visible`, tone: "muted" },
       ]}
       metrics={[
@@ -700,12 +730,13 @@ export default async function RunsPage({ searchParams }: PageProps) {
 
               <div className="space-y-2 text-sm leading-6 text-white/65">
                 <p>
-                  <span className="text-white/90">Runs</span> exposes recent execution
-                  history for the active BOSAI workspace.
+                  <span className="text-white/90">Runs</span> exposes recent
+                  execution history for the active BOSAI workspace.
                 </p>
                 <p>
-                  <span className="text-white/90">Scope</span> stays aligned with the
-                  active workspace without reopening the validated routing logic.
+                  <span className="text-white/90">Scope</span> stays aligned with
+                  the active workspace without reopening the validated routing
+                  logic.
                 </p>
               </div>
 
@@ -842,11 +873,32 @@ export default async function RunsPage({ searchParams }: PageProps) {
           className={sectionFrameClassName("attention")}
         >
           <div className="rounded-[20px] border border-rose-500/20 bg-rose-500/10 px-4 py-4 text-sm leading-6 text-rose-100/85">
-            Runs could not be fully loaded for this workspace. The shell, workspace scope,
-            and navigation remain stable. Error: {fetchError}
+            Runs could not be fully loaded for this workspace. The shell,
+            workspace scope, and navigation remain stable. Error: {fetchError}
           </div>
         </SectionCard>
       ) : null}
+
+      <SectionCard
+        title="Debug scope"
+        description="Temporary read to verify workspace scope and runs connectivity."
+        tone="neutral"
+        className={sectionFrameClassName("neutral")}
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <DebugInfoBox label="Active workspace" value={debugWorkspaceId} />
+          <DebugInfoBox
+            label="Runs received"
+            value={String(debugRunsReceived)}
+          />
+          <DebugInfoBox label="Runs visible" value={String(debugRunsVisible)} />
+          <DebugInfoBox
+            label="Dropped by scope"
+            value={String(debugDroppedByScope)}
+          />
+          <DebugInfoBox label="Page state" value={pageState} />
+        </div>
+      </SectionCard>
 
       <SectionCard
         title="Run posture"
@@ -854,7 +906,11 @@ export default async function RunsPage({ searchParams }: PageProps) {
         className={sectionFrameClassName("default")}
       >
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-          <RunMiniStat label="Total runs" value={totalRuns} toneClass="text-white" />
+          <RunMiniStat
+            label="Total runs"
+            value={totalRuns}
+            toneClass="text-white"
+          />
           <RunMiniStat
             label="Running"
             value={stats.running}
@@ -881,7 +937,9 @@ export default async function RunsPage({ searchParams }: PageProps) {
           <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
             Quick read
           </div>
-          <div className="mt-2 text-sm leading-6 text-zinc-300">{quickRead}</div>
+          <div className="mt-2 text-sm leading-6 text-zinc-300">
+            {quickRead}
+          </div>
         </div>
       </SectionCard>
 
