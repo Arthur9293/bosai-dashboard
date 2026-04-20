@@ -97,13 +97,17 @@ export default async function FlowsPage({
   const incidents = normalizeIncidentList(incidentsResult.data);
 
   const flows = buildFlows(commands, incidents);
-  const filteredFlows = flows.filter((flow) => matchesView(flow, view)).filter((flow) => matchesQuery(flow, query));
+  const filteredFlows = flows
+    .filter((flow) => matchesView(flow, view))
+    .filter((flow) => matchesQuery(flow, query));
 
   const needsAttention = filteredFlows.filter((flow) =>
     ["failed", "retry", "running", "partial"].includes(flow.status),
   );
   const healthyFlows = filteredFlows.filter(
-    (flow) => !flow.registryOnly && !["failed", "retry", "running", "partial"].includes(flow.status),
+    (flow) =>
+      !flow.registryOnly &&
+      !["failed", "retry", "running", "partial"].includes(flow.status),
   );
   const registryOnlyFlows = filteredFlows.filter((flow) => flow.registryOnly);
 
@@ -111,36 +115,41 @@ export default async function FlowsPage({
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 px-4 pb-10 pt-4 sm:px-6 lg:px-8">
-      <section className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+      <section className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
         <div className="space-y-5 p-5 sm:p-6 lg:p-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-3">
-              <div className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300">
+              <div className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600">
                 Surface principale · Workspace-aware
               </div>
 
               <div className="space-y-2">
-                <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-white sm:text-3xl">
+                <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">
                   Flows
                 </h1>
-                <p className="max-w-3xl text-sm leading-6 text-zinc-600 dark:text-zinc-300 sm:text-base">
-                  Lecture unifiée des exécutions BOSAI. Cette surface regroupe les flows actifs,
-                  les flows à surveiller et les lectures partielles issues du registre, sans casser
-                  la baseline workspace/shell validée.
+                <p className="max-w-3xl text-sm leading-6 text-zinc-600 sm:text-base">
+                  Lecture unifiée des exécutions BOSAI. Cette surface regroupe
+                  les flows actifs, les flows à surveiller et les lectures
+                  partielles issues du registre, sans casser la baseline
+                  workspace/shell validée.
                 </p>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <Link
-                href={buildHref("/workspace", { workspace_id: workspaceId || undefined })}
-                className="inline-flex items-center rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.04]"
+                href={buildHref("/workspace", {
+                  workspace_id: workspaceId || undefined,
+                })}
+                className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
               >
                 Retour au hub
               </Link>
               <Link
-                href={buildHref("/overview", { workspace_id: workspaceId || undefined })}
-                className="inline-flex items-center rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.04]"
+                href={buildHref("/overview", {
+                  workspace_id: workspaceId || undefined,
+                })}
+                className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
               >
                 Overview
               </Link>
@@ -169,36 +178,48 @@ export default async function FlowsPage({
             />
             <StatCard
               label="Flows réussis"
-              value={String(filteredFlows.filter((flow) => flow.status === "success").length)}
+              value={String(
+                filteredFlows.filter((flow) => flow.status === "success").length,
+              )}
               hint="Chaînes terminées proprement"
             />
           </div>
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+      <section className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
         <div className="space-y-5 p-5 sm:p-6 lg:p-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-2">
-              <h2 className="text-lg font-semibold text-zinc-950 dark:text-white">Lecture & navigation</h2>
-              <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                Filtrage simple, safe et cohérent desktop/mobile. Aucun changement de logique shell.
+              <h2 className="text-lg font-semibold text-zinc-950">
+                Lecture & navigation
+              </h2>
+              <p className="text-sm text-zinc-600">
+                Filtrage simple, safe et cohérent desktop/mobile. Aucun
+                changement de logique shell.
               </p>
             </div>
 
-            <form method="GET" className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
-              {workspaceId ? <input type="hidden" name="workspace_id" value={workspaceId} /> : null}
-              {view && view !== "all" ? <input type="hidden" name="view" value={view} /> : null}
+            <form
+              method="GET"
+              className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto"
+            >
+              {workspaceId ? (
+                <input type="hidden" name="workspace_id" value={workspaceId} />
+              ) : null}
+              {view && view !== "all" ? (
+                <input type="hidden" name="view" value={view} />
+              ) : null}
               <input
                 type="text"
                 name="q"
                 defaultValue={query}
                 placeholder="Rechercher un flow, une capability, un ID…"
-                className="min-w-0 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none ring-0 placeholder:text-zinc-400 focus:border-zinc-400 dark:border-white/10 dark:bg-black/20 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-white/20 sm:min-w-[320px]"
+                className="min-w-0 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none ring-0 placeholder:text-zinc-400 focus:border-zinc-400 sm:min-w-[320px]"
               />
               <button
                 type="submit"
-                className="inline-flex items-center justify-center rounded-2xl border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-100 dark:hover:bg-white/[0.04]"
+                className="inline-flex items-center justify-center rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
               >
                 Appliquer
               </button>
@@ -206,35 +227,76 @@ export default async function FlowsPage({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <FilterPill href={buildHref("/flows", mergeParams({ workspace_id: workspaceId, q: query }))} active={view === "all"}>
+            <FilterPill
+              href={buildHref(
+                "/flows",
+                mergeParams({ workspace_id: workspaceId, q: query }),
+              )}
+              active={view === "all"}
+            >
               Tous
             </FilterPill>
             <FilterPill
-              href={buildHref("/flows", mergeParams({ workspace_id: workspaceId, q: query, view: "attention" }))}
+              href={buildHref(
+                "/flows",
+                mergeParams({
+                  workspace_id: workspaceId,
+                  q: query,
+                  view: "attention",
+                }),
+              )}
               active={view === "attention"}
             >
               Attention
             </FilterPill>
             <FilterPill
-              href={buildHref("/flows", mergeParams({ workspace_id: workspaceId, q: query, view: "running" }))}
+              href={buildHref(
+                "/flows",
+                mergeParams({
+                  workspace_id: workspaceId,
+                  q: query,
+                  view: "running",
+                }),
+              )}
               active={view === "running"}
             >
               Running
             </FilterPill>
             <FilterPill
-              href={buildHref("/flows", mergeParams({ workspace_id: workspaceId, q: query, view: "success" }))}
+              href={buildHref(
+                "/flows",
+                mergeParams({
+                  workspace_id: workspaceId,
+                  q: query,
+                  view: "success",
+                }),
+              )}
               active={view === "success"}
             >
               Success
             </FilterPill>
             <FilterPill
-              href={buildHref("/flows", mergeParams({ workspace_id: workspaceId, q: query, view: "registry" }))}
+              href={buildHref(
+                "/flows",
+                mergeParams({
+                  workspace_id: workspaceId,
+                  q: query,
+                  view: "registry",
+                }),
+              )}
               active={view === "registry"}
             >
               Registry-only
             </FilterPill>
             <FilterPill
-              href={buildHref("/flows", mergeParams({ workspace_id: workspaceId, q: query, view: "partial" }))}
+              href={buildHref(
+                "/flows",
+                mergeParams({
+                  workspace_id: workspaceId,
+                  q: query,
+                  view: "partial",
+                }),
+              )}
               active={view === "partial"}
             >
               Partial
@@ -242,7 +304,7 @@ export default async function FlowsPage({
           </div>
 
           {pageError ? (
-            <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
+            <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               <div className="font-medium">Lecture partielle détectée</div>
               <div className="mt-1 opacity-90">{pageError}</div>
             </div>
@@ -251,23 +313,32 @@ export default async function FlowsPage({
       </section>
 
       {filteredFlows.length === 0 ? (
-        <section className="rounded-[28px] border border-dashed border-zinc-300 bg-white p-8 text-center shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+        <section className="rounded-[28px] border border-dashed border-zinc-300 bg-white p-8 text-center shadow-sm">
           <div className="mx-auto max-w-2xl space-y-3">
-            <div className="text-lg font-semibold text-zinc-950 dark:text-white">Aucun flow visible</div>
-            <p className="text-sm leading-6 text-zinc-600 dark:text-zinc-300">
-              Aucun élément ne correspond à la vue actuelle. Le shell et la logique workspace restent
-              intacts ; ici la page remonte simplement un état vide propre et lisible.
+            <div className="text-lg font-semibold text-zinc-950">
+              Aucun flow visible
+            </div>
+            <p className="text-sm leading-6 text-zinc-600">
+              Aucun élément ne correspond à la vue actuelle. Le shell et la
+              logique workspace restent intacts ; ici la page remonte simplement
+              un état vide propre et lisible.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
               <Link
-                href={buildHref("/flows", workspaceId ? { workspace_id: workspaceId } : {})}
-                className="inline-flex items-center rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.04]"
+                href={buildHref(
+                  "/flows",
+                  workspaceId ? { workspace_id: workspaceId } : {},
+                )}
+                className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
               >
                 Réinitialiser les filtres
               </Link>
               <Link
-                href={buildHref("/commands", workspaceId ? { workspace_id: workspaceId } : {})}
-                className="inline-flex items-center rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.04]"
+                href={buildHref(
+                  "/commands",
+                  workspaceId ? { workspace_id: workspaceId } : {},
+                )}
+                className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
               >
                 Voir les commandes
               </Link>
@@ -314,9 +385,11 @@ function FlowSection({
 }) {
   return (
     <section className="space-y-4">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-zinc-950 dark:text-white">{title}</h2>
-        <p className="text-sm text-zinc-600 dark:text-zinc-300">{subtitle}</p>
+      <div className="rounded-[24px] border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-zinc-950">{title}</h2>
+          <p className="text-sm leading-6 text-zinc-600">{subtitle}</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -330,7 +403,7 @@ function FlowSection({
 
 function FlowCard({ flow }: { flow: FlowGroup }) {
   return (
-    <article className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm transition hover:shadow-md dark:border-white/10 dark:bg-white/[0.03]">
+    <article className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm transition hover:shadow-md">
       <div className="space-y-5 p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-3">
@@ -341,10 +414,16 @@ function FlowCard({ flow }: { flow: FlowGroup }) {
             </div>
 
             <div className="space-y-1">
-              <h3 className="truncate text-lg font-semibold text-zinc-950 dark:text-white">{flow.displayName}</h3>
-              <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                {flow.workspaceId ? `Workspace ${flow.workspaceId}` : "Workspace non remonté"}
-                {flow.capabilities.length > 0 ? ` · ${flow.capabilities.slice(0, 3).join(" · ")}` : ""}
+              <h3 className="truncate text-lg font-semibold text-zinc-950">
+                {flow.displayName}
+              </h3>
+              <p className="text-sm text-zinc-600">
+                {flow.workspaceId
+                  ? `Workspace ${flow.workspaceId}`
+                  : "Workspace non remonté"}
+                {flow.capabilities.length > 0
+                  ? ` · ${flow.capabilities.slice(0, 3).join(" · ")}`
+                  : ""}
               </p>
             </div>
           </div>
@@ -360,7 +439,10 @@ function FlowCard({ flow }: { flow: FlowGroup }) {
           <IdentityRow label="Flow ID" value={flow.flowId} />
           <IdentityRow label="Root event" value={flow.rootEventId} />
           <IdentityRow label="Source record" value={flow.sourceRecordId} />
-          <IdentityRow label="Timeline" value={formatTimeline(flow.createdAt, flow.updatedAt)} />
+          <IdentityRow
+            label="Timeline"
+            value={formatTimeline(flow.createdAt, flow.updatedAt)}
+          />
         </div>
 
         {flow.capabilities.length > 0 ? (
@@ -368,7 +450,7 @@ function FlowCard({ flow }: { flow: FlowGroup }) {
             {flow.capabilities.map((capability) => (
               <span
                 key={capability}
-                className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200"
+                className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700"
               >
                 {capability}
               </span>
@@ -377,8 +459,10 @@ function FlowCard({ flow }: { flow: FlowGroup }) {
         ) : null}
 
         {flow.commands.length > 0 ? (
-          <div className="space-y-3 rounded-3xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-white/10 dark:bg-black/20">
-            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Execution timeline</div>
+          <div className="space-y-3 rounded-3xl border border-zinc-200 bg-zinc-50/70 p-4">
+            <div className="text-sm font-medium text-zinc-900">
+              Execution timeline
+            </div>
             <div className="flex flex-wrap gap-2">
               {flow.commands
                 .slice()
@@ -387,10 +471,12 @@ function FlowCard({ flow }: { flow: FlowGroup }) {
                 .map((command) => (
                   <div
                     key={command.id}
-                    className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200"
+                    className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700"
                   >
                     <span className="font-medium">#{command.stepIndex}</span>
-                    <span className="truncate">{command.capability || "unknown"}</span>
+                    <span className="truncate">
+                      {command.capability || "unknown"}
+                    </span>
                     <span className="opacity-70">·</span>
                     <span>{statusLabel(command.status)}</span>
                   </div>
@@ -401,22 +487,33 @@ function FlowCard({ flow }: { flow: FlowGroup }) {
 
         <div className="flex flex-wrap gap-2 pt-1">
           {flow.flowId ? (
-            <LinkButton href={buildHref("/commands", { flow_id: flow.flowId })}>Voir les commandes</LinkButton>
+            <LinkButton href={buildHref("/commands", { flow_id: flow.flowId })}>
+              Voir les commandes
+            </LinkButton>
           ) : (
             <LinkButton
-              href={buildHref("/commands", flow.rootEventId ? { root_event_id: flow.rootEventId } : {})}
+              href={buildHref(
+                "/commands",
+                flow.rootEventId ? { root_event_id: flow.rootEventId } : {},
+              )}
             >
               Voir les commandes
             </LinkButton>
           )}
 
           {flow.flowId ? (
-            <LinkButton href={buildHref("/incidents", { flow_id: flow.flowId })}>Voir les incidents</LinkButton>
+            <LinkButton href={buildHref("/incidents", { flow_id: flow.flowId })}>
+              Voir les incidents
+            </LinkButton>
           ) : (
             <LinkButton
               href={buildHref(
                 "/incidents",
-                flow.rootEventId ? { root_event_id: flow.rootEventId } : flow.sourceRecordId ? { source_record_id: flow.sourceRecordId } : {},
+                flow.rootEventId
+                  ? { root_event_id: flow.rootEventId }
+                  : flow.sourceRecordId
+                    ? { source_record_id: flow.sourceRecordId }
+                    : {},
               )}
             >
               Voir les incidents
@@ -424,7 +521,11 @@ function FlowCard({ flow }: { flow: FlowGroup }) {
           )}
 
           {flow.rootEventId ? (
-            <LinkButton href={buildHref("/events", { root_event_id: flow.rootEventId })}>Voir les événements</LinkButton>
+            <LinkButton
+              href={buildHref("/events", { root_event_id: flow.rootEventId })}
+            >
+              Voir les événements
+            </LinkButton>
           ) : null}
         </div>
       </div>
@@ -442,12 +543,14 @@ function StatCard({
   hint: string;
 }) {
   return (
-    <div className="rounded-3xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-white/10 dark:bg-black/20">
-      <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+    <div className="rounded-3xl border border-zinc-200 bg-zinc-50/70 p-4">
+      <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
         {label}
       </div>
-      <div className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 dark:text-white">{value}</div>
-      <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">{hint}</div>
+      <div className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">
+        {value}
+      </div>
+      <div className="mt-1 text-sm text-zinc-600">{hint}</div>
     </div>
   );
 }
@@ -460,11 +563,11 @@ function MiniMetric({
   value: string;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-white/10 dark:bg-black/20">
-      <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+      <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">
         {label}
       </div>
-      <div className="mt-1 text-sm font-semibold text-zinc-950 dark:text-white">{value}</div>
+      <div className="mt-1 text-sm font-semibold text-zinc-950">{value}</div>
     </div>
   );
 }
@@ -477,35 +580,30 @@ function IdentityRow({
   value: string;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-3 dark:border-white/10 dark:bg-black/20">
-      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-3">
+      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
         {label}
       </div>
-      <div className="mt-1 truncate text-sm text-zinc-900 dark:text-zinc-100">{value || "—"}</div>
+      <div className="mt-1 truncate text-sm text-zinc-900">{value || "—"}</div>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: FlowStatus }) {
   const map: Record<FlowStatus, string> = {
-    failed:
-      "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200",
-    retry:
-      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200",
-    running:
-      "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-200",
-    queued:
-      "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200",
-    success:
-      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200",
-    partial:
-      "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-200",
-    unknown:
-      "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200",
+    failed: "border-red-200 bg-red-50 text-red-700",
+    retry: "border-amber-200 bg-amber-50 text-amber-700",
+    running: "border-sky-200 bg-sky-50 text-sky-700",
+    queued: "border-zinc-200 bg-zinc-50 text-zinc-700",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    partial: "border-violet-200 bg-violet-50 text-violet-700",
+    unknown: "border-zinc-200 bg-zinc-50 text-zinc-700",
   };
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${map[status]}`}>
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${map[status]}`}
+    >
       {statusLabel(status)}
     </span>
   );
@@ -513,7 +611,7 @@ function StatusBadge({ status }: { status: FlowStatus }) {
 
 function SoftBadge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200">
+    <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700">
       {children}
     </span>
   );
@@ -532,10 +630,10 @@ function FilterPill({
     <Link
       href={href}
       className={[
-        "inline-flex items-center rounded-full border px-3 py-2 text-sm font-medium transition",
+        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-3 py-2 text-sm font-medium shadow-sm transition",
         active
-          ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-zinc-950"
-          : "border-zinc-200 text-zinc-700 hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.04]",
+          ? "border-zinc-900 bg-zinc-900 text-white"
+          : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
       ].join(" ")}
     >
       {children}
@@ -553,7 +651,7 @@ function LinkButton({
   return (
     <Link
       href={href}
-      className="inline-flex items-center rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/[0.04]"
+      className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
     >
       {children}
     </Link>
@@ -568,7 +666,8 @@ async function fetchJson(
     return {
       ok: false,
       data: null,
-      error: "WORKER_BASE_URL manquante. La page reste rendue, mais les données distantes ne peuvent pas être récupérées.",
+      error:
+        "WORKER_BASE_URL manquante. La page reste rendue, mais les données distantes ne peuvent pas être récupérées.",
     };
   }
 
@@ -608,7 +707,10 @@ async function fetchJson(
     return {
       ok: false,
       data: null,
-      error: error instanceof Error ? error.message : `Erreur réseau sur ${path}.`,
+      error:
+        error instanceof Error
+          ? error.message
+          : `Erreur réseau sur ${path}.`,
     };
   }
 }
@@ -630,7 +732,14 @@ function normalizeCommand(raw: any): CommandItem | null {
   if (!id) return null;
 
   const capability = asString(
-    pickValue(raw, ["capability", "Capability", "Tool_Key", "Tool Mode", "Tool_Mode", "Name"]),
+    pickValue(raw, [
+      "capability",
+      "Capability",
+      "Tool_Key",
+      "Tool Mode",
+      "Tool_Mode",
+      "Name",
+    ]),
   );
 
   const status = normalizeFlowStatus(
@@ -646,16 +755,38 @@ function normalizeCommand(raw: any): CommandItem | null {
     pickValue(raw, ["root_event_id", "Root_Event_ID", "rootEventId", "RootEventId"]),
   );
   const parentCommandId = asString(
-    pickValue(raw, ["parent_command_id", "Parent_Command_ID", "parentCommandId", "ParentCommandId"]),
+    pickValue(raw, [
+      "parent_command_id",
+      "Parent_Command_ID",
+      "parentCommandId",
+      "ParentCommandId",
+    ]),
   );
 
   const stepIndex = asInt(
     pickValue(raw, ["step_index", "Step_Index", "stepIndex", "StepIndex"]),
   );
 
-  const createdAt = firstDateLike(raw, ["created_at", "Created_At", "createdAt", "CreatedAt"]);
-  const updatedAt = firstDateLike(raw, ["updated_at", "Updated_At", "updatedAt", "UpdatedAt", "started_at", "Started_At"]);
-  const endedAt = firstDateLike(raw, ["ended_at", "Ended_At", "endedAt", "EndedAt"]);
+  const createdAt = firstDateLike(raw, [
+    "created_at",
+    "Created_At",
+    "createdAt",
+    "CreatedAt",
+  ]);
+  const updatedAt = firstDateLike(raw, [
+    "updated_at",
+    "Updated_At",
+    "updatedAt",
+    "UpdatedAt",
+    "started_at",
+    "Started_At",
+  ]);
+  const endedAt = firstDateLike(raw, [
+    "ended_at",
+    "Ended_At",
+    "endedAt",
+    "EndedAt",
+  ]);
 
   return {
     id,
@@ -688,18 +819,18 @@ function normalizeIncident(raw: any): IncidentItem | null {
     statusRaw.includes("resolve") || statusRaw.includes("closed")
       ? "resolved"
       : statusRaw
-      ? "open"
-      : "unknown";
+        ? "open"
+        : "unknown";
 
   const severity: IncidentItem["severity"] = severityRaw.includes("crit")
     ? "critical"
     : severityRaw.includes("high") || severityRaw.includes("élev")
-    ? "high"
-    : severityRaw.includes("medium") || severityRaw.includes("moy")
-    ? "medium"
-    : severityRaw.includes("low") || severityRaw.includes("faib")
-    ? "low"
-    : "unknown";
+      ? "high"
+      : severityRaw.includes("medium") || severityRaw.includes("moy")
+        ? "medium"
+        : severityRaw.includes("low") || severityRaw.includes("faib")
+          ? "low"
+          : "unknown";
 
   return {
     id,
@@ -713,10 +844,25 @@ function normalizeIncident(raw: any): IncidentItem | null {
       pickValue(raw, ["root_event_id", "Root_Event_ID", "rootEventId", "RootEventId"]),
     ),
     sourceRecordId: asString(
-      pickValue(raw, ["source_record_id", "Source_Record_ID", "sourceRecordId", "SourceRecordId"]),
+      pickValue(raw, [
+        "source_record_id",
+        "Source_Record_ID",
+        "sourceRecordId",
+        "SourceRecordId",
+      ]),
     ),
-    createdAt: firstDateLike(raw, ["created_at", "Created_At", "createdAt", "CreatedAt"]),
-    updatedAt: firstDateLike(raw, ["updated_at", "Updated_At", "updatedAt", "UpdatedAt"]),
+    createdAt: firstDateLike(raw, [
+      "created_at",
+      "Created_At",
+      "createdAt",
+      "CreatedAt",
+    ]),
+    updatedAt: firstDateLike(raw, [
+      "updated_at",
+      "Updated_At",
+      "updatedAt",
+      "UpdatedAt",
+    ]),
   };
 }
 
@@ -727,8 +873,8 @@ function buildFlows(commands: CommandItem[], incidents: IncidentItem[]): FlowGro
     const key = command.flowId
       ? `flow:${command.flowId}`
       : command.rootEventId
-      ? `root:${command.rootEventId}`
-      : `cmd:${command.id}`;
+        ? `root:${command.rootEventId}`
+        : `cmd:${command.id}`;
 
     const existing = map.get(key) || createEmptyGroup(key);
 
@@ -736,7 +882,10 @@ function buildFlows(commands: CommandItem[], incidents: IncidentItem[]): FlowGro
     existing.rootEventId ||= command.rootEventId;
     existing.workspaceId ||= command.workspaceId;
     existing.createdAt = earliestDate(existing.createdAt, command.createdAt);
-    existing.updatedAt = latestDate(existing.updatedAt, command.endedAt || command.updatedAt || command.createdAt);
+    existing.updatedAt = latestDate(
+      existing.updatedAt,
+      command.endedAt || command.updatedAt || command.createdAt,
+    );
     existing.commands.push(command);
 
     map.set(key, existing);
@@ -746,10 +895,10 @@ function buildFlows(commands: CommandItem[], incidents: IncidentItem[]): FlowGro
     const key = incident.flowId
       ? `flow:${incident.flowId}`
       : incident.rootEventId
-      ? `root:${incident.rootEventId}`
-      : incident.sourceRecordId
-      ? `source:${incident.sourceRecordId}`
-      : `incident:${incident.id}`;
+        ? `root:${incident.rootEventId}`
+        : incident.sourceRecordId
+          ? `source:${incident.sourceRecordId}`
+          : `incident:${incident.id}`;
 
     const existing = map.get(key) || createEmptyGroup(key);
 
@@ -758,7 +907,10 @@ function buildFlows(commands: CommandItem[], incidents: IncidentItem[]): FlowGro
     existing.workspaceId ||= incident.workspaceId;
     existing.sourceRecordId ||= incident.sourceRecordId;
     existing.createdAt = earliestDate(existing.createdAt, incident.createdAt);
-    existing.updatedAt = latestDate(existing.updatedAt, incident.updatedAt || incident.createdAt);
+    existing.updatedAt = latestDate(
+      existing.updatedAt,
+      incident.updatedAt || incident.createdAt,
+    );
     existing.incidents.push(incident);
 
     map.set(key, existing);
@@ -779,7 +931,8 @@ function finalizeFlowGroup(group: FlowGroup): FlowGroup {
   const commandStatuses = new Set(group.commands.map((command) => command.status));
   const hasOpenIncident = group.incidents.some((incident) => incident.status === "open");
   const hasCriticalIncident = group.incidents.some(
-    (incident) => incident.severity === "critical" || incident.severity === "high",
+    (incident) =>
+      incident.severity === "critical" || incident.severity === "high",
   );
 
   let status: FlowStatus = "unknown";
@@ -794,7 +947,10 @@ function finalizeFlowGroup(group: FlowGroup): FlowGroup {
     status = "partial";
   } else if (commandStatuses.has("queued")) {
     status = "queued";
-  } else if (group.commands.length > 0 && Array.from(commandStatuses).every((value) => value === "success")) {
+  } else if (
+    group.commands.length > 0 &&
+    Array.from(commandStatuses).every((value) => value === "success")
+  ) {
     status = "success";
   }
 
@@ -806,10 +962,10 @@ function finalizeFlowGroup(group: FlowGroup): FlowGroup {
   const displayName = group.flowId
     ? group.flowId
     : group.rootEventId
-    ? `root:${group.rootEventId}`
-    : group.sourceRecordId
-    ? `registry:${group.sourceRecordId}`
-    : group.key;
+      ? `root:${group.rootEventId}`
+      : group.sourceRecordId
+        ? `registry:${group.sourceRecordId}`
+        : group.key;
 
   return {
     ...group,
@@ -973,8 +1129,16 @@ function pickValue(raw: any, keys: string[]): unknown {
   const fields = raw?.fields ?? {};
 
   for (const key of keys) {
-    if (raw?.[key] !== undefined && raw?.[key] !== null && raw?.[key] !== "") return raw[key];
-    if (fields?.[key] !== undefined && fields?.[key] !== null && fields?.[key] !== "") return fields[key];
+    if (raw?.[key] !== undefined && raw?.[key] !== null && raw?.[key] !== "") {
+      return raw[key];
+    }
+    if (
+      fields?.[key] !== undefined &&
+      fields?.[key] !== null &&
+      fields?.[key] !== ""
+    ) {
+      return fields[key];
+    }
   }
 
   return undefined;
