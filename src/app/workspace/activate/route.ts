@@ -70,6 +70,20 @@ const PENDING_WORKSPACE_COOKIE_NAME =
     "bosai_pending_workspace_id"
   ).trim() || "bosai_pending_workspace_id";
 
+const DEDICATED_SPACE_COOKIE_NAME =
+  (
+    process.env.BOSAI_DEDICATED_SPACE_COOKIE_NAME ||
+    "bosai_dedicated_space"
+  ).trim() || "bosai_dedicated_space";
+
+const DEDICATED_SPACE_ALIAS_COOKIE_NAME =
+  (process.env.BOSAI_DEDICATED_SPACE_ALIAS_COOKIE_NAME || "dedicated_space").trim() ||
+  "dedicated_space";
+
+const MANUAL_WORKSPACE_SELECT_HREF = "/workspace/select?manual=1";
+
+type CommercialPlanCode = "starter" | "pro" | "agency" | "custom";
+
 function text(value: unknown): string {
   if (typeof value === "string") {
     return value.trim();
@@ -93,6 +107,49 @@ function normalizeInternalPath(value: unknown): string {
   if (normalized.startsWith("//")) return "";
 
   return normalized;
+}
+
+function normalizePlanCode(value?: string | null): CommercialPlanCode {
+  const normalized = text(value).toLowerCase();
+
+  if (normalized === "pro") return "pro";
+  if (normalized === "agency") return "agency";
+  if (normalized === "custom") return "custom";
+  return "starter";
+}
+
+function inferPlanCodeFromWorkspaceId(
+  workspaceId?: string | null
+): CommercialPlanCode {
+  const normalized = text(workspaceId).toLowerCase();
+
+  if (normalized.endsWith("_pro")) return "pro";
+  if (normalized.endsWith("_agency")) return "agency";
+  if (normalized.endsWith("_custom")) return "custom";
+  return "starter";
+}
+
+function resolveOnboardingPlanCode(args: {
+  workspaceId?: string | null;
+  cookieValues: Record<string, string | undefined>;
+}): CommercialPlanCode {
+  return normalizePlanCode(
+    args.cookieValues.bosai_plan_code ||
+      args.cookieValues.plan_code ||
+      args.cookieValues.selected_plan ||
+      inferPlanCodeFromWorkspaceId(args.workspaceId)
+  );
+}
+
+function getDedicatedSpaceForPlan(planCode: CommercialPlanCode): string {
+  if (planCode === "agency") return "agency_space";
+  if (planCode === "custom") return "company_space";
+  if (planCode === "pro") return "freelance_space";
+  return "personal_space";
+}
+
+function isOnboardingWorkspaceId(value?: string | null): boolean {
+  return text(value).startsWith("ws_onboarding_");
 }
 
 function cookieOptions() {
@@ -128,7 +185,8 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("next")
   );
 
-  const nextParam = explicitNextParam || normalizeInternalPath(session.homeRoute) || "/overview";
+  const nextParam =
+    explicitNextParam || normalizeInternalPath(session.homeRoute) || "/overview";
 
   if (!session.isAuthenticated) {
     return NextResponse.redirect(buildLoginUrl(request, nextParam));
@@ -159,6 +217,83 @@ export async function GET(request: NextRequest) {
     text(onboardingCookieValues.bosai_pending_workspace_id) ||
     text(session.cookieSnapshot.activeWorkspaceId);
 
+  /**
+   * Fast-path critique :
+   * pour un workspace onboarding synthétique, on active directement
+   * les cookies sans repasser dans une résolution complexe.
+   *
+   * C’est ce qui évite la boucle :
+   * create -> activate -> resolver -> ancien état -> accueil
+   */
+  if (isOnboardingWorkspaceId(requestedWorkspaceId)) {
+    const planCode = resolveOnboardingPlanCode({
+      workspaceId: requestedWorkspaceId,
+      cookieValues: onboardingCookieValues,
+    });
+
+    const dedicatedSpace = getDedicatedSpaceForPlan(planCode);
+
+    const allowedWorkspaceIds = uniq([
+      requestedWorkspaceId,
+      ...session.cookieSnapshot.allowedWorkspaceIds,
+    ]);
+
+    const finalTarget = explicitNextParam || "/workspace";
+    const response = NextResponse.redirect(
+      buildRedirectUrl(request, finalTarget)
+    );
+
+    const options = cookieOptions();
+
+    response.cookies.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, options);
+    response.cookies.set(
+      WORKSPACE_ACTIVE_COOKIE_NAME,
+      requestedWorkspaceId,
+      options
+    );
+    response.cookies.set(
+      WORKSPACE_ALIAS_COOKIE_NAME,
+      requestedWorkspaceId,
+      options
+    );
+    response.cookies.set(
+      WORKSPACE_LEGACY_COOKIE_NAME,
+      requestedWorkspaceId,
+      options
+    );
+    response.cookies.set(
+      WORKSPACE_ALLOWED_COOKIE_NAME,
+      JSON.stringify(allowedWorkspaceIds),
+      options
+    );
+
+    response.cookies.set(WORKSPACE_STATUS_COOKIE_NAME, "active", options);
+    response.cookies.set(WORKSPACE_STATUS_ALIAS_COOKIE_NAME, "active", options);
+    response.cookies.set(ONBOARDING_COMPLETED_COOKIE_NAME, "1", options);
+    response.cookies.set(ONBOARDING_COMPLETED_ALIAS_COOKIE_NAME, "1", options);
+    response.cookies.set(
+      PENDING_WORKSPACE_COOKIE_NAME,
+      requestedWorkspaceId,
+      options
+    );
+    response.cookies.set(
+      DEDICATED_SPACE_COOKIE_NAME,
+      dedicatedSpace,
+      options
+    );
+    response.cookies.set(
+      DEDICATED_SPACE_ALIAS_COOKIE_NAME,
+      dedicatedSpace,
+      options
+    );
+
+    return response;
+  }
+
+  /**
+   * Fallback standard :
+   * on garde la logique existante pour les workspaces normaux.
+   */
   const resolution = await resolveWorkspaceAccess({
     userId: text(session.user?.userId),
     requestedWorkspaceId,
@@ -170,7 +305,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(
       buildRedirectUrl(
         request,
-        normalizeInternalPath(resolution.redirectTo) || MANUAL_WORKSPACE_SELECT_HREF
+        normalizeInternalPath(resolution.redirectTo) ||
+          MANUAL_WORKSPACE_SELECT_HREF
       )
     );
   }
@@ -199,7 +335,9 @@ export async function GET(request: NextRequest) {
 
   const fallbackDashboard =
     normalizeInternalPath(resolution.dashboardRoute) ||
-    getDashboardRouteForWorkspaceCategory(resolution.activeWorkspace.category) ||
+    getDashboardRouteForWorkspaceCategory(
+      resolution.activeWorkspace.category
+    ) ||
     "/overview";
 
   const finalTarget =
@@ -237,15 +375,7 @@ export async function GET(request: NextRequest) {
   response.cookies.set(WORKSPACE_STATUS_ALIAS_COOKIE_NAME, "active", options);
   response.cookies.set(ONBOARDING_COMPLETED_COOKIE_NAME, "1", options);
   response.cookies.set(ONBOARDING_COMPLETED_ALIAS_COOKIE_NAME, "1", options);
-
-  /**
-   * On garde le pending workspace pointé sur l’espace activé.
-   * Cela évite que le resolver perde le workspace onboarding synthétique
-   * juste après l’activation lorsqu’il n’existe pas encore de membership réel.
-   */
   response.cookies.set(PENDING_WORKSPACE_COOKIE_NAME, activeWorkspaceId, options);
 
   return response;
 }
-
-const MANUAL_WORKSPACE_SELECT_HREF = "/workspace/select?manual=1";
