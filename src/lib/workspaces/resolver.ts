@@ -1,3 +1,5 @@
+// src/lib/workspaces/resolver.ts
+
 import "server-only";
 
 import { isAirtableLiveConfigured } from "../airtable/config";
@@ -1005,9 +1007,12 @@ export async function resolveWorkspaceAccess(
     activeWorkspace.category
   );
 
+  const syntheticWorkspaceId =
+    syntheticCommercialWorkspace?.workspace.workspaceId || "";
+
   const isSyntheticActiveWorkspace =
-    Boolean(syntheticCommercialWorkspace) &&
-    activeWorkspace.workspaceId === syntheticCommercialWorkspace.workspace.workspaceId;
+    syntheticWorkspaceId !== "" &&
+    activeWorkspace.workspaceId === syntheticWorkspaceId;
 
   const context: WorkspaceContext =
     isSyntheticActiveWorkspace && syntheticCommercialWorkspace
