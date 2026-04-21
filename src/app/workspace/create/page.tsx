@@ -13,6 +13,7 @@ import {
 type SearchParams = {
   plan?: string | string[];
   activated?: string | string[];
+  commercial_workspace_id?: string | string[];
 };
 
 type PageProps = {
@@ -173,12 +174,6 @@ export default async function WorkspaceCreatePage({
 
   const activated = activatedFromQuery || accessState.canAccessCockpit;
 
-  /**
-   * Point clé:
-   * on laisse passer explicitement ?activated=1
-   * même si la relecture des cookies onboarding n'est pas encore stable
-   * sur ce premier hit après /onboarding/continue.
-   */
   if (shouldApplyCommercialGuard) {
     const isWorkspaceStage = accessState.stage === "workspace";
     const isAlreadyActivated = accessState.canAccessCockpit || activatedFromQuery;
@@ -194,22 +189,39 @@ export default async function WorkspaceCreatePage({
     normalizeText(onboardingCookieValues.bosai_pending_workspace_id) ||
     buildPendingWorkspaceId(planCode);
 
+  const commercialWorkspaceIdFromQuery = normalizeText(
+    firstParam(resolvedSearchParams.commercial_workspace_id)
+  );
+
+  const isCommercialWorkspaceReturn =
+    commercialWorkspaceIdFromQuery !== "" &&
+    commercialWorkspaceIdFromQuery === pendingWorkspaceId;
+
   /**
-   * Pendant l’onboarding commercial:
-   * - si activation pas encore validée: on reste ici
-   * - si activation validée ET memberships réelles présentes: on peut aller au selector
+   * Important :
+   * on ne redirige vers le selector que si on n'est PAS dans le flow commercial.
+   * Sinon on reboucle immédiatement vers un workspace réel existant.
    */
-  if (activated && memberships.length > 0) {
+  if (
+    !shouldApplyCommercialGuard &&
+    !isCommercialWorkspaceReturn &&
+    activated &&
+    memberships.length > 0
+  ) {
     redirect("/workspace/select");
   }
 
   const suggestedName = getSuggestedWorkspaceName(planCode);
 
+  const finalizeReturnPath = `/workspace/create?activated=1&plan=${encodeURIComponent(
+    planCode
+  )}&commercial_workspace_id=${encodeURIComponent(pendingWorkspaceId)}`;
+
   const finalizeHref = `/onboarding/continue?step=activate&plan=${encodeURIComponent(
     planCode
   )}&workspace_id=${encodeURIComponent(
     pendingWorkspaceId
-  )}&next=${encodeURIComponent("/workspace/create?activated=1")}`;
+  )}&next=${encodeURIComponent(finalizeReturnPath)}`;
 
   const activateWorkspaceHref = `/workspace/activate?workspace_id=${encodeURIComponent(
     pendingWorkspaceId
@@ -346,7 +358,7 @@ export default async function WorkspaceCreatePage({
               <div className={compactCardClassName()}>
                 <div className={sectionLabelClassName()}>Prochaine vraie étape</div>
                 <p className="mt-3 text-sm leading-7 text-zinc-400">
-                  Après activation, le selector et le hub workspace pourront s’ouvrir sans reboucler sur le funnel commercial.
+                  Après activation, le hub workspace pourra s’ouvrir sans retomber sur un workspace réel existant.
                 </p>
               </div>
             </div>
