@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
-
-const AUTH_COOKIE_NAME =
-  (process.env.BOSAI_AUTH_COOKIE_NAME || "bosai_auth").trim() || "bosai_auth";
-
-const AUTH_COOKIE_VALUE =
-  (process.env.BOSAI_AUTH_COOKIE_VALUE || "authenticated").trim() ||
-  "authenticated";
-
-const WORKSPACE_ACTIVE_COOKIE_NAME =
-  (
-    process.env.BOSAI_ACTIVE_WORKSPACE_COOKIE_NAME ||
-    "bosai_active_workspace_id"
-  ).trim() || "bosai_active_workspace_id";
+import {
+  MOCK_ACTIVE_WORKSPACE_COOKIE_NAME,
+  MOCK_ALLOWED_WORKSPACES_COOKIE_NAME,
+  MOCK_AUTH_COOKIE_NAME,
+  MOCK_AUTH_COOKIE_VALUE,
+  MOCK_DEDICATED_SPACE_COOKIE_NAME,
+  MOCK_SESSION_TOKEN_COOKIE_NAME,
+  MOCK_USER_ID_COOKIE_NAME,
+  buildMockSessionCookiePayload,
+  getMockSessionForUserCategory,
+  resolveMockSession,
+} from "@/lib/auth/mock-session";
+import type { WorkspaceCategory } from "@/lib/workspaces/types";
 
 const WORKSPACE_ALIAS_COOKIE_NAME =
   (process.env.BOSAI_WORKSPACE_COOKIE_NAME || "bosai_workspace_id").trim() ||
@@ -21,49 +21,12 @@ const WORKSPACE_LEGACY_COOKIE_NAME =
   (process.env.BOSAI_WORKSPACE_LEGACY_COOKIE_NAME || "workspace_id").trim() ||
   "workspace_id";
 
-const WORKSPACE_ALLOWED_COOKIE_NAME =
-  (
-    process.env.BOSAI_ALLOWED_WORKSPACES_COOKIE_NAME ||
-    "bosai_allowed_workspace_ids"
-  ).trim() || "bosai_allowed_workspace_ids";
-
 function text(value: unknown): string {
-  if (typeof value === "string") {
-    const v = value.trim();
-    return v || "";
-  }
-
+  if (typeof value === "string") return value.trim();
   if (typeof value === "number" || typeof value === "boolean") {
     return String(value).trim();
   }
-
   return "";
-}
-
-function uniq(values: string[]): string[] {
-  return Array.from(new Set(values.map((v) => text(v)).filter(Boolean)));
-}
-
-function parseWorkspaceIds(value: string): string[] {
-  const raw = value.trim();
-  if (!raw) return [];
-
-  if (raw.startsWith("[") && raw.endsWith("]")) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return uniq(parsed.map((item) => text(item)));
-      }
-    } catch {
-      return [];
-    }
-  }
-
-  if (raw.includes(",")) {
-    return uniq(raw.split(","));
-  }
-
-  return raw ? [raw] : [];
 }
 
 function normalizeInternalPath(value: unknown): string {
@@ -71,6 +34,17 @@ function normalizeInternalPath(value: unknown): string {
   if (!v.startsWith("/")) return "";
   if (v.startsWith("//")) return "";
   return v;
+}
+
+function normalizeCategory(value: unknown): WorkspaceCategory | null {
+  const v = text(value).toLowerCase();
+
+  if (v === "personal") return "personal";
+  if (v === "freelance") return "freelance";
+  if (v === "company") return "company";
+  if (v === "agency") return "agency";
+
+  return null;
 }
 
 function isCommercialOnboardingPath(pathname: string): boolean {
@@ -81,42 +55,6 @@ function isCommercialOnboardingPath(pathname: string): boolean {
     path.startsWith("/onboarding") ||
     path.startsWith("/workspace/create")
   );
-}
-
-function resolveWorkspaceSession(): {
-  allowedWorkspaceIds: string[];
-  activeWorkspaceId: string;
-  route: string;
-} {
-  const envAllowed = uniq([
-    ...parseWorkspaceIds(process.env.BOSAI_ALLOWED_WORKSPACE_IDS || ""),
-    ...parseWorkspaceIds(process.env.BOSAI_AUTH_ALLOWED_WORKSPACE_IDS || ""),
-  ]);
-
-  const envActive = text(
-    process.env.BOSAI_ACTIVE_WORKSPACE_ID ||
-      process.env.BOSAI_DEFAULT_WORKSPACE_ID ||
-      process.env.BOSAI_WORKSPACE_ID ||
-      ""
-  );
-
-  const allowedWorkspaceIds =
-    envAllowed.length > 0
-      ? envAllowed
-      : envActive
-        ? [envActive]
-        : ["production"];
-
-  const activeWorkspaceId =
-    envActive && allowedWorkspaceIds.includes(envActive)
-      ? envActive
-      : allowedWorkspaceIds[0] || "production";
-
-  return {
-    allowedWorkspaceIds,
-    activeWorkspaceId,
-    route: "/workspace",
-  };
 }
 
 function getCookieOptions() {
@@ -139,9 +77,79 @@ function clearCookie(response: NextResponse, name: string) {
   });
 }
 
+function readCookieValue(cookieHeader: string, name: string): string {
+  const parts = cookieHeader.split(";");
+
+  for (const part of parts) {
+    const [rawKey, ...rest] = part.split("=");
+    if (text(rawKey) !== name) continue;
+    return decodeURIComponent(rest.join("=") || "");
+  }
+
+  return "";
+}
+
+function resolveBootstrapSession(args: {
+  existingWorkspaceId?: string;
+}) {
+  const preferredCategory =
+    normalizeCategory(process.env.BOSAI_AUTH_PREFERRED_CATEGORY) || null;
+
+  const configuredToken = text(
+    process.env.BOSAI_AUTH_SESSION_TOKEN ||
+      process.env.BOSAI_MOCK_SESSION_TOKEN ||
+      "arthur_token"
+  );
+
+  const configuredUserId = text(
+    process.env.BOSAI_AUTH_USER_ID ||
+      process.env.BOSAI_MOCK_USER_ID ||
+      "user_arthur"
+  );
+
+  const requestedWorkspaceId = text(args.existingWorkspaceId);
+
+  const byToken = resolveMockSession({
+    token: configuredToken,
+    requestedWorkspaceId,
+    preferredCategory,
+  });
+
+  if (byToken.isAuthenticated && byToken.workspace) {
+    return byToken;
+  }
+
+  const byUser = getMockSessionForUserCategory(
+    configuredUserId,
+    preferredCategory || undefined
+  );
+
+  if (byUser.isAuthenticated && byUser.workspace) {
+    if (requestedWorkspaceId) {
+      const retried = resolveMockSession({
+        token: byUser.token,
+        requestedWorkspaceId,
+        preferredCategory,
+      });
+
+      if (retried.isAuthenticated && retried.workspace) {
+        return retried;
+      }
+    }
+
+    return byUser;
+  }
+
+  return resolveMockSession({
+    token: "arthur_token",
+    requestedWorkspaceId,
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const contentType = request.headers.get("content-type") || "";
+    const cookieHeader = request.headers.get("cookie") || "";
 
     let email = "";
     let password = "";
@@ -154,24 +162,18 @@ export async function POST(request: Request) {
         next?: string;
       };
 
-      email = String(body.email || "")
-        .trim()
-        .toLowerCase();
+      email = String(body.email || "").trim().toLowerCase();
       password = String(body.password || "").trim();
       next = normalizeInternalPath(body.next);
     } else {
       const formData = await request.formData();
-      email = String(formData.get("email") || "")
-        .trim()
-        .toLowerCase();
+      email = String(formData.get("email") || "").trim().toLowerCase();
       password = String(formData.get("password") || "").trim();
       next = normalizeInternalPath(formData.get("next"));
     }
 
-    const expectedEmail = (process.env.BOSAI_AUTH_EMAIL || "")
-      .trim()
-      .toLowerCase();
-    const expectedPassword = (process.env.BOSAI_AUTH_PASSWORD || "").trim();
+    const expectedEmail = text(process.env.BOSAI_AUTH_EMAIL).toLowerCase();
+    const expectedPassword = text(process.env.BOSAI_AUTH_PASSWORD);
 
     if (!email || !password) {
       return NextResponse.json(
@@ -194,52 +196,67 @@ export async function POST(request: Request) {
       );
     }
 
-    const { allowedWorkspaceIds, activeWorkspaceId, route } =
-      resolveWorkspaceSession();
-
+    const onboardingMode = isCommercialOnboardingPath(next);
     const cookieOptions = getCookieOptions();
-    const finalRoute = next || route || "/workspace";
-    const onboardingMode = isCommercialOnboardingPath(finalRoute);
 
     const response = NextResponse.json({
       ok: true,
-      activeWorkspaceId: onboardingMode ? "" : activeWorkspaceId,
-      allowedWorkspaceIds: onboardingMode ? [] : allowedWorkspaceIds,
-      route: finalRoute,
+      route: next || "/workspace",
     });
 
-    response.cookies.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, cookieOptions);
+    response.cookies.set(
+      MOCK_AUTH_COOKIE_NAME,
+      MOCK_AUTH_COOKIE_VALUE,
+      cookieOptions
+    );
 
     if (onboardingMode) {
-      clearCookie(response, WORKSPACE_ACTIVE_COOKIE_NAME);
-      clearCookie(response, WORKSPACE_ALIAS_COOKIE_NAME);
-      clearCookie(response, WORKSPACE_LEGACY_COOKIE_NAME);
-      clearCookie(response, WORKSPACE_ALLOWED_COOKIE_NAME);
-    } else {
-      response.cookies.set(
-        WORKSPACE_ACTIVE_COOKIE_NAME,
-        activeWorkspaceId,
-        cookieOptions
-      );
-
-      response.cookies.set(
+      [
+        MOCK_SESSION_TOKEN_COOKIE_NAME,
+        MOCK_USER_ID_COOKIE_NAME,
+        MOCK_DEDICATED_SPACE_COOKIE_NAME,
+        MOCK_ACTIVE_WORKSPACE_COOKIE_NAME,
+        MOCK_ALLOWED_WORKSPACES_COOKIE_NAME,
         WORKSPACE_ALIAS_COOKIE_NAME,
-        activeWorkspaceId,
-        cookieOptions
-      );
-
-      response.cookies.set(
         WORKSPACE_LEGACY_COOKIE_NAME,
-        activeWorkspaceId,
-        cookieOptions
-      );
+      ].forEach((cookieName) => clearCookie(response, cookieName));
 
-      response.cookies.set(
-        WORKSPACE_ALLOWED_COOKIE_NAME,
-        JSON.stringify(allowedWorkspaceIds),
-        cookieOptions
+      return response;
+    }
+
+    const existingWorkspaceId =
+      readCookieValue(cookieHeader, MOCK_ACTIVE_WORKSPACE_COOKIE_NAME) ||
+      readCookieValue(cookieHeader, WORKSPACE_ALIAS_COOKIE_NAME) ||
+      readCookieValue(cookieHeader, WORKSPACE_LEGACY_COOKIE_NAME);
+
+    const session = resolveBootstrapSession({
+      existingWorkspaceId,
+    });
+
+    const cookiePayload = buildMockSessionCookiePayload(session);
+
+    if (!cookiePayload || !session.workspace) {
+      return NextResponse.json(
+        { ok: false, error: "Impossible d’initialiser la session workspace." },
+        { status: 500 }
       );
     }
+
+    for (const [name, value] of Object.entries(cookiePayload)) {
+      response.cookies.set(name, value, cookieOptions);
+    }
+
+    response.cookies.set(
+      WORKSPACE_ALIAS_COOKIE_NAME,
+      session.workspace.workspaceId,
+      cookieOptions
+    );
+
+    response.cookies.set(
+      WORKSPACE_LEGACY_COOKIE_NAME,
+      session.workspace.workspaceId,
+      cookieOptions
+    );
 
     return response;
   } catch {
