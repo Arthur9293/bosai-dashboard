@@ -31,7 +31,13 @@ function text(value?: string | null): string {
   return String(value || "").trim();
 }
 
+function safeUpper(value?: string | null): string {
+  return text(value).toUpperCase();
+}
+
 function isActivePath(pathname: string, href: string): boolean {
+  if (!pathname) return false;
+
   if (href === "/overview") {
     return (
       pathname === "/" ||
@@ -45,7 +51,10 @@ function isActivePath(pathname: string, href: string): boolean {
   }
 
   if (href === MANUAL_WORKSPACE_SELECT_HREF) {
-    return pathname === "/workspace/select" || pathname.startsWith("/workspace/select");
+    return (
+      pathname === "/workspace/select" ||
+      pathname.startsWith("/workspace/select")
+    );
   }
 
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -224,7 +233,7 @@ export function Sidebar({
   onNavigate,
   variant = "desktop",
 }: SidebarProps) {
-  const pathname = usePathname();
+  const pathname = usePathname() || "";
   const isDesktop = variant === "desktop";
   const navSections = getNavSections(workspace, entitlements);
 
@@ -245,7 +254,7 @@ export function Sidebar({
               </div>
 
               <div className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                {workspace.name}
+                {text(workspace.name) || "Workspace"}
               </div>
 
               <div className="mt-2 text-sm leading-6 text-zinc-400">
@@ -254,13 +263,13 @@ export function Sidebar({
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <span className={badgeClassName(categoryBadgeTone(workspace.category))}>
-                  {workspace.category.toUpperCase()}
+                  {safeUpper(workspace.category)}
                 </span>
                 <span className={badgeClassName("success")}>
-                  {workspace.membershipRole.toUpperCase()}
+                  {safeUpper(workspace.membershipRole)}
                 </span>
                 <span className={badgeClassName("success")}>
-                  {workspace.status.toUpperCase()}
+                  {safeUpper(workspace.status)}
                 </span>
               </div>
             </div>
@@ -315,10 +324,10 @@ export function Sidebar({
 
               <div className="mt-3 flex flex-wrap gap-2">
                 <span className={badgeClassName(categoryBadgeTone(workspace.category))}>
-                  {workspace.slug}
+                  {text(workspace.slug) || "workspace"}
                 </span>
                 <span className={badgeClassName("default")}>
-                  Plan · {workspace.plan}
+                  Plan · {text(workspace.plan) || "—"}
                 </span>
               </div>
 
