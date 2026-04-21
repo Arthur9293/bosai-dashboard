@@ -497,9 +497,18 @@ function resolveActiveWorkspaceSummary(
 ): WorkspaceSummary | null {
   const preferred = normalizeText(preferredWorkspaceId);
 
+  /**
+   * Correction importante :
+   * si un workspace précis est demandé mais introuvable,
+   * on ne doit PAS fallback automatiquement sur un autre workspace.
+   *
+   * Sinon la session "fabrique" un workspace actif arbitraire
+   * (default / premier membership) et on retombe sur Ferrera / Studio
+   * alors que le cookie ou le flow demandait autre chose.
+   */
   if (preferred) {
     const exact = memberships.find((item) => item.workspaceId === preferred);
-    if (exact) return exact;
+    return exact || null;
   }
 
   const explicitDefault = memberships.find((item) => item.isDefault);
