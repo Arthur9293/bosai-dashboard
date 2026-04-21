@@ -21,6 +21,8 @@ type PageProps = {
   searchParams?: Promise<SearchParams> | SearchParams;
 };
 
+const MANUAL_WORKSPACE_SELECT_HREF = "/workspace/select?manual=1";
+
 function firstParam(value?: string | string[]): string {
   if (Array.isArray(value)) return value[0] || "";
   return value || "";
@@ -30,9 +32,17 @@ function normalizeText(value?: string | null): string {
   return String(value || "").trim();
 }
 
+function normalizePlanCode(value?: string | null): string {
+  const normalized = normalizeText(value).toLowerCase();
+  if (normalized === "starter") return "starter";
+  if (normalized === "pro") return "pro";
+  if (normalized === "agency") return "agency";
+  if (normalized === "custom") return "custom";
+  return "starter";
+}
+
 function buildPendingWorkspaceId(planCode: string): string {
-  const normalized = normalizeText(planCode).toLowerCase() || "starter";
-  return `ws_onboarding_${normalized}`;
+  return `ws_onboarding_${normalizePlanCode(planCode)}`;
 }
 
 function isTruthy(value: string): boolean {
@@ -121,9 +131,11 @@ function buttonClassName(
 }
 
 function getSuggestedWorkspaceName(planCode: string): string {
-  if (planCode === "agency") return "BOSAI Agency Workspace";
-  if (planCode === "custom") return "BOSAI Custom Workspace";
-  if (planCode === "pro") return "BOSAI Pro Workspace";
+  const normalized = normalizePlanCode(planCode);
+
+  if (normalized === "agency") return "BOSAI Agency Workspace";
+  if (normalized === "custom") return "BOSAI Custom Workspace";
+  if (normalized === "pro") return "BOSAI Pro Workspace";
   return "BOSAI Starter Workspace";
 }
 
@@ -140,15 +152,19 @@ export default async function WorkspaceCreatePage({
     ? await Promise.resolve(searchParams)
     : {};
 
-  const activatedValue = firstParam(resolvedSearchParams.activated);
-  const activatedFromQuery = isTruthy(activatedValue);
-
   const cookieStore = await cookies();
   const headerStore = await headers();
+
   const host =
     headerStore.get("x-forwarded-host") ||
     headerStore.get("host") ||
     "unknown-host";
+
+  const queryPlanRaw = firstParam(resolvedSearchParams.plan);
+  const queryActivatedRaw = firstParam(resolvedSearchParams.activated);
+  const queryCommercialWorkspaceIdRaw = firstParam(
+    resolvedSearchParams.commercial_workspace_id
+  );
 
   const onboardingCookieValues = {
     bosai_plan_code: cookieStore.get("bosai_plan_code")?.value,
@@ -173,16 +189,44 @@ export default async function WorkspaceCreatePage({
     cookieValues: onboardingCookieValues,
   });
 
-  const planCode =
-    firstParam(resolvedSearchParams.plan).trim().toLowerCase() ||
-    accessState.planCode ||
-    "starter";
+  const planCode = normalizePlanCode(
+    queryPlanRaw ||
+      accessState.planCode ||
+      onboardingCookieValues.bosai_plan_code ||
+      onboardingCookieValues.plan_code ||
+      onboardingCookieValues.selected_plan ||
+      "starter"
+  );
 
-  const activated = activatedFromQuery || accessState.canAccessCockpit;
+  const derivedPendingWorkspaceId = buildPendingWorkspaceId(planCode);
+  const cookiePendingWorkspaceId = normalizeText(
+    onboardingCookieValues.bosai_pending_workspace_id
+  );
+  const queryCommercialWorkspaceId = normalizeText(queryCommercialWorkspaceIdRaw);
+
+  /**
+   * Règle importante :
+   * - on ne laisse jamais un vieux pending workspace cookie écraser le plan courant
+   * - on ne conserve le cookie que s'il correspond bien au plan actuel
+   * - sinon on repart du workspace dérivé depuis le plan courant
+   */
+  const pendingWorkspaceId =
+    queryCommercialWorkspaceId ||
+    (cookiePendingWorkspaceId === derivedPendingWorkspaceId
+      ? cookiePendingWorkspaceId
+      : derivedPendingWorkspaceId);
+
+  const activatedFromQuery = isTruthy(queryActivatedRaw);
+  const activatedFromMatchingQuery =
+    activatedFromQuery &&
+    queryCommercialWorkspaceId !== "" &&
+    queryCommercialWorkspaceId === pendingWorkspaceId;
+
+  const activated = accessState.canAccessCockpit || activatedFromMatchingQuery;
 
   if (shouldApplyCommercialGuard) {
     const isWorkspaceStage = accessState.stage === "workspace";
-    const isAlreadyActivated = accessState.canAccessCockpit || activatedFromQuery;
+    const isAlreadyActivated = activated;
 
     if (!isWorkspaceStage && !isAlreadyActivated) {
       redirect(accessState.redirectPath || "/pricing");
@@ -191,17 +235,9 @@ export default async function WorkspaceCreatePage({
 
   const memberships = session.context?.memberships ?? [];
 
-  const pendingWorkspaceId =
-    normalizeText(onboardingCookieValues.bosai_pending_workspace_id) ||
-    buildPendingWorkspaceId(planCode);
-
-  const commercialWorkspaceIdFromQuery = normalizeText(
-    firstParam(resolvedSearchParams.commercial_workspace_id)
-  );
-
   const isCommercialWorkspaceReturn =
-    commercialWorkspaceIdFromQuery !== "" &&
-    commercialWorkspaceIdFromQuery === pendingWorkspaceId;
+    queryCommercialWorkspaceId !== "" &&
+    queryCommercialWorkspaceId === pendingWorkspaceId;
 
   if (
     !shouldApplyCommercialGuard &&
@@ -209,42 +245,40 @@ export default async function WorkspaceCreatePage({
     activated &&
     memberships.length > 0
   ) {
-    redirect("/workspace/select");
+    redirect(MANUAL_WORKSPACE_SELECT_HREF);
   }
 
   const suggestedName = getSuggestedWorkspaceName(planCode);
 
-  const finalizeReturnPath = `/workspace/create?activated=1&plan=${encodeURIComponent(
+  /**
+   * Correctif principal :
+   * - on ne dépend plus de /onboarding/continue?step=activate pour faire simplement évoluer l'écran
+   * - le premier clic "create/finaliser" revient sur CETTE page avec un état query cohérent
+   * - ensuite seulement on lance l'activation workspace réelle
+   */
+  const finalizeHref = `/workspace/create?plan=${encodeURIComponent(
     planCode
-  )}&commercial_workspace_id=${encodeURIComponent(pendingWorkspaceId)}`;
-
-  const finalizeHref = `/onboarding/continue?step=activate&plan=${encodeURIComponent(
-    planCode
-  )}&workspace_id=${encodeURIComponent(
+  )}&activated=1&commercial_workspace_id=${encodeURIComponent(
     pendingWorkspaceId
-  )}&next=${encodeURIComponent(finalizeReturnPath)}`;
+  )}`;
 
   const activateWorkspaceHref = `/workspace/activate?workspace_id=${encodeURIComponent(
     pendingWorkspaceId
   )}&next=${encodeURIComponent("/workspace")}`;
 
-  const selectWorkspaceHref = "/workspace/select";
+  const workspaceSetupHref = `/onboarding/workspace?plan=${encodeURIComponent(
+    planCode
+  )}`;
 
   const debugItems = [
     { label: "host", value: host },
     { label: "page", value: "/workspace/create" },
     { label: "auth", value: session.isAuthenticated ? "yes" : "no" },
-    {
-      label: "query.plan",
-      value: firstParam(resolvedSearchParams.plan),
-    },
-    {
-      label: "query.activated",
-      value: firstParam(resolvedSearchParams.activated),
-    },
+    { label: "query.plan", value: queryPlanRaw },
+    { label: "query.activated", value: queryActivatedRaw },
     {
       label: "query.commercial_workspace_id",
-      value: firstParam(resolvedSearchParams.commercial_workspace_id),
+      value: queryCommercialWorkspaceIdRaw,
     },
     {
       label: "commercial.signals",
@@ -265,6 +299,14 @@ export default async function WorkspaceCreatePage({
     {
       label: "commercial.workspaceStatus",
       value: accessState.workspaceStatus || "",
+    },
+    {
+      label: "cookie.pendingWorkspaceId",
+      value: cookiePendingWorkspaceId,
+    },
+    {
+      label: "derived.pendingWorkspaceId",
+      value: derivedPendingWorkspaceId,
     },
     {
       label: "pendingWorkspaceId",
@@ -350,8 +392,9 @@ export default async function WorkspaceCreatePage({
                 <div className={compactCardClassName()}>
                   <div className={sectionLabelClassName()}>Workspace status</div>
                   <div className="mt-3 text-2xl font-semibold text-white">
-                    {accessState.workspaceStatus ||
-                      (activated ? "active" : "ready_to_activate")}
+                    {activated
+                      ? "ready_to_activate"
+                      : accessState.workspaceStatus || "ready_to_activate"}
                   </div>
                 </div>
 
@@ -377,10 +420,7 @@ export default async function WorkspaceCreatePage({
                   </Link>
                 )}
 
-                <Link
-                  href={`/onboarding/workspace?plan=${encodeURIComponent(planCode)}`}
-                  className={buttonClassName("soft")}
-                >
+                <Link href={workspaceSetupHref} className={buttonClassName("soft")}>
                   Retour workspace setup
                 </Link>
               </div>
@@ -395,7 +435,8 @@ export default async function WorkspaceCreatePage({
                 <div className={sectionLabelClassName()}>Pourquoi cette page</div>
                 <p className="mt-3 text-sm leading-7 text-zinc-400">
                   On sépare volontairement :
-                  plan → checkout → provisioning → workspace setup → create → activate → cockpit.
+                  plan → checkout → provisioning → workspace setup → create →
+                  activate → cockpit.
                 </p>
               </div>
 
@@ -409,9 +450,12 @@ export default async function WorkspaceCreatePage({
               </div>
 
               <div className={compactCardClassName()}>
-                <div className={sectionLabelClassName()}>Prochaine vraie étape</div>
+                <div className={sectionLabelClassName()}>
+                  Prochaine vraie étape
+                </div>
                 <p className="mt-3 text-sm leading-7 text-zinc-400">
-                  Après activation, le hub workspace pourra s’ouvrir sans retomber sur un workspace réel existant.
+                  Après activation, le hub workspace pourra s’ouvrir sans
+                  retomber sur un workspace réel existant.
                 </p>
               </div>
             </div>
@@ -437,7 +481,7 @@ export default async function WorkspaceCreatePage({
                   </Link>
 
                   <Link
-                    href={selectWorkspaceHref}
+                    href={MANUAL_WORKSPACE_SELECT_HREF}
                     className={buttonClassName("soft")}
                   >
                     Ouvrir le sélecteur
