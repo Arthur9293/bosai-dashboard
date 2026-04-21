@@ -88,17 +88,43 @@ function normalizeText(value?: string | null): string {
   return String(value || "").trim();
 }
 
-function parseCsvList(value?: string | null): string[] {
-  return normalizeText(value)
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+function parseFlexibleList(value?: string | null): string[] {
+  const raw = normalizeText(value);
+  if (!raw) return [];
+
+  if (raw.startsWith("[") && raw.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return uniqueStrings(parsed.map((item) => normalizeText(String(item))));
+      }
+    } catch {}
+  }
+
+  return uniqueStrings(
+    raw
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+  );
 }
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(
     new Set(values.map((value) => normalizeText(value)).filter(Boolean))
   );
+}
+
+function readFirstCookieValue(
+  store: CookieReadableStore,
+  names: string[]
+): string {
+  for (const name of names) {
+    const value = normalizeText(store.get(name)?.value);
+    if (value) return value;
+  }
+
+  return "";
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -497,15 +523,6 @@ function resolveActiveWorkspaceSummary(
 ): WorkspaceSummary | null {
   const preferred = normalizeText(preferredWorkspaceId);
 
-  /**
-   * Correction importante :
-   * si un workspace précis est demandé mais introuvable,
-   * on ne doit PAS fallback automatiquement sur un autre workspace.
-   *
-   * Sinon la session "fabrique" un workspace actif arbitraire
-   * (default / premier membership) et on retombe sur Ferrera / Studio
-   * alors que le cookie ou le flow demandait autre chose.
-   */
   if (preferred) {
     const exact = memberships.find((item) => item.workspaceId === preferred);
     return exact || null;
@@ -781,27 +798,26 @@ async function enrichSessionFromAirtable(
     };
   }
 
-  const profileActiveWorkspaceId = resolveProfileWorkspaceId(liveProfile, [
-    "Active_Workspace_ID",
-    "Active_Workspace_Id",
-    "Active_Workspace",
-    "Default_Workspace_ID",
-    "Default_Workspace",
-  ]);
+  const requestedActiveWorkspaceId = normalizeText(snapshot.activeWorkspaceId);
 
-  const activeWorkspace = resolveActiveWorkspaceSummary(
+  const strictActiveWorkspace = resolveActiveWorkspaceSummary(
     memberships,
-    snapshot.activeWorkspaceId || profileActiveWorkspaceId
+    requestedActiveWorkspaceId
   );
 
+  const fallbackActiveWorkspace = requestedActiveWorkspaceId
+    ? null
+    : resolveActiveWorkspaceSummary(memberships, null);
+
+  const activeWorkspace = strictActiveWorkspace || fallbackActiveWorkspace;
+
   const activeWorkspaceId =
-    activeWorkspace?.workspaceId ||
-    normalizeText(snapshot.activeWorkspaceId) ||
-    profileActiveWorkspaceId;
+    activeWorkspace?.workspaceId || requestedActiveWorkspaceId;
 
   const workspaceIds = memberships.map((item) => item.workspaceId);
-  const activeLiveWorkspace = activeWorkspaceId
-    ? workspaceIndexes.byWorkspaceId.get(activeWorkspaceId) || null
+
+  const activeLiveWorkspace = activeWorkspace?.workspaceId
+    ? workspaceIndexes.byWorkspaceId.get(activeWorkspace.workspaceId) || null
     : null;
 
   const quota = activeWorkspace
@@ -871,15 +887,24 @@ export function buildAuthCookieSnapshotFromStore(
     store.get(MOCK_SESSION_TOKEN_COOKIE_NAME)?.value
   );
   const userId = normalizeText(store.get(MOCK_USER_ID_COOKIE_NAME)?.value);
-  const activeWorkspaceId = normalizeText(
-    store.get(MOCK_ACTIVE_WORKSPACE_COOKIE_NAME)?.value
-  );
-  const allowedWorkspaceIdsRaw = normalizeText(
-    store.get(MOCK_ALLOWED_WORKSPACES_COOKIE_NAME)?.value
-  );
-  const dedicatedSpace = normalizeText(
-    store.get(MOCK_DEDICATED_SPACE_COOKIE_NAME)?.value
-  );
+
+  const activeWorkspaceId = readFirstCookieValue(store, [
+    MOCK_ACTIVE_WORKSPACE_COOKIE_NAME,
+    "bosai_active_workspace_id",
+    "bosai_workspace_id",
+    "workspace_id",
+  ]);
+
+  const allowedWorkspaceIdsRaw = readFirstCookieValue(store, [
+    MOCK_ALLOWED_WORKSPACES_COOKIE_NAME,
+    "bosai_allowed_workspace_ids",
+  ]);
+
+  const dedicatedSpace = readFirstCookieValue(store, [
+    MOCK_DEDICATED_SPACE_COOKIE_NAME,
+    "bosai_dedicated_space",
+    "dedicated_space",
+  ]);
 
   return {
     authValue,
@@ -887,7 +912,7 @@ export function buildAuthCookieSnapshotFromStore(
     userId,
     activeWorkspaceId,
     allowedWorkspaceIdsRaw,
-    allowedWorkspaceIds: parseCsvList(allowedWorkspaceIdsRaw),
+    allowedWorkspaceIds: parseFlexibleList(allowedWorkspaceIdsRaw),
     dedicatedSpace,
   };
 }
