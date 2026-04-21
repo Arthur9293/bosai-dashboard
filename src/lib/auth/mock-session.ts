@@ -163,23 +163,37 @@ function parseWorkspaceIds(value?: string | null): string[] {
           new Set(parsed.map((item) => normalizeText(String(item))).filter(Boolean))
         );
       }
-    } catch {}
+    } catch {
+      return [];
+    }
   }
 
-  return Array.from(
-    new Set(
-      raw
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
-  );
+  if (raw.includes(",")) {
+    return Array.from(
+      new Set(raw.split(",").map((item) => item.trim()).filter(Boolean))
+    );
+  }
+
+  return raw ? [raw] : [];
+}
+
+function normalizeDedicatedSpace(
+  value?: string | DedicatedSpaceTarget | null
+): DedicatedSpaceTarget | null {
+  const normalized = normalizeText(String(value || "")).toLowerCase();
+
+  if (normalized === "personal_space") return "personal_space";
+  if (normalized === "freelance_space") return "freelance_space";
+  if (normalized === "company_space") return "company_space";
+  if (normalized === "agency_space") return "agency_space";
+
+  return null;
 }
 
 function categoryFromDedicatedSpace(
   value?: DedicatedSpaceTarget | string | null
 ): WorkspaceCategory {
-  const normalized = normalizeText(String(value || "")).toLowerCase();
+  const normalized = normalizeDedicatedSpace(value);
 
   if (normalized === "agency_space") return "agency";
   if (normalized === "company_space") return "company";
@@ -188,10 +202,22 @@ function categoryFromDedicatedSpace(
   return "personal";
 }
 
+function dedicatedSpaceFromCategory(
+  value?: WorkspaceCategory | string | null
+): DedicatedSpaceTarget {
+  const normalized = normalizeCategory(value);
+
+  if (normalized === "agency") return "agency_space";
+  if (normalized === "company") return "company_space";
+  if (normalized === "freelance") return "freelance_space";
+
+  return "personal_space";
+}
+
 function routeFromDedicatedSpace(
   value?: DedicatedSpaceTarget | string | null
 ): string {
-  const normalized = normalizeText(String(value || "")).toLowerCase();
+  const normalized = normalizeDedicatedSpace(value);
 
   if (normalized === "agency_space") return "/flows";
   if (normalized === "company_space") return "/workspaces";
@@ -201,11 +227,27 @@ function routeFromDedicatedSpace(
 }
 
 function fallbackRouteForCookieSession(args: {
+  activeWorkspaceId?: string | null;
   membershipsCount: number;
   dedicatedSpace: DedicatedSpaceTarget | null;
 }): string {
-  if (args.membershipsCount > 1) return "/workspace/select";
-  if (args.membershipsCount === 1) return "/workspace";
+  /**
+   * Correctif clé :
+   * s'il y a déjà un workspace actif, on entre sur /workspace,
+   * on ne repasse pas par /workspace/select.
+   */
+  if (normalizeText(args.activeWorkspaceId)) {
+    return "/workspace";
+  }
+
+  if (args.membershipsCount > 1) {
+    return "/workspace/select";
+  }
+
+  if (args.membershipsCount === 1) {
+    return "/workspace";
+  }
+
   return routeFromDedicatedSpace(args.dedicatedSpace);
 }
 
@@ -272,13 +314,14 @@ function buildCookieWorkspaceSummary(args: {
     slug: args.workspaceId.toLowerCase(),
     name: args.workspaceId,
     category: args.category,
-    plan: args.category === "agency"
-      ? "agency"
-      : args.category === "company"
-        ? "company"
-        : args.category === "freelance"
-          ? "freelance"
-          : "personal",
+    plan:
+      args.category === "agency"
+        ? "agency"
+        : args.category === "company"
+          ? "company"
+          : args.category === "freelance"
+            ? "freelance"
+            : "personal",
     status: "active",
     membershipRole: "owner",
     membershipStatus: "active",
@@ -315,12 +358,25 @@ function buildCookieBackedSession(cookies: {
   const allowedWorkspaceIds = parseWorkspaceIds(
     cookies[MOCK_ALLOWED_WORKSPACES_COOKIE_NAME]
   );
+  const cookieUserId = normalizeText(cookies[MOCK_USER_ID_COOKIE_NAME]);
 
-  const dedicatedSpaceRaw = normalizeText(cookies[MOCK_DEDICATED_SPACE_COOKIE_NAME]);
-  const dedicatedSpace =
-    (dedicatedSpaceRaw as DedicatedSpaceTarget) || null;
+  const seedFromUserId = findSeedByUserId(cookieUserId);
 
-  const preferredCategory = categoryFromDedicatedSpace(dedicatedSpaceRaw);
+  const dedicatedSpaceFromCookie = normalizeDedicatedSpace(
+    cookies[MOCK_DEDICATED_SPACE_COOKIE_NAME]
+  );
+
+  const mockKnownMemberships = cookieUserId
+    ? listMockWorkspaceSummariesForUser(cookieUserId)
+    : [];
+
+  const mockById = new Map(
+    mockKnownMemberships.map((item) => [item.workspaceId, item] as const)
+  );
+
+  const preferredCategory = dedicatedSpaceFromCookie
+    ? categoryFromDedicatedSpace(dedicatedSpaceFromCookie)
+    : seedFromUserId?.preferredCategory || "personal";
 
   const effectiveWorkspaceIds = [...allowedWorkspaceIds];
 
@@ -331,29 +387,43 @@ function buildCookieBackedSession(cookies: {
     effectiveWorkspaceIds.unshift(requestedWorkspaceId);
   }
 
-  const memberships = effectiveWorkspaceIds.map((workspaceId, index) =>
-    buildCookieWorkspaceSummary({
+  const memberships = effectiveWorkspaceIds.map((workspaceId, index) => {
+    const known = mockById.get(workspaceId);
+
+    if (known) {
+      return {
+        ...known,
+        isDefault:
+          workspaceId === requestedWorkspaceId ||
+          (!requestedWorkspaceId && index === 0),
+      };
+    }
+
+    return buildCookieWorkspaceSummary({
       workspaceId,
       category: preferredCategory,
       isDefault:
         workspaceId === requestedWorkspaceId ||
         (!requestedWorkspaceId && index === 0),
-    })
-  );
+    });
+  });
 
   const activeWorkspace =
     memberships.find((item) => item.workspaceId === requestedWorkspaceId) ||
     memberships[0] ||
     null;
 
-  const cookieUserId = normalizeText(cookies[MOCK_USER_ID_COOKIE_NAME]);
+  const effectiveDedicatedSpace =
+    dedicatedSpaceFromCookie ||
+    dedicatedSpaceFromCategory(activeWorkspace?.category || preferredCategory);
 
   const user: MockSessionUser | null = cookieUserId
     ? {
         userId: cookieUserId,
-        email: "",
-        displayName: cookieUserId,
-        preferredCategory,
+        email: seedFromUserId?.email || "",
+        displayName: seedFromUserId?.displayName || cookieUserId,
+        preferredCategory:
+          seedFromUserId?.preferredCategory || preferredCategory,
       }
     : null;
 
@@ -366,10 +436,11 @@ function buildCookieBackedSession(cookies: {
       memberships,
       activeWorkspace,
     }),
-    target: dedicatedSpace,
+    target: effectiveDedicatedSpace,
     route: fallbackRouteForCookieSession({
+      activeWorkspaceId: activeWorkspace?.workspaceId || requestedWorkspaceId,
       membershipsCount: memberships.length,
-      dedicatedSpace,
+      dedicatedSpace: effectiveDedicatedSpace,
     }),
     allowedWorkspaceIds: memberships.map((item) => item.workspaceId),
   };
@@ -476,12 +547,10 @@ export function resolveMockSessionFromCookies(cookies: {
   }
 
   /**
-   * Correction critique :
-   * si aucun token mock valide n’existe,
-   * on NE retombe PAS sur Arthur par défaut.
-   *
-   * On reconstruit une session neutre à partir
-   * des cookies workspace présents.
+   * Fallback neutre basé sur les cookies :
+   * - respecte le workspace actif déjà choisi
+   * - ne renvoie pas inutilement vers /workspace/select
+   * - réutilise les catégories mock connues quand elles existent
    */
   return buildCookieBackedSession(cookies);
 }
