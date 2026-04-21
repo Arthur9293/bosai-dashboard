@@ -349,13 +349,18 @@ function normalizeLiveWorkspace(
     pickFirstText(workspace, ["Workspace_ID", "workspaceId", "id"]) ||
     pickText(asRecord(workspace).id);
 
-  const name = pickFirstText(workspace, ["Name", "Workspace_Name", "Display_Name"]);
+  const name = pickFirstText(workspace, [
+    "Name",
+    "Workspace_Name",
+    "Display_Name",
+  ]);
   const slug = pickFirstText(workspace, ["Slug", "slug"]);
   const category = normalizeWorkspaceCategory(
     pickFirstText(workspace, ["Category", "Type", "Workspace_Type"])
   );
   const plan = normalizeWorkspacePlan(
-    pickFirstText(workspace, ["Plan", "Plan_ID", "Type", "Category"]) || category
+    pickFirstText(workspace, ["Plan", "Plan_ID", "Type", "Category"]) ||
+      category
   );
   const status = normalizeWorkspaceStatus(
     pickFirstText(workspace, ["Status_select", "Status", "status"])
@@ -463,7 +468,8 @@ function normalizeLiveMembershipSummary(
     pickFirstText(membership, ["Workspace_Status", "Status_select", "Status"])
   );
 
-  const workspaceId = matchedWorkspace?.summary.workspaceId || fallbackWorkspaceId;
+  const workspaceId =
+    matchedWorkspace?.summary.workspaceId || fallbackWorkspaceId;
   if (!workspaceId) return null;
 
   const membershipRole = normalizeWorkspaceRole(
@@ -558,10 +564,12 @@ function buildLiveEntitlements(
   const derived = fallback || buildFallbackEntitlements(membershipRole);
 
   return {
-    canAccessDashboard: explicit.canAccessDashboard ?? derived.canAccessDashboard,
+    canAccessDashboard:
+      explicit.canAccessDashboard ?? derived.canAccessDashboard,
     canRunHttp: explicit.canRunHttp ?? derived.canRunHttp,
     canViewIncidents: explicit.canViewIncidents ?? derived.canViewIncidents,
-    canManagePolicies: explicit.canManagePolicies ?? derived.canManagePolicies,
+    canManagePolicies:
+      explicit.canManagePolicies ?? derived.canManagePolicies,
     canManageTools: explicit.canManageTools ?? derived.canManageTools,
     canManageWorkspaces:
       explicit.canManageWorkspaces ?? derived.canManageWorkspaces,
@@ -632,10 +640,6 @@ function resolveProfileEmail(profile: unknown): string {
 
 function resolveProfileDisplayName(profile: unknown): string {
   return pickFirstText(profile, ["Display_Name", "displayName", "Name"]);
-}
-
-function resolveProfileWorkspaceId(profile: unknown, keys: string[]): string {
-  return pickFirstText(profile, keys);
 }
 
 async function tryGetLiveProfile(args: {
@@ -783,7 +787,9 @@ async function enrichSessionFromAirtable(
         normalizeLiveMembershipSummary(membership, workspaceIndexes)
       )
       .filter(Boolean) as WorkspaceSummary[]
-  ).filter((item) => item.membershipStatus === "active" && item.status === "active");
+  ).filter(
+    (item) => item.membershipStatus === "active" && item.status === "active"
+  );
 
   if (memberships.length === 0) {
     return {
@@ -888,23 +894,44 @@ export function buildAuthCookieSnapshotFromStore(
   );
   const userId = normalizeText(store.get(MOCK_USER_ID_COOKIE_NAME)?.value);
 
-  const activeWorkspaceId = readFirstCookieValue(store, [
-    MOCK_ACTIVE_WORKSPACE_COOKIE_NAME,
+  /**
+   * Priorité absolue aux cookies workspace BOSAI/legacy,
+   * puis fallback éventuel vers les cookies mock.
+   */
+  const explicitBosaiActiveWorkspaceId = readFirstCookieValue(store, [
     "bosai_active_workspace_id",
     "bosai_workspace_id",
     "workspace_id",
   ]);
 
-  const allowedWorkspaceIdsRaw = readFirstCookieValue(store, [
-    MOCK_ALLOWED_WORKSPACES_COOKIE_NAME,
+  const fallbackMockActiveWorkspaceId = normalizeText(
+    store.get(MOCK_ACTIVE_WORKSPACE_COOKIE_NAME)?.value
+  );
+
+  const activeWorkspaceId =
+    explicitBosaiActiveWorkspaceId || fallbackMockActiveWorkspaceId;
+
+  const explicitBosaiAllowedWorkspaceIdsRaw = readFirstCookieValue(store, [
     "bosai_allowed_workspace_ids",
   ]);
 
-  const dedicatedSpace = readFirstCookieValue(store, [
-    MOCK_DEDICATED_SPACE_COOKIE_NAME,
+  const fallbackMockAllowedWorkspaceIdsRaw = normalizeText(
+    store.get(MOCK_ALLOWED_WORKSPACES_COOKIE_NAME)?.value
+  );
+
+  const allowedWorkspaceIdsRaw =
+    explicitBosaiAllowedWorkspaceIdsRaw || fallbackMockAllowedWorkspaceIdsRaw;
+
+  const explicitDedicatedSpace = readFirstCookieValue(store, [
     "bosai_dedicated_space",
     "dedicated_space",
   ]);
+
+  const fallbackMockDedicatedSpace = normalizeText(
+    store.get(MOCK_DEDICATED_SPACE_COOKIE_NAME)?.value
+  );
+
+  const dedicatedSpace = explicitDedicatedSpace || fallbackMockDedicatedSpace;
 
   return {
     authValue,
