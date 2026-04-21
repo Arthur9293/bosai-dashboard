@@ -40,6 +40,36 @@ const WORKSPACE_ALLOWED_COOKIE_NAME =
     "bosai_allowed_workspace_ids"
   ).trim() || "bosai_allowed_workspace_ids";
 
+const WORKSPACE_STATUS_COOKIE_NAME =
+  (
+    process.env.BOSAI_WORKSPACE_STATUS_COOKIE_NAME ||
+    "bosai_workspace_status"
+  ).trim() || "bosai_workspace_status";
+
+const WORKSPACE_STATUS_ALIAS_COOKIE_NAME =
+  (
+    process.env.BOSAI_WORKSPACE_STATUS_ALIAS_COOKIE_NAME ||
+    "workspace_status"
+  ).trim() || "workspace_status";
+
+const ONBOARDING_COMPLETED_COOKIE_NAME =
+  (
+    process.env.BOSAI_ONBOARDING_COMPLETED_COOKIE_NAME ||
+    "bosai_onboarding_completed"
+  ).trim() || "bosai_onboarding_completed";
+
+const ONBOARDING_COMPLETED_ALIAS_COOKIE_NAME =
+  (
+    process.env.BOSAI_ONBOARDING_COMPLETED_ALIAS_COOKIE_NAME ||
+    "onboarding_completed"
+  ).trim() || "onboarding_completed";
+
+const PENDING_WORKSPACE_COOKIE_NAME =
+  (
+    process.env.BOSAI_PENDING_WORKSPACE_COOKIE_NAME ||
+    "bosai_pending_workspace_id"
+  ).trim() || "bosai_pending_workspace_id";
+
 function text(value: unknown): string {
   if (typeof value === "string") {
     return value.trim();
@@ -56,6 +86,15 @@ function uniq(values: string[]): string[] {
   return Array.from(new Set(values.map((item) => text(item)).filter(Boolean)));
 }
 
+function normalizeInternalPath(value: unknown): string {
+  const normalized = text(value);
+
+  if (!normalized.startsWith("/")) return "";
+  if (normalized.startsWith("//")) return "";
+
+  return normalized;
+}
+
 function cookieOptions() {
   return {
     httpOnly: true,
@@ -67,15 +106,16 @@ function cookieOptions() {
 }
 
 function buildRedirectUrl(request: NextRequest, path: string): URL {
-  const normalized = text(path) || "/";
+  const normalized = normalizeInternalPath(path) || "/";
   return new URL(normalized, request.url);
 }
 
 function buildLoginUrl(request: NextRequest, nextPath: string): URL {
   const url = buildRedirectUrl(request, AUTH_LOGIN_ROUTE);
+  const normalizedNext = normalizeInternalPath(nextPath);
 
-  if (text(nextPath)) {
-    url.searchParams.set("next", nextPath);
+  if (normalizedNext) {
+    url.searchParams.set("next", normalizedNext);
   }
 
   return url;
@@ -84,10 +124,11 @@ function buildLoginUrl(request: NextRequest, nextPath: string): URL {
 export async function GET(request: NextRequest) {
   const session = await resolveAuthSession();
 
-  const nextParam =
-    text(request.nextUrl.searchParams.get("next")) ||
-    text(session.homeRoute) ||
-    "/overview";
+  const explicitNextParam = normalizeInternalPath(
+    request.nextUrl.searchParams.get("next")
+  );
+
+  const nextParam = explicitNextParam || normalizeInternalPath(session.homeRoute) || "/overview";
 
   if (!session.isAuthenticated) {
     return NextResponse.redirect(buildLoginUrl(request, nextParam));
@@ -127,30 +168,42 @@ export async function GET(request: NextRequest) {
 
   if (resolution.kind !== "allow_dashboard" || !resolution.activeWorkspace) {
     return NextResponse.redirect(
-      buildRedirectUrl(request, resolution.redirectTo)
+      buildRedirectUrl(
+        request,
+        normalizeInternalPath(resolution.redirectTo) || MANUAL_WORKSPACE_SELECT_HREF
+      )
     );
   }
 
   const activeWorkspaceId = text(resolution.activeWorkspace.workspaceId);
-  const allowedWorkspaceIds = uniq(
-    resolution.memberships.map((item) => text(item.workspaceId))
-  );
+
+  if (!activeWorkspaceId) {
+    return NextResponse.redirect(
+      buildRedirectUrl(request, MANUAL_WORKSPACE_SELECT_HREF)
+    );
+  }
+
+  const allowedWorkspaceIds = uniq([
+    activeWorkspaceId,
+    ...resolution.memberships.map((item) => text(item.workspaceId)),
+  ]);
 
   const rememberedRoutes = readWorkspaceRememberedRoutes(
     request.cookies.get(WORKSPACE_ROUTE_MEMORY_COOKIE_NAME)?.value
   );
 
-  const explicitNext = text(request.nextUrl.searchParams.get("next"));
   const rememberedTarget = getRememberedRouteForWorkspace(
     rememberedRoutes,
     activeWorkspaceId
   );
-  const fallbackDashboard = getDashboardRouteForWorkspaceCategory(
-    resolution.activeWorkspace.category
-  );
+
+  const fallbackDashboard =
+    normalizeInternalPath(resolution.dashboardRoute) ||
+    getDashboardRouteForWorkspaceCategory(resolution.activeWorkspace.category) ||
+    "/overview";
 
   const finalTarget =
-    explicitNext || rememberedTarget || fallbackDashboard || "/overview";
+    explicitNextParam || rememberedTarget || fallbackDashboard || "/overview";
 
   const response = NextResponse.redirect(
     buildRedirectUrl(request, finalTarget)
@@ -180,14 +233,19 @@ export async function GET(request: NextRequest) {
     options
   );
 
+  response.cookies.set(WORKSPACE_STATUS_COOKIE_NAME, "active", options);
+  response.cookies.set(WORKSPACE_STATUS_ALIAS_COOKIE_NAME, "active", options);
+  response.cookies.set(ONBOARDING_COMPLETED_COOKIE_NAME, "1", options);
+  response.cookies.set(ONBOARDING_COMPLETED_ALIAS_COOKIE_NAME, "1", options);
+
   /**
-   * Important :
-   * on garde les cookies d'onboarding ici.
-   * Sinon le resolver perd le workspace synthétique juste après activation
-   * et retombe sur un workspace réel existant (ex: Ferrera).
-   *
-   * Le nettoyage se fera plus tard, quand le vrai workspace produit existera.
+   * On garde le pending workspace pointé sur l’espace activé.
+   * Cela évite que le resolver perde le workspace onboarding synthétique
+   * juste après l’activation lorsqu’il n’existe pas encore de membership réel.
    */
+  response.cookies.set(PENDING_WORKSPACE_COOKIE_NAME, activeWorkspaceId, options);
 
   return response;
 }
+
+const MANUAL_WORKSPACE_SELECT_HREF = "/workspace/select?manual=1";
