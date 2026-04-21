@@ -4,11 +4,14 @@ const AUTH_COOKIE_NAME =
   (process.env.BOSAI_AUTH_COOKIE_NAME || "bosai_auth").trim() || "bosai_auth";
 
 const AUTH_COOKIE_VALUE =
-  (process.env.BOSAI_AUTH_COOKIE_VALUE || "authenticated").trim() || "authenticated";
+  (process.env.BOSAI_AUTH_COOKIE_VALUE || "authenticated").trim() ||
+  "authenticated";
 
 const WORKSPACE_ACTIVE_COOKIE_NAME =
-  (process.env.BOSAI_ACTIVE_WORKSPACE_COOKIE_NAME || "bosai_active_workspace_id").trim() ||
-  "bosai_active_workspace_id";
+  (
+    process.env.BOSAI_ACTIVE_WORKSPACE_COOKIE_NAME ||
+    "bosai_active_workspace_id"
+  ).trim() || "bosai_active_workspace_id";
 
 const WORKSPACE_ALIAS_COOKIE_NAME =
   (process.env.BOSAI_WORKSPACE_COOKIE_NAME || "bosai_workspace_id").trim() ||
@@ -19,8 +22,10 @@ const WORKSPACE_LEGACY_COOKIE_NAME =
   "workspace_id";
 
 const WORKSPACE_ALLOWED_COOKIE_NAME =
-  (process.env.BOSAI_ALLOWED_WORKSPACES_COOKIE_NAME || "bosai_allowed_workspace_ids").trim() ||
-  "bosai_allowed_workspace_ids";
+  (
+    process.env.BOSAI_ALLOWED_WORKSPACES_COOKIE_NAME ||
+    "bosai_allowed_workspace_ids"
+  ).trim() || "bosai_allowed_workspace_ids";
 
 function text(value: unknown): string {
   if (typeof value === "string") {
@@ -61,6 +66,23 @@ function parseWorkspaceIds(value: string): string[] {
   return raw ? [raw] : [];
 }
 
+function normalizeInternalPath(value: unknown): string {
+  const v = text(value);
+  if (!v.startsWith("/")) return "";
+  if (v.startsWith("//")) return "";
+  return v;
+}
+
+function isCommercialOnboardingPath(pathname: string): boolean {
+  const path = normalizeInternalPath(pathname);
+
+  return (
+    path.startsWith("/pricing") ||
+    path.startsWith("/onboarding") ||
+    path.startsWith("/workspace/create")
+  );
+}
+
 function resolveWorkspaceSession(): {
   allowedWorkspaceIds: string[];
   activeWorkspaceId: string;
@@ -93,7 +115,7 @@ function resolveWorkspaceSession(): {
   return {
     allowedWorkspaceIds,
     activeWorkspaceId,
-    route: "/workspace/home",
+    route: "/workspace",
   };
 }
 
@@ -107,29 +129,43 @@ function getCookieOptions() {
   };
 }
 
+function clearCookie(response: NextResponse, name: string) {
+  response.cookies.set(name, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const contentType = request.headers.get("content-type") || "";
 
     let email = "";
     let password = "";
+    let next = "";
 
     if (contentType.includes("application/json")) {
       const body = (await request.json()) as {
         email?: string;
         password?: string;
+        next?: string;
       };
 
       email = String(body.email || "")
         .trim()
         .toLowerCase();
       password = String(body.password || "").trim();
+      next = normalizeInternalPath(body.next);
     } else {
       const formData = await request.formData();
       email = String(formData.get("email") || "")
         .trim()
         .toLowerCase();
       password = String(formData.get("password") || "").trim();
+      next = normalizeInternalPath(formData.get("next"));
     }
 
     const expectedEmail = (process.env.BOSAI_AUTH_EMAIL || "")
@@ -162,39 +198,48 @@ export async function POST(request: Request) {
       resolveWorkspaceSession();
 
     const cookieOptions = getCookieOptions();
+    const finalRoute = next || route || "/workspace";
+    const onboardingMode = isCommercialOnboardingPath(finalRoute);
 
     const response = NextResponse.json({
       ok: true,
-      activeWorkspaceId,
-      allowedWorkspaceIds,
-      route,
+      activeWorkspaceId: onboardingMode ? "" : activeWorkspaceId,
+      allowedWorkspaceIds: onboardingMode ? [] : allowedWorkspaceIds,
+      route: finalRoute,
     });
 
     response.cookies.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, cookieOptions);
 
-    response.cookies.set(
-      WORKSPACE_ACTIVE_COOKIE_NAME,
-      activeWorkspaceId,
-      cookieOptions
-    );
+    if (onboardingMode) {
+      clearCookie(response, WORKSPACE_ACTIVE_COOKIE_NAME);
+      clearCookie(response, WORKSPACE_ALIAS_COOKIE_NAME);
+      clearCookie(response, WORKSPACE_LEGACY_COOKIE_NAME);
+      clearCookie(response, WORKSPACE_ALLOWED_COOKIE_NAME);
+    } else {
+      response.cookies.set(
+        WORKSPACE_ACTIVE_COOKIE_NAME,
+        activeWorkspaceId,
+        cookieOptions
+      );
 
-    response.cookies.set(
-      WORKSPACE_ALIAS_COOKIE_NAME,
-      activeWorkspaceId,
-      cookieOptions
-    );
+      response.cookies.set(
+        WORKSPACE_ALIAS_COOKIE_NAME,
+        activeWorkspaceId,
+        cookieOptions
+      );
 
-    response.cookies.set(
-      WORKSPACE_LEGACY_COOKIE_NAME,
-      activeWorkspaceId,
-      cookieOptions
-    );
+      response.cookies.set(
+        WORKSPACE_LEGACY_COOKIE_NAME,
+        activeWorkspaceId,
+        cookieOptions
+      );
 
-    response.cookies.set(
-      WORKSPACE_ALLOWED_COOKIE_NAME,
-      JSON.stringify(allowedWorkspaceIds),
-      cookieOptions
-    );
+      response.cookies.set(
+        WORKSPACE_ALLOWED_COOKIE_NAME,
+        JSON.stringify(allowedWorkspaceIds),
+        cookieOptions
+      );
+    }
 
     return response;
   } catch {
