@@ -23,6 +23,8 @@ type FocusCard = {
   helper: string;
 };
 
+const MANUAL_WORKSPACE_SELECT_HREF = "/workspace/select?manual=1";
+
 function text(value?: string | null): string {
   return String(value || "").trim();
 }
@@ -275,7 +277,7 @@ function getCategoryCards(category?: string | null): HubCard[] {
       {
         title: "Workspace select",
         description: "Basculer simplement vers un autre espace.",
-        href: "/workspace/select",
+        href: MANUAL_WORKSPACE_SELECT_HREF,
       },
     ];
   }
@@ -820,7 +822,10 @@ function PersonalPrioritySection() {
         <Link href="/commands" className={buttonClassName("default")}>
           Ouvrir Commands
         </Link>
-        <Link href="/workspace/select" className={buttonClassName("default")}>
+        <Link
+          href={MANUAL_WORKSPACE_SELECT_HREF}
+          className={buttonClassName("default")}
+        >
           Changer d’espace
         </Link>
       </div>
@@ -1113,7 +1118,10 @@ function AgencyPortfolioSection({
             </div>
           </div>
 
-          <Link href="/workspace/select" className={buttonClassName("soft")}>
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
             Changer d’espace
           </Link>
         </div>
@@ -1139,7 +1147,10 @@ function AgencyPortfolioSection({
             Ouvrir la lane principale
           </Link>
 
-          <Link href="/workspace/select" className={buttonClassName("soft")}>
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
             Changer d’espace
           </Link>
 
@@ -1174,7 +1185,10 @@ function CompanyPortfolioSection({
             </div>
           </div>
 
-          <Link href="/workspace/select" className={buttonClassName("soft")}>
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
             Changer d’espace
           </Link>
         </div>
@@ -1200,7 +1214,10 @@ function CompanyPortfolioSection({
             Ouvrir la lane principale
           </Link>
 
-          <Link href="/workspace/select" className={buttonClassName("soft")}>
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
             Changer d’espace
           </Link>
 
@@ -1235,7 +1252,10 @@ function FreelancePortfolioSection({
             </div>
           </div>
 
-          <Link href="/workspace/select" className={buttonClassName("soft")}>
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
             Changer d’espace
           </Link>
         </div>
@@ -1261,7 +1281,10 @@ function FreelancePortfolioSection({
             Ouvrir la lane principale
           </Link>
 
-          <Link href="/workspace/select" className={buttonClassName("soft")}>
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
             Changer d’espace
           </Link>
 
@@ -1296,7 +1319,10 @@ function PersonalPortfolioSection({
             </div>
           </div>
 
-          <Link href="/workspace/select" className={buttonClassName("soft")}>
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
             Changer d’espace
           </Link>
         </div>
@@ -1322,7 +1348,10 @@ function PersonalPortfolioSection({
             Ouvrir la lane principale
           </Link>
 
-          <Link href="/workspace/select" className={buttonClassName("soft")}>
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
             Changer d’espace
           </Link>
 
@@ -1436,7 +1465,10 @@ function GenericPortfolioSection({
             </div>
           </div>
 
-          <Link href="/workspace/select" className={buttonClassName("soft")}>
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
             Changer d’espace
           </Link>
         </div>
@@ -1462,7 +1494,10 @@ function GenericPortfolioSection({
             Ouvrir la lane principale
           </Link>
 
-          <Link href="/workspace/select" className={buttonClassName("soft")}>
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
             Changer d’espace
           </Link>
 
@@ -1494,7 +1529,7 @@ export default async function WorkspaceHomePage() {
       redirect("/workspace/create");
     }
 
-    redirect("/workspace/select");
+    redirect(MANUAL_WORKSPACE_SELECT_HREF);
   }
 
   const category = activeWorkspace.category;
