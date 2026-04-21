@@ -4,10 +4,6 @@ import {
   resolveAuthSession,
 } from "@/lib/auth/resolve-auth-session";
 import {
-  hasCommercialOnboardingSignals,
-  resolveBosaiAccessState,
-} from "@/lib/onboarding-access";
-import {
   getDashboardRouteForWorkspaceCategory,
   resolveWorkspaceAccess,
 } from "@/lib/workspaces/resolver";
@@ -85,6 +81,16 @@ function buildLoginUrl(request: NextRequest, nextPath: string): URL {
   return url;
 }
 
+function clearCookie(response: NextResponse, name: string): void {
+  response.cookies.set(name, "", {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 0,
+  });
+}
+
 export async function GET(request: NextRequest) {
   const session = await resolveAuthSession();
 
@@ -96,10 +102,6 @@ export async function GET(request: NextRequest) {
   if (!session.isAuthenticated) {
     return NextResponse.redirect(buildLoginUrl(request, nextParam));
   }
-
-  const requestedWorkspaceId =
-    text(request.nextUrl.searchParams.get("workspace_id")) ||
-    text(session.cookieSnapshot.activeWorkspaceId);
 
   const onboardingCookieValues = {
     bosai_plan_code: request.cookies.get("bosai_plan_code")?.value,
@@ -115,62 +117,16 @@ export async function GET(request: NextRequest) {
     onboarding_completed: request.cookies.get("onboarding_completed")?.value,
     bosai_pending_workspace_id:
       request.cookies.get("bosai_pending_workspace_id")?.value,
+    bosai_force_commercial_onboarding:
+      request.cookies.get("bosai_force_commercial_onboarding")?.value,
+    force_commercial_onboarding:
+      request.cookies.get("force_commercial_onboarding")?.value,
   };
 
-  const pendingWorkspaceId =
-    text(onboardingCookieValues.bosai_pending_workspace_id) ||
-    requestedWorkspaceId;
-
-  const shouldUseCommercialSyntheticWorkspace =
-    hasCommercialOnboardingSignals(onboardingCookieValues) &&
-    resolveBosaiAccessState({
-      cookieValues: onboardingCookieValues,
-    }).canAccessCockpit &&
-    Boolean(pendingWorkspaceId) &&
-    (!requestedWorkspaceId || requestedWorkspaceId === pendingWorkspaceId);
-
-  if (shouldUseCommercialSyntheticWorkspace) {
-    const rememberedRoutes = readWorkspaceRememberedRoutes(
-      request.cookies.get(WORKSPACE_ROUTE_MEMORY_COOKIE_NAME)?.value
-    );
-
-    const explicitNext = text(request.nextUrl.searchParams.get("next"));
-    const rememberedTarget = getRememberedRouteForWorkspace(
-      rememberedRoutes,
-      pendingWorkspaceId
-    );
-
-    const finalTarget = explicitNext || rememberedTarget || "/workspace";
-    const response = NextResponse.redirect(
-      buildRedirectUrl(request, finalTarget)
-    );
-
-    const options = cookieOptions();
-
-    response.cookies.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, options);
-    response.cookies.set(
-      WORKSPACE_ACTIVE_COOKIE_NAME,
-      pendingWorkspaceId,
-      options
-    );
-    response.cookies.set(
-      WORKSPACE_ALIAS_COOKIE_NAME,
-      pendingWorkspaceId,
-      options
-    );
-    response.cookies.set(
-      WORKSPACE_LEGACY_COOKIE_NAME,
-      pendingWorkspaceId,
-      options
-    );
-    response.cookies.set(
-      WORKSPACE_ALLOWED_COOKIE_NAME,
-      JSON.stringify([pendingWorkspaceId]),
-      options
-    );
-
-    return response;
-  }
+  const requestedWorkspaceId =
+    text(request.nextUrl.searchParams.get("workspace_id")) ||
+    text(session.cookieSnapshot.activeWorkspaceId) ||
+    text(onboardingCookieValues.bosai_pending_workspace_id);
 
   const resolution = await resolveWorkspaceAccess({
     userId: text(session.user?.userId),
@@ -233,6 +189,25 @@ export async function GET(request: NextRequest) {
     JSON.stringify(allowedWorkspaceIds),
     options
   );
+
+  /**
+   * Une fois un vrai workspace activé, on coupe l'override commercial
+   * pour éviter de reboucler vers pricing / onboarding.
+   */
+  [
+    "bosai_force_commercial_onboarding",
+    "force_commercial_onboarding",
+    "bosai_plan_code",
+    "plan_code",
+    "selected_plan",
+    "bosai_workspace_status",
+    "workspace_status",
+    "bosai_checkout_completed",
+    "checkout_completed",
+    "bosai_onboarding_completed",
+    "onboarding_completed",
+    "bosai_pending_workspace_id",
+  ].forEach((cookieName) => clearCookie(response, cookieName));
 
   return response;
 }
