@@ -31,35 +31,24 @@ function text(value?: string | null): string {
   return String(value || "").trim();
 }
 
-function normalizeHrefPath(href: string): string {
-  const raw = text(href);
-  if (!raw) return "";
-
-  const withoutHash = raw.split("#")[0] || "";
-  const withoutQuery = withoutHash.split("?")[0] || "";
-
-  return text(withoutQuery);
-}
-
 function isActivePath(pathname: string, href: string): boolean {
-  const current = text(pathname);
-  const target = normalizeHrefPath(href);
-
-  if (!current || !target) return false;
-
-  if (target === "/overview") {
+  if (href === "/overview") {
     return (
-      current === "/" ||
-      current === "/overview" ||
-      current.startsWith("/overview/")
+      pathname === "/" ||
+      pathname === "/overview" ||
+      pathname.startsWith("/overview/")
     );
   }
 
-  if (target === "/workspace") {
-    return current === "/workspace" || current === "/workspace/";
+  if (href === "/workspace") {
+    return pathname === "/workspace" || pathname.startsWith("/workspace/");
   }
 
-  return current === target || current.startsWith(`${target}/`);
+  if (href === MANUAL_WORKSPACE_SELECT_HREF) {
+    return pathname === "/workspace/select" || pathname.startsWith("/workspace/select");
+  }
+
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function navLinkClassName(active: boolean): string {
@@ -172,9 +161,7 @@ function getConfigItems(
   entitlements: WorkspaceEntitlements
 ): NavItem[] {
   const primaryHrefs = new Set(
-    getPrimaryItems(workspace, entitlements).map((item) =>
-      normalizeHrefPath(item.href)
-    )
+    getPrimaryItems(workspace, entitlements).map((item) => item.href)
   );
 
   const items = dedupeItems([
@@ -186,7 +173,7 @@ function getConfigItems(
     { href: "/settings", label: "Réglages" },
   ]);
 
-  return items.filter((item) => !primaryHrefs.has(normalizeHrefPath(item.href)));
+  return items.filter((item) => !primaryHrefs.has(item.href));
 }
 
 function getUtilityItems(): NavItem[] {
