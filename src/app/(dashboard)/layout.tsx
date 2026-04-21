@@ -65,8 +65,8 @@ export default async function DashboardLayout({
 
   /**
    * Priorité absolue :
-   * si un workspace dashboard valide est résoluble,
-   * on laisse entrer même si des cookies onboarding existent encore.
+   * si un workspace dashboard valide existe, on entre.
+   * On ne laisse pas les cookies onboarding reprendre la main.
    */
   const resolution = await resolveWorkspaceAccess({
     userId: text(session.user?.userId),
@@ -91,8 +91,8 @@ export default async function DashboardLayout({
   }
 
   /**
-   * On n'applique la garde commerciale que si aucun workspace dashboard
-   * n'a pu être autorisé.
+   * La garde commerciale ne s'applique que si aucun workspace dashboard
+   * n'est autorisé.
    */
   if (hasCommercialOnboardingSignals(onboardingCookieValues)) {
     const accessState = resolveBosaiAccessState({
