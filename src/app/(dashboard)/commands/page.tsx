@@ -1,17 +1,11 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import dynamic from "next/dynamic";
 import {
   fetchCommands,
   type CommandItem,
   type CommandsResponse,
 } from "@/lib/api";
-import { DashboardStatusBadge } from "@/components/dashboard/StatusBadge";
-import type { DashboardStatusKind } from "@/components/dashboard/StatusBadge";
-import {
-  EmptyStatePanel,
-  SectionCountPill,
-} from "@/components/dashboard/ControlPlaneShell";
-import { CommandsFilters } from "./commands-filters";
 
 type SearchParams = {
   flow_id?: string | string[];
@@ -36,6 +30,50 @@ type CommandFilters = {
   period_key: string;
   limit: number;
 };
+
+type CommandsFiltersProps = {
+  initialFilters: CommandFilters;
+  preservedParams: {
+    flow_id: string;
+    root_event_id: string;
+    source_event_id: string;
+    from: string;
+  };
+};
+
+type StatusKind =
+  | "queued"
+  | "running"
+  | "retry"
+  | "failed"
+  | "success"
+  | "unknown";
+
+type CountTone =
+  | "default"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger"
+  | "muted";
+
+const CommandsFilters = dynamic<CommandsFiltersProps>(
+  () =>
+    import("./commands-filters").then((mod) => mod.CommandsFilters),
+  {
+    ssr: false,
+    loading: () => (
+      <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-5 md:p-6">
+        <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">
+          Filters
+        </div>
+        <div className="mt-3 text-sm text-zinc-400">
+          Chargement des filtres…
+        </div>
+      </section>
+    ),
+  }
+);
 
 function cardClassName() {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
@@ -243,9 +281,9 @@ function getCommandWorkspace(command: CommandItem): string {
   return (
     toTextOrEmpty(command.workspace_id) ||
     toTextOrEmpty(input.workspace_id) ||
-    toTextOrEmpty(input.workspaceId) ||
+    toTextOrEmpty((input as Record<string, unknown>).workspaceId) ||
     toTextOrEmpty(result.workspace_id) ||
-    toTextOrEmpty(result.workspaceId) ||
+    toTextOrEmpty((result as Record<string, unknown>).workspaceId) ||
     "—"
   );
 }
@@ -257,9 +295,9 @@ function getCommandFlowId(command: CommandItem): string {
   return (
     toTextOrEmpty(command.flow_id) ||
     toTextOrEmpty(input.flow_id) ||
-    toTextOrEmpty(input.flowId) ||
+    toTextOrEmpty((input as Record<string, unknown>).flowId) ||
     toTextOrEmpty(result.flow_id) ||
-    toTextOrEmpty(result.flowId) ||
+    toTextOrEmpty((result as Record<string, unknown>).flowId) ||
     ""
   );
 }
@@ -271,9 +309,9 @@ function getCommandRootEventId(command: CommandItem): string {
   return (
     toTextOrEmpty(command.root_event_id) ||
     toTextOrEmpty(input.root_event_id) ||
-    toTextOrEmpty(input.rootEventId) ||
+    toTextOrEmpty((input as Record<string, unknown>).rootEventId) ||
     toTextOrEmpty(result.root_event_id) ||
-    toTextOrEmpty(result.rootEventId) ||
+    toTextOrEmpty((result as Record<string, unknown>).rootEventId) ||
     ""
   );
 }
@@ -287,13 +325,13 @@ function getCommandSourceEventId(command: CommandItem): string {
     toTextOrEmpty(record.source_event_id) ||
     toTextOrEmpty(record.Source_Event_ID) ||
     toTextOrEmpty(input.source_event_id) ||
-    toTextOrEmpty(input.sourceEventId) ||
+    toTextOrEmpty((input as Record<string, unknown>).sourceEventId) ||
     toTextOrEmpty(input.event_id) ||
-    toTextOrEmpty(input.eventId) ||
+    toTextOrEmpty((input as Record<string, unknown>).eventId) ||
     toTextOrEmpty(result.source_event_id) ||
-    toTextOrEmpty(result.sourceEventId) ||
+    toTextOrEmpty((result as Record<string, unknown>).sourceEventId) ||
     toTextOrEmpty(result.event_id) ||
-    toTextOrEmpty(result.eventId) ||
+    toTextOrEmpty((result as Record<string, unknown>).eventId) ||
     ""
   );
 }
@@ -306,13 +344,13 @@ function getCommandRunId(command: CommandItem): string {
     toTextOrEmpty(command.run_record_id) ||
     toTextOrEmpty(command.linked_run) ||
     toTextOrEmpty(input.run_record_id) ||
-    toTextOrEmpty(input.runRecordId) ||
+    toTextOrEmpty((input as Record<string, unknown>).runRecordId) ||
     toTextOrEmpty(input.run_id) ||
-    toTextOrEmpty(input.runId) ||
+    toTextOrEmpty((input as Record<string, unknown>).runId) ||
     toTextOrEmpty(result.run_record_id) ||
-    toTextOrEmpty(result.runRecordId) ||
+    toTextOrEmpty((result as Record<string, unknown>).runRecordId) ||
     toTextOrEmpty(result.run_id) ||
-    toTextOrEmpty(result.runId) ||
+    toTextOrEmpty((result as Record<string, unknown>).runId) ||
     "—"
   );
 }
@@ -324,9 +362,9 @@ function getCommandParentId(command: CommandItem): string {
   return (
     toTextOrEmpty(command.parent_command_id) ||
     toTextOrEmpty(input.parent_command_id) ||
-    toTextOrEmpty(input.parentCommandId) ||
+    toTextOrEmpty((input as Record<string, unknown>).parentCommandId) ||
     toTextOrEmpty(result.parent_command_id) ||
-    toTextOrEmpty(result.parentCommandId) ||
+    toTextOrEmpty((result as Record<string, unknown>).parentCommandId) ||
     ""
   );
 }
@@ -437,9 +475,7 @@ function getCommandStatusBucket(command: CommandItem) {
   return "other";
 }
 
-function getCommandStatusBadgeKind(
-  command: CommandItem
-): DashboardStatusKind {
+function getCommandStatusBadgeKind(command: CommandItem): StatusKind {
   const bucket = getCommandStatusBucket(command);
 
   if (bucket === "queued") return "queued";
@@ -555,6 +591,67 @@ function sortOtherCommands(items: CommandItem[]) {
   return [...items].sort((a, b) => getCommandTimestamp(b) - getCommandTimestamp(a));
 }
 
+function StatusBadge({
+  kind,
+  label,
+}: {
+  kind: StatusKind;
+  label: string;
+}) {
+  const className =
+    kind === "queued"
+      ? "inline-flex rounded-full border border-amber-500/20 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300"
+      : kind === "running"
+        ? "inline-flex rounded-full border border-sky-500/20 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-300"
+        : kind === "retry"
+          ? "inline-flex rounded-full border border-violet-500/20 bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300"
+          : kind === "failed"
+            ? "inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-300"
+            : kind === "success"
+              ? "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300"
+              : "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
+
+  return <span className={className}>{label}</span>;
+}
+
+function SectionCountPill({
+  value,
+  tone = "default",
+}: {
+  value: number;
+  tone?: CountTone;
+}) {
+  const className =
+    tone === "info"
+      ? "inline-flex rounded-full border border-sky-500/20 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-300"
+      : tone === "success"
+        ? "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300"
+        : tone === "warning"
+          ? "inline-flex rounded-full border border-amber-500/20 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300"
+          : tone === "danger"
+            ? "inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-300"
+            : tone === "muted"
+              ? "inline-flex rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-medium text-zinc-400"
+              : "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
+
+  return <span className={className}>{value}</span>;
+}
+
+function EmptyStatePanel({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 px-5 py-8">
+      <div className="text-lg font-medium text-white">{title}</div>
+      <div className="mt-2 text-sm leading-7 text-zinc-400">{description}</div>
+    </div>
+  );
+}
+
 function StatCard({
   label,
   value,
@@ -586,7 +683,7 @@ function SectionBlock({
   title: string;
   description: string;
   count: number;
-  countTone?: "default" | "info" | "success" | "warning" | "danger" | "muted";
+  countTone?: CountTone;
   children: ReactNode;
 }) {
   return (
@@ -702,7 +799,7 @@ function CommandCard({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <DashboardStatusBadge
+                <StatusBadge
                   kind={getCommandStatusBadgeKind(command)}
                   label={humanStatusLabel(status).toUpperCase()}
                 />
