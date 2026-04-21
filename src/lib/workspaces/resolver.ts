@@ -834,11 +834,24 @@ function resolveSyntheticCommercialWorkspace(args: {
     return null;
   }
 
-  const pendingWorkspaceId =
-    normalizeText(cookieValues.bosai_pending_workspace_id) ||
-    normalizeText(args.requestedWorkspaceId);
+  const pendingWorkspaceId = normalizeText(
+    cookieValues.bosai_pending_workspace_id
+  );
+  const requestedWorkspaceId = normalizeText(args.requestedWorkspaceId);
 
-  if (!pendingWorkspaceId) {
+  /**
+   * Très important :
+   * on ne synthétise PAS globalement un workspace commercial
+   * si aucun workspace précis n’est demandé.
+   *
+   * Sinon login / select / resolver croient qu’un workspace existe déjà
+   * et le flow pricing / onboarding disparaît visuellement.
+   */
+  if (!pendingWorkspaceId || !requestedWorkspaceId) {
+    return null;
+  }
+
+  if (requestedWorkspaceId !== pendingWorkspaceId) {
     return null;
   }
 
