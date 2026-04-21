@@ -34,10 +34,12 @@ function normalizeText(value?: string | null): string {
 
 function normalizePlanCode(value?: string | null): string {
   const normalized = normalizeText(value).toLowerCase();
+
   if (normalized === "starter") return "starter";
   if (normalized === "pro") return "pro";
   if (normalized === "agency") return "agency";
   if (normalized === "custom") return "custom";
+
   return "starter";
 }
 
@@ -47,6 +49,7 @@ function buildPendingWorkspaceId(planCode: string): string {
 
 function isTruthy(value: string): boolean {
   const normalized = normalizeText(value).toLowerCase();
+
   return (
     normalized === "1" ||
     normalized === "true" ||
@@ -54,6 +57,12 @@ function isTruthy(value: string): boolean {
     normalized === "oui" ||
     normalized === "on"
   );
+}
+
+function isWorkspaceActivationReady(value?: string | null): boolean {
+  const normalized = normalizeText(value).toLowerCase();
+
+  return normalized === "ready_to_activate" || normalized === "active";
 }
 
 function pageWrapClassName(): string {
@@ -136,6 +145,7 @@ function getSuggestedWorkspaceName(planCode: string): string {
   if (normalized === "agency") return "BOSAI Agency Workspace";
   if (normalized === "custom") return "BOSAI Custom Workspace";
   if (normalized === "pro") return "BOSAI Pro Workspace";
+
   return "BOSAI Starter Workspace";
 }
 
@@ -204,12 +214,6 @@ export default async function WorkspaceCreatePage({
   );
   const queryCommercialWorkspaceId = normalizeText(queryCommercialWorkspaceIdRaw);
 
-  /**
-   * Règle importante :
-   * - on ne laisse jamais un vieux pending workspace cookie écraser le plan courant
-   * - on ne conserve le cookie que s'il correspond bien au plan actuel
-   * - sinon on repart du workspace dérivé depuis le plan courant
-   */
   const pendingWorkspaceId =
     queryCommercialWorkspaceId ||
     (cookiePendingWorkspaceId === derivedPendingWorkspaceId
@@ -222,21 +226,22 @@ export default async function WorkspaceCreatePage({
     queryCommercialWorkspaceId !== "" &&
     queryCommercialWorkspaceId === pendingWorkspaceId;
 
-  const normalizedWorkspaceStatus = normalizeText(
-    accessState.workspaceStatus
-  ).toLowerCase();
-
-  const activatedFromWorkspaceStatus =
-    normalizedWorkspaceStatus === "ready_to_activate" ||
-    normalizedWorkspaceStatus === "active";
+  const accessWorkspaceStatus = normalizeText(accessState.workspaceStatus);
+  const cookieWorkspaceStatus = normalizeText(
+    onboardingCookieValues.bosai_workspace_status ||
+      onboardingCookieValues.workspace_status
+  );
 
   const activated =
     accessState.canAccessCockpit ||
     activatedFromMatchingQuery ||
-    activatedFromWorkspaceStatus;
+    isWorkspaceActivationReady(accessWorkspaceStatus) ||
+    isWorkspaceActivationReady(cookieWorkspaceStatus);
 
   const effectiveWorkspaceStatus =
-    normalizedWorkspaceStatus || (activated ? "ready_to_activate" : "");
+    accessWorkspaceStatus ||
+    cookieWorkspaceStatus ||
+    (activated ? "ready_to_activate" : "ready_to_activate");
 
   if (shouldApplyCommercialGuard) {
     const isWorkspaceStage = accessState.stage === "workspace";
@@ -264,12 +269,6 @@ export default async function WorkspaceCreatePage({
 
   const suggestedName = getSuggestedWorkspaceName(planCode);
 
-  /**
-   * Correctif principal :
-   * - on ne dépend plus de /onboarding/continue?step=activate pour faire simplement évoluer l'écran
-   * - le premier clic "create/finaliser" revient sur CETTE page avec un état query cohérent
-   * - ensuite seulement on lance l'activation workspace réelle
-   */
   const finalizeHref = `/workspace/create?plan=${encodeURIComponent(
     planCode
   )}&activated=1&commercial_workspace_id=${encodeURIComponent(
@@ -313,6 +312,13 @@ export default async function WorkspaceCreatePage({
     {
       label: "commercial.workspaceStatus",
       value: accessState.workspaceStatus || "",
+    },
+    {
+      label: "cookie.workspaceStatus",
+      value:
+        onboardingCookieValues.bosai_workspace_status ||
+        onboardingCookieValues.workspace_status ||
+        "",
     },
     {
       label: "cookie.pendingWorkspaceId",
@@ -406,7 +412,7 @@ export default async function WorkspaceCreatePage({
                 <div className={compactCardClassName()}>
                   <div className={sectionLabelClassName()}>Workspace status</div>
                   <div className="mt-3 text-2xl font-semibold text-white">
-                    {effectiveWorkspaceStatus || "ready_to_activate"}
+                    {effectiveWorkspaceStatus}
                   </div>
                 </div>
 
