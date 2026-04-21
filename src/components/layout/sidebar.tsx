@@ -25,24 +25,41 @@ type SidebarProps = {
   variant?: "desktop" | "drawer";
 };
 
+const MANUAL_WORKSPACE_SELECT_HREF = "/workspace/select?manual=1";
+
 function text(value?: string | null): string {
   return String(value || "").trim();
 }
 
+function normalizeHrefPath(href: string): string {
+  const raw = text(href);
+  if (!raw) return "";
+
+  const withoutHash = raw.split("#")[0] || "";
+  const withoutQuery = withoutHash.split("?")[0] || "";
+
+  return text(withoutQuery);
+}
+
 function isActivePath(pathname: string, href: string): boolean {
-  if (href === "/overview") {
+  const current = text(pathname);
+  const target = normalizeHrefPath(href);
+
+  if (!current || !target) return false;
+
+  if (target === "/overview") {
     return (
-      pathname === "/" ||
-      pathname === "/overview" ||
-      pathname.startsWith("/overview/")
+      current === "/" ||
+      current === "/overview" ||
+      current.startsWith("/overview/")
     );
   }
 
-  if (href === "/workspace") {
-    return pathname === "/workspace" || pathname.startsWith("/workspace/");
+  if (target === "/workspace") {
+    return current === "/workspace" || current === "/workspace/";
   }
 
-  return pathname === href || pathname.startsWith(`${href}/`);
+  return current === target || current.startsWith(`${target}/`);
 }
 
 function navLinkClassName(active: boolean): string {
@@ -155,7 +172,9 @@ function getConfigItems(
   entitlements: WorkspaceEntitlements
 ): NavItem[] {
   const primaryHrefs = new Set(
-    getPrimaryItems(workspace, entitlements).map((item) => item.href)
+    getPrimaryItems(workspace, entitlements).map((item) =>
+      normalizeHrefPath(item.href)
+    )
   );
 
   const items = dedupeItems([
@@ -167,11 +186,13 @@ function getConfigItems(
     { href: "/settings", label: "Réglages" },
   ]);
 
-  return items.filter((item) => !primaryHrefs.has(item.href));
+  return items.filter((item) => !primaryHrefs.has(normalizeHrefPath(item.href)));
 }
 
 function getUtilityItems(): NavItem[] {
-  return dedupeItems([{ href: "/workspace/select", label: "Changer d’espace" }]);
+  return dedupeItems([
+    { href: MANUAL_WORKSPACE_SELECT_HREF, label: "Changer d’espace" },
+  ]);
 }
 
 function getWorkspaceSubtitle(workspace: WorkspaceSummary): string {
@@ -316,7 +337,7 @@ export function Sidebar({
 
               <div className="mt-4">
                 <Link
-                  href="/workspace/select"
+                  href={MANUAL_WORKSPACE_SELECT_HREF}
                   className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
                 >
                   Changer d’espace
