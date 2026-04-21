@@ -38,6 +38,7 @@ export default function LoginForm() {
         body: JSON.stringify({
           email,
           password,
+          next: nextPath,
         }),
       });
 
@@ -53,7 +54,7 @@ export default function LoginForm() {
         return;
       }
 
-      window.location.href = nextPath || data.route || "/workspace";
+      window.location.href = data.route || nextPath || "/workspace";
     } catch {
       setError("Erreur réseau ou serveur.");
       setPending(false);
