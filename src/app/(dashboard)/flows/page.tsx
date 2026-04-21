@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -1277,3 +1278,57 @@ function formatTimeline(createdAt: string, updatedAt: string): string {
   if (updated === "—") return `Créé ${created}`;
   return `${created} → ${updated}`;
 }
+=======
+import FlowGraphClient from "./FlowGraphClient";
+
+type CommandItem = {
+  id: string;
+  capability?: string;
+  status?: string;
+  parent_command_id?: string;
+};
+
+type CommandsResponse = {
+  ok?: boolean;
+  commands?: CommandItem[];
+};
+
+async function getWorkerCommands(): Promise<CommandItem[]> {
+  const apiBase =
+    process.env.NEXT_PUBLIC_BOSAI_API_URL ||
+    process.env.NEXT_PUBLIC_BOSAI_WORKER_BASE_URL ||
+    "http://localhost:8000";
+
+  const response = await fetch(`${apiBase.replace(/\/$/, "")}/commands?limit=50`, {
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Worker /commands failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as CommandsResponse;
+  return Array.isArray(data.commands) ? data.commands : [];
+}
+
+export default async function FlowsPage() {
+  const commands = await getWorkerCommands();
+
+  return (
+    <div style={{ padding: 20 }}>
+      <h1
+        style={{
+          color: "white",
+          fontSize: 28,
+          fontWeight: 700,
+          marginBottom: 16,
+        }}
+      >
+        BOSAI Flow Live
+      </h1>
+
+      <FlowGraphClient commands={commands} />
+    </div>
+  );
+}
+>>>>>>> Stashed changes
