@@ -222,7 +222,21 @@ export default async function WorkspaceCreatePage({
     queryCommercialWorkspaceId !== "" &&
     queryCommercialWorkspaceId === pendingWorkspaceId;
 
-  const activated = accessState.canAccessCockpit || activatedFromMatchingQuery;
+  const normalizedWorkspaceStatus = normalizeText(
+    accessState.workspaceStatus
+  ).toLowerCase();
+
+  const activatedFromWorkspaceStatus =
+    normalizedWorkspaceStatus === "ready_to_activate" ||
+    normalizedWorkspaceStatus === "active";
+
+  const activated =
+    accessState.canAccessCockpit ||
+    activatedFromMatchingQuery ||
+    activatedFromWorkspaceStatus;
+
+  const effectiveWorkspaceStatus =
+    normalizedWorkspaceStatus || (activated ? "ready_to_activate" : "");
 
   if (shouldApplyCommercialGuard) {
     const isWorkspaceStage = accessState.stage === "workspace";
@@ -392,9 +406,7 @@ export default async function WorkspaceCreatePage({
                 <div className={compactCardClassName()}>
                   <div className={sectionLabelClassName()}>Workspace status</div>
                   <div className="mt-3 text-2xl font-semibold text-white">
-                    {activated
-                      ? "ready_to_activate"
-                      : accessState.workspaceStatus || "ready_to_activate"}
+                    {effectiveWorkspaceStatus || "ready_to_activate"}
                   </div>
                 </div>
 
