@@ -1,5 +1,3 @@
-// src/lib/workspaces/resolver.ts
-
 import "server-only";
 
 import { isAirtableLiveConfigured } from "../airtable/config";
@@ -70,6 +68,27 @@ type SyntheticCommercialWorkspace = {
 
 function normalizeText(value?: string | null): string {
   return String(value || "").trim();
+}
+
+function isTruthy(value?: string | null): boolean {
+  const normalized = normalizeText(value).toLowerCase();
+
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "oui" ||
+    normalized === "on"
+  );
+}
+
+function isActivationReadyStatus(value?: string | null): boolean {
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized === "ready_to_activate" || normalized === "active";
+}
+
+function buildSyntheticPendingWorkspaceId(planCode: BosaiPlanCode): string {
+  return `ws_onboarding_${planCode}`;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -241,7 +260,10 @@ function getCreateWorkspaceRoute(nextPath?: string): string {
 }
 
 function getSelectWorkspaceRoute(nextPath?: string): string {
-  return `/workspace/select${buildQueryString({ next: nextPath || "" })}`;
+  return `/workspace/select${buildQueryString({
+    manual: "1",
+    next: nextPath || "",
+  })}`;
 }
 
 export function getWorkspaceActivateRoute(args: {
@@ -318,13 +340,18 @@ function normalizeLiveWorkspace(
 
   if (!workspaceId) return null;
 
-  const name = pickFirstText(workspace, ["Name", "Workspace_Name", "Display_Name"]);
+  const name = pickFirstText(workspace, [
+    "Name",
+    "Workspace_Name",
+    "Display_Name",
+  ]);
   const slug = pickFirstText(workspace, ["Slug", "slug"]);
   const category = normalizeCategory(
     pickFirstText(workspace, ["Category", "Type", "Workspace_Type"])
   );
   const plan = normalizePlan(
-    pickFirstText(workspace, ["Plan", "Plan_ID", "Type", "Category"]) || category
+    pickFirstText(workspace, ["Plan", "Plan_ID", "Type", "Category"]) ||
+      category
   );
   const status = normalizeWorkspaceStatus(
     pickFirstText(workspace, ["Status_select", "Status", "status"])
@@ -432,7 +459,11 @@ function normalizeLiveMembershipSummary(
   const status =
     matchedWorkspace?.summary.status ||
     normalizeWorkspaceStatus(
-      pickFirstText(membership, ["Workspace_Status", "Status_select", "Status"])
+      pickFirstText(membership, [
+        "Workspace_Status",
+        "Status_select",
+        "Status",
+      ])
     );
 
   return {
@@ -452,10 +483,13 @@ function normalizeLiveMembershipSummary(
       pickFirstText(membership, ["Role", "Membership_Role"])
     ),
     membershipStatus: normalizeMembershipStatus(
-      pickFirstText(membership, ["Status", "Membership_Status", "Status_select"])
+      pickFirstText(membership, [
+        "Status",
+        "Membership_Status",
+        "Status_select",
+      ])
     ),
-    isDefault:
-      pickFirstBoolean(membership, ["Is_Default", "Default"]) ?? false,
+    isDefault: pickFirstBoolean(membership, ["Is_Default", "Default"]) ?? false,
   };
 }
 
@@ -530,16 +564,12 @@ function normalizeLiveQuota(quota: unknown): WorkspaceQuotaSnapshot | null {
 
   return {
     runsUsed:
-      toNumber(fields.Usage_Runs_Month) ??
-      toNumber(fields.Runs_Used) ??
-      0,
+      toNumber(fields.Usage_Runs_Month) ?? toNumber(fields.Runs_Used) ?? 0,
     runsHardLimit:
       toNumber(fields.Hard_Limit_Runs_Month) ??
       toNumber(fields.Runs_Hard_Limit),
     tokensUsed:
-      toNumber(fields.Usage_Tokens_Month) ??
-      toNumber(fields.Tokens_Used) ??
-      0,
+      toNumber(fields.Usage_Tokens_Month) ?? toNumber(fields.Tokens_Used) ?? 0,
     tokensHardLimit:
       toNumber(fields.Hard_Limit_Tokens_Month) ??
       toNumber(fields.Tokens_Hard_Limit),
@@ -830,37 +860,55 @@ function resolveSyntheticCommercialWorkspace(args: {
     cookieValues,
   });
 
-  if (!accessState.canAccessCockpit) {
-    return null;
-  }
-
+  const requestedWorkspaceId = normalizeText(args.requestedWorkspaceId);
   const pendingWorkspaceId = normalizeText(
     cookieValues.bosai_pending_workspace_id
   );
-  const requestedWorkspaceId = normalizeText(args.requestedWorkspaceId);
+  const planCode = accessState.planCode || "starter";
+  const derivedPendingWorkspaceId = buildSyntheticPendingWorkspaceId(planCode);
+
+  const cookieWorkspaceStatus = normalizeText(
+    cookieValues.bosai_workspace_status || cookieValues.workspace_status
+  );
+  const onboardingCompleted = isTruthy(
+    cookieValues.bosai_onboarding_completed ||
+      cookieValues.onboarding_completed
+  );
+
+  const activationReady =
+    accessState.canAccessCockpit ||
+    isActivationReadyStatus(accessState.workspaceStatus) ||
+    isActivationReadyStatus(cookieWorkspaceStatus) ||
+    onboardingCompleted;
 
   /**
    * Très important :
-   * on ne synthétise PAS globalement un workspace commercial
-   * si aucun workspace précis n’est demandé.
-   *
-   * Sinon login / select / resolver croient qu’un workspace existe déjà
-   * et le flow pricing / onboarding disparaît visuellement.
+   * - on ne synthétise pas globalement un workspace commercial
+   *   si aucun workspace précis n’est demandé
+   * - mais on doit accepter qu’un vieux cookie pending soit en retard
+   *   par rapport au plan courant
+   * - dans ce cas, si le requestedWorkspaceId ressemble bien à un
+   *   workspace onboarding, on l’utilise comme source de vérité
    */
-  if (!pendingWorkspaceId || !requestedWorkspaceId) {
+  if (!requestedWorkspaceId || !activationReady) {
     return null;
   }
 
-  if (requestedWorkspaceId !== pendingWorkspaceId) {
+  const requestedLooksLikeOnboarding =
+    requestedWorkspaceId.startsWith("ws_onboarding_");
+
+  const requestedMatchesKnownPending =
+    requestedWorkspaceId === pendingWorkspaceId ||
+    requestedWorkspaceId === derivedPendingWorkspaceId;
+
+  if (!requestedMatchesKnownPending && !requestedLooksLikeOnboarding) {
     return null;
   }
-
-  const planCode = accessState.planCode || "starter";
 
   return {
     planCode,
     workspace: buildSyntheticWorkspaceSummary({
-      workspaceId: pendingWorkspaceId,
+      workspaceId: requestedWorkspaceId,
       planCode,
     }),
   };
