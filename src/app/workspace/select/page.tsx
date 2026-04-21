@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   AUTH_LOGIN_ROUTE,
@@ -12,7 +12,6 @@ import {
 import {
   getDashboardRouteForWorkspaceCategory,
   getWorkspaceActivateRoute,
-  resolveWorkspaceAccess,
 } from "@/lib/workspaces/resolver";
 import {
   WORKSPACE_ROUTE_MEMORY_COOKIE_NAME,
@@ -20,6 +19,7 @@ import {
   readWorkspaceRememberedRoutes,
 } from "@/lib/workspaces/route-memory";
 import type { WorkspaceSummary } from "@/lib/workspaces/types";
+import { CommercialDebugBanner } from "@/components/debug/CommercialDebugBanner";
 
 function text(value?: string | null): string {
   return String(value || "").trim();
@@ -218,6 +218,11 @@ export default async function WorkspaceSelectPage() {
   }
 
   const cookieStore = await cookies();
+  const headerStore = await headers();
+  const host =
+    headerStore.get("x-forwarded-host") ||
+    headerStore.get("host") ||
+    "unknown-host";
 
   const onboardingCookieValues = {
     bosai_plan_code: cookieStore.get("bosai_plan_code")?.value,
@@ -225,9 +230,6 @@ export default async function WorkspaceSelectPage() {
     selected_plan: cookieStore.get("selected_plan")?.value,
     bosai_workspace_status: cookieStore.get("bosai_workspace_status")?.value,
     workspace_status: cookieStore.get("workspace_status")?.value,
-    bosai_checkout_completed:
-      cookieStore.get("bosai_checkout_completed")?.value,
-    checkout_completed: cookieStore.get("checkout_completed")?.value,
     bosai_onboarding_completed:
       cookieStore.get("bosai_onboarding_completed")?.value,
     onboarding_completed: cookieStore.get("onboarding_completed")?.value,
@@ -235,40 +237,36 @@ export default async function WorkspaceSelectPage() {
       cookieStore.get("bosai_pending_workspace_id")?.value,
   };
 
-  if (hasCommercialOnboardingSignals(onboardingCookieValues)) {
-    const accessState = resolveBosaiAccessState({
-      cookieValues: onboardingCookieValues,
-    });
-
-    if (!accessState.canAccessCockpit) {
-      redirect(accessState.redirectPath || "/pricing");
-    }
-  }
-
-  const resolution = await resolveWorkspaceAccess({
-    userId: session.user?.userId || "",
-    requestedWorkspaceId: session.cookieSnapshot.activeWorkspaceId || "",
-    nextPath: "/workspace/select",
-    onboardingCookieValues,
+  const accessState = resolveBosaiAccessState({
+    cookieValues: onboardingCookieValues,
   });
 
-  if (resolution.kind === "redirect_create") {
-    redirect(resolution.redirectTo);
-  }
+  const hasCommercialSignals =
+    hasCommercialOnboardingSignals(onboardingCookieValues);
 
-  if (resolution.kind === "redirect_activate" && resolution.memberships.length === 1) {
-    redirect(resolution.redirectTo);
+  if (!accessState.canAccessCockpit && hasCommercialSignals) {
+    redirect(accessState.redirectPath || "/pricing");
   }
 
   const user = session.user;
-  const memberships = resolution.memberships ?? [];
+  const memberships = session.context?.memberships ?? [];
   const activeWorkspaceId =
-    resolution.activeWorkspace?.workspaceId ||
-    session.cookieSnapshot.activeWorkspaceId ||
-    text(onboardingCookieValues.bosai_pending_workspace_id);
+    session.context?.activeWorkspace?.workspaceId ||
+    session.cookieSnapshot.activeWorkspaceId;
 
   if (memberships.length === 0) {
     redirect("/workspace/create");
+  }
+
+  if (memberships.length === 1) {
+    const onlyWorkspace = memberships[0];
+
+    redirect(
+      getWorkspaceActivateRoute({
+        workspaceId: onlyWorkspace.workspaceId,
+        nextPath: getDashboardRouteForWorkspaceCategory(onlyWorkspace.category),
+      })
+    );
   }
 
   const rememberedRoutes = readWorkspaceRememberedRoutes(
@@ -283,8 +281,59 @@ export default async function WorkspaceSelectPage() {
     return a.name.localeCompare(b.name);
   });
 
+  const debugItems = [
+    { label: "host", value: host },
+    { label: "page", value: "/workspace/select" },
+    { label: "auth", value: session.isAuthenticated ? "yes" : "no" },
+    {
+      label: "session.activeWorkspaceId",
+      value:
+        session.context?.activeWorkspace?.workspaceId ||
+        session.cookieSnapshot.activeWorkspaceId ||
+        "",
+    },
+    {
+      label: "cookie.activeWorkspaceId",
+      value: cookieStore.get("bosai_active_workspace_id")?.value || "",
+    },
+    {
+      label: "cookie.pendingWorkspaceId",
+      value: onboardingCookieValues.bosai_pending_workspace_id || "",
+    },
+    {
+      label: "commercial.signals",
+      value: hasCommercialSignals ? "yes" : "no",
+    },
+    {
+      label: "commercial.stage",
+      value: accessState.stage,
+    },
+    {
+      label: "commercial.canAccessCockpit",
+      value: accessState.canAccessCockpit ? "yes" : "no",
+    },
+    {
+      label: "commercial.plan",
+      value: accessState.planCode || "",
+    },
+    {
+      label: "commercial.workspaceStatus",
+      value: accessState.workspaceStatus || "",
+    },
+    {
+      label: "memberships.count",
+      value: String((session.context?.memberships ?? []).length),
+    },
+    {
+      label: "allowed.cookie",
+      value: cookieStore.get("bosai_allowed_workspace_ids")?.value || "",
+    },
+  ];
+
   return (
     <main className={pageWrapClassName()}>
+      <CommercialDebugBanner title="workspace/select debug" items={debugItems} />
+
       <div className={shellClassName()}>
         <section className="space-y-4 border-b border-white/10 pb-6">
           <div className={sectionLabelClassName()}>Sélecteur d’espace</div>
