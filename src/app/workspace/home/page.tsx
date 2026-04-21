@@ -275,7 +275,7 @@ function getCategoryCards(category?: string | null): HubCard[] {
         href: "/commands",
       },
       {
-        title: "Workspace select",
+        title: "Changer d’espace",
         description: "Basculer simplement vers un autre espace.",
         href: MANUAL_WORKSPACE_SELECT_HREF,
       },
@@ -870,7 +870,10 @@ function AgencyWorkspaceSection({
           <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
           <MetaCard label="Catégorie" value={text(activeWorkspace.category)} />
           <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
-          <MetaCard label="Rôle membre" value={text(activeWorkspace.membershipRole)} />
+          <MetaCard
+            label="Rôle membre"
+            value={text(activeWorkspace.membershipRole)}
+          />
           <MetaCard
             label="Statut membre"
             value={text(activeWorkspace.membershipStatus)}
@@ -933,7 +936,10 @@ function CompanyWorkspaceSection({
           <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
           <MetaCard label="Catégorie" value={text(activeWorkspace.category)} />
           <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
-          <MetaCard label="Rôle membre" value={text(activeWorkspace.membershipRole)} />
+          <MetaCard
+            label="Rôle membre"
+            value={text(activeWorkspace.membershipRole)}
+          />
           <MetaCard
             label="Statut membre"
             value={text(activeWorkspace.membershipStatus)}
@@ -999,7 +1005,10 @@ function FreelanceWorkspaceSection({
           <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
           <MetaCard label="Catégorie" value={text(activeWorkspace.category)} />
           <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
-          <MetaCard label="Rôle membre" value={text(activeWorkspace.membershipRole)} />
+          <MetaCard
+            label="Rôle membre"
+            value={text(activeWorkspace.membershipRole)}
+          />
           <MetaCard
             label="Statut membre"
             value={text(activeWorkspace.membershipStatus)}
@@ -1063,7 +1072,10 @@ function PersonalWorkspaceSection({
           <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
           <MetaCard label="Catégorie" value={text(activeWorkspace.category)} />
           <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
-          <MetaCard label="Rôle membre" value={text(activeWorkspace.membershipRole)} />
+          <MetaCard
+            label="Rôle membre"
+            value={text(activeWorkspace.membershipRole)}
+          />
           <MetaCard
             label="Statut membre"
             value={text(activeWorkspace.membershipStatus)}
@@ -1396,7 +1408,10 @@ function GenericWorkspaceSection({
           <MetaCard label="Slug" value={text(activeWorkspace.slug)} />
           <MetaCard label="Catégorie" value={text(activeWorkspace.category)} />
           <MetaCard label="Plan" value={text(activeWorkspace.plan)} />
-          <MetaCard label="Rôle membre" value={text(activeWorkspace.membershipRole)} />
+          <MetaCard
+            label="Rôle membre"
+            value={text(activeWorkspace.membershipRole)}
+          />
           <MetaCard
             label="Statut membre"
             value={text(activeWorkspace.membershipStatus)}
