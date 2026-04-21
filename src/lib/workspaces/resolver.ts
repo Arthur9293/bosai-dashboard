@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cookies } from "next/headers";
+import { resolveBosaiAccessState } from "../onboarding-access";
 import { isAirtableLiveConfigured } from "../airtable/config";
 import { listLiveMembershipsForUser } from "../airtable/memberships";
 import { getLiveWorkspaceQuotaByWorkspaceId } from "../airtable/quotas";
@@ -296,6 +298,241 @@ function buildFallbackEntitlements(role: WorkspaceRole): WorkspaceEntitlements {
     canManageBilling: role === "owner",
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/*                            ONBOARDING SYNTHETIC V1                         */
+/* -------------------------------------------------------------------------- */
+
+function mapOnboardingPlanToCategory(planCode?: string | null): WorkspaceCategory {
+  const normalized = normalizeText(planCode).toLowerCase();
+
+  if (normalized === "agency") return "agency";
+  if (normalized === "custom") return "company";
+  if (normalized === "pro") return "freelance";
+  return "personal";
+}
+
+function mapOnboardingPlanToWorkspacePlan(
+  planCode?: string | null
+): WorkspacePlan {
+  const normalized = normalizeText(planCode).toLowerCase();
+
+  if (normalized === "agency") return "agency";
+  if (normalized === "custom") return "company";
+  if (normalized === "pro") return "freelance";
+  return "personal";
+}
+
+function buildOnboardingWorkspaceId(
+  planCode?: string | null,
+  pendingWorkspaceId?: string | null
+): string {
+  const explicit = normalizeText(pendingWorkspaceId);
+  if (explicit) return explicit;
+
+  const normalizedPlan = normalizeText(planCode).toLowerCase() || "starter";
+  return `ws_onboarding_${normalizedPlan}`;
+}
+
+function buildOnboardingWorkspaceName(planCode?: string | null): string {
+  const normalized = normalizeText(planCode).toLowerCase();
+
+  if (normalized === "agency") return "BOSAI Agency Workspace";
+  if (normalized === "custom") return "BOSAI Custom Workspace";
+  if (normalized === "pro") return "BOSAI Pro Workspace";
+  return "BOSAI Starter Workspace";
+}
+
+function buildOnboardingWorkspaceSlug(
+  planCode?: string | null,
+  workspaceId?: string | null
+): string {
+  const normalizedPlan = normalizeText(planCode).toLowerCase() || "starter";
+  const normalizedId = normalizeText(workspaceId).toLowerCase();
+
+  if (normalizedId) {
+    return normalizedId.replace(/[^a-z0-9_-]+/g, "-");
+  }
+
+  return `bosai-${normalizedPlan}-workspace`;
+}
+
+function buildOnboardingWorkspaceEntitlements(
+  planCode?: string | null
+): WorkspaceEntitlements {
+  const normalized = normalizeText(planCode).toLowerCase();
+
+  if (normalized === "agency") {
+    return {
+      canAccessDashboard: true,
+      canRunHttp: true,
+      canViewIncidents: true,
+      canManagePolicies: true,
+      canManageTools: true,
+      canManageWorkspaces: true,
+      canManageBilling: true,
+    };
+  }
+
+  if (normalized === "custom") {
+    return {
+      canAccessDashboard: true,
+      canRunHttp: true,
+      canViewIncidents: true,
+      canManagePolicies: true,
+      canManageTools: true,
+      canManageWorkspaces: true,
+      canManageBilling: true,
+    };
+  }
+
+  if (normalized === "pro") {
+    return {
+      canAccessDashboard: true,
+      canRunHttp: true,
+      canViewIncidents: true,
+      canManagePolicies: false,
+      canManageTools: false,
+      canManageWorkspaces: false,
+      canManageBilling: true,
+    };
+  }
+
+  return {
+    canAccessDashboard: true,
+    canRunHttp: false,
+    canViewIncidents: false,
+    canManagePolicies: false,
+    canManageTools: false,
+    canManageWorkspaces: false,
+    canManageBilling: true,
+  };
+}
+
+function buildOnboardingWorkspaceQuota(
+  planCode?: string | null
+): WorkspaceQuotaSnapshot {
+  const normalized = normalizeText(planCode).toLowerCase();
+  const periodKey = new Date().toISOString().slice(0, 7);
+
+  if (normalized === "agency") {
+    return {
+      runsUsed: 0,
+      runsHardLimit: 50000,
+      tokensUsed: 0,
+      tokensHardLimit: 1000000,
+      httpCallsUsed: 0,
+      httpCallsHardLimit: 5000,
+      periodKey,
+    };
+  }
+
+  if (normalized === "custom") {
+    return {
+      runsUsed: 0,
+      runsHardLimit: 100000,
+      tokensUsed: 0,
+      tokensHardLimit: 2000000,
+      httpCallsUsed: 0,
+      httpCallsHardLimit: 10000,
+      periodKey,
+    };
+  }
+
+  if (normalized === "pro") {
+    return {
+      runsUsed: 0,
+      runsHardLimit: 10000,
+      tokensUsed: 0,
+      tokensHardLimit: 250000,
+      httpCallsUsed: 0,
+      httpCallsHardLimit: 1000,
+      periodKey,
+    };
+  }
+
+  return {
+    runsUsed: 0,
+    runsHardLimit: 1000,
+    tokensUsed: 0,
+    tokensHardLimit: 50000,
+    httpCallsUsed: 0,
+    httpCallsHardLimit: 100,
+    periodKey,
+  };
+}
+
+async function tryResolveOnboardingWorkspaceState(): Promise<{
+  memberships: WorkspaceSummary[];
+  quotaByWorkspaceId: Map<string, WorkspaceQuotaSnapshot | null>;
+  entitlementsByWorkspaceId: Map<string, WorkspaceEntitlements>;
+} | null> {
+  const cookieStore = await cookies();
+
+  const cookieValues = {
+    bosai_plan_code: cookieStore.get("bosai_plan_code")?.value,
+    plan_code: cookieStore.get("plan_code")?.value,
+    selected_plan: cookieStore.get("selected_plan")?.value,
+    bosai_workspace_status: cookieStore.get("bosai_workspace_status")?.value,
+    workspace_status: cookieStore.get("workspace_status")?.value,
+    bosai_checkout_completed:
+      cookieStore.get("bosai_checkout_completed")?.value,
+    checkout_completed: cookieStore.get("checkout_completed")?.value,
+    bosai_onboarding_completed:
+      cookieStore.get("bosai_onboarding_completed")?.value,
+    onboarding_completed: cookieStore.get("onboarding_completed")?.value,
+    bosai_pending_workspace_id:
+      cookieStore.get("bosai_pending_workspace_id")?.value,
+  };
+
+  const accessState = resolveBosaiAccessState({
+    cookieValues,
+  });
+
+  if (!accessState.canAccessCockpit) {
+    return null;
+  }
+
+  const workspaceId = buildOnboardingWorkspaceId(
+    accessState.planCode,
+    cookieValues.bosai_pending_workspace_id
+  );
+
+  const category = mapOnboardingPlanToCategory(accessState.planCode);
+  const plan = mapOnboardingPlanToWorkspacePlan(accessState.planCode);
+
+  const summary: WorkspaceSummary = {
+    workspaceId,
+    slug: buildOnboardingWorkspaceSlug(accessState.planCode, workspaceId),
+    name: buildOnboardingWorkspaceName(accessState.planCode),
+    category,
+    plan,
+    status: "active",
+    membershipRole: "owner",
+    membershipStatus: "active",
+    isDefault: true,
+  };
+
+  const quotaByWorkspaceId = new Map<string, WorkspaceQuotaSnapshot | null>();
+  quotaByWorkspaceId.set(
+    workspaceId,
+    buildOnboardingWorkspaceQuota(accessState.planCode)
+  );
+
+  const entitlementsByWorkspaceId = new Map<string, WorkspaceEntitlements>();
+  entitlementsByWorkspaceId.set(
+    workspaceId,
+    buildOnboardingWorkspaceEntitlements(accessState.planCode)
+  );
+
+  return {
+    memberships: [summary],
+    quotaByWorkspaceId,
+    entitlementsByWorkspaceId,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 
 type NormalizedLiveWorkspace = {
   summary: WorkspaceSummary;
@@ -631,7 +868,7 @@ async function resolveWorkspaceSource(
   memberships: WorkspaceSummary[];
   quotaByWorkspaceId: Map<string, WorkspaceQuotaSnapshot | null>;
   entitlementsByWorkspaceId: Map<string, WorkspaceEntitlements>;
-  mode: "live" | "mock";
+  mode: "live" | "mock" | "synthetic";
 }> {
   const liveState = await tryResolveLiveWorkspaceState(userId);
 
@@ -646,24 +883,42 @@ async function resolveWorkspaceSource(
     (item) => item.membershipStatus === "active" && item.status === "active"
   );
 
-  const quotaByWorkspaceId = new Map<string, WorkspaceQuotaSnapshot | null>();
-  const entitlementsByWorkspaceId = new Map<string, WorkspaceEntitlements>();
+  if (mockMemberships.length > 0) {
+    const quotaByWorkspaceId = new Map<string, WorkspaceQuotaSnapshot | null>();
+    const entitlementsByWorkspaceId = new Map<string, WorkspaceEntitlements>();
 
-  for (const membership of mockMemberships) {
-    quotaByWorkspaceId.set(
-      membership.workspaceId,
-      getMockQuotaSnapshot(membership.workspaceId)
-    );
-    entitlementsByWorkspaceId.set(
-      membership.workspaceId,
-      getMockEntitlements(membership.workspaceId, membership.membershipRole)
-    );
+    for (const membership of mockMemberships) {
+      quotaByWorkspaceId.set(
+        membership.workspaceId,
+        getMockQuotaSnapshot(membership.workspaceId)
+      );
+      entitlementsByWorkspaceId.set(
+        membership.workspaceId,
+        getMockEntitlements(membership.workspaceId, membership.membershipRole)
+      );
+    }
+
+    return {
+      memberships: mockMemberships,
+      quotaByWorkspaceId,
+      entitlementsByWorkspaceId,
+      mode: "mock",
+    };
+  }
+
+  const syntheticState = await tryResolveOnboardingWorkspaceState();
+
+  if (syntheticState) {
+    return {
+      ...syntheticState,
+      mode: "synthetic",
+    };
   }
 
   return {
-    memberships: mockMemberships,
-    quotaByWorkspaceId,
-    entitlementsByWorkspaceId,
+    memberships: [],
+    quotaByWorkspaceId: new Map<string, WorkspaceQuotaSnapshot | null>(),
+    entitlementsByWorkspaceId: new Map<string, WorkspaceEntitlements>(),
     mode: "mock",
   };
 }
