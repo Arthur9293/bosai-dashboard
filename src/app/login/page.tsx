@@ -19,7 +19,7 @@ function firstParam(value?: string | string[]): string {
   return value || "";
 }
 
-function normalizeInternalPath(value: string | null | undefined): string {
+function normalizeInternalPath(value?: string | null): string {
   const text = String(value || "").trim();
 
   if (!text.startsWith("/")) return "";
@@ -28,33 +28,26 @@ function normalizeInternalPath(value: string | null | undefined): string {
   return text;
 }
 
-function isCommercialPath(pathname: string): boolean {
-  return (
-    pathname.startsWith("/pricing") ||
-    pathname.startsWith("/onboarding") ||
-    pathname.startsWith("/workspace/create")
-  );
-}
-
 export default async function LoginPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams
     ? await Promise.resolve(searchParams)
     : {};
 
   const nextPath = normalizeInternalPath(firstParam(resolvedSearchParams.next));
+
   const session = await resolveAuthSession();
 
   /**
-   * Cas important :
-   * si l’utilisateur est déjà authentifié MAIS arrive sur /login avec
-   * un next commercial, on doit respecter ce next au lieu de renvoyer
-   * directement vers les workspaces existants.
+   * Correction critique :
+   * si l'utilisateur est déjà authentifié ET qu'un next interne existe,
+   * on respecte ce next au lieu de renvoyer automatiquement vers
+   * /workspace, /workspace/select ou la route dashboard.
    */
-  if (session.isAuthenticated && nextPath && isCommercialPath(nextPath)) {
-    redirect(nextPath);
-  }
-
   if (session.isAuthenticated) {
+    if (nextPath) {
+      redirect(nextPath);
+    }
+
     const resolution = await resolveWorkspaceAccess({
       userId: session.user?.userId || "",
       requestedWorkspaceId: session.cookieSnapshot.activeWorkspaceId || "",
