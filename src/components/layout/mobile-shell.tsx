@@ -36,26 +36,19 @@ export function MobileShell({
   title = "BOSAI Dashboard",
 }: MobileShellProps) {
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
+  const pathname = usePathname() || "";
   const navId = useId();
 
   const pageTitle = getPageTitle(pathname) || title;
-
-  const closeMenu = () => setOpen(false);
-  const openMenu = () => setOpen(true);
 
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
 
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
+    if (!open) return;
 
-    if (open) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = previousOverflow || "";
-    }
+    const previousOverflow = document.body.style.overflow;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -63,10 +56,11 @@ export function MobileShell({
       }
     };
 
+    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.body.style.overflow = previousOverflow || "";
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [open]);
@@ -80,7 +74,7 @@ export function MobileShell({
             aria-label="Ouvrir la navigation"
             aria-expanded={open}
             aria-controls={navId}
-            onClick={openMenu}
+            onClick={() => setOpen(true)}
             className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white transition hover:bg-white/[0.08] active:scale-[0.98]"
           >
             <span className="text-xl leading-none">☰</span>
@@ -106,8 +100,8 @@ export function MobileShell({
           <button
             type="button"
             aria-label="Fermer le fond de navigation"
-            onClick={closeMenu}
-            className="absolute inset-0 bg-black/75"
+            onClick={() => setOpen(false)}
+            className="absolute inset-0 bg-black/75 backdrop-blur-[2px]"
           />
 
           <aside
@@ -115,7 +109,7 @@ export function MobileShell({
             role="dialog"
             aria-modal="true"
             aria-label="Navigation mobile BOSAI"
-            className="relative z-10 flex h-full w-[88%] max-w-[320px] translate-x-0 flex-col border-r border-white/10 bg-[#040816]/95 shadow-[0_20px_80px_rgba(0,0,0,0.6)] backdrop-blur-2xl"
+            className="relative z-10 flex h-full w-[88%] max-w-[320px] flex-col border-r border-white/10 bg-[#040816]/95 shadow-[0_20px_80px_rgba(0,0,0,0.6)] backdrop-blur-2xl"
           >
             <div className="border-b border-white/10 px-4 py-5">
               <div className="flex items-start justify-between gap-4">
@@ -141,7 +135,7 @@ export function MobileShell({
                 <button
                   type="button"
                   aria-label="Fermer la navigation"
-                  onClick={closeMenu}
+                  onClick={() => setOpen(false)}
                   className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white transition hover:bg-white/[0.08] active:scale-[0.98]"
                 >
                   <span className="text-lg leading-none">✕</span>
@@ -154,7 +148,7 @@ export function MobileShell({
                 variant="drawer"
                 workspace={workspace}
                 entitlements={entitlements}
-                onNavigate={closeMenu}
+                onNavigate={() => setOpen(false)}
               />
             </div>
 
