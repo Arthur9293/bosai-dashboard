@@ -151,6 +151,64 @@ function normalizeCategory(
   return null;
 }
 
+function parseWorkspaceIds(value?: string | null): string[] {
+  const raw = normalizeText(value);
+  if (!raw) return [];
+
+  if (raw.startsWith("[") && raw.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return Array.from(
+          new Set(parsed.map((item) => normalizeText(String(item))).filter(Boolean))
+        );
+      }
+    } catch {}
+  }
+
+  return Array.from(
+    new Set(
+      raw
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function categoryFromDedicatedSpace(
+  value?: DedicatedSpaceTarget | string | null
+): WorkspaceCategory {
+  const normalized = normalizeText(String(value || "")).toLowerCase();
+
+  if (normalized === "agency_space") return "agency";
+  if (normalized === "company_space") return "company";
+  if (normalized === "freelance_space") return "freelance";
+
+  return "personal";
+}
+
+function routeFromDedicatedSpace(
+  value?: DedicatedSpaceTarget | string | null
+): string {
+  const normalized = normalizeText(String(value || "")).toLowerCase();
+
+  if (normalized === "agency_space") return "/flows";
+  if (normalized === "company_space") return "/workspaces";
+  if (normalized === "freelance_space") return "/commands";
+
+  return "/overview";
+}
+
+function fallbackRouteForCookieSession(args: {
+  membershipsCount: number;
+  dedicatedSpace: DedicatedSpaceTarget | null;
+}): string {
+  if (args.membershipsCount > 1) return "/workspace/select";
+  if (args.membershipsCount === 1) return "/workspace";
+  return routeFromDedicatedSpace(args.dedicatedSpace);
+}
+
 function findSeedByToken(token?: string | null): MockSessionSeed | null {
   const normalized = normalizeToken(token);
   if (!normalized) return null;
@@ -202,6 +260,119 @@ function resolveRequestedWorkspaceId(
   if (direct) return direct;
 
   return resolveWorkspaceIdFromCategory(userId, preferredCategory);
+}
+
+function buildCookieWorkspaceSummary(args: {
+  workspaceId: string;
+  category: WorkspaceCategory;
+  isDefault: boolean;
+}): WorkspaceSummary {
+  return {
+    workspaceId: args.workspaceId,
+    slug: args.workspaceId.toLowerCase(),
+    name: args.workspaceId,
+    category: args.category,
+    plan: args.category === "agency"
+      ? "agency"
+      : args.category === "company"
+        ? "company"
+        : args.category === "freelance"
+          ? "freelance"
+          : "personal",
+    status: "active",
+    membershipRole: "owner",
+    membershipStatus: "active",
+    isDefault: args.isDefault,
+  };
+}
+
+function buildCookieWorkspaceContext(args: {
+  memberships: WorkspaceSummary[];
+  activeWorkspace: WorkspaceSummary | null;
+}): WorkspaceContext {
+  return {
+    activeWorkspace: args.activeWorkspace,
+    memberships: args.memberships,
+    quota: null,
+    entitlements: {
+      canAccessDashboard: true,
+      canRunHttp: true,
+      canViewIncidents: true,
+      canManagePolicies: true,
+      canManageTools: true,
+      canManageWorkspaces: true,
+      canManageBilling: true,
+    },
+  };
+}
+
+function buildCookieBackedSession(cookies: {
+  [key: string]: string | undefined;
+}): ResolvedMockSession {
+  const requestedWorkspaceId = normalizeText(
+    cookies[MOCK_ACTIVE_WORKSPACE_COOKIE_NAME]
+  );
+  const allowedWorkspaceIds = parseWorkspaceIds(
+    cookies[MOCK_ALLOWED_WORKSPACES_COOKIE_NAME]
+  );
+
+  const dedicatedSpaceRaw = normalizeText(cookies[MOCK_DEDICATED_SPACE_COOKIE_NAME]);
+  const dedicatedSpace =
+    (dedicatedSpaceRaw as DedicatedSpaceTarget) || null;
+
+  const preferredCategory = categoryFromDedicatedSpace(dedicatedSpaceRaw);
+
+  const effectiveWorkspaceIds = [...allowedWorkspaceIds];
+
+  if (
+    requestedWorkspaceId &&
+    !effectiveWorkspaceIds.includes(requestedWorkspaceId)
+  ) {
+    effectiveWorkspaceIds.unshift(requestedWorkspaceId);
+  }
+
+  const memberships = effectiveWorkspaceIds.map((workspaceId, index) =>
+    buildCookieWorkspaceSummary({
+      workspaceId,
+      category: preferredCategory,
+      isDefault:
+        workspaceId === requestedWorkspaceId ||
+        (!requestedWorkspaceId && index === 0),
+    })
+  );
+
+  const activeWorkspace =
+    memberships.find((item) => item.workspaceId === requestedWorkspaceId) ||
+    memberships[0] ||
+    null;
+
+  const cookieUserId = normalizeText(cookies[MOCK_USER_ID_COOKIE_NAME]);
+
+  const user: MockSessionUser | null = cookieUserId
+    ? {
+        userId: cookieUserId,
+        email: "",
+        displayName: cookieUserId,
+        preferredCategory,
+      }
+    : null;
+
+  return {
+    isAuthenticated: true,
+    token: normalizeText(cookies[MOCK_SESSION_TOKEN_COOKIE_NAME]),
+    user,
+    workspace: activeWorkspace,
+    context: buildCookieWorkspaceContext({
+      memberships,
+      activeWorkspace,
+    }),
+    target: dedicatedSpace,
+    route: fallbackRouteForCookieSession({
+      membershipsCount: memberships.length,
+      dedicatedSpace,
+    }),
+    allowedWorkspaceIds: memberships.map((item) => item.workspaceId),
+  };
 }
 
 export function listMockLoginOptions(): MockLoginOption[] {
@@ -269,8 +440,11 @@ export function resolveMockSessionFromCookies(cookies: {
   [key: string]: string | undefined;
 }): ResolvedMockSession {
   const authValue = cookies[MOCK_AUTH_COOKIE_NAME];
-  const sessionToken = cookies[MOCK_SESSION_TOKEN_COOKIE_NAME];
-  const requestedWorkspaceId = cookies[MOCK_ACTIVE_WORKSPACE_COOKIE_NAME];
+  const sessionToken = normalizeText(cookies[MOCK_SESSION_TOKEN_COOKIE_NAME]);
+  const requestedWorkspaceId = normalizeText(
+    cookies[MOCK_ACTIVE_WORKSPACE_COOKIE_NAME]
+  );
+  const userId = normalizeText(cookies[MOCK_USER_ID_COOKIE_NAME]);
 
   if (normalizeText(authValue) !== MOCK_AUTH_COOKIE_VALUE) {
     return {
@@ -285,30 +459,44 @@ export function resolveMockSessionFromCookies(cookies: {
     };
   }
 
-  const fallbackSeed = findSeedByUserId(cookies[MOCK_USER_ID_COOKIE_NAME]) || {
-    ...MOCK_SESSION_SEEDS[0],
-  };
+  const seedFromToken = findSeedByToken(sessionToken);
+  if (seedFromToken) {
+    return resolveMockSession({
+      token: sessionToken,
+      requestedWorkspaceId,
+    });
+  }
 
-  const effectiveToken =
-    normalizeText(sessionToken) || getPrimaryToken(fallbackSeed);
+  const seedFromUserId = findSeedByUserId(userId);
+  if (seedFromUserId) {
+    return resolveMockSession({
+      token: getPrimaryToken(seedFromUserId),
+      requestedWorkspaceId,
+    });
+  }
 
-  return resolveMockSession({
-    token: effectiveToken,
-    requestedWorkspaceId,
-  });
+  /**
+   * Correction critique :
+   * si aucun token mock valide n’existe,
+   * on NE retombe PAS sur Arthur par défaut.
+   *
+   * On reconstruit une session neutre à partir
+   * des cookies workspace présents.
+   */
+  return buildCookieBackedSession(cookies);
 }
 
 export function buildMockSessionCookiePayload(
   session: ResolvedMockSession
 ): MockSessionCookiePayload | null {
-  if (!session.isAuthenticated || !session.user || !session.workspace) {
+  if (!session.isAuthenticated || !session.workspace) {
     return null;
   }
 
   return {
     [MOCK_AUTH_COOKIE_NAME]: MOCK_AUTH_COOKIE_VALUE,
     [MOCK_SESSION_TOKEN_COOKIE_NAME]: session.token,
-    [MOCK_USER_ID_COOKIE_NAME]: session.user.userId,
+    [MOCK_USER_ID_COOKIE_NAME]: session.user?.userId || "",
     [MOCK_ACTIVE_WORKSPACE_COOKIE_NAME]: session.workspace.workspaceId,
     [MOCK_ALLOWED_WORKSPACES_COOKIE_NAME]: session.allowedWorkspaceIds.join(","),
     [MOCK_DEDICATED_SPACE_COOKIE_NAME]: session.target || "",
