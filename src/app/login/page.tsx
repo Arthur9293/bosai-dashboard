@@ -5,10 +5,6 @@ import {
   AUTH_LOGIN_ROUTE,
   resolveAuthSession,
 } from "@/lib/auth/resolve-auth-session";
-import {
-  hasCommercialOnboardingSignals,
-  resolveBosaiAccessState,
-} from "@/lib/onboarding-access";
 import { resolveWorkspaceAccess } from "@/lib/workspaces/resolver";
 
 export default async function LoginPage() {
@@ -33,23 +29,11 @@ export default async function LoginPage() {
         cookieStore.get("bosai_pending_workspace_id")?.value,
     };
 
-    const shouldApplyCommercialGuard =
-      hasCommercialOnboardingSignals(onboardingCookieValues);
-
-    if (shouldApplyCommercialGuard) {
-      const accessState = resolveBosaiAccessState({
-        cookieValues: onboardingCookieValues,
-      });
-
-      if (!accessState.canAccessCockpit && accessState.redirectPath) {
-        redirect(accessState.redirectPath);
-      }
-    }
-
     const resolution = await resolveWorkspaceAccess({
       userId: session.user?.userId || "",
       requestedWorkspaceId: session.cookieSnapshot.activeWorkspaceId || "",
       nextPath: session.homeRoute || "/overview",
+      onboardingCookieValues,
     });
 
     if (resolution.kind === "allow_dashboard") {
