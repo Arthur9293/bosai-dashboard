@@ -97,6 +97,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(buildLoginUrl(request, nextParam));
   }
 
+  const requestedWorkspaceId =
+    text(request.nextUrl.searchParams.get("workspace_id")) ||
+    text(session.cookieSnapshot.activeWorkspaceId);
+
   const onboardingCookieValues = {
     bosai_plan_code: request.cookies.get("bosai_plan_code")?.value,
     plan_code: request.cookies.get("plan_code")?.value,
@@ -113,29 +117,66 @@ export async function GET(request: NextRequest) {
       request.cookies.get("bosai_pending_workspace_id")?.value,
   };
 
-  const shouldApplyCommercialGuard =
-    hasCommercialOnboardingSignals(onboardingCookieValues);
+  const pendingWorkspaceId =
+    text(onboardingCookieValues.bosai_pending_workspace_id) ||
+    requestedWorkspaceId;
 
-  if (shouldApplyCommercialGuard) {
-    const accessState = resolveBosaiAccessState({
+  const shouldUseCommercialSyntheticWorkspace =
+    hasCommercialOnboardingSignals(onboardingCookieValues) &&
+    resolveBosaiAccessState({
       cookieValues: onboardingCookieValues,
-    });
+    }).canAccessCockpit &&
+    Boolean(pendingWorkspaceId) &&
+    (!requestedWorkspaceId || requestedWorkspaceId === pendingWorkspaceId);
 
-    if (!accessState.canAccessCockpit) {
-      return NextResponse.redirect(
-        buildRedirectUrl(request, accessState.redirectPath || "/pricing")
-      );
-    }
+  if (shouldUseCommercialSyntheticWorkspace) {
+    const rememberedRoutes = readWorkspaceRememberedRoutes(
+      request.cookies.get(WORKSPACE_ROUTE_MEMORY_COOKIE_NAME)?.value
+    );
+
+    const explicitNext = text(request.nextUrl.searchParams.get("next"));
+    const rememberedTarget = getRememberedRouteForWorkspace(
+      rememberedRoutes,
+      pendingWorkspaceId
+    );
+
+    const finalTarget = explicitNext || rememberedTarget || "/workspace";
+    const response = NextResponse.redirect(
+      buildRedirectUrl(request, finalTarget)
+    );
+
+    const options = cookieOptions();
+
+    response.cookies.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, options);
+    response.cookies.set(
+      WORKSPACE_ACTIVE_COOKIE_NAME,
+      pendingWorkspaceId,
+      options
+    );
+    response.cookies.set(
+      WORKSPACE_ALIAS_COOKIE_NAME,
+      pendingWorkspaceId,
+      options
+    );
+    response.cookies.set(
+      WORKSPACE_LEGACY_COOKIE_NAME,
+      pendingWorkspaceId,
+      options
+    );
+    response.cookies.set(
+      WORKSPACE_ALLOWED_COOKIE_NAME,
+      JSON.stringify([pendingWorkspaceId]),
+      options
+    );
+
+    return response;
   }
-
-  const requestedWorkspaceId =
-    text(request.nextUrl.searchParams.get("workspace_id")) ||
-    text(session.cookieSnapshot.activeWorkspaceId);
 
   const resolution = await resolveWorkspaceAccess({
     userId: text(session.user?.userId),
     requestedWorkspaceId,
     nextPath: nextParam,
+    onboardingCookieValues,
   });
 
   if (resolution.kind !== "allow_dashboard" || !resolution.activeWorkspace) {
