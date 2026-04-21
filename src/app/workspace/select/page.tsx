@@ -9,15 +9,7 @@ import {
   hasCommercialOnboardingSignals,
   resolveBosaiAccessState,
 } from "@/lib/onboarding-access";
-import {
-  getDashboardRouteForWorkspaceCategory,
-  getWorkspaceActivateRoute,
-} from "@/lib/workspaces/resolver";
-import {
-  WORKSPACE_ROUTE_MEMORY_COOKIE_NAME,
-  getRememberedRouteForWorkspace,
-  readWorkspaceRememberedRoutes,
-} from "@/lib/workspaces/route-memory";
+import { getWorkspaceActivateRoute } from "@/lib/workspaces/resolver";
 import type { WorkspaceSummary } from "@/lib/workspaces/types";
 import { CommercialDebugBanner } from "@/components/debug/CommercialDebugBanner";
 
@@ -31,6 +23,8 @@ type PageProps = {
 
 const SHOW_WORKSPACE_SELECT_DEBUG =
   process.env.NEXT_PUBLIC_BOSAI_DEBUG_WORKSPACE_SELECT === "1";
+
+const WORKSPACE_HUB_HREF = "/workspace";
 
 function firstParam(value?: string | string[]): string {
   if (Array.isArray(value)) return value[0] || "";
@@ -169,21 +163,16 @@ function shouldShowPlanBadge(workspace: WorkspaceSummary): boolean {
 function WorkspaceSelectCard({
   workspace,
   isActive,
-  rememberedRoute,
 }: {
   workspace: WorkspaceSummary;
   isActive: boolean;
-  rememberedRoute?: string;
 }) {
-  const laneHref = getDashboardRouteForWorkspaceCategory(workspace.category);
-  const preferredTarget = text(rememberedRoute) || laneHref;
-
   const activateHref = getWorkspaceActivateRoute({
     workspaceId: workspace.workspaceId,
-    nextPath: preferredTarget,
+    nextPath: WORKSPACE_HUB_HREF,
   });
 
-  const primaryHref = isActive ? preferredTarget : activateHref;
+  const primaryHref = isActive ? WORKSPACE_HUB_HREF : activateHref;
   const primaryLabel = isActive ? "Continuer" : "Activer cet espace";
 
   return (
@@ -228,8 +217,8 @@ function WorkspaceSelectCard({
             {primaryLabel}
           </Link>
 
-          <Link href={laneHref} className={buttonClassName("soft")}>
-            Ouvrir la surface principale
+          <Link href={WORKSPACE_HUB_HREF} className={buttonClassName("soft")}>
+            Ouvrir le hub workspace
           </Link>
         </div>
       </div>
@@ -294,10 +283,6 @@ export default async function WorkspaceSelectPage({
     redirect("/workspace/create");
   }
 
-  const rememberedRoutes = readWorkspaceRememberedRoutes(
-    cookieStore.get(WORKSPACE_ROUTE_MEMORY_COOKIE_NAME)?.value
-  );
-
   const sortedMemberships = [...memberships].sort((a, b) => {
     if (a.workspaceId === activeWorkspaceId) return -1;
     if (b.workspaceId === activeWorkspaceId) return 1;
@@ -311,26 +296,11 @@ export default async function WorkspaceSelectPage({
       (workspace) => workspace.workspaceId === activeWorkspaceId
     ) || sortedMemberships[0];
 
-  /**
-   * Correctif principal :
-   * - le selector ne doit pas servir de landing page implicite
-   * - s'il existe déjà un active workspace
-   * - et que l'utilisateur n'a PAS explicitement demandé le selector
-   *   via ?manual=1
-   * => on renvoie directement vers ce workspace
-   */
   if (!manualSelector && resolvedActiveWorkspace) {
-    const preferredTarget =
-      getRememberedRouteForWorkspace(
-        rememberedRoutes,
-        resolvedActiveWorkspace.workspaceId
-      ) ||
-      getDashboardRouteForWorkspaceCategory(resolvedActiveWorkspace.category);
-
     redirect(
       getWorkspaceActivateRoute({
         workspaceId: resolvedActiveWorkspace.workspaceId,
-        nextPath: preferredTarget,
+        nextPath: WORKSPACE_HUB_HREF,
       })
     );
   }
@@ -341,7 +311,7 @@ export default async function WorkspaceSelectPage({
     redirect(
       getWorkspaceActivateRoute({
         workspaceId: onlyWorkspace.workspaceId,
-        nextPath: getDashboardRouteForWorkspaceCategory(onlyWorkspace.category),
+        nextPath: WORKSPACE_HUB_HREF,
       })
     );
   }
@@ -462,10 +432,6 @@ export default async function WorkspaceSelectPage({
                 key={workspace.workspaceId}
                 workspace={workspace}
                 isActive={workspace.workspaceId === activeWorkspaceId}
-                rememberedRoute={getRememberedRouteForWorkspace(
-                  rememberedRoutes,
-                  workspace.workspaceId
-                )}
               />
             ))}
           </div>
