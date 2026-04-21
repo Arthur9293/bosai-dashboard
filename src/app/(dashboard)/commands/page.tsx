@@ -1,4 +1,3 @@
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import {
@@ -6,6 +5,7 @@ import {
   type CommandItem,
   type CommandsResponse,
 } from "@/lib/api";
+import { CommandsFilters } from "./commands-filters";
 
 type SearchParams = {
   flow_id?: string | string[];
@@ -31,13 +31,6 @@ type CommandFilters = {
   limit: number;
 };
 
-type PreservedParams = {
-  flow_id: string;
-  root_event_id: string;
-  source_event_id: string;
-  from: string;
-};
-
 type CountTone =
   | "default"
   | "info"
@@ -53,23 +46,6 @@ type StatusKind =
   | "failed"
   | "success"
   | "unknown";
-
-type CommandsFiltersProps = {
-  initialFilters: CommandFilters;
-  preservedParams: PreservedParams;
-};
-
-const CommandsFilters = dynamic<CommandsFiltersProps>(
-  () => import("./commands-filters").then((mod) => mod.CommandsFilters),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4 text-sm text-zinc-400 md:p-5">
-        Chargement des filtres…
-      </div>
-    ),
-  }
-);
 
 function cardClassName() {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
