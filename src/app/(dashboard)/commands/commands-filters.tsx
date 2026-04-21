@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { DashboardCard } from "../../../components/ui/dashboard-card";
 
 type CommandFilters = {
   bucket: string;
@@ -21,6 +20,14 @@ type PreservedParams = {
 
 const QUICK_BUCKET_OPTIONS = ["running", "retry", "failed", "done"] as const;
 const QUICK_CAPABILITY_OPTIONS = ["http_exec", "command_orchestrator"] as const;
+
+function cardClassName(): string {
+  return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function sectionLabelClassName(): string {
+  return "text-xs uppercase tracking-[0.22em] text-zinc-500";
+}
 
 function badgeClassName(
   variant:
@@ -193,11 +200,15 @@ export function CommandsFilters({
   };
 
   return (
-    <DashboardCard
-      title="Commands filters"
-      subtitle="Filtres simples et presets rapides pour la file Commands."
-    >
-      <div className="space-y-5">
+    <section className={cardClassName()}>
+      <div className="space-y-2">
+        <div className={sectionLabelClassName()}>Commands filters</div>
+        <p className="text-sm text-zinc-400">
+          Filtres simples et presets rapides pour la file Commands.
+        </p>
+      </div>
+
+      <div className="mt-5 space-y-5">
         <div className={sectionBoxClassName()}>
           <div className="mb-3 text-[11px] uppercase tracking-[0.18em] text-zinc-500">
             Presets
@@ -500,6 +511,6 @@ export function CommandsFilters({
           </div>
         </div>
       </div>
-    </DashboardCard>
+    </section>
   );
 }
