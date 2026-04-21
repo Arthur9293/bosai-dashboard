@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   AUTH_LOGIN_ROUTE,
@@ -9,6 +9,7 @@ import {
   hasCommercialOnboardingSignals,
   resolveBosaiAccessState,
 } from "@/lib/onboarding-access";
+import { CommercialDebugBanner } from "@/components/debug/CommercialDebugBanner";
 
 type SearchParams = {
   plan?: string | string[];
@@ -143,6 +144,11 @@ export default async function WorkspaceCreatePage({
   const activatedFromQuery = isTruthy(activatedValue);
 
   const cookieStore = await cookies();
+  const headerStore = await headers();
+  const host =
+    headerStore.get("x-forwarded-host") ||
+    headerStore.get("host") ||
+    "unknown-host";
 
   const onboardingCookieValues = {
     bosai_plan_code: cookieStore.get("bosai_plan_code")?.value,
@@ -197,11 +203,6 @@ export default async function WorkspaceCreatePage({
     commercialWorkspaceIdFromQuery !== "" &&
     commercialWorkspaceIdFromQuery === pendingWorkspaceId;
 
-  /**
-   * Important :
-   * on ne redirige vers le selector que si on n'est PAS dans le flow commercial.
-   * Sinon on reboucle immédiatement vers un workspace réel existant.
-   */
   if (
     !shouldApplyCommercialGuard &&
     !isCommercialWorkspaceReturn &&
@@ -229,8 +230,60 @@ export default async function WorkspaceCreatePage({
 
   const selectWorkspaceHref = "/workspace/select";
 
+  const debugItems = [
+    { label: "host", value: host },
+    { label: "page", value: "/workspace/create" },
+    { label: "auth", value: session.isAuthenticated ? "yes" : "no" },
+    {
+      label: "query.plan",
+      value: firstParam(resolvedSearchParams.plan),
+    },
+    {
+      label: "query.activated",
+      value: firstParam(resolvedSearchParams.activated),
+    },
+    {
+      label: "query.commercial_workspace_id",
+      value: firstParam(resolvedSearchParams.commercial_workspace_id),
+    },
+    {
+      label: "commercial.signals",
+      value: shouldApplyCommercialGuard ? "yes" : "no",
+    },
+    {
+      label: "commercial.stage",
+      value: accessState.stage,
+    },
+    {
+      label: "commercial.canAccessCockpit",
+      value: accessState.canAccessCockpit ? "yes" : "no",
+    },
+    {
+      label: "commercial.plan",
+      value: accessState.planCode || "",
+    },
+    {
+      label: "commercial.workspaceStatus",
+      value: accessState.workspaceStatus || "",
+    },
+    {
+      label: "pendingWorkspaceId",
+      value: pendingWorkspaceId,
+    },
+    {
+      label: "activated.final",
+      value: activated ? "yes" : "no",
+    },
+    {
+      label: "memberships.count",
+      value: String(memberships.length),
+    },
+  ];
+
   return (
     <main className={pageWrapClassName()}>
+      <CommercialDebugBanner title="workspace/create debug" items={debugItems} />
+
       <div className={shellClassName()}>
         <section className="space-y-4 border-b border-white/10 pb-6">
           <div className={sectionLabelClassName()}>Workspace onboarding</div>
