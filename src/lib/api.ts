@@ -1,7 +1,20 @@
-const BASE_URL =
+const BASE_URL = (
   process.env.BOSAI_WORKER_BASE_URL ||
   process.env.NEXT_PUBLIC_BOSAI_WORKER_BASE_URL ||
-  "";
+  ""
+)
+  .trim()
+  .replace(/\/+$/, "");
+
+const DEFAULT_FETCH_TIMEOUT_MS = (() => {
+  const raw =
+    process.env.BOSAI_FETCH_TIMEOUT_MS ||
+    process.env.NEXT_PUBLIC_BOSAI_FETCH_TIMEOUT_MS ||
+    "8000";
+
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 8000;
+})();
 
 type JsonRecord = Record<string, unknown>;
 type QueryPrimitive = string | number | boolean | null | undefined;
@@ -43,6 +56,29 @@ function buildPath(path: string, query?: Record<string, QueryValue>): string {
   return qs ? `${pathname}?${qs}` : pathname;
 }
 
+function truncateText(value: string, max = 240): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max)}…`;
+}
+
+async function parseJsonResponse<T = unknown>(
+  res: Response,
+  requestPath: string
+): Promise<T> {
+  const rawText = await res.text();
+
+  if (!rawText.trim()) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(rawText) as T;
+  } catch {
+    throw new Error(`Invalid JSON response: ${requestPath}`);
+  }
+}
+
 async function safeFetch<T = unknown>(
   path: string,
   query?: Record<string, QueryValue>
@@ -52,20 +88,49 @@ async function safeFetch<T = unknown>(
   }
 
   const finalPath = buildPath(path, query);
+  const url = `${BASE_URL}${finalPath}`;
 
-  const res = await fetch(`${BASE_URL}${finalPath}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, DEFAULT_FETCH_TIMEOUT_MS);
 
-  if (!res.ok) {
-    throw new Error(`Request failed: ${res.status} ${res.statusText}`);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const rawText = await res.text().catch(() => "");
+      const suffix = rawText.trim() ? ` – ${truncateText(rawText)}` : "";
+      throw new Error(`Request failed: ${res.status} ${res.statusText}${suffix}`);
+    }
+
+    return parseJsonResponse<T>(res, finalPath);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.name === "AbortError" || /aborted/i.test(error.message))
+    ) {
+      throw new Error(
+        `Request timeout after ${DEFAULT_FETCH_TIMEOUT_MS}ms: ${finalPath}`
+      );
+    }
+
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    throw new Error(`Unknown request failure: ${finalPath}`);
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return res.json() as Promise<T>;
 }
 
 function normalizeScopeOptions(
