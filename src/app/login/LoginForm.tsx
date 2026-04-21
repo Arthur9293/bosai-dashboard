@@ -1,8 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+
+function normalizeInternalPath(value: string | null | undefined): string {
+  const text = String(value || "").trim();
+
+  if (!text.startsWith("/")) return "";
+  if (text.startsWith("//")) return "";
+
+  return text;
+}
 
 export default function LoginForm() {
+  const searchParams = useSearchParams();
+  const nextPath = useMemo(
+    () => normalizeInternalPath(searchParams.get("next")),
+    [searchParams]
+  );
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
@@ -37,7 +53,7 @@ export default function LoginForm() {
         return;
       }
 
-      window.location.href = data.route || "/workspace/home";
+      window.location.href = nextPath || data.route || "/workspace";
     } catch {
       setError("Erreur réseau ou serveur.");
       setPending(false);
