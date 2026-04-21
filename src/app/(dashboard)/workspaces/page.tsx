@@ -3,6 +3,9 @@ import { PageHeader } from "../../../components/ui/page-header";
 import { DashboardCard } from "../../../components/ui/dashboard-card";
 import { WorkspacesFilters } from "./workspaces-filters";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type WorkspaceUsage = {
   runs_month?: number;
   tokens_month?: number;
@@ -70,6 +73,11 @@ type WorkspaceFilters = {
   limit: number;
 };
 
+type SearchParamsInput =
+  | Promise<Record<string, string | string[] | undefined>>
+  | Record<string, string | string[] | undefined>
+  | undefined;
+
 function formatNumber(value?: number | null): string {
   return typeof value === "number" && Number.isFinite(value)
     ? new Intl.NumberFormat("fr-FR").format(value)
@@ -111,12 +119,15 @@ function humanizeSignal(code?: string): string {
     hard_limit_runs_month_reached: "Limite mensuelle runs atteinte",
     soft_limit_tokens_month_exceeded: "Seuil mensuel tokens dépassé",
     hard_limit_tokens_month_reached: "Limite mensuelle tokens atteinte",
-    soft_limit_http_calls_month_exceeded: "Seuil mensuel appels HTTP dépassé",
-    hard_limit_http_calls_month_reached: "Limite mensuelle appels HTTP atteinte",
+    soft_limit_http_calls_month_exceeded:
+      "Seuil mensuel appels HTTP dépassé",
+    hard_limit_http_calls_month_reached:
+      "Limite mensuelle appels HTTP atteinte",
     workspace_not_found: "Workspace introuvable",
     workspace_inactive: "Workspace inactif",
     capability_not_allowed_for_plan: "Capability non autorisée pour ce plan",
-    snapshot_lookup_failed_but_record_listed: "Snapshot détaillé indisponible",
+    snapshot_lookup_failed_but_record_listed:
+      "Snapshot détaillé indisponible",
   };
 
   if (map[value]) return map[value];
@@ -197,7 +208,12 @@ function parseWorkspaceFilters(
   const rawPeriodKey = getSingle(searchParams?.period_key).trim();
   const rawLimit = Number.parseInt(getSingle(searchParams?.limit), 10);
 
-  const allowedStatuses = new Set(["active", "blocked", "warnings", "fallback"]);
+  const allowedStatuses = new Set([
+    "active",
+    "blocked",
+    "warnings",
+    "fallback",
+  ]);
   const safeStatus = allowedStatuses.has(rawStatus) ? rawStatus : "";
 
   const safeLimit = Number.isFinite(rawLimit)
@@ -220,10 +236,16 @@ function filterWorkspaces(
     .filter((item) => {
       if (filters.status === "active" && !item.is_active) return false;
       if (filters.status === "blocked" && !item.blocked) return false;
-      if (filters.status === "warnings" && (item.warnings ?? []).length === 0) {
+      if (
+        filters.status === "warnings" &&
+        (item.warnings ?? []).length === 0
+      ) {
         return false;
       }
-      if (filters.status === "fallback" && !item.usage_period_reset?.fallback) {
+      if (
+        filters.status === "fallback" &&
+        !item.usage_period_reset?.fallback
+      ) {
         return false;
       }
 
@@ -249,6 +271,44 @@ function filterWorkspaces(
     .slice(0, filters.limit);
 }
 
+function isWorkspaceListItem(value: unknown): value is WorkspaceListItem {
+  if (!value || typeof value !== "object") return false;
+
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.workspace_id === "string" &&
+    record.workspace_id.trim().length > 0
+  );
+}
+
+function normalizeWorkspacesResponse(raw: unknown): WorkspacesResponse {
+  if (!raw || typeof raw !== "object") {
+    return {
+      ok: false,
+      error: "invalid_workspaces_payload",
+      items: [],
+    };
+  }
+
+  const record = raw as Record<string, unknown>;
+  const rawItems = Array.isArray(record.items) ? record.items : [];
+
+  return {
+    ok: Boolean(record.ok),
+    count:
+      typeof record.count === "number" && Number.isFinite(record.count)
+        ? record.count
+        : rawItems.length,
+    items: rawItems.filter(isWorkspaceListItem),
+    source:
+      record.source && typeof record.source === "object"
+        ? (record.source as WorkspacesResponse["source"])
+        : undefined,
+    ts: typeof record.ts === "string" ? record.ts : undefined,
+    error: typeof record.error === "string" ? record.error : undefined,
+  };
+}
+
 async function fetchWorkspaces(): Promise<WorkspacesResponse | null> {
   const baseUrl =
     process.env.BOSAI_WORKER_URL ||
@@ -263,6 +323,8 @@ async function fetchWorkspaces(): Promise<WorkspacesResponse | null> {
   }
 
   const url = `${baseUrl.replace(/\/+$/, "")}/workspaces`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
     const response = await fetch(url, {
@@ -271,22 +333,28 @@ async function fetchWorkspaces(): Promise<WorkspacesResponse | null> {
         "x-bosai-key": workspaceApiKey,
       },
       cache: "no-store",
+      signal: controller.signal,
     });
 
     if (!response.ok) {
       return {
         ok: false,
         error: await response.text(),
+        items: [],
       };
     }
 
-    return (await response.json()) as WorkspacesResponse;
+    const json = await response.json();
+    return normalizeWorkspacesResponse(json);
   } catch (error) {
     return {
       ok: false,
       error:
         error instanceof Error ? error.message : "workspaces_fetch_failed",
+      items: [],
     };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -297,8 +365,13 @@ function getQuickRead(params: {
   warningCount: number;
   hasActiveFilters: boolean;
 }): string {
-  const { visibleCount, activeCount, blockedCount, warningCount, hasActiveFilters } =
-    params;
+  const {
+    visibleCount,
+    activeCount,
+    blockedCount,
+    warningCount,
+    hasActiveFilters,
+  } = params;
 
   if (blockedCount > 0) {
     return "Priorité : ouvrir les workspaces bloqués puis vérifier leurs signaux quota et leur état de reset.";
@@ -326,7 +399,8 @@ function getUsageTone(current?: number, hard?: number): string {
   const hardValue = typeof hard === "number" ? hard : 0;
 
   if (hardValue > 0 && currentValue >= hardValue) return "text-red-300";
-  if (hardValue > 0 && currentValue >= hardValue * 0.8) return "text-amber-300";
+  if (hardValue > 0 && currentValue >= hardValue * 0.8)
+    return "text-amber-300";
   return "text-white";
 }
 
@@ -529,13 +603,16 @@ function WorkspaceCard({ item }: { item: WorkspaceListItem }) {
 export default async function WorkspacesPage({
   searchParams,
 }: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  searchParams?: SearchParamsInput;
 }) {
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const filters = parseWorkspaceFilters(resolvedSearchParams);
+  const resolvedSearchParams = searchParams
+    ? await Promise.resolve(searchParams)
+    : undefined;
 
+  const filters = parseWorkspaceFilters(resolvedSearchParams);
   const data = await fetchWorkspaces();
-  const items = data?.items ?? [];
+
+  const items = Array.isArray(data?.items) ? data!.items : [];
   const filteredItems = filterWorkspaces(items, filters);
 
   const envReady =
