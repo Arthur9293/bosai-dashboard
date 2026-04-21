@@ -37,12 +37,6 @@ export default async function LoginPage({ searchParams }: PageProps) {
 
   const session = await resolveAuthSession();
 
-  /**
-   * Correction critique :
-   * si l'utilisateur est déjà authentifié ET qu'un next interne existe,
-   * on respecte ce next au lieu de renvoyer automatiquement vers
-   * /workspace, /workspace/select ou la route dashboard.
-   */
   if (session.isAuthenticated) {
     if (nextPath) {
       redirect(nextPath);
