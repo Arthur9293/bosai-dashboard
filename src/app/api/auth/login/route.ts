@@ -1,251 +1,147 @@
-import { NextResponse } from "next/server";
+"use client";
 
-const AUTH_COOKIE_NAME =
-  (process.env.BOSAI_AUTH_COOKIE_NAME || "bosai_auth").trim() || "bosai_auth";
+import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
-const AUTH_COOKIE_VALUE =
-  (process.env.BOSAI_AUTH_COOKIE_VALUE || "authenticated").trim() ||
-  "authenticated";
+function normalizeInternalPath(value: string | null | undefined): string {
+  const text = String(value || "").trim();
 
-const WORKSPACE_ACTIVE_COOKIE_NAME =
-  (
-    process.env.BOSAI_ACTIVE_WORKSPACE_COOKIE_NAME ||
-    "bosai_active_workspace_id"
-  ).trim() || "bosai_active_workspace_id";
+  if (!text.startsWith("/")) return "";
+  if (text.startsWith("//")) return "";
 
-const WORKSPACE_ALIAS_COOKIE_NAME =
-  (process.env.BOSAI_WORKSPACE_COOKIE_NAME || "bosai_workspace_id").trim() ||
-  "bosai_workspace_id";
-
-const WORKSPACE_LEGACY_COOKIE_NAME =
-  (process.env.BOSAI_WORKSPACE_LEGACY_COOKIE_NAME || "workspace_id").trim() ||
-  "workspace_id";
-
-const WORKSPACE_ALLOWED_COOKIE_NAME =
-  (
-    process.env.BOSAI_ALLOWED_WORKSPACES_COOKIE_NAME ||
-    "bosai_allowed_workspace_ids"
-  ).trim() || "bosai_allowed_workspace_ids";
-
-function text(value: unknown): string {
-  if (typeof value === "string") {
-    const v = value.trim();
-    return v || "";
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value).trim();
-  }
-
-  return "";
+  return text;
 }
 
-function uniq(values: string[]): string[] {
-  return Array.from(new Set(values.map((v) => text(v)).filter(Boolean)));
-}
+export default function LoginForm() {
+  const searchParams = useSearchParams();
+  const nextPath = useMemo(
+    () => normalizeInternalPath(searchParams.get("next")),
+    [searchParams]
+  );
 
-function parseWorkspaceIds(value: string): string[] {
-  const raw = value.trim();
-  if (!raw) return [];
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  if (raw.startsWith("[") && raw.endsWith("]")) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+
     try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return uniq(parsed.map((item) => text(item)));
-      }
-    } catch {
-      return [];
-    }
-  }
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          next: nextPath,
+        }),
+      });
 
-  if (raw.includes(",")) {
-    return uniq(raw.split(","));
-  }
-
-  return raw ? [raw] : [];
-}
-
-function normalizeInternalPath(value: unknown): string {
-  const v = text(value);
-  if (!v.startsWith("/")) return "";
-  if (v.startsWith("//")) return "";
-  return v;
-}
-
-function isCommercialOnboardingPath(pathname: string): boolean {
-  const path = normalizeInternalPath(pathname);
-
-  return (
-    path.startsWith("/pricing") ||
-    path.startsWith("/onboarding") ||
-    path.startsWith("/workspace/create")
-  );
-}
-
-function resolveWorkspaceSession(): {
-  allowedWorkspaceIds: string[];
-  activeWorkspaceId: string;
-  route: string;
-} {
-  const envAllowed = uniq([
-    ...parseWorkspaceIds(process.env.BOSAI_ALLOWED_WORKSPACE_IDS || ""),
-    ...parseWorkspaceIds(process.env.BOSAI_AUTH_ALLOWED_WORKSPACE_IDS || ""),
-  ]);
-
-  const envActive = text(
-    process.env.BOSAI_ACTIVE_WORKSPACE_ID ||
-      process.env.BOSAI_DEFAULT_WORKSPACE_ID ||
-      process.env.BOSAI_WORKSPACE_ID ||
-      ""
-  );
-
-  const allowedWorkspaceIds =
-    envAllowed.length > 0
-      ? envAllowed
-      : envActive
-        ? [envActive]
-        : ["production"];
-
-  const activeWorkspaceId =
-    envActive && allowedWorkspaceIds.includes(envActive)
-      ? envActive
-      : allowedWorkspaceIds[0] || "production";
-
-  return {
-    allowedWorkspaceIds,
-    activeWorkspaceId,
-    route: "/workspace",
-  };
-}
-
-function getCookieOptions() {
-  return {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  };
-}
-
-function clearCookie(response: NextResponse, name: string) {
-  response.cookies.set(name, "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
-  });
-}
-
-export async function POST(request: Request) {
-  try {
-    const contentType = request.headers.get("content-type") || "";
-
-    let email = "";
-    let password = "";
-    let next = "";
-
-    if (contentType.includes("application/json")) {
-      const body = (await request.json()) as {
-        email?: string;
-        password?: string;
-        next?: string;
+      const data = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        route?: string;
       };
 
-      email = String(body.email || "")
-        .trim()
-        .toLowerCase();
-      password = String(body.password || "").trim();
-      next = normalizeInternalPath(body.next);
-    } else {
-      const formData = await request.formData();
-      email = String(formData.get("email") || "")
-        .trim()
-        .toLowerCase();
-      password = String(formData.get("password") || "").trim();
-      next = normalizeInternalPath(formData.get("next"));
+      if (!response.ok || !data.ok) {
+        setError(data.error || "Connexion impossible.");
+        setPending(false);
+        return;
+      }
+
+      window.location.href = nextPath || data.route || "/workspace";
+    } catch {
+      setError("Erreur réseau ou serveur.");
+      setPending(false);
     }
-
-    const expectedEmail = (process.env.BOSAI_AUTH_EMAIL || "")
-      .trim()
-      .toLowerCase();
-    const expectedPassword = (process.env.BOSAI_AUTH_PASSWORD || "").trim();
-
-    if (!email || !password) {
-      return NextResponse.json(
-        { ok: false, error: "Renseigne ton email et ton mot de passe." },
-        { status: 400 }
-      );
-    }
-
-    if (!expectedEmail || !expectedPassword) {
-      return NextResponse.json(
-        { ok: false, error: "Configuration auth incomplète côté serveur." },
-        { status: 500 }
-      );
-    }
-
-    if (email !== expectedEmail || password !== expectedPassword) {
-      return NextResponse.json(
-        { ok: false, error: "Identifiants invalides." },
-        { status: 401 }
-      );
-    }
-
-    const { allowedWorkspaceIds, activeWorkspaceId, route } =
-      resolveWorkspaceSession();
-
-    const cookieOptions = getCookieOptions();
-    const finalRoute = next || route || "/workspace";
-    const onboardingMode = isCommercialOnboardingPath(finalRoute);
-
-    const response = NextResponse.json({
-      ok: true,
-      activeWorkspaceId: onboardingMode ? "" : activeWorkspaceId,
-      allowedWorkspaceIds: onboardingMode ? [] : allowedWorkspaceIds,
-      route: finalRoute,
-    });
-
-    response.cookies.set(AUTH_COOKIE_NAME, AUTH_COOKIE_VALUE, cookieOptions);
-
-    if (onboardingMode) {
-      clearCookie(response, WORKSPACE_ACTIVE_COOKIE_NAME);
-      clearCookie(response, WORKSPACE_ALIAS_COOKIE_NAME);
-      clearCookie(response, WORKSPACE_LEGACY_COOKIE_NAME);
-      clearCookie(response, WORKSPACE_ALLOWED_COOKIE_NAME);
-    } else {
-      response.cookies.set(
-        WORKSPACE_ACTIVE_COOKIE_NAME,
-        activeWorkspaceId,
-        cookieOptions
-      );
-
-      response.cookies.set(
-        WORKSPACE_ALIAS_COOKIE_NAME,
-        activeWorkspaceId,
-        cookieOptions
-      );
-
-      response.cookies.set(
-        WORKSPACE_LEGACY_COOKIE_NAME,
-        activeWorkspaceId,
-        cookieOptions
-      );
-
-      response.cookies.set(
-        WORKSPACE_ALLOWED_COOKIE_NAME,
-        JSON.stringify(allowedWorkspaceIds),
-        cookieOptions
-      );
-    }
-
-    return response;
-  } catch {
-    return NextResponse.json(
-      { ok: false, error: "Erreur serveur pendant la connexion." },
-      { status: 500 }
-    );
   }
+
+  return (
+    <main className="min-h-screen bg-black px-4 py-10 text-white antialiased sm:px-6">
+      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-2xl items-center justify-center">
+        <section className="w-full rounded-[32px] border border-white/10 bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-8 md:p-10">
+          <div className="space-y-4">
+            <div className="text-xs uppercase tracking-[0.24em] text-white/35">
+              BOSAI Control Plane
+            </div>
+
+            <h1 className="text-5xl font-semibold tracking-tight text-white sm:text-6xl">
+              Connexion
+            </h1>
+
+            <p className="max-w-xl text-lg leading-9 text-zinc-400">
+              Accède au cockpit BOSAI avec ton compte sécurisé.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="mt-10 space-y-7">
+            <div className="space-y-3">
+              <label
+                htmlFor="email"
+                className="block text-lg font-medium text-white"
+              >
+                Email
+              </label>
+
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                placeholder="admin@bosai.app"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-[24px] border border-white/10 bg-black/40 px-6 py-5 text-lg text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:bg-black/50"
+                required
+              />
+            </div>
+
+            <div className="space-y-3">
+              <label
+                htmlFor="password"
+                className="block text-lg font-medium text-white"
+              >
+                Mot de passe
+              </label>
+
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-[24px] border border-white/10 bg-black/40 px-6 py-5 text-lg text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:bg-black/50"
+                required
+              />
+            </div>
+
+            {error ? (
+              <div className="rounded-[24px] border border-rose-500/20 bg-rose-500/10 px-5 py-4 text-sm text-rose-200">
+                {error}
+              </div>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={pending}
+              className={`inline-flex w-full items-center justify-center rounded-full px-4 py-4 text-lg font-medium transition ${
+                pending
+                  ? "cursor-not-allowed border border-emerald-500/20 bg-emerald-500/10 text-emerald-200 opacity-70"
+                  : "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20"
+              }`}
+            >
+              {pending ? "Connexion..." : "Se connecter"}
+            </button>
+          </form>
+        </section>
+      </div>
+    </main>
+  );
 }
