@@ -5,7 +5,6 @@ import {
   type CommandItem,
   type CommandsResponse,
 } from "@/lib/api";
-import { CommandsFilters } from "./commands-filters";
 
 type SearchParams = {
   flow_id?: string | string[];
@@ -31,21 +30,13 @@ type CommandFilters = {
   limit: number;
 };
 
-type CountTone =
+type PillTone =
   | "default"
   | "info"
   | "success"
   | "warning"
   | "danger"
   | "muted";
-
-type StatusKind =
-  | "queued"
-  | "running"
-  | "retry"
-  | "failed"
-  | "success"
-  | "unknown";
 
 function cardClassName() {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
@@ -89,49 +80,25 @@ function neutralPillClassName() {
   return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
-function countPillClassName(tone: CountTone = "default") {
-  if (tone === "success") {
-    return "inline-flex min-w-10 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300";
-  }
-
-  if (tone === "warning") {
-    return "inline-flex min-w-10 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-300";
-  }
-
-  if (tone === "danger") {
-    return "inline-flex min-w-10 items-center justify-center rounded-full border border-red-500/20 bg-red-500/15 px-3 py-1 text-xs font-medium text-red-300";
-  }
-
+function badgeClassName(tone: PillTone = "default"): string {
   if (tone === "info") {
-    return "inline-flex min-w-10 items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/15 px-3 py-1 text-xs font-medium text-sky-300";
-  }
-
-  if (tone === "muted") {
-    return "inline-flex min-w-10 items-center justify-center rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-medium text-zinc-400";
-  }
-
-  return "inline-flex min-w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-zinc-300";
-}
-
-function statusBadgeClassName(kind: StatusKind) {
-  if (kind === "queued") {
-    return "inline-flex rounded-full border border-amber-500/20 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300";
-  }
-
-  if (kind === "running") {
     return "inline-flex rounded-full border border-sky-500/20 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-300";
   }
 
-  if (kind === "retry") {
-    return "inline-flex rounded-full border border-violet-500/20 bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300";
+  if (tone === "success") {
+    return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
   }
 
-  if (kind === "failed") {
+  if (tone === "warning") {
+    return "inline-flex rounded-full border border-amber-500/20 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300";
+  }
+
+  if (tone === "danger") {
     return "inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-300";
   }
 
-  if (kind === "success") {
-    return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
+  if (tone === "muted") {
+    return "inline-flex rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs font-medium text-zinc-400";
   }
 
   return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
@@ -301,9 +268,9 @@ function getCommandWorkspace(command: CommandItem): string {
   return (
     toTextOrEmpty(command.workspace_id) ||
     toTextOrEmpty(input.workspace_id) ||
-    toTextOrEmpty((input as Record<string, unknown>).workspaceId) ||
+    toTextOrEmpty(input.workspaceId) ||
     toTextOrEmpty(result.workspace_id) ||
-    toTextOrEmpty((result as Record<string, unknown>).workspaceId) ||
+    toTextOrEmpty(result.workspaceId) ||
     "—"
   );
 }
@@ -315,9 +282,9 @@ function getCommandFlowId(command: CommandItem): string {
   return (
     toTextOrEmpty(command.flow_id) ||
     toTextOrEmpty(input.flow_id) ||
-    toTextOrEmpty((input as Record<string, unknown>).flowId) ||
+    toTextOrEmpty(input.flowId) ||
     toTextOrEmpty(result.flow_id) ||
-    toTextOrEmpty((result as Record<string, unknown>).flowId) ||
+    toTextOrEmpty(result.flowId) ||
     ""
   );
 }
@@ -329,9 +296,9 @@ function getCommandRootEventId(command: CommandItem): string {
   return (
     toTextOrEmpty(command.root_event_id) ||
     toTextOrEmpty(input.root_event_id) ||
-    toTextOrEmpty((input as Record<string, unknown>).rootEventId) ||
+    toTextOrEmpty(input.rootEventId) ||
     toTextOrEmpty(result.root_event_id) ||
-    toTextOrEmpty((result as Record<string, unknown>).rootEventId) ||
+    toTextOrEmpty(result.rootEventId) ||
     ""
   );
 }
@@ -345,13 +312,13 @@ function getCommandSourceEventId(command: CommandItem): string {
     toTextOrEmpty(record.source_event_id) ||
     toTextOrEmpty(record.Source_Event_ID) ||
     toTextOrEmpty(input.source_event_id) ||
-    toTextOrEmpty((input as Record<string, unknown>).sourceEventId) ||
+    toTextOrEmpty(input.sourceEventId) ||
     toTextOrEmpty(input.event_id) ||
-    toTextOrEmpty((input as Record<string, unknown>).eventId) ||
+    toTextOrEmpty(input.eventId) ||
     toTextOrEmpty(result.source_event_id) ||
-    toTextOrEmpty((result as Record<string, unknown>).sourceEventId) ||
+    toTextOrEmpty(result.sourceEventId) ||
     toTextOrEmpty(result.event_id) ||
-    toTextOrEmpty((result as Record<string, unknown>).eventId) ||
+    toTextOrEmpty(result.eventId) ||
     ""
   );
 }
@@ -364,13 +331,13 @@ function getCommandRunId(command: CommandItem): string {
     toTextOrEmpty(command.run_record_id) ||
     toTextOrEmpty(command.linked_run) ||
     toTextOrEmpty(input.run_record_id) ||
-    toTextOrEmpty((input as Record<string, unknown>).runRecordId) ||
+    toTextOrEmpty(input.runRecordId) ||
     toTextOrEmpty(input.run_id) ||
-    toTextOrEmpty((input as Record<string, unknown>).runId) ||
+    toTextOrEmpty(input.runId) ||
     toTextOrEmpty(result.run_record_id) ||
-    toTextOrEmpty((result as Record<string, unknown>).runRecordId) ||
+    toTextOrEmpty(result.runRecordId) ||
     toTextOrEmpty(result.run_id) ||
-    toTextOrEmpty((result as Record<string, unknown>).runId) ||
+    toTextOrEmpty(result.runId) ||
     "—"
   );
 }
@@ -382,9 +349,9 @@ function getCommandParentId(command: CommandItem): string {
   return (
     toTextOrEmpty(command.parent_command_id) ||
     toTextOrEmpty(input.parent_command_id) ||
-    toTextOrEmpty((input as Record<string, unknown>).parentCommandId) ||
+    toTextOrEmpty(input.parentCommandId) ||
     toTextOrEmpty(result.parent_command_id) ||
-    toTextOrEmpty((result as Record<string, unknown>).parentCommandId) ||
+    toTextOrEmpty(result.parentCommandId) ||
     ""
   );
 }
@@ -495,15 +462,15 @@ function getCommandStatusBucket(command: CommandItem) {
   return "other";
 }
 
-function getCommandStatusBadgeKind(command: CommandItem): StatusKind {
+function getCommandStatusBadgeTone(command: CommandItem): PillTone {
   const bucket = getCommandStatusBucket(command);
 
-  if (bucket === "queued") return "queued";
-  if (bucket === "running") return "running";
-  if (bucket === "retry") return "retry";
-  if (bucket === "failed") return "failed";
+  if (bucket === "queued") return "warning";
+  if (bucket === "running") return "info";
+  if (bucket === "retry") return "muted";
+  if (bucket === "failed") return "danger";
   if (bucket === "done") return "success";
-  return "unknown";
+  return "default";
 }
 
 function getCommandPriority(command: CommandItem): number {
@@ -611,43 +578,6 @@ function sortOtherCommands(items: CommandItem[]) {
   return [...items].sort((a, b) => getCommandTimestamp(b) - getCommandTimestamp(a));
 }
 
-function StatusBadge({
-  kind,
-  label,
-}: {
-  kind: StatusKind;
-  label: string;
-}) {
-  return <span className={statusBadgeClassName(kind)}>{label}</span>;
-}
-
-function CountPill({
-  value,
-  tone = "default",
-}: {
-  value: number;
-  tone?: CountTone;
-}) {
-  return <span className={countPillClassName(tone)}>{value}</span>;
-}
-
-function EmptyState({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center">
-      <div className="text-lg font-medium text-white">{title}</div>
-      <div className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-        {description}
-      </div>
-    </div>
-  );
-}
-
 function StatCard({
   label,
   value,
@@ -669,6 +599,31 @@ function StatCard({
   );
 }
 
+function CountPill({
+  value,
+  tone = "default",
+}: {
+  value: number;
+  tone?: PillTone;
+}) {
+  return <span className={badgeClassName(tone)}>{value}</span>;
+}
+
+function EmptyState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 px-4 py-8 text-sm text-zinc-400">
+      <div className="text-base font-medium text-white">{title}</div>
+      <div className="mt-2 leading-7">{description}</div>
+    </div>
+  );
+}
+
 function SectionBlock({
   title,
   description,
@@ -679,7 +634,7 @@ function SectionBlock({
   title: string;
   description: string;
   count: number;
-  countTone?: CountTone;
+  countTone?: PillTone;
   children: ReactNode;
 }) {
   return (
@@ -744,6 +699,87 @@ function HeroActionCard({
   );
 }
 
+function FiltersSummary({
+  filters,
+  preservedParams,
+}: {
+  filters: CommandFilters;
+  preservedParams: {
+    flow_id: string;
+    root_event_id: string;
+    source_event_id: string;
+    from: string;
+  };
+}) {
+  const resetHref = buildHref("/commands", {
+    workspace_id: filters.workspace_id || undefined,
+    flow_id: preservedParams.flow_id || undefined,
+    root_event_id: preservedParams.root_event_id || undefined,
+    source_event_id: preservedParams.source_event_id || undefined,
+    from: preservedParams.from || undefined,
+  });
+
+  const currentPeriodKey = new Date().toISOString().slice(0, 7);
+
+  const failedHref = buildHref("/commands", {
+    workspace_id: filters.workspace_id || undefined,
+    flow_id: preservedParams.flow_id || undefined,
+    root_event_id: preservedParams.root_event_id || undefined,
+    source_event_id: preservedParams.source_event_id || undefined,
+    from: preservedParams.from || undefined,
+    bucket: "failed",
+    period_key: currentPeriodKey,
+    limit: String(filters.limit || 20),
+  });
+
+  const runningHref = buildHref("/commands", {
+    workspace_id: filters.workspace_id || undefined,
+    flow_id: preservedParams.flow_id || undefined,
+    root_event_id: preservedParams.root_event_id || undefined,
+    source_event_id: preservedParams.source_event_id || undefined,
+    from: preservedParams.from || undefined,
+    bucket: "running",
+    period_key: currentPeriodKey,
+    limit: String(filters.limit || 20),
+  });
+
+  return (
+    <section className={cardClassName()}>
+      <div className={sectionLabelClassName()}>Commands filters</div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span className={badgeClassName("default")}>
+          Limit: {filters.limit}
+        </span>
+        <span className={badgeClassName("default")}>
+          Bucket: {filters.bucket || "Tous"}
+        </span>
+        <span className={badgeClassName("default")}>
+          Capability: {filters.capability || "Toutes"}
+        </span>
+        <span className={badgeClassName("default")}>
+          Workspace: {filters.workspace_id || "Tous"}
+        </span>
+        <span className={badgeClassName("default")}>
+          Period: {filters.period_key || "Toutes"}
+        </span>
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Link href={failedHref} className={actionLinkClassName("soft")}>
+          failed + période courante
+        </Link>
+        <Link href={runningHref} className={actionLinkClassName("soft")}>
+          running + période courante
+        </Link>
+        <Link href={resetHref} className={actionLinkClassName("primary")}>
+          Réinitialiser les filtres
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 function CommandCard({
   command,
   activeWorkspaceId,
@@ -765,13 +801,17 @@ function CommandCard({
   const toolMode = getCommandToolMode(command);
   const errorText = getCommandError(command);
 
-  const detailHref = buildHref(`/commands/${encodeURIComponent(id)}`, {
-    workspace_id: activeWorkspaceId || undefined,
-    flow_id: flowId || undefined,
-    root_event_id: rootEventId || undefined,
-    source_event_id: sourceEventId || undefined,
-    from: "commands",
-  });
+  const detailHref = id
+    ? buildHref(`/commands/${encodeURIComponent(id)}`, {
+        workspace_id: activeWorkspaceId || undefined,
+        flow_id: flowId || undefined,
+        root_event_id: rootEventId || undefined,
+        source_event_id: sourceEventId || undefined,
+        from: "commands",
+      })
+    : buildHref("/commands", {
+        workspace_id: activeWorkspaceId || undefined,
+      });
 
   return (
     <article className={cardClassName()}>
@@ -795,10 +835,9 @@ function CommandCard({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge
-                  kind={getCommandStatusBadgeKind(command)}
-                  label={humanStatusLabel(status).toUpperCase()}
-                />
+                <span className={badgeClassName(getCommandStatusBadgeTone(command))}>
+                  {humanStatusLabel(status).toUpperCase()}
+                </span>
               </div>
             </div>
 
@@ -867,7 +906,7 @@ function CommandCard({
 
           <div className="md:col-span-2 xl:col-span-4 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>ID</div>
-            <div className="mt-2 break-all text-zinc-100">{id}</div>
+            <div className="mt-2 break-all text-zinc-100">{id || "—"}</div>
           </div>
         </div>
 
@@ -994,7 +1033,7 @@ export default async function CommandsPage({ searchParams }: PageProps) {
     workspace_id: activeWorkspaceId || undefined,
   });
 
-  const overviewHref = buildHref("/overview", {
+  const overviewHref = buildHref("/", {
     workspace_id: activeWorkspaceId || undefined,
   });
 
@@ -1015,8 +1054,8 @@ export default async function CommandsPage({ searchParams }: PageProps) {
               Commands
             </h1>
             <p className="mt-3 max-w-3xl text-base leading-8 text-zinc-400">
-              Vue de la file d’exécution BOSAI pour suivre les commands, leur
-              statut, leur liaison au flow et leur détail opérationnel.
+              Vue de la file d’exécution BOSAI pour suivre les commands, leur statut,
+              leur liaison au flow et leur détail opérationnel.
             </p>
           </div>
 
@@ -1156,8 +1195,8 @@ export default async function CommandsPage({ searchParams }: PageProps) {
         </section>
       ) : null}
 
-      <CommandsFilters
-        initialFilters={commandFilters}
+      <FiltersSummary
+        filters={commandFilters}
         preservedParams={{
           flow_id: flowId,
           root_event_id: rootEventId,
@@ -1197,7 +1236,7 @@ export default async function CommandsPage({ searchParams }: PageProps) {
       {fetchFailed ? (
         <EmptyState
           title="Lecture Commands indisponible"
-          description="Le Dashboard n’a pas pu charger la surface Commands. La vue s’affiche quand même, mais il faut vérifier la lecture API côté worker."
+          description="Le Dashboard n’a pas pu charger la surface Commands. La vue est protégée, mais il faut vérifier la lecture API côté worker / helper."
         />
       ) : matchingCommands.length === 0 ? (
         <EmptyState
