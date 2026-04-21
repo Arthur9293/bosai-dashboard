@@ -23,12 +23,15 @@ type PageProps = {
 
 const MANUAL_WORKSPACE_SELECT_HREF = "/workspace/select?manual=1";
 
+const SHOW_WORKSPACE_CREATE_DEBUG =
+  process.env.NEXT_PUBLIC_BOSAI_DEBUG_WORKSPACE_CREATE === "1";
+
 function firstParam(value?: string | string[]): string {
   if (Array.isArray(value)) return value[0] || "";
   return value || "";
 }
 
-function normalizeText(value?: string | null): string {
+function normalizeText(value?: string | string | null): string {
   return String(value || "").trim();
 }
 
@@ -241,7 +244,7 @@ export default async function WorkspaceCreatePage({
   const effectiveWorkspaceStatus =
     accessWorkspaceStatus ||
     cookieWorkspaceStatus ||
-    (activated ? "ready_to_activate" : "ready_to_activate");
+    "ready_to_activate";
 
   if (shouldApplyCommercialGuard) {
     const isWorkspaceStage = accessState.stage === "workspace";
@@ -344,7 +347,12 @@ export default async function WorkspaceCreatePage({
 
   return (
     <main className={pageWrapClassName()}>
-      <CommercialDebugBanner title="workspace/create debug" items={debugItems} />
+      {SHOW_WORKSPACE_CREATE_DEBUG ? (
+        <CommercialDebugBanner
+          title="workspace/create debug"
+          items={debugItems}
+        />
+      ) : null}
 
       <div className={shellClassName()}>
         <section className="space-y-4 border-b border-white/10 pb-6">
@@ -452,9 +460,8 @@ export default async function WorkspaceCreatePage({
               <div className={compactCardClassName()}>
                 <div className={sectionLabelClassName()}>Pourquoi cette page</div>
                 <p className="mt-3 text-sm leading-7 text-zinc-400">
-                  On sépare volontairement :
-                  plan → checkout → provisioning → workspace setup → create →
-                  activate → cockpit.
+                  On sépare volontairement : plan → checkout → provisioning →
+                  workspace setup → create → activate → cockpit.
                 </p>
               </div>
 
