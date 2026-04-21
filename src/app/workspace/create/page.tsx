@@ -33,6 +33,17 @@ function buildPendingWorkspaceId(planCode: string): string {
   return `ws_onboarding_${normalized}`;
 }
 
+function isTruthy(value: string): boolean {
+  const normalized = normalizeText(value).toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "oui" ||
+    normalized === "on"
+  );
+}
+
 function pageWrapClassName(): string {
   return "min-h-screen bg-black px-4 py-8 text-white sm:px-6 lg:px-8";
 }
@@ -127,6 +138,9 @@ export default async function WorkspaceCreatePage({
     ? await Promise.resolve(searchParams)
     : {};
 
+  const activatedValue = firstParam(resolvedSearchParams.activated);
+  const activatedFromQuery = isTruthy(activatedValue);
+
   const cookieStore = await cookies();
 
   const onboardingCookieValues = {
@@ -152,9 +166,22 @@ export default async function WorkspaceCreatePage({
     cookieValues: onboardingCookieValues,
   });
 
+  const planCode =
+    firstParam(resolvedSearchParams.plan).trim().toLowerCase() ||
+    accessState.planCode ||
+    "starter";
+
+  const activated = activatedFromQuery || accessState.canAccessCockpit;
+
+  /**
+   * Point clé:
+   * on laisse passer explicitement ?activated=1
+   * même si la relecture des cookies onboarding n'est pas encore stable
+   * sur ce premier hit après /onboarding/continue.
+   */
   if (shouldApplyCommercialGuard) {
     const isWorkspaceStage = accessState.stage === "workspace";
-    const isAlreadyActivated = accessState.canAccessCockpit;
+    const isAlreadyActivated = accessState.canAccessCockpit || activatedFromQuery;
 
     if (!isWorkspaceStage && !isAlreadyActivated) {
       redirect(accessState.redirectPath || "/pricing");
@@ -163,32 +190,14 @@ export default async function WorkspaceCreatePage({
 
   const memberships = session.context?.memberships ?? [];
 
-  const planCode =
-    firstParam(resolvedSearchParams.plan).trim().toLowerCase() ||
-    accessState.planCode ||
-    "starter";
-
-  const activatedValue = firstParam(resolvedSearchParams.activated)
-    .trim()
-    .toLowerCase();
-
-  const activated =
-    activatedValue === "1" ||
-    activatedValue === "true" ||
-    activatedValue === "yes" ||
-    accessState.canAccessCockpit;
-
   const pendingWorkspaceId =
     normalizeText(onboardingCookieValues.bosai_pending_workspace_id) ||
     buildPendingWorkspaceId(planCode);
 
   /**
-   * IMPORTANT:
-   * Pendant l’onboarding commercial, on NE DOIT PAS quitter cette page
-   * juste parce que des memberships mock/live existent déjà.
-   * Sinon le flux reboucle via /workspace/select -> guard -> /onboarding/workspace.
-   *
-   * On autorise donc l’affichage tant que l’activation finale n’est pas validée.
+   * Pendant l’onboarding commercial:
+   * - si activation pas encore validée: on reste ici
+   * - si activation validée ET memberships réelles présentes: on peut aller au selector
    */
   if (activated && memberships.length > 0) {
     redirect("/workspace/select");
