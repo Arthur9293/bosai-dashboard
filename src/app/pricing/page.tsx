@@ -1,6 +1,9 @@
 import Link from "next/link";
 
+type PlanCode = "starter" | "pro" | "agency" | "custom";
+
 type Plan = {
+  code: PlanCode;
   name: string;
   badge?: string;
   price: string;
@@ -8,7 +11,6 @@ type Plan = {
   description: string;
   features: string[];
   ctaLabel: string;
-  ctaHref: string;
   tone?: "default" | "recommended" | "custom";
 };
 
@@ -41,10 +43,6 @@ function metaLabelClassName() {
   return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
 }
 
-function paragraphClassName() {
-  return "text-base leading-8 text-zinc-400";
-}
-
 function buttonClassName(
   variant: "primary" | "soft" | "danger" | "ghost" = "ghost"
 ) {
@@ -63,7 +61,9 @@ function buttonClassName(
   return "inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-medium text-white transition hover:bg-white/[0.08]";
 }
 
-function badgeClassName(variant: "default" | "recommended" | "custom" = "default") {
+function badgeClassName(
+  variant: "default" | "recommended" | "custom" = "default"
+) {
   if (variant === "recommended") {
     return "inline-flex rounded-full border border-emerald-500/25 bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300";
   }
@@ -75,7 +75,9 @@ function badgeClassName(variant: "default" | "recommended" | "custom" = "default
   return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-zinc-300";
 }
 
-function planCardClassName(variant: "default" | "recommended" | "custom" = "default") {
+function planCardClassName(
+  variant: "default" | "recommended" | "custom" = "default"
+) {
   if (variant === "recommended") {
     return "rounded-[30px] border border-emerald-500/25 bg-[linear-gradient(180deg,rgba(16,185,129,0.10)_0%,rgba(255,255,255,0.04)_100%)] p-6 shadow-[0_0_0_1px_rgba(16,185,129,0.08)]";
   }
@@ -87,8 +89,14 @@ function planCardClassName(variant: "default" | "recommended" | "custom" = "defa
   return "rounded-[30px] border border-white/10 bg-white/[0.04] p-6";
 }
 
+function buildPlanLoginHref(planCode: PlanCode): string {
+  const next = `/onboarding/continue?step=plan&plan=${planCode}`;
+  return `/login?next=${encodeURIComponent(next)}`;
+}
+
 const plans: Plan[] = [
   {
+    code: "starter",
     name: "Starter",
     badge: "Entrée",
     price: "À partir de XX€/mois",
@@ -103,10 +111,10 @@ const plans: Plan[] = [
       "Support standard",
     ],
     ctaLabel: "Commencer avec Starter",
-    ctaHref: "/login?next=%2Fonboarding%2Fplan",
     tone: "default",
   },
   {
+    code: "pro",
     name: "Pro",
     badge: "Recommandé",
     price: "À partir de XX€/mois",
@@ -121,10 +129,10 @@ const plans: Plan[] = [
       "Exploitation plus poussée",
     ],
     ctaLabel: "Choisir Pro",
-    ctaHref: "/login?next=%2Fonboarding%2Fplan",
     tone: "recommended",
   },
   {
+    code: "agency",
     name: "Agency",
     badge: "Multi-workspace",
     price: "À partir de XX€/mois",
@@ -139,10 +147,10 @@ const plans: Plan[] = [
       "Pilotage plus large",
     ],
     ctaLabel: "Choisir Agency",
-    ctaHref: "/login?next=%2Fonboarding%2Fplan",
     tone: "default",
   },
   {
+    code: "custom",
     name: "Custom",
     badge: "Sur mesure",
     price: "Sur devis",
@@ -157,7 +165,6 @@ const plans: Plan[] = [
       "Cadrage personnalisé",
     ],
     ctaLabel: "Demander une configuration",
-    ctaHref: "/login?next=%2Fonboarding%2Fplan",
     tone: "custom",
   },
 ];
@@ -272,7 +279,9 @@ export default function PricingPage() {
 
             <div className={sectionCardClassName()}>
               <div className="flex flex-wrap gap-2">
-                <span className={badgeClassName("recommended")}>Provisioning required</span>
+                <span className={badgeClassName("recommended")}>
+                  Provisioning required
+                </span>
                 <span className={badgeClassName()}>Workspace gated</span>
               </div>
 
@@ -281,27 +290,35 @@ export default function PricingPage() {
                   Lecture premium du produit
                 </div>
                 <p className="mt-2 text-sm leading-6 text-zinc-400">
-                  Avant l’ouverture du cockpit, BOSAI passe par un choix d’offre, une préparation
-                  d’espace puis un onboarding propre.
+                  Avant l’ouverture du cockpit, BOSAI passe par un choix d’offre,
+                  une préparation d’espace puis un onboarding propre.
                 </p>
               </div>
 
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <div className={secondaryCardClassName()}>
                   <div className={metaLabelClassName()}>Flows</div>
-                  <div className="mt-2 text-2xl font-semibold text-sky-300">Sous contrôle</div>
+                  <div className="mt-2 text-2xl font-semibold text-sky-300">
+                    Sous contrôle
+                  </div>
                 </div>
                 <div className={secondaryCardClassName()}>
                   <div className={metaLabelClassName()}>Incidents</div>
-                  <div className="mt-2 text-2xl font-semibold text-rose-300">Liés au contexte</div>
+                  <div className="mt-2 text-2xl font-semibold text-rose-300">
+                    Liés au contexte
+                  </div>
                 </div>
                 <div className={secondaryCardClassName()}>
                   <div className={metaLabelClassName()}>Commands</div>
-                  <div className="mt-2 text-2xl font-semibold text-violet-300">Pilotables</div>
+                  <div className="mt-2 text-2xl font-semibold text-violet-300">
+                    Pilotables
+                  </div>
                 </div>
                 <div className={secondaryCardClassName()}>
                   <div className={metaLabelClassName()}>SLA</div>
-                  <div className="mt-2 text-2xl font-semibold text-emerald-300">Visibles</div>
+                  <div className="mt-2 text-2xl font-semibold text-emerald-300">
+                    Visibles
+                  </div>
                 </div>
               </div>
             </div>
@@ -351,25 +368,33 @@ export default function PricingPage() {
 
             <div className="mt-8 grid grid-cols-1 gap-5 xl:grid-cols-4">
               {plans.map((plan) => (
-                <article key={plan.name} className={planCardClassName(plan.tone)}>
+                <article key={plan.code} className={planCardClassName(plan.tone)}>
                   <div className="flex min-h-full flex-col">
                     <div className="flex items-center justify-between gap-3">
                       <h3 className="text-2xl font-semibold tracking-tight text-white">
                         {plan.name}
                       </h3>
                       {plan.badge ? (
-                        <span className={badgeClassName(plan.tone)}>{plan.badge}</span>
+                        <span className={badgeClassName(plan.tone)}>
+                          {plan.badge}
+                        </span>
                       ) : null}
                     </div>
 
-                    <div className="mt-5 text-lg font-medium text-white">{plan.price}</div>
-                    <div className="mt-2 text-sm font-medium text-zinc-200">{plan.subtitle}</div>
-                    <p className="mt-4 text-sm leading-7 text-zinc-400">{plan.description}</p>
+                    <div className="mt-5 text-lg font-medium text-white">
+                      {plan.price}
+                    </div>
+                    <div className="mt-2 text-sm font-medium text-zinc-200">
+                      {plan.subtitle}
+                    </div>
+                    <p className="mt-4 text-sm leading-7 text-zinc-400">
+                      {plan.description}
+                    </p>
 
                     <div className="mt-6 space-y-3">
                       {plan.features.map((feature) => (
                         <div
-                          key={`${plan.name}-${feature}`}
+                          key={`${plan.code}-${feature}`}
                           className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300"
                         >
                           {feature}
@@ -379,7 +404,7 @@ export default function PricingPage() {
 
                     <div className="mt-6">
                       <Link
-                        href={plan.ctaHref}
+                        href={buildPlanLoginHref(plan.code)}
                         className={buttonClassName(
                           plan.tone === "custom"
                             ? "danger"
@@ -480,7 +505,9 @@ export default function PricingPage() {
               <p className="mt-3 text-sm leading-7 text-zinc-400">
                 Pour démarrer proprement avec un seul espace.
               </p>
-              <div className="mt-4 text-sm font-medium text-white">Plan recommandé : Starter ou Pro</div>
+              <div className="mt-4 text-sm font-medium text-white">
+                Plan recommandé : Starter ou Pro
+              </div>
             </div>
 
             <div className={secondaryCardClassName()}>
@@ -488,7 +515,9 @@ export default function PricingPage() {
               <p className="mt-3 text-sm leading-7 text-zinc-400">
                 Pour suivre plusieurs flux avec un cockpit plus complet.
               </p>
-              <div className="mt-4 text-sm font-medium text-white">Plan recommandé : Pro</div>
+              <div className="mt-4 text-sm font-medium text-white">
+                Plan recommandé : Pro
+              </div>
             </div>
 
             <div className={secondaryCardClassName()}>
@@ -496,7 +525,9 @@ export default function PricingPage() {
               <p className="mt-3 text-sm leading-7 text-zinc-400">
                 Pour séparer les clients, espaces et usages.
               </p>
-              <div className="mt-4 text-sm font-medium text-white">Plan recommandé : Agency</div>
+              <div className="mt-4 text-sm font-medium text-white">
+                Plan recommandé : Agency
+              </div>
             </div>
 
             <div className={secondaryCardClassName()}>
@@ -504,7 +535,9 @@ export default function PricingPage() {
               <p className="mt-3 text-sm leading-7 text-zinc-400">
                 Pour une architecture ou un accompagnement sur mesure.
               </p>
-              <div className="mt-4 text-sm font-medium text-white">Plan recommandé : Custom</div>
+              <div className="mt-4 text-sm font-medium text-white">
+                Plan recommandé : Custom
+              </div>
             </div>
           </section>
 
@@ -519,8 +552,12 @@ export default function PricingPage() {
             <div className="mt-8 grid grid-cols-1 gap-4 xl:grid-cols-2">
               {faqs.map((faq) => (
                 <div key={faq.question} className={secondaryCardClassName()}>
-                  <div className="text-lg font-medium text-white">{faq.question}</div>
-                  <p className="mt-3 text-sm leading-7 text-zinc-400">{faq.answer}</p>
+                  <div className="text-lg font-medium text-white">
+                    {faq.question}
+                  </div>
+                  <p className="mt-3 text-sm leading-7 text-zinc-400">
+                    {faq.answer}
+                  </p>
                 </div>
               ))}
             </div>
@@ -542,10 +579,16 @@ export default function PricingPage() {
               <Link href="#plans" className={buttonClassName("primary")}>
                 Voir les plans
               </Link>
-              <Link href="/login?next=%2Fonboarding%2Fplan" className={buttonClassName("soft")}>
+              <Link
+                href={buildPlanLoginHref("starter")}
+                className={buttonClassName("soft")}
+              >
                 Commencer maintenant
               </Link>
-              <Link href="/login?next=%2Fonboarding%2Fplan" className={buttonClassName("danger")}>
+              <Link
+                href={buildPlanLoginHref("custom")}
+                className={buttonClassName("danger")}
+              >
                 Demander une configuration Custom
               </Link>
             </div>
