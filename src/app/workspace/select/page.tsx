@@ -21,6 +21,33 @@ import {
 import type { WorkspaceSummary } from "@/lib/workspaces/types";
 import { CommercialDebugBanner } from "@/components/debug/CommercialDebugBanner";
 
+type SearchParams = {
+  manual?: string | string[];
+};
+
+type PageProps = {
+  searchParams?: Promise<SearchParams> | SearchParams;
+};
+
+const SHOW_WORKSPACE_SELECT_DEBUG =
+  process.env.NEXT_PUBLIC_BOSAI_DEBUG_WORKSPACE_SELECT === "1";
+
+function firstParam(value?: string | string[]): string {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
+function isTruthy(value?: string | null): boolean {
+  const normalized = String(value || "").trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "oui" ||
+    normalized === "on"
+  );
+}
+
 function text(value?: string | null): string {
   return String(value || "").trim();
 }
@@ -210,7 +237,15 @@ function WorkspaceSelectCard({
   );
 }
 
-export default async function WorkspaceSelectPage() {
+export default async function WorkspaceSelectPage({
+  searchParams,
+}: PageProps) {
+  const resolvedSearchParams = searchParams
+    ? await Promise.resolve(searchParams)
+    : {};
+
+  const manualSelector = isTruthy(firstParam(resolvedSearchParams.manual));
+
   const session = await resolveAuthSession();
 
   if (!session.isAuthenticated) {
@@ -219,6 +254,7 @@ export default async function WorkspaceSelectPage() {
 
   const cookieStore = await cookies();
   const headerStore = await headers();
+
   const host =
     headerStore.get("x-forwarded-host") ||
     headerStore.get("host") ||
@@ -258,17 +294,6 @@ export default async function WorkspaceSelectPage() {
     redirect("/workspace/create");
   }
 
-  if (memberships.length === 1) {
-    const onlyWorkspace = memberships[0];
-
-    redirect(
-      getWorkspaceActivateRoute({
-        workspaceId: onlyWorkspace.workspaceId,
-        nextPath: getDashboardRouteForWorkspaceCategory(onlyWorkspace.category),
-      })
-    );
-  }
-
   const rememberedRoutes = readWorkspaceRememberedRoutes(
     cookieStore.get(WORKSPACE_ROUTE_MEMORY_COOKIE_NAME)?.value
   );
@@ -280,6 +305,46 @@ export default async function WorkspaceSelectPage() {
     if (b.isDefault && !a.isDefault) return 1;
     return a.name.localeCompare(b.name);
   });
+
+  const resolvedActiveWorkspace =
+    sortedMemberships.find(
+      (workspace) => workspace.workspaceId === activeWorkspaceId
+    ) || sortedMemberships[0];
+
+  /**
+   * Correctif principal :
+   * - le selector ne doit pas servir de landing page implicite
+   * - s'il existe déjà un active workspace
+   * - et que l'utilisateur n'a PAS explicitement demandé le selector
+   *   via ?manual=1
+   * => on renvoie directement vers ce workspace
+   */
+  if (!manualSelector && resolvedActiveWorkspace) {
+    const preferredTarget =
+      getRememberedRouteForWorkspace(
+        rememberedRoutes,
+        resolvedActiveWorkspace.workspaceId
+      ) ||
+      getDashboardRouteForWorkspaceCategory(resolvedActiveWorkspace.category);
+
+    redirect(
+      getWorkspaceActivateRoute({
+        workspaceId: resolvedActiveWorkspace.workspaceId,
+        nextPath: preferredTarget,
+      })
+    );
+  }
+
+  if (sortedMemberships.length === 1) {
+    const onlyWorkspace = sortedMemberships[0];
+
+    redirect(
+      getWorkspaceActivateRoute({
+        workspaceId: onlyWorkspace.workspaceId,
+        nextPath: getDashboardRouteForWorkspaceCategory(onlyWorkspace.category),
+      })
+    );
+  }
 
   const debugItems = [
     { label: "host", value: host },
@@ -328,11 +393,20 @@ export default async function WorkspaceSelectPage() {
       label: "allowed.cookie",
       value: cookieStore.get("bosai_allowed_workspace_ids")?.value || "",
     },
+    {
+      label: "manual",
+      value: manualSelector ? "yes" : "no",
+    },
   ];
 
   return (
     <main className={pageWrapClassName()}>
-      <CommercialDebugBanner title="workspace/select debug" items={debugItems} />
+      {SHOW_WORKSPACE_SELECT_DEBUG ? (
+        <CommercialDebugBanner
+          title="workspace/select debug"
+          items={debugItems}
+        />
+      ) : null}
 
       <div className={shellClassName()}>
         <section className="space-y-4 border-b border-white/10 pb-6">
