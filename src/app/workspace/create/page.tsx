@@ -24,6 +24,15 @@ function firstParam(value?: string | string[]): string {
   return value || "";
 }
 
+function normalizeText(value?: string | null): string {
+  return String(value || "").trim();
+}
+
+function buildPendingWorkspaceId(planCode: string): string {
+  const normalized = normalizeText(planCode).toLowerCase() || "starter";
+  return `ws_onboarding_${normalized}`;
+}
+
 function pageWrapClassName(): string {
   return "min-h-screen bg-black px-4 py-8 text-white sm:px-6 lg:px-8";
 }
@@ -169,14 +178,17 @@ export default async function WorkspaceCreatePage({
     activatedValue === "yes" ||
     accessState.canAccessCockpit;
 
+  const pendingWorkspaceId =
+    normalizeText(onboardingCookieValues.bosai_pending_workspace_id) ||
+    buildPendingWorkspaceId(planCode);
+
   /**
    * IMPORTANT:
    * Pendant l’onboarding commercial, on NE DOIT PAS quitter cette page
    * juste parce que des memberships mock/live existent déjà.
    * Sinon le flux reboucle via /workspace/select -> guard -> /onboarding/workspace.
    *
-   * On autorise donc l’affichage tant que l’activation commerciale finale
-   * n’est pas validée.
+   * On autorise donc l’affichage tant que l’activation finale n’est pas validée.
    */
   if (activated && memberships.length > 0) {
     redirect("/workspace/select");
@@ -186,7 +198,15 @@ export default async function WorkspaceCreatePage({
 
   const finalizeHref = `/onboarding/continue?step=activate&plan=${encodeURIComponent(
     planCode
+  )}&workspace_id=${encodeURIComponent(
+    pendingWorkspaceId
   )}&next=${encodeURIComponent("/workspace/create?activated=1")}`;
+
+  const activateWorkspaceHref = `/workspace/activate?workspace_id=${encodeURIComponent(
+    pendingWorkspaceId
+  )}&next=${encodeURIComponent("/workspace")}`;
+
+  const selectWorkspaceHref = "/workspace/select";
 
   return (
     <main className={pageWrapClassName()}>
@@ -197,14 +217,14 @@ export default async function WorkspaceCreatePage({
           <div className="space-y-3">
             <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
               {activated
-                ? "Création contrôlée prête"
+                ? "Workspace prêt à être activé"
                 : "Créer ou raccorder un espace"}
             </h1>
 
             <p className="max-w-3xl text-base text-zinc-400 sm:text-lg">
               {activated
-                ? "L’étape commerciale est validée. Cette surface peut maintenant devenir le point de raccordement du vrai workspace."
-                : "Vous êtes dans la création contrôlée du workspace. Le cockpit ne doit pas encore s’ouvrir sans espace réellement rattaché."}
+                ? "Le funnel commercial est validé. Un workspace d’onboarding peut maintenant être activé proprement pour ouvrir le cockpit v1."
+                : "Vous êtes dans la création contrôlée du workspace. Le cockpit ne doit pas encore s’ouvrir sans validation finale."}
             </p>
           </div>
 
@@ -233,8 +253,8 @@ export default async function WorkspaceCreatePage({
 
                 <p className="max-w-3xl text-sm leading-7 text-zinc-400">
                   {activated
-                    ? "Les cookies commerciaux sont désormais actifs. Il manque encore le vrai rattachement d’un workspace pour ouvrir le cockpit avec une membership réelle."
-                    : "Cette page joue le rôle de sas de création. Elle évite d’ouvrir directement le cockpit tant qu’aucun espace réel n’est encore rattaché."}
+                    ? "Un workspace onboarding synthétique peut maintenant être activé. Cela ferme le parcours v1 sans casser les memberships live futures."
+                    : "Cette page joue le rôle de sas de création. Elle évite d’ouvrir directement le cockpit tant que l’étape finale n’est pas validée."}
                 </p>
               </div>
 
@@ -262,9 +282,9 @@ export default async function WorkspaceCreatePage({
                 </div>
 
                 <div className={compactCardClassName()}>
-                  <div className={sectionLabelClassName()}>Cockpit access</div>
-                  <div className="mt-3 text-2xl font-semibold text-white">
-                    {activated ? "Autorisé, mais sans membership" : "Bloqué"}
+                  <div className={sectionLabelClassName()}>Workspace ID</div>
+                  <div className="mt-3 break-all text-2xl font-semibold text-white">
+                    {pendingWorkspaceId}
                   </div>
                 </div>
               </div>
@@ -275,9 +295,12 @@ export default async function WorkspaceCreatePage({
                     Finaliser la création contrôlée
                   </Link>
                 ) : (
-                  <span className={buttonClassName("primary", true)}>
-                    Activation déjà validée
-                  </span>
+                  <Link
+                    href={activateWorkspaceHref}
+                    className={buttonClassName("primary")}
+                  >
+                    Activer mon espace
+                  </Link>
                 )}
 
                 <Link
@@ -298,21 +321,23 @@ export default async function WorkspaceCreatePage({
                 <div className={sectionLabelClassName()}>Pourquoi cette page</div>
                 <p className="mt-3 text-sm leading-7 text-zinc-400">
                   On sépare volontairement :
-                  plan → checkout → provisioning → workspace setup → create → cockpit.
+                  plan → checkout → provisioning → workspace setup → create → activate → cockpit.
                 </p>
               </div>
 
               <div className={compactCardClassName()}>
-                <div className={sectionLabelClassName()}>État membership</div>
+                <div className={sectionLabelClassName()}>État workspace</div>
                 <p className="mt-3 text-sm leading-7 text-zinc-400">
-                  Aucun workspace réel n’est encore rattaché à cette session.
+                  {activated
+                    ? "Le workspace onboarding v1 est prêt à être activé."
+                    : "Le workspace n’est pas encore activé pour le cockpit."}
                 </p>
               </div>
 
               <div className={compactCardClassName()}>
                 <div className={sectionLabelClassName()}>Prochaine vraie étape</div>
                 <p className="mt-3 text-sm leading-7 text-zinc-400">
-                  Brancher ici le vrai formulaire ou le vrai processus de création de workspace côté produit.
+                  Après activation, le selector et le hub workspace pourront s’ouvrir sans reboucler sur le funnel commercial.
                 </p>
               </div>
             </div>
@@ -329,9 +354,21 @@ export default async function WorkspaceCreatePage({
                   Valider cette étape
                 </Link>
               ) : (
-                <Link href="/workspace/select" className={buttonClassName("soft")}>
-                  Tenter le sélecteur d’espace
-                </Link>
+                <>
+                  <Link
+                    href={activateWorkspaceHref}
+                    className={buttonClassName("primary")}
+                  >
+                    Ouvrir mon espace
+                  </Link>
+
+                  <Link
+                    href={selectWorkspaceHref}
+                    className={buttonClassName("soft")}
+                  >
+                    Ouvrir le sélecteur
+                  </Link>
+                </>
               )}
 
               <Link href="/pricing" className={buttonClassName("default")}>
