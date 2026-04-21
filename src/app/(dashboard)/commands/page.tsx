@@ -1,6 +1,6 @@
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import dynamic from "next/dynamic";
 import {
   fetchCommands,
   type CommandItem,
@@ -31,23 +31,12 @@ type CommandFilters = {
   limit: number;
 };
 
-type CommandsFiltersProps = {
-  initialFilters: CommandFilters;
-  preservedParams: {
-    flow_id: string;
-    root_event_id: string;
-    source_event_id: string;
-    from: string;
-  };
+type PreservedParams = {
+  flow_id: string;
+  root_event_id: string;
+  source_event_id: string;
+  from: string;
 };
-
-type StatusKind =
-  | "queued"
-  | "running"
-  | "retry"
-  | "failed"
-  | "success"
-  | "unknown";
 
 type CountTone =
   | "default"
@@ -57,20 +46,27 @@ type CountTone =
   | "danger"
   | "muted";
 
+type StatusKind =
+  | "queued"
+  | "running"
+  | "retry"
+  | "failed"
+  | "success"
+  | "unknown";
+
+type CommandsFiltersProps = {
+  initialFilters: CommandFilters;
+  preservedParams: PreservedParams;
+};
+
 const CommandsFilters = dynamic<CommandsFiltersProps>(
-  () =>
-    import("./commands-filters").then((mod) => mod.CommandsFilters),
+  () => import("./commands-filters").then((mod) => mod.CommandsFilters),
   {
     ssr: false,
     loading: () => (
-      <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-5 md:p-6">
-        <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">
-          Filters
-        </div>
-        <div className="mt-3 text-sm text-zinc-400">
-          Chargement des filtres…
-        </div>
-      </section>
+      <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4 text-sm text-zinc-400 md:p-5">
+        Chargement des filtres…
+      </div>
     ),
   }
 );
@@ -114,6 +110,54 @@ function metaBoxClassName(): string {
 }
 
 function neutralPillClassName() {
+  return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
+}
+
+function countPillClassName(tone: CountTone = "default") {
+  if (tone === "success") {
+    return "inline-flex min-w-10 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300";
+  }
+
+  if (tone === "warning") {
+    return "inline-flex min-w-10 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-300";
+  }
+
+  if (tone === "danger") {
+    return "inline-flex min-w-10 items-center justify-center rounded-full border border-red-500/20 bg-red-500/15 px-3 py-1 text-xs font-medium text-red-300";
+  }
+
+  if (tone === "info") {
+    return "inline-flex min-w-10 items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/15 px-3 py-1 text-xs font-medium text-sky-300";
+  }
+
+  if (tone === "muted") {
+    return "inline-flex min-w-10 items-center justify-center rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-medium text-zinc-400";
+  }
+
+  return "inline-flex min-w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-zinc-300";
+}
+
+function statusBadgeClassName(kind: StatusKind) {
+  if (kind === "queued") {
+    return "inline-flex rounded-full border border-amber-500/20 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300";
+  }
+
+  if (kind === "running") {
+    return "inline-flex rounded-full border border-sky-500/20 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-300";
+  }
+
+  if (kind === "retry") {
+    return "inline-flex rounded-full border border-violet-500/20 bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300";
+  }
+
+  if (kind === "failed") {
+    return "inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-300";
+  }
+
+  if (kind === "success") {
+    return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
+  }
+
   return "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
@@ -598,46 +642,20 @@ function StatusBadge({
   kind: StatusKind;
   label: string;
 }) {
-  const className =
-    kind === "queued"
-      ? "inline-flex rounded-full border border-amber-500/20 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300"
-      : kind === "running"
-        ? "inline-flex rounded-full border border-sky-500/20 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-300"
-        : kind === "retry"
-          ? "inline-flex rounded-full border border-violet-500/20 bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300"
-          : kind === "failed"
-            ? "inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-300"
-            : kind === "success"
-              ? "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300"
-              : "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
-
-  return <span className={className}>{label}</span>;
+  return <span className={statusBadgeClassName(kind)}>{label}</span>;
 }
 
-function SectionCountPill({
+function CountPill({
   value,
   tone = "default",
 }: {
   value: number;
   tone?: CountTone;
 }) {
-  const className =
-    tone === "info"
-      ? "inline-flex rounded-full border border-sky-500/20 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-300"
-      : tone === "success"
-        ? "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300"
-        : tone === "warning"
-          ? "inline-flex rounded-full border border-amber-500/20 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300"
-          : tone === "danger"
-            ? "inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-300"
-            : tone === "muted"
-              ? "inline-flex rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-medium text-zinc-400"
-              : "inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-zinc-300";
-
-  return <span className={className}>{value}</span>;
+  return <span className={countPillClassName(tone)}>{value}</span>;
 }
 
-function EmptyStatePanel({
+function EmptyState({
   title,
   description,
 }: {
@@ -645,9 +663,11 @@ function EmptyStatePanel({
   description: string;
 }) {
   return (
-    <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 px-5 py-8">
+    <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center">
       <div className="text-lg font-medium text-white">{title}</div>
-      <div className="mt-2 text-sm leading-7 text-zinc-400">{description}</div>
+      <div className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+        {description}
+      </div>
     </div>
   );
 }
@@ -691,7 +711,7 @@ function SectionBlock({
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div className={sectionLabelClassName()}>{title}</div>
-          <SectionCountPill value={count} tone={countTone} />
+          <CountPill value={count} tone={countTone} />
         </div>
         <p className="max-w-3xl text-base text-zinc-400">{description}</p>
       </div>
@@ -998,7 +1018,7 @@ export default async function CommandsPage({ searchParams }: PageProps) {
     workspace_id: activeWorkspaceId || undefined,
   });
 
-  const overviewHref = buildHref("/", {
+  const overviewHref = buildHref("/overview", {
     workspace_id: activeWorkspaceId || undefined,
   });
 
@@ -1019,8 +1039,8 @@ export default async function CommandsPage({ searchParams }: PageProps) {
               Commands
             </h1>
             <p className="mt-3 max-w-3xl text-base leading-8 text-zinc-400">
-              Vue de la file d’exécution BOSAI pour suivre les commands, leur statut,
-              leur liaison au flow et leur détail opérationnel.
+              Vue de la file d’exécution BOSAI pour suivre les commands, leur
+              statut, leur liaison au flow et leur détail opérationnel.
             </p>
           </div>
 
@@ -1199,12 +1219,12 @@ export default async function CommandsPage({ searchParams }: PageProps) {
       </section>
 
       {fetchFailed ? (
-        <EmptyStatePanel
+        <EmptyState
           title="Lecture Commands indisponible"
-          description="Le Dashboard n’a pas pu charger la surface Commands. La vue est protégée, mais il faut vérifier la lecture API côté worker / helper."
+          description="Le Dashboard n’a pas pu charger la surface Commands. La vue s’affiche quand même, mais il faut vérifier la lecture API côté worker."
         />
       ) : matchingCommands.length === 0 ? (
-        <EmptyStatePanel
+        <EmptyState
           title="Aucune command visible"
           description="Le Dashboard n’a remonté aucune command sur la vue actuelle."
         />
@@ -1217,7 +1237,7 @@ export default async function CommandsPage({ searchParams }: PageProps) {
             countTone="warning"
           >
             {needsAttentionCommands.length === 0 ? (
-              <EmptyStatePanel
+              <EmptyState
                 title="Aucune command active"
                 description="Aucune command en file, en cours, en retry ou en échec n’est visible pour le moment."
               />
@@ -1241,7 +1261,7 @@ export default async function CommandsPage({ searchParams }: PageProps) {
             countTone="success"
           >
             {completedCommands.length === 0 ? (
-              <EmptyStatePanel
+              <EmptyState
                 title="Aucune command terminée"
                 description="Aucune command terminée avec succès n’est visible sur cette vue pour le moment."
               />
@@ -1266,7 +1286,7 @@ export default async function CommandsPage({ searchParams }: PageProps) {
               countTone="muted"
             >
               {otherCommands.length === 0 ? (
-                <EmptyStatePanel
+                <EmptyState
                   title="Aucune command additionnelle affichée"
                   description="Des commands non standard existent, mais elles ne sont pas affichées dans la limite actuelle."
                 />
