@@ -28,6 +28,10 @@ const FALLBACK_ENTITLEMENTS: WorkspaceEntitlements = {
   canManageBilling: false,
 };
 
+function text(value?: string | null): string {
+  return String(value || "").trim();
+}
+
 export default async function DashboardLayout({
   children,
 }: DashboardLayoutProps) {
@@ -53,8 +57,43 @@ export default async function DashboardLayout({
     onboarding_completed: cookieStore.get("onboarding_completed")?.value,
     bosai_pending_workspace_id:
       cookieStore.get("bosai_pending_workspace_id")?.value,
+    bosai_force_commercial_onboarding:
+      cookieStore.get("bosai_force_commercial_onboarding")?.value,
+    force_commercial_onboarding:
+      cookieStore.get("force_commercial_onboarding")?.value,
   };
 
+  /**
+   * Priorité absolue :
+   * si un workspace dashboard valide est résoluble,
+   * on laisse entrer même si des cookies onboarding existent encore.
+   */
+  const resolution = await resolveWorkspaceAccess({
+    userId: text(session.user?.userId),
+    requestedWorkspaceId: text(session.cookieSnapshot.activeWorkspaceId),
+    nextPath: text(session.homeRoute) || "/overview",
+    onboardingCookieValues,
+  });
+
+  const activeWorkspace =
+    resolution.kind === "allow_dashboard" ? resolution.activeWorkspace : null;
+
+  if (activeWorkspace) {
+    const entitlements =
+      resolution.context?.entitlements || FALLBACK_ENTITLEMENTS;
+
+    return (
+      <AppShell workspace={activeWorkspace} entitlements={entitlements}>
+        <WorkspaceRouteMemory workspaceId={activeWorkspace.workspaceId} />
+        {children}
+      </AppShell>
+    );
+  }
+
+  /**
+   * On n'applique la garde commerciale que si aucun workspace dashboard
+   * n'a pu être autorisé.
+   */
   if (hasCommercialOnboardingSignals(onboardingCookieValues)) {
     const accessState = resolveBosaiAccessState({
       cookieValues: onboardingCookieValues,
@@ -65,27 +104,5 @@ export default async function DashboardLayout({
     }
   }
 
-  const resolution = await resolveWorkspaceAccess({
-    userId: session.user?.userId || "",
-    requestedWorkspaceId: session.cookieSnapshot.activeWorkspaceId || "",
-    nextPath: session.homeRoute || "/overview",
-    onboardingCookieValues,
-  });
-
-  const activeWorkspace =
-    resolution.kind === "allow_dashboard" ? resolution.activeWorkspace : null;
-
-  if (resolution.kind !== "allow_dashboard" || !activeWorkspace) {
-    redirect(resolution.redirectTo);
-  }
-
-  const entitlements =
-    resolution.context?.entitlements || FALLBACK_ENTITLEMENTS;
-
-  return (
-    <AppShell workspace={activeWorkspace} entitlements={entitlements}>
-      <WorkspaceRouteMemory workspaceId={activeWorkspace.workspaceId} />
-      {children}
-    </AppShell>
-  );
+  redirect(resolution.redirectTo || AUTH_LOGIN_ROUTE);
 }
