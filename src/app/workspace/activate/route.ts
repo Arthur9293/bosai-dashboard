@@ -81,16 +81,6 @@ function buildLoginUrl(request: NextRequest, nextPath: string): URL {
   return url;
 }
 
-function clearCookie(response: NextResponse, name: string): void {
-  response.cookies.set(name, "", {
-    path: "/",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 0,
-  });
-}
-
 export async function GET(request: NextRequest) {
   const session = await resolveAuthSession();
 
@@ -125,8 +115,8 @@ export async function GET(request: NextRequest) {
 
   const requestedWorkspaceId =
     text(request.nextUrl.searchParams.get("workspace_id")) ||
-    text(session.cookieSnapshot.activeWorkspaceId) ||
-    text(onboardingCookieValues.bosai_pending_workspace_id);
+    text(onboardingCookieValues.bosai_pending_workspace_id) ||
+    text(session.cookieSnapshot.activeWorkspaceId);
 
   const resolution = await resolveWorkspaceAccess({
     userId: text(session.user?.userId),
@@ -191,23 +181,13 @@ export async function GET(request: NextRequest) {
   );
 
   /**
-   * Une fois un vrai workspace activé, on coupe l'override commercial
-   * pour éviter de reboucler vers pricing / onboarding.
+   * Important :
+   * on garde les cookies d'onboarding ici.
+   * Sinon le resolver perd le workspace synthétique juste après activation
+   * et retombe sur un workspace réel existant (ex: Ferrera).
+   *
+   * Le nettoyage se fera plus tard, quand le vrai workspace produit existera.
    */
-  [
-    "bosai_force_commercial_onboarding",
-    "force_commercial_onboarding",
-    "bosai_plan_code",
-    "plan_code",
-    "selected_plan",
-    "bosai_workspace_status",
-    "workspace_status",
-    "bosai_checkout_completed",
-    "checkout_completed",
-    "bosai_onboarding_completed",
-    "onboarding_completed",
-    "bosai_pending_workspace_id",
-  ].forEach((cookieName) => clearCookie(response, cookieName));
 
   return response;
 }
