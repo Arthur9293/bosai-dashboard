@@ -18,6 +18,8 @@ import {
   workspaceMatchesOrUnscoped,
 } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 type RunRecord = Record<string, unknown>;
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -36,6 +38,10 @@ type FlexibleRunsResponse = {
   ok?: boolean;
   count?: number;
   runs?: RunRecord[];
+  items?: RunRecord[];
+  data?: unknown;
+  results?: RunRecord[];
+  records?: RunRecord[];
   stats?: Record<string, number | undefined>;
   scope?: RunsScopeInfo;
   source?: unknown;
@@ -435,6 +441,53 @@ function normalizeRunsPayload(payload: unknown): FlexibleRunsResponse | null {
   return null;
 }
 
+function extractRunRecords(payload: FlexibleRunsResponse | null): RunRecord[] {
+  if (!payload) return [];
+
+  const directCandidates: unknown[] = [
+    payload.runs,
+    payload.items,
+    payload.results,
+    payload.records,
+    payload.data,
+  ];
+
+  for (const candidate of directCandidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter(
+        (item): item is RunRecord =>
+          Boolean(item) && typeof item === "object" && !Array.isArray(item)
+      );
+    }
+
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      const record = candidate as Record<string, unknown>;
+      for (const key of ["runs", "items", "results", "records", "data"]) {
+        const nested = record[key];
+        if (Array.isArray(nested)) {
+          return nested.filter(
+            (item): item is RunRecord =>
+              Boolean(item) && typeof item === "object" && !Array.isArray(item)
+          );
+        }
+      }
+    }
+  }
+
+  return [];
+}
+
+function safeResolveRunsActiveWorkspaceId(args: {
+  searchParams: SearchParams;
+  cookieValues: Record<string, string | undefined>;
+}): string {
+  try {
+    return resolveWorkspaceContext(args).activeWorkspaceId || "";
+  } catch {
+    return "";
+  }
+}
+
 function RunMiniStat({
   label,
   value,
@@ -595,7 +648,7 @@ export default async function RunsPage({ searchParams }: PageProps) {
 
   const cookieStore = await cookies();
 
-  const workspace = resolveWorkspaceContext({
+  const fallbackWorkspaceId = safeResolveRunsActiveWorkspaceId({
     searchParams: resolvedSearchParams,
     cookieValues: {
       bosai_active_workspace_id:
@@ -609,7 +662,11 @@ export default async function RunsPage({ searchParams }: PageProps) {
     },
   });
 
-  const activeWorkspaceId = workspace.activeWorkspaceId || "";
+  const activeWorkspaceId =
+    toText(resolvedSearchParams.workspace_id, "") ||
+    toText((resolvedSearchParams as Record<string, string | string[] | undefined>).workspaceId, "") ||
+    fallbackWorkspaceId ||
+    "";
 
   let data: FlexibleRunsResponse | null = null;
   let fetchError = "";
@@ -630,7 +687,7 @@ export default async function RunsPage({ searchParams }: PageProps) {
     data = null;
   }
 
-  const runsUnfiltered: RunRecord[] = Array.isArray(data?.runs) ? data.runs : [];
+  const runsUnfiltered = extractRunRecords(data);
   const runsScope = data?.scope ?? null;
 
   /**
