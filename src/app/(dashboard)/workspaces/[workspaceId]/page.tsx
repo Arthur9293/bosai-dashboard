@@ -3,6 +3,9 @@ import { PageHeader } from "../../../../components/ui/page-header";
 import { DashboardCard } from "../../../../components/ui/dashboard-card";
 import { WorkspaceLedgerFilters } from "../workspace-ledger-filters";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type WorkspaceInfo = {
   record_id?: string;
   workspace_id?: string;
@@ -136,6 +139,30 @@ type LedgerFilters = {
   limit: number;
 };
 
+type PageProps = {
+  params: Promise<{ workspaceId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function getWorkerBaseUrl(): string {
+  return (
+    process.env.BOSAI_WORKER_BASE_URL ||
+    process.env.BOSAI_WORKER_URL ||
+    process.env.NEXT_PUBLIC_BOSAI_WORKER_BASE_URL ||
+    process.env.NEXT_PUBLIC_BOSAI_WORKER_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    ""
+  ).replace(/\/+$/, "");
+}
+
+function getWorkspaceApiKey(): string {
+  return (
+    process.env.BOSAI_WORKSPACE_API_KEY ||
+    process.env.WORKSPACE_API_KEY ||
+    ""
+  ).trim();
+}
+
 function sectionLabelClassName(): string {
   return "text-xs uppercase tracking-[0.24em] text-zinc-500";
 }
@@ -167,13 +194,13 @@ function actionLinkClassName(
 
 function formatNumber(value?: number | null): string {
   return typeof value === "number" && Number.isFinite(value)
-    ? value.toString()
+    ? new Intl.NumberFormat("fr-FR").format(value)
     : "0";
 }
 
 function formatMaybeNumber(value?: number | null): string {
   return typeof value === "number" && Number.isFinite(value)
-    ? value.toString()
+    ? new Intl.NumberFormat("fr-FR").format(value)
     : "—";
 }
 
@@ -407,21 +434,14 @@ function buildLedgerQuickRead(filters: LedgerFilters, count: number): string {
 async function fetchWorkspaceDetail(
   workspaceId: string
 ): Promise<WorkspaceDetailResponse | null> {
-  const baseUrl =
-    process.env.BOSAI_WORKER_URL ||
-    process.env.NEXT_PUBLIC_BOSAI_WORKER_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "";
-
-  const workspaceApiKey = process.env.BOSAI_WORKSPACE_API_KEY || "";
+  const baseUrl = getWorkerBaseUrl();
+  const workspaceApiKey = getWorkspaceApiKey();
 
   if (!baseUrl || !workspaceApiKey) {
     return null;
   }
 
-  const url = `${baseUrl.replace(/\/+$/, "")}/workspaces/${encodeURIComponent(
-    workspaceId
-  )}`;
+  const url = `${baseUrl}/workspaces/${encodeURIComponent(workspaceId)}`;
 
   try {
     const response = await fetch(url, {
@@ -453,23 +473,17 @@ async function fetchWorkspaceUsageLedger(
   workspaceId: string,
   filters: LedgerFilters
 ): Promise<UsageLedgerResponse | null> {
-  const baseUrl =
-    process.env.BOSAI_WORKER_URL ||
-    process.env.NEXT_PUBLIC_BOSAI_WORKER_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "";
-
-  const workspaceApiKey = process.env.BOSAI_WORKSPACE_API_KEY || "";
+  const baseUrl = getWorkerBaseUrl();
+  const workspaceApiKey = getWorkspaceApiKey();
 
   if (!baseUrl || !workspaceApiKey) {
     return null;
   }
 
   const query = buildLedgerQuery(filters);
-  const urlBase = `${baseUrl.replace(
-    /\/+$/,
-    ""
-  )}/workspaces/${encodeURIComponent(workspaceId)}/usage-ledger`;
+  const urlBase = `${baseUrl}/workspaces/${encodeURIComponent(
+    workspaceId
+  )}/usage-ledger`;
   const url = query ? `${urlBase}?${query}` : urlBase;
 
   try {
@@ -634,11 +648,9 @@ function MeterCard({
 export default async function WorkspaceDetailPage({
   params,
   searchParams,
-}: {
-  params: Promise<{ workspaceId: string }>;
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const { workspaceId } = await params;
+}: PageProps) {
+  const { workspaceId: rawWorkspaceId } = await params;
+  const workspaceId = decodeURIComponent(rawWorkspaceId);
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const ledgerFilters = parseLedgerFilters(resolvedSearchParams);
 
@@ -658,12 +670,7 @@ export default async function WorkspaceDetailPage({
   const resetInfo = data?.usage_period_reset ?? {};
   const ledgerItems = ledger?.items ?? [];
 
-  const envReady =
-    Boolean(
-      process.env.BOSAI_WORKER_URL ||
-        process.env.NEXT_PUBLIC_BOSAI_WORKER_URL ||
-        process.env.NEXT_PUBLIC_API_BASE_URL
-    ) && Boolean(process.env.BOSAI_WORKSPACE_API_KEY);
+  const envReady = Boolean(getWorkerBaseUrl()) && Boolean(getWorkspaceApiKey());
 
   const workspaceQuickRead = buildWorkspaceQuickRead({
     blocked,
@@ -702,7 +709,7 @@ export default async function WorkspaceDetailPage({
           subtitle="Les variables serveur nécessaires ne sont pas encore configurées."
         >
           <div className="space-y-3 text-sm text-zinc-400">
-            <div className="text-zinc-200">BOSAI_WORKER_URL</div>
+            <div className="text-zinc-200">BOSAI_WORKER_URL / BOSAI_WORKER_BASE_URL</div>
             <div className="text-zinc-200">BOSAI_WORKSPACE_API_KEY</div>
           </div>
         </DashboardCard>
