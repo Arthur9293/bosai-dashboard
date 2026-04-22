@@ -64,6 +64,18 @@ const ONBOARDING_COMPLETED_ALIAS_COOKIE_NAME =
     "onboarding_completed"
   ).trim() || "onboarding_completed";
 
+const CHECKOUT_COMPLETED_COOKIE_NAME =
+  (
+    process.env.BOSAI_CHECKOUT_COMPLETED_COOKIE_NAME ||
+    "bosai_checkout_completed"
+  ).trim() || "bosai_checkout_completed";
+
+const CHECKOUT_COMPLETED_ALIAS_COOKIE_NAME =
+  (
+    process.env.BOSAI_CHECKOUT_COMPLETED_ALIAS_COOKIE_NAME ||
+    "checkout_completed"
+  ).trim() || "checkout_completed";
+
 const PENDING_WORKSPACE_COOKIE_NAME =
   (
     process.env.BOSAI_PENDING_WORKSPACE_COOKIE_NAME ||
@@ -77,10 +89,24 @@ const DEDICATED_SPACE_COOKIE_NAME =
   ).trim() || "bosai_dedicated_space";
 
 const DEDICATED_SPACE_ALIAS_COOKIE_NAME =
-  (process.env.BOSAI_DEDICATED_SPACE_ALIAS_COOKIE_NAME || "dedicated_space").trim() ||
-  "dedicated_space";
+  (
+    process.env.BOSAI_DEDICATED_SPACE_ALIAS_COOKIE_NAME || "dedicated_space"
+  ).trim() || "dedicated_space";
+
+const PLAN_COOKIE_NAME =
+  (process.env.BOSAI_PLAN_COOKIE_NAME || "bosai_plan_code").trim() ||
+  "bosai_plan_code";
+
+const PLAN_ALIAS_COOKIE_NAME =
+  (process.env.BOSAI_PLAN_ALIAS_COOKIE_NAME || "plan_code").trim() ||
+  "plan_code";
+
+const SELECTED_PLAN_COOKIE_NAME =
+  (process.env.BOSAI_SELECTED_PLAN_COOKIE_NAME || "selected_plan").trim() ||
+  "selected_plan";
 
 const MANUAL_WORKSPACE_SELECT_HREF = "/workspace/select?manual=1";
+const DEFAULT_DASHBOARD_TARGET = "/workspace";
 
 type CommercialPlanCode = "starter" | "pro" | "agency" | "custom";
 
@@ -152,6 +178,45 @@ function isOnboardingWorkspaceId(value?: string | null): boolean {
   return text(value).startsWith("ws_onboarding_");
 }
 
+function isActivatePath(path: string): boolean {
+  const normalized = normalizeInternalPath(path);
+  return (
+    normalized === "/workspace/activate" ||
+    normalized.startsWith("/workspace/activate?")
+  );
+}
+
+function isLoginPath(path: string): boolean {
+  const normalized = normalizeInternalPath(path);
+  return (
+    normalized === AUTH_LOGIN_ROUTE ||
+    normalized.startsWith(`${AUTH_LOGIN_ROUTE}?`)
+  );
+}
+
+function sanitizeRedirectTarget(
+  candidate: string,
+  fallback: string
+): string {
+  const normalizedCandidate = normalizeInternalPath(candidate);
+  const normalizedFallback =
+    normalizeInternalPath(fallback) || DEFAULT_DASHBOARD_TARGET;
+
+  if (!normalizedCandidate) {
+    return normalizedFallback;
+  }
+
+  if (isActivatePath(normalizedCandidate)) {
+    return normalizedFallback;
+  }
+
+  if (isLoginPath(normalizedCandidate)) {
+    return normalizedFallback;
+  }
+
+  return normalizedCandidate;
+}
+
 function cookieOptions() {
   return {
     httpOnly: true,
@@ -178,7 +243,41 @@ function buildLoginUrl(request: NextRequest, nextPath: string): URL {
   return url;
 }
 
+function isDebugEnabled(request: NextRequest): boolean {
+  const queryDebug = text(request.nextUrl.searchParams.get("debug")).toLowerCase();
+  const envDebug = text(process.env.BOSAI_ACTIVATE_DEBUG).toLowerCase();
+
+  return (
+    queryDebug === "1" ||
+    queryDebug === "true" ||
+    envDebug === "1" ||
+    envDebug === "true"
+  );
+}
+
+function attachDebugHeaders(
+  response: NextResponse,
+  args: {
+    mode: string;
+    requestedWorkspaceId: string;
+    finalTarget: string;
+    planCode?: string;
+  }
+) {
+  response.headers.set("x-bosai-activate-mode", args.mode);
+  response.headers.set(
+    "x-bosai-activate-workspace",
+    args.requestedWorkspaceId || "none"
+  );
+  response.headers.set("x-bosai-activate-target", args.finalTarget || "none");
+
+  if (args.planCode) {
+    response.headers.set("x-bosai-activate-plan", args.planCode);
+  }
+}
+
 export async function GET(request: NextRequest) {
+  const debugEnabled = isDebugEnabled(request);
   const session = await resolveAuthSession();
 
   const explicitNextParam = normalizeInternalPath(
@@ -189,6 +288,19 @@ export async function GET(request: NextRequest) {
     explicitNextParam || normalizeInternalPath(session.homeRoute) || "/overview";
 
   if (!session.isAuthenticated) {
+    if (debugEnabled) {
+      return NextResponse.json(
+        {
+          ok: false,
+          debug: "activate_route",
+          stage: "unauthenticated",
+          nextParam,
+          redirectTo: buildLoginUrl(request, nextParam).toString(),
+        },
+        { status: 200 }
+      );
+    }
+
     return NextResponse.redirect(buildLoginUrl(request, nextParam));
   }
 
@@ -218,12 +330,7 @@ export async function GET(request: NextRequest) {
     text(session.cookieSnapshot.activeWorkspaceId);
 
   /**
-   * Fast-path critique :
-   * pour un workspace onboarding synthétique, on active directement
-   * les cookies sans repasser dans une résolution complexe.
-   *
-   * C’est ce qui évite la boucle :
-   * create -> activate -> resolver -> ancien état -> accueil
+   * Fast-path critique pour workspace onboarding synthétique
    */
   if (isOnboardingWorkspaceId(requestedWorkspaceId)) {
     const planCode = resolveOnboardingPlanCode({
@@ -238,7 +345,36 @@ export async function GET(request: NextRequest) {
       ...session.cookieSnapshot.allowedWorkspaceIds,
     ]);
 
-    const finalTarget = explicitNextParam || "/workspace";
+    const finalTarget = sanitizeRedirectTarget(
+      explicitNextParam || DEFAULT_DASHBOARD_TARGET,
+      DEFAULT_DASHBOARD_TARGET
+    );
+
+    if (debugEnabled) {
+      return NextResponse.json(
+        {
+          ok: true,
+          debug: "activate_route",
+          mode: "fast_path_onboarding",
+          explicitNextParam,
+          nextParam,
+          finalTarget,
+          requestedWorkspaceId,
+          planCode,
+          dedicatedSpace,
+          onboardingCookieValues,
+          sessionSnapshot: {
+            isAuthenticated: session.isAuthenticated,
+            homeRoute: session.homeRoute,
+            activeWorkspaceId: session.cookieSnapshot.activeWorkspaceId,
+            allowedWorkspaceIds: session.cookieSnapshot.allowedWorkspaceIds,
+            dedicatedSpace: session.cookieSnapshot.dedicatedSpace,
+          },
+        },
+        { status: 200 }
+      );
+    }
+
     const response = NextResponse.redirect(
       buildRedirectUrl(request, finalTarget)
     );
@@ -271,28 +407,38 @@ export async function GET(request: NextRequest) {
     response.cookies.set(WORKSPACE_STATUS_ALIAS_COOKIE_NAME, "active", options);
     response.cookies.set(ONBOARDING_COMPLETED_COOKIE_NAME, "1", options);
     response.cookies.set(ONBOARDING_COMPLETED_ALIAS_COOKIE_NAME, "1", options);
+    response.cookies.set(CHECKOUT_COMPLETED_COOKIE_NAME, "1", options);
+    response.cookies.set(CHECKOUT_COMPLETED_ALIAS_COOKIE_NAME, "1", options);
+
     response.cookies.set(
       PENDING_WORKSPACE_COOKIE_NAME,
       requestedWorkspaceId,
       options
     );
-    response.cookies.set(
-      DEDICATED_SPACE_COOKIE_NAME,
-      dedicatedSpace,
-      options
-    );
+
+    response.cookies.set(DEDICATED_SPACE_COOKIE_NAME, dedicatedSpace, options);
     response.cookies.set(
       DEDICATED_SPACE_ALIAS_COOKIE_NAME,
       dedicatedSpace,
       options
     );
 
+    response.cookies.set(PLAN_COOKIE_NAME, planCode, options);
+    response.cookies.set(PLAN_ALIAS_COOKIE_NAME, planCode, options);
+    response.cookies.set(SELECTED_PLAN_COOKIE_NAME, planCode, options);
+
+    attachDebugHeaders(response, {
+      mode: "fast_path_onboarding",
+      requestedWorkspaceId,
+      finalTarget,
+      planCode,
+    });
+
     return response;
   }
 
   /**
-   * Fallback standard :
-   * on garde la logique existante pour les workspaces normaux.
+   * Fallback standard pour workspaces normaux
    */
   const resolution = await resolveWorkspaceAccess({
     userId: text(session.user?.userId),
@@ -301,22 +447,78 @@ export async function GET(request: NextRequest) {
     onboardingCookieValues,
   });
 
-  if (resolution.kind !== "allow_dashboard" || !resolution.activeWorkspace) {
-    return NextResponse.redirect(
-      buildRedirectUrl(
-        request,
-        normalizeInternalPath(resolution.redirectTo) ||
-          MANUAL_WORKSPACE_SELECT_HREF
-      )
+  if (debugEnabled) {
+    return NextResponse.json(
+      {
+        ok: true,
+        debug: "activate_route",
+        mode: "resolver_fallback",
+        explicitNextParam,
+        nextParam,
+        requestedWorkspaceId,
+        onboardingCookieValues,
+        sessionSnapshot: {
+          isAuthenticated: session.isAuthenticated,
+          homeRoute: session.homeRoute,
+          activeWorkspaceId: session.cookieSnapshot.activeWorkspaceId,
+          allowedWorkspaceIds: session.cookieSnapshot.allowedWorkspaceIds,
+          dedicatedSpace: session.cookieSnapshot.dedicatedSpace,
+        },
+        resolution: {
+          kind: resolution.kind,
+          reason: resolution.reason,
+          redirectTo: resolution.redirectTo,
+          dashboardRoute: resolution.dashboardRoute,
+          autoActivateWorkspaceId: resolution.autoActivateWorkspaceId,
+          activeWorkspaceId: resolution.activeWorkspace?.workspaceId || "",
+          memberships: resolution.memberships.map((item) => ({
+            workspaceId: item.workspaceId,
+            slug: item.slug,
+            name: item.name,
+            category: item.category,
+            plan: item.plan,
+            status: item.status,
+          })),
+        },
+      },
+      { status: 200 }
     );
+  }
+
+  if (resolution.kind !== "allow_dashboard" || !resolution.activeWorkspace) {
+    const redirectTarget = sanitizeRedirectTarget(
+      normalizeInternalPath(resolution.redirectTo) ||
+        MANUAL_WORKSPACE_SELECT_HREF,
+      MANUAL_WORKSPACE_SELECT_HREF
+    );
+
+    const response = NextResponse.redirect(
+      buildRedirectUrl(request, redirectTarget)
+    );
+
+    attachDebugHeaders(response, {
+      mode: `resolver_${resolution.kind}`,
+      requestedWorkspaceId,
+      finalTarget: redirectTarget,
+    });
+
+    return response;
   }
 
   const activeWorkspaceId = text(resolution.activeWorkspace.workspaceId);
 
   if (!activeWorkspaceId) {
-    return NextResponse.redirect(
+    const response = NextResponse.redirect(
       buildRedirectUrl(request, MANUAL_WORKSPACE_SELECT_HREF)
     );
+
+    attachDebugHeaders(response, {
+      mode: "resolver_missing_active_workspace_id",
+      requestedWorkspaceId,
+      finalTarget: MANUAL_WORKSPACE_SELECT_HREF,
+    });
+
+    return response;
   }
 
   const allowedWorkspaceIds = uniq([
@@ -340,8 +542,10 @@ export async function GET(request: NextRequest) {
     ) ||
     "/overview";
 
-  const finalTarget =
-    explicitNextParam || rememberedTarget || fallbackDashboard || "/overview";
+  const finalTarget = sanitizeRedirectTarget(
+    explicitNextParam || rememberedTarget || fallbackDashboard || "/overview",
+    fallbackDashboard
+  );
 
   const response = NextResponse.redirect(
     buildRedirectUrl(request, finalTarget)
@@ -376,6 +580,12 @@ export async function GET(request: NextRequest) {
   response.cookies.set(ONBOARDING_COMPLETED_COOKIE_NAME, "1", options);
   response.cookies.set(ONBOARDING_COMPLETED_ALIAS_COOKIE_NAME, "1", options);
   response.cookies.set(PENDING_WORKSPACE_COOKIE_NAME, activeWorkspaceId, options);
+
+  attachDebugHeaders(response, {
+    mode: "resolver_allow_dashboard",
+    requestedWorkspaceId,
+    finalTarget,
+  });
 
   return response;
 }
