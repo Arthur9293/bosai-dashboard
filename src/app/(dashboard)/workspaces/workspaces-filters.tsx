@@ -11,17 +11,25 @@ type WorkspaceFilters = {
   limit: number;
 };
 
-const QUICK_STATUS_OPTIONS = ["active", "blocked", "warnings", "fallback"] as const;
+const QUICK_STATUS_OPTIONS = [
+  "active",
+  "blocked",
+  "warnings",
+  "fallback",
+] as const;
+
 const QUICK_PLAN_OPTIONS = ["plan_free"] as const;
 
+type ChipTone =
+  | "default"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  | "violet";
+
 function badgeClassName(
-  variant:
-    | "default"
-    | "success"
-    | "warning"
-    | "danger"
-    | "info"
-    | "violet" = "default"
+  variant: ChipTone = "default"
 ): string {
   if (variant === "success") {
     return "inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300";
@@ -46,14 +54,44 @@ function badgeClassName(
   return "inline-flex rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300";
 }
 
-function quickChipClass(active: boolean): string {
-  return active
-    ? "inline-flex rounded-full border border-sky-500/30 bg-sky-500/15 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-sky-300"
-    : "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-zinc-300";
+function quickChipClass(active: boolean, tone: ChipTone = "info"): string {
+  if (!active) {
+    return "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-zinc-300";
+  }
+
+  if (tone === "success") {
+    return "inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-emerald-300";
+  }
+
+  if (tone === "warning") {
+    return "inline-flex rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-amber-300";
+  }
+
+  if (tone === "danger") {
+    return "inline-flex rounded-full border border-red-500/30 bg-red-500/15 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-red-300";
+  }
+
+  if (tone === "violet") {
+    return "inline-flex rounded-full border border-violet-500/30 bg-violet-500/15 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-violet-300";
+  }
+
+  if (tone === "default") {
+    return "inline-flex rounded-full border border-white/15 bg-white/[0.08] px-3 py-1.5 text-[11px] sm:text-xs font-medium text-white";
+  }
+
+  return "inline-flex rounded-full border border-sky-500/30 bg-sky-500/15 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-sky-300";
 }
 
 function getCurrentPeriodKey(): string {
-  return new Date().toISOString().slice(0, 7);
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+function normalizeLimit(value: string): string {
+  const allowed = new Set(["10", "20", "50", "100"]);
+  return allowed.has(value) ? value : "20";
 }
 
 function applyPreset(
@@ -73,7 +111,18 @@ function applyPreset(
   setters.setStatus(preset.status ?? "");
   setters.setPlan(preset.plan ?? "");
   setters.setPeriodKey(preset.periodKey ?? "");
-  setters.setLimit(preset.limit ?? "20");
+  setters.setLimit(normalizeLimit(preset.limit ?? "20"));
+}
+
+function statusTone(status: string): ChipTone {
+  const normalized = status.trim().toLowerCase();
+
+  if (normalized === "active") return "success";
+  if (normalized === "blocked") return "danger";
+  if (normalized === "warnings") return "warning";
+  if (normalized === "fallback") return "violet";
+
+  return "info";
 }
 
 export function WorkspacesFilters({
@@ -87,7 +136,9 @@ export function WorkspacesFilters({
   const [status, setStatus] = useState(initialFilters.status);
   const [plan, setPlan] = useState(initialFilters.plan);
   const [periodKey, setPeriodKey] = useState(initialFilters.period_key);
-  const [limit, setLimit] = useState(String(initialFilters.limit || 20));
+  const [limit, setLimit] = useState(
+    normalizeLimit(String(initialFilters.limit || 20))
+  );
 
   const currentPeriodKey = useMemo(() => getCurrentPeriodKey(), []);
 
@@ -96,6 +147,7 @@ export function WorkspacesFilters({
 
     const fromInitial = String(initialFilters.period_key || "").trim();
     if (fromInitial) values.add(fromInitial);
+
     if (currentPeriodKey) values.add(currentPeriodKey);
 
     return Array.from(values);
@@ -106,7 +158,7 @@ export function WorkspacesFilters({
       status: status.trim() ? status.trim() : "Tous",
       plan: plan.trim() ? plan.trim() : "Tous",
       period: periodKey.trim() ? periodKey.trim() : "Toutes",
-      limit: limit.trim() || "20",
+      limit: normalizeLimit(limit.trim() || "20"),
     }),
     [status, plan, periodKey, limit]
   );
@@ -117,7 +169,7 @@ export function WorkspacesFilters({
     if (status.trim()) params.set("status", status.trim());
     if (plan.trim()) params.set("plan", plan.trim());
     if (periodKey.trim()) params.set("period_key", periodKey.trim());
-    if (limit.trim()) params.set("limit", limit.trim());
+    params.set("limit", normalizeLimit(limit.trim() || "20"));
 
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
@@ -159,7 +211,8 @@ export function WorkspacesFilters({
               status === "active" &&
                 plan === "" &&
                 periodKey === currentPeriodKey &&
-                limit === "20"
+                normalizeLimit(limit) === "20",
+              "success"
             )} max-w-full whitespace-normal text-left leading-snug`}
           >
             active + période courante
@@ -182,7 +235,8 @@ export function WorkspacesFilters({
               status === "blocked" &&
                 plan === "" &&
                 periodKey === currentPeriodKey &&
-                limit === "20"
+                normalizeLimit(limit) === "20",
+              "danger"
             )} max-w-full whitespace-normal text-left leading-snug`}
           >
             blocked + période courante
@@ -205,7 +259,8 @@ export function WorkspacesFilters({
               status === "warnings" &&
                 plan === "" &&
                 periodKey === currentPeriodKey &&
-                limit === "20"
+                normalizeLimit(limit) === "20",
+              "warning"
             )} max-w-full whitespace-normal text-left leading-snug`}
           >
             warnings + période courante
@@ -228,7 +283,8 @@ export function WorkspacesFilters({
               status === "" &&
                 plan === "plan_free" &&
                 periodKey === currentPeriodKey &&
-                limit === "20"
+                normalizeLimit(limit) === "20",
+              "violet"
             )} max-w-full whitespace-normal text-left leading-snug`}
           >
             plan_free + période courante
@@ -257,7 +313,7 @@ export function WorkspacesFilters({
             <button
               type="button"
               onClick={() => setStatus("")}
-              className={quickChipClass(status === "")}
+              className={quickChipClass(status === "", "default")}
             >
               Tous
             </button>
@@ -267,7 +323,7 @@ export function WorkspacesFilters({
                 key={item}
                 type="button"
                 onClick={() => setStatus(item)}
-                className={quickChipClass(status === item)}
+                className={quickChipClass(status === item, statusTone(item))}
               >
                 {item}
               </button>
@@ -291,7 +347,7 @@ export function WorkspacesFilters({
             <button
               type="button"
               onClick={() => setPlan("")}
-              className={quickChipClass(plan === "")}
+              className={quickChipClass(plan === "", "default")}
             >
               Tous
             </button>
@@ -301,7 +357,7 @@ export function WorkspacesFilters({
                 key={item}
                 type="button"
                 onClick={() => setPlan(item)}
-                className={quickChipClass(plan === item)}
+                className={quickChipClass(plan === item, "violet")}
               >
                 {item}
               </button>
@@ -325,7 +381,7 @@ export function WorkspacesFilters({
             <button
               type="button"
               onClick={() => setPeriodKey("")}
-              className={quickChipClass(periodKey === "")}
+              className={quickChipClass(periodKey === "", "default")}
             >
               Toutes
             </button>
@@ -335,7 +391,7 @@ export function WorkspacesFilters({
                 key={item}
                 type="button"
                 onClick={() => setPeriodKey(item)}
-                className={quickChipClass(periodKey === item)}
+                className={quickChipClass(periodKey === item, "info")}
               >
                 {item}
               </button>
@@ -349,7 +405,7 @@ export function WorkspacesFilters({
           </div>
           <select
             value={limit}
-            onChange={(e) => setLimit(e.target.value)}
+            onChange={(e) => setLimit(normalizeLimit(e.target.value))}
             className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
           >
             <option value="10">10</option>
