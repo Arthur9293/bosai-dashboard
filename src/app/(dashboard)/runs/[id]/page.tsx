@@ -27,6 +27,8 @@ import {
   workspaceMatchesOrUnscoped,
 } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 type PageProps = {
   params:
     | Promise<{
@@ -231,6 +233,156 @@ function actionLinkClassName(
 
 function preClassName(): string {
   return "max-h-[420px] overflow-x-auto rounded-[20px] border border-white/10 bg-black/30 p-4 text-xs leading-6 text-zinc-300";
+}
+
+function safeResolveRunDetailActiveWorkspaceId(args: {
+  searchParams: SearchParams;
+  cookieValues: Record<string, string | undefined>;
+}): string {
+  try {
+    return resolveWorkspaceContext(args).activeWorkspaceId || "";
+  } catch {
+    return "";
+  }
+}
+
+function extractRunRecordsFromUnknown(payload: unknown): RunRecord[] {
+  if (!payload) return [];
+
+  if (Array.isArray(payload)) {
+    return payload.filter(
+      (item): item is RunRecord =>
+        Boolean(item) && typeof item === "object" && !Array.isArray(item)
+    );
+  }
+
+  if (typeof payload !== "object") return [];
+
+  const raw = payload as Record<string, unknown>;
+  const candidates: unknown[] = [
+    raw.runs,
+    raw.items,
+    raw.results,
+    raw.records,
+    raw.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter(
+        (item): item is RunRecord =>
+          Boolean(item) && typeof item === "object" && !Array.isArray(item)
+      );
+    }
+
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      const nested = candidate as Record<string, unknown>;
+      for (const key of ["runs", "items", "results", "records", "data"]) {
+        const inner = nested[key];
+        if (Array.isArray(inner)) {
+          return inner.filter(
+            (item): item is RunRecord =>
+              Boolean(item) && typeof item === "object" && !Array.isArray(item)
+          );
+        }
+      }
+    }
+  }
+
+  return [];
+}
+
+function extractCommandItemsFromUnknown(payload: unknown): CommandItem[] {
+  if (!payload || typeof payload !== "object") return [];
+
+  const raw = payload as Record<string, unknown>;
+  const candidates: unknown[] = [
+    raw.commands,
+    raw.items,
+    raw.results,
+    raw.records,
+    raw.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as CommandItem[];
+    }
+
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      const nested = candidate as Record<string, unknown>;
+      for (const key of ["commands", "items", "results", "records", "data"]) {
+        const inner = nested[key];
+        if (Array.isArray(inner)) {
+          return inner as CommandItem[];
+        }
+      }
+    }
+  }
+
+  return [];
+}
+
+function extractEventItemsFromUnknown(payload: unknown): EventItem[] {
+  if (!payload || typeof payload !== "object") return [];
+
+  const raw = payload as Record<string, unknown>;
+  const candidates: unknown[] = [
+    raw.events,
+    raw.items,
+    raw.results,
+    raw.records,
+    raw.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as EventItem[];
+    }
+
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      const nested = candidate as Record<string, unknown>;
+      for (const key of ["events", "items", "results", "records", "data"]) {
+        const inner = nested[key];
+        if (Array.isArray(inner)) {
+          return inner as EventItem[];
+        }
+      }
+    }
+  }
+
+  return [];
+}
+
+function extractIncidentItemsFromUnknown(payload: unknown): IncidentItem[] {
+  if (!payload || typeof payload !== "object") return [];
+
+  const raw = payload as Record<string, unknown>;
+  const candidates: unknown[] = [
+    raw.incidents,
+    raw.items,
+    raw.results,
+    raw.records,
+    raw.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as IncidentItem[];
+    }
+
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      const nested = candidate as Record<string, unknown>;
+      for (const key of ["incidents", "items", "results", "records", "data"]) {
+        const inner = nested[key];
+        if (Array.isArray(inner)) {
+          return inner as IncidentItem[];
+        }
+      }
+    }
+  }
+
+  return [];
 }
 
 /* Run */
