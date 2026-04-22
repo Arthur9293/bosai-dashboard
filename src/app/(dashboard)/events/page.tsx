@@ -19,6 +19,8 @@ import {
   workspaceMatchesOrUnscoped,
 } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 type SearchParams = Record<string, string | string[] | undefined>;
 
 type PageProps = {
@@ -32,6 +34,15 @@ type EventStats = {
   ignored?: number;
   error?: number;
   other?: number;
+};
+
+type FlexibleEventsResponse = {
+  events?: EventItem[];
+  items?: EventItem[];
+  results?: EventItem[];
+  records?: EventItem[];
+  data?: unknown;
+  stats?: EventStats;
 };
 
 function cardClassName() {
@@ -106,6 +117,25 @@ function toRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+function parseMaybeJson(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {}
+  }
+
+  return {};
+}
+
 function toText(value: unknown, fallback = "—"): string {
   if (value === null || value === undefined) return fallback;
 
@@ -145,8 +175,65 @@ function buildHref(
   return query ? `${pathname}?${query}` : pathname;
 }
 
+function safeResolveEventsActiveWorkspaceId(args: {
+  searchParams: SearchParams;
+  cookieValues: Record<string, string | undefined>;
+}): string {
+  try {
+    return resolveWorkspaceContext(args).activeWorkspaceId || "";
+  } catch {
+    return "";
+  }
+}
+
+function extractEventItems(payload: unknown): EventItem[] {
+  if (!payload) return [];
+
+  if (Array.isArray(payload)) {
+    return payload.filter(
+      (item): item is EventItem =>
+        Boolean(item) && typeof item === "object" && !Array.isArray(item)
+    );
+  }
+
+  if (typeof payload !== "object") return [];
+
+  const raw = payload as Record<string, unknown>;
+  const candidates: unknown[] = [
+    raw.events,
+    raw.items,
+    raw.results,
+    raw.records,
+    raw.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter(
+        (item): item is EventItem =>
+          Boolean(item) && typeof item === "object" && !Array.isArray(item)
+      );
+    }
+
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      const nested = candidate as Record<string, unknown>;
+      for (const key of ["events", "items", "results", "records", "data"]) {
+        const inner = nested[key];
+        if (Array.isArray(inner)) {
+          return inner.filter(
+            (item): item is EventItem =>
+              Boolean(item) && typeof item === "object" && !Array.isArray(item)
+          );
+        }
+      }
+    }
+  }
+
+  return [];
+}
+
 function getEventPayload(event: EventItem): Record<string, unknown> {
-  return toRecord(event.payload);
+  return parseMaybeJson(event.payload);
 }
 
 function getEventType(event: EventItem): string {
@@ -604,7 +691,7 @@ export default async function EventsPage({ searchParams }: PageProps) {
 
   const cookieStore = await cookies();
 
-  const workspaceContext = resolveWorkspaceContext({
+  const fallbackWorkspaceId = safeResolveEventsActiveWorkspaceId({
     searchParams: resolvedSearchParams,
     cookieValues: {
       bosai_active_workspace_id:
@@ -618,7 +705,11 @@ export default async function EventsPage({ searchParams }: PageProps) {
     },
   });
 
-  const activeWorkspaceId = workspaceContext.activeWorkspaceId || "";
+  const activeWorkspaceId =
+    toText(firstParam(resolvedSearchParams.workspace_id), "") ||
+    toText(firstParam((resolvedSearchParams as Record<string, string | string[] | undefined>).workspaceId), "") ||
+    fallbackWorkspaceId ||
+    "";
 
   let events: EventItem[] = [];
   let stats: EventStats = {};
@@ -627,27 +718,32 @@ export default async function EventsPage({ searchParams }: PageProps) {
   let fetchFailed = false;
 
   try {
-    const data = await fetchEvents({
+    const raw = (await fetchEvents({
       limit: 500,
       workspaceId: activeWorkspaceId || undefined,
-    });
-    sourceReachable = data !== null && data !== undefined;
+    })) as unknown as FlexibleEventsResponse | unknown;
 
-    if (Array.isArray(data?.events)) {
-      events = data.events.filter((item) =>
-        workspaceMatchesOrUnscoped(getWorkspace(item), activeWorkspaceId)
-      );
-    }
+    sourceReachable = raw !== null && raw !== undefined;
 
-    if (data?.stats && typeof data.stats === "object") {
-      stats = data.stats as EventStats;
+    const extractedEvents = extractEventItems(raw);
+    events = extractedEvents.filter((item) =>
+      workspaceMatchesOrUnscoped(getWorkspace(item), activeWorkspaceId)
+    );
+
+    const statsSource =
+      raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>).stats
+        : null;
+
+    if (statsSource && typeof statsSource === "object" && !Array.isArray(statsSource)) {
+      stats = statsSource as EventStats;
     }
 
     const hasEvents = events.length > 0;
     const hasPositiveStats =
-      !!data?.stats &&
-      typeof data.stats === "object" &&
-      Object.values(data.stats as Record<string, unknown>).some(
+      !!statsSource &&
+      typeof statsSource === "object" &&
+      Object.values(statsSource as Record<string, unknown>).some(
         (value) => typeof value === "number" && value > 0
       );
 
