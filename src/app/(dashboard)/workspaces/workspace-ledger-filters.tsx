@@ -81,7 +81,15 @@ function quickChipClass(active: boolean, tone: ChipTone = "info"): string {
 }
 
 function getCurrentPeriodKey(): string {
-  return new Date().toISOString().slice(0, 7);
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+function normalizeLimit(value: string): string {
+  const allowed = new Set(["10", "20", "50", "100"]);
+  return allowed.has(value) ? value : "20";
 }
 
 function applyPreset(
@@ -101,7 +109,7 @@ function applyPreset(
   setters.setStatus(preset.status ?? "");
   setters.setCapability(preset.capability ?? "");
   setters.setPeriodKey(preset.periodKey ?? "");
-  setters.setLimit(preset.limit ?? "20");
+  setters.setLimit(normalizeLimit(preset.limit ?? "20"));
 }
 
 function statusTone(status: string): ChipTone {
@@ -126,7 +134,9 @@ export function WorkspaceLedgerFilters({
   const [status, setStatus] = useState(initialFilters.status);
   const [capability, setCapability] = useState(initialFilters.capability);
   const [periodKey, setPeriodKey] = useState(initialFilters.period_key);
-  const [limit, setLimit] = useState(String(initialFilters.limit || 20));
+  const [limit, setLimit] = useState(
+    normalizeLimit(String(initialFilters.limit || 20))
+  );
 
   const currentPeriodKey = useMemo(() => getCurrentPeriodKey(), []);
 
@@ -146,7 +156,7 @@ export function WorkspaceLedgerFilters({
       status: status.trim() ? status.trim() : "Tous",
       capability: capability.trim() ? capability.trim() : "Toutes",
       period: periodKey.trim() ? periodKey.trim() : "Toutes",
-      limit: limit.trim() || "20",
+      limit: normalizeLimit(limit.trim() || "20"),
     }),
     [status, capability, periodKey, limit]
   );
@@ -157,7 +167,7 @@ export function WorkspaceLedgerFilters({
     if (status.trim()) params.set("status", status.trim());
     if (capability.trim()) params.set("capability", capability.trim());
     if (periodKey.trim()) params.set("period_key", periodKey.trim());
-    if (limit.trim()) params.set("limit", limit.trim());
+    params.set("limit", normalizeLimit(limit.trim() || "20"));
 
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
@@ -199,7 +209,7 @@ export function WorkspaceLedgerFilters({
               status === "success" &&
                 capability === "health_tick" &&
                 periodKey === currentPeriodKey &&
-                limit === "20",
+                normalizeLimit(limit) === "20",
               "success"
             )} max-w-full whitespace-normal text-left leading-snug`}
           >
@@ -223,7 +233,7 @@ export function WorkspaceLedgerFilters({
               status === "" &&
                 capability === "health_tick" &&
                 periodKey === currentPeriodKey &&
-                limit === "20",
+                normalizeLimit(limit) === "20",
               "info"
             )} max-w-full whitespace-normal text-left leading-snug`}
           >
@@ -247,7 +257,7 @@ export function WorkspaceLedgerFilters({
               status === "error" &&
                 capability === "" &&
                 periodKey === currentPeriodKey &&
-                limit === "20",
+                normalizeLimit(limit) === "20",
               "danger"
             )} max-w-full whitespace-normal text-left leading-snug`}
           >
@@ -271,7 +281,7 @@ export function WorkspaceLedgerFilters({
               status === "blocked" &&
                 capability === "" &&
                 periodKey === currentPeriodKey &&
-                limit === "20",
+                normalizeLimit(limit) === "20",
               "warning"
             )} max-w-full whitespace-normal text-left leading-snug`}
           >
@@ -312,10 +322,7 @@ export function WorkspaceLedgerFilters({
                 key={item}
                 type="button"
                 onClick={() => setStatus(item)}
-                className={quickChipClass(
-                  status === item,
-                  statusTone(item)
-                )}
+                className={quickChipClass(status === item, statusTone(item))}
               >
                 {item}
               </button>
@@ -400,7 +407,7 @@ export function WorkspaceLedgerFilters({
 
           <select
             value={limit}
-            onChange={(e) => setLimit(e.target.value)}
+            onChange={(e) => setLimit(normalizeLimit(e.target.value))}
             className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none"
           >
             <option value="10">10</option>
