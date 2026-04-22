@@ -4,7 +4,6 @@ import { cookies } from "next/headers";
 import {
   fetchIncidents,
   type IncidentItem,
-  type IncidentsResponse,
 } from "@/lib/api";
 import {
   ControlPlaneShell,
@@ -23,6 +22,8 @@ import {
   workspaceMatchesOrUnscoped,
 } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 type SearchParams = {
   flow_id?: string | string[];
   root_event_id?: string | string[];
@@ -36,6 +37,14 @@ type SearchParams = {
 
 type PageProps = {
   searchParams?: Promise<SearchParams> | SearchParams;
+};
+
+type FlexibleIncidentsResponse = {
+  incidents?: IncidentItem[];
+  items?: IncidentItem[];
+  results?: IncidentItem[];
+  records?: IncidentItem[];
+  data?: unknown;
 };
 
 function cardClassName(): string {
@@ -155,6 +164,63 @@ function buildHref(
 
 function isRecordIdLike(value: string): boolean {
   return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
+}
+
+function safeResolveIncidentsActiveWorkspaceId(args: {
+  searchParams: SearchParams;
+  cookieValues: Record<string, string | undefined>;
+}): string {
+  try {
+    return resolveWorkspaceContext(args).activeWorkspaceId || "";
+  } catch {
+    return "";
+  }
+}
+
+function extractIncidentItems(payload: unknown): IncidentItem[] {
+  if (!payload) return [];
+
+  if (Array.isArray(payload)) {
+    return payload.filter(
+      (item): item is IncidentItem =>
+        Boolean(item) && typeof item === "object" && !Array.isArray(item)
+    );
+  }
+
+  if (typeof payload !== "object") return [];
+
+  const raw = payload as Record<string, unknown>;
+  const candidates: unknown[] = [
+    raw.incidents,
+    raw.items,
+    raw.results,
+    raw.records,
+    raw.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter(
+        (item): item is IncidentItem =>
+          Boolean(item) && typeof item === "object" && !Array.isArray(item)
+      );
+    }
+
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      const nested = candidate as Record<string, unknown>;
+      for (const key of ["incidents", "items", "results", "records", "data"]) {
+        const inner = nested[key];
+        if (Array.isArray(inner)) {
+          return inner.filter(
+            (item): item is IncidentItem =>
+              Boolean(item) && typeof item === "object" && !Array.isArray(item)
+          );
+        }
+      }
+    }
+  }
+
+  return [];
 }
 
 function getIncidentTitle(incident: IncidentItem): string {
@@ -930,7 +996,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
   const cookieStore = await cookies();
 
-  const workspace = resolveWorkspaceContext({
+  const fallbackWorkspaceId = safeResolveIncidentsActiveWorkspaceId({
     searchParams: resolvedSearchParams,
     cookieValues: {
       bosai_active_workspace_id:
@@ -944,7 +1010,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     },
   });
 
-  const activeWorkspaceId = workspace.activeWorkspaceId || "";
+  const activeWorkspaceId =
+    firstParam(resolvedSearchParams.workspace_id).trim() ||
+    firstParam(resolvedSearchParams.workspaceId).trim() ||
+    fallbackWorkspaceId ||
+    "";
 
   const flowId = firstParam(resolvedSearchParams.flow_id).trim();
   const rootEventId = firstParam(resolvedSearchParams.root_event_id).trim();
@@ -954,22 +1024,20 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const commandId = firstParam(resolvedSearchParams.command_id).trim();
   const from = firstParam(resolvedSearchParams.from).trim();
 
-  let data: IncidentsResponse | null = null;
+  let incidentsUnfiltered: IncidentItem[] = [];
   let fetchFailed = false;
 
   try {
-    data = await fetchIncidents({
+    const raw = (await fetchIncidents({
       workspaceId: activeWorkspaceId || undefined,
       limit: 500,
-    });
+    })) as unknown as FlexibleIncidentsResponse | unknown;
+
+    incidentsUnfiltered = extractIncidentItems(raw);
   } catch {
-    data = null;
+    incidentsUnfiltered = [];
     fetchFailed = true;
   }
-
-  const incidentsUnfiltered: IncidentItem[] = Array.isArray(data?.incidents)
-    ? data.incidents
-    : [];
 
   const workspaceScoped = incidentsUnfiltered.filter((item) =>
     workspaceMatchesOrUnscoped(getIncidentWorkspaceId(item), activeWorkspaceId)
