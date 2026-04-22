@@ -10,6 +10,7 @@ import {
   fetchSla,
   type CommandItem,
   type CommandsResponse,
+  type EventItem,
   type EventsResponse,
   type HealthScoreResponse,
   type IncidentItem,
@@ -22,6 +23,8 @@ import {
   resolveWorkspaceContext,
   workspaceMatchesOrUnscoped,
 } from "@/lib/workspace";
+
+export const dynamic = "force-dynamic";
 
 type BadgeVariant =
   | "default"
@@ -223,6 +226,84 @@ function parseMaybeJson(value: unknown): Record<string, unknown> {
   }
 
   return {};
+}
+
+function safeResolveOverviewWorkspaceContext(args: {
+  searchParams: SearchParams;
+  cookieValues: Record<string, string | undefined>;
+}): ReturnType<typeof resolveWorkspaceContext> {
+  try {
+    return resolveWorkspaceContext(args);
+  } catch {
+    return {
+      activeWorkspaceId: "",
+      requestedWorkspaceId: "",
+      allowedWorkspaceIds: [],
+    } as ReturnType<typeof resolveWorkspaceContext>;
+  }
+}
+
+function extractCommandItems(data: CommandsResponse | null): CommandItem[] {
+  if (!data || typeof data !== "object") return [];
+
+  const raw = data as unknown as Record<string, unknown>;
+  const candidates = [
+    raw.commands,
+    raw.items,
+    raw.data,
+    raw.results,
+    raw.records,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as CommandItem[];
+    }
+  }
+
+  return [];
+}
+
+function extractEventItems(data: EventsResponse | null): EventItem[] {
+  if (!data || typeof data !== "object") return [];
+
+  const raw = data as unknown as Record<string, unknown>;
+  const candidates = [
+    raw.events,
+    raw.items,
+    raw.data,
+    raw.results,
+    raw.records,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as EventItem[];
+    }
+  }
+
+  return [];
+}
+
+function extractIncidentItems(data: IncidentsResponse | null): IncidentItem[] {
+  if (!data || typeof data !== "object") return [];
+
+  const raw = data as unknown as Record<string, unknown>;
+  const candidates = [
+    raw.incidents,
+    raw.items,
+    raw.data,
+    raw.results,
+    raw.records,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as IncidentItem[];
+    }
+  }
+
+  return [];
 }
 
 function overviewPostureTone(params: {
@@ -1149,7 +1230,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
 
   const cookieStore = await cookies();
 
-  const workspaceContext = resolveWorkspaceContext({
+  const workspaceContext = safeResolveOverviewWorkspaceContext({
     searchParams: resolvedSearchParams,
     cookieValues: {
       bosai_active_workspace_id:
@@ -1226,9 +1307,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
   const doneRuns = runs?.stats?.done ?? 0;
   const errorRuns = runs?.stats?.error ?? 0;
 
-  const rawCommandItems: CommandItem[] = Array.isArray(commands?.commands)
-    ? commands.commands
-    : [];
+  const rawCommandItems = extractCommandItems(commands);
 
   const scopedCommandItems = rawCommandItems.filter((item) =>
     workspaceMatchesOrUnscoped(getCommandWorkspaceScope(item), activeWorkspaceId)
@@ -1270,18 +1349,17 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     .sort((a, b) => getCommandActivityTs(b) - getCommandActivityTs(a))
     .slice(0, 4);
 
+  const eventItems = extractEventItems(events);
   const newEvents = events?.stats?.new ?? 0;
   const queuedEvents = events?.stats?.queued ?? 0;
   const processedEvents = events?.stats?.processed ?? 0;
   const eventErrors = events?.stats?.error ?? 0;
   const totalEvents =
-    Array.isArray(events?.events) && events?.events.length > 0
-      ? events.events.length
+    eventItems.length > 0
+      ? eventItems.length
       : newEvents + queuedEvents + processedEvents + eventErrors;
 
-  const rawIncidentItems: IncidentItem[] = Array.isArray(incidents?.incidents)
-    ? incidents.incidents
-    : [];
+  const rawIncidentItems = extractIncidentItems(incidents);
 
   const scopedIncidentItems = rawIncidentItems.filter((item) =>
     workspaceMatchesOrUnscoped(getIncidentWorkspaceScope(item), activeWorkspaceId)
