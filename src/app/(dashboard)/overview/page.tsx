@@ -228,18 +228,14 @@ function parseMaybeJson(value: unknown): Record<string, unknown> {
   return {};
 }
 
-function safeResolveOverviewWorkspaceContext(args: {
+function safeResolveOverviewActiveWorkspaceId(args: {
   searchParams: SearchParams;
   cookieValues: Record<string, string | undefined>;
-}): ReturnType<typeof resolveWorkspaceContext> {
+}): string {
   try {
-    return resolveWorkspaceContext(args);
+    return resolveWorkspaceContext(args).activeWorkspaceId || "";
   } catch {
-    return {
-      activeWorkspaceId: "",
-      requestedWorkspaceId: "",
-      allowedWorkspaceIds: [],
-    } as ReturnType<typeof resolveWorkspaceContext>;
+    return "";
   }
 }
 
@@ -1230,7 +1226,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
 
   const cookieStore = await cookies();
 
-  const workspaceContext = safeResolveOverviewWorkspaceContext({
+  const fallbackWorkspaceId = safeResolveOverviewActiveWorkspaceId({
     searchParams: resolvedSearchParams,
     cookieValues: {
       bosai_active_workspace_id:
@@ -1246,8 +1242,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
 
   const activeWorkspaceId =
     firstParam(resolvedSearchParams.workspace_id).trim() ||
-    firstParam(resolvedSearchParams.workspaceId).trim() ||
-    workspaceContext.activeWorkspaceId ||
+    firstParam((resolvedSearchParams as Record<string, string | string[] | undefined>).workspaceId).trim() ||
+    fallbackWorkspaceId ||
     "";
 
   let health: HealthScoreResponse | null = null;
