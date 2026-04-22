@@ -3,6 +3,9 @@ import type { ReactNode } from "react";
 import { PageHeader } from "../../../components/ui/page-header";
 import { DashboardCard } from "../../../components/ui/dashboard-card";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type WorkspaceInfo = {
   record_id?: string;
   workspace_id?: string;
@@ -86,28 +89,39 @@ type QuotaSignalContext = {
   nextRun?: boolean;
 };
 
-function formatNumber(value?: number | null): string {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value.toString()
-    : "0";
+function getWorkerBaseUrl(): string {
+  return (
+    process.env.BOSAI_WORKER_BASE_URL ||
+    process.env.BOSAI_WORKER_URL ||
+    process.env.NEXT_PUBLIC_BOSAI_WORKER_BASE_URL ||
+    process.env.NEXT_PUBLIC_BOSAI_WORKER_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    ""
+  ).replace(/\/+$/, "");
 }
 
-function formatOptionalNumber(value?: number | null): string {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value.toString()
-    : "—";
+function getWorkspaceId(): string {
+  return (
+    process.env.BOSAI_WORKSPACE_ID ||
+    process.env.NEXT_PUBLIC_BOSAI_WORKSPACE_ID ||
+    ""
+  ).trim();
 }
 
-function formatDate(value?: string | null): string {
-  if (!value) return "—";
+function getWorkspaceApiKey(): string {
+  return (
+    process.env.BOSAI_WORKSPACE_API_KEY ||
+    process.env.WORKSPACE_API_KEY ||
+    ""
+  ).trim();
+}
 
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(date);
+function shellCardClassName(): string {
+  return [
+    "rounded-[28px] border border-white/10 p-6 md:p-7",
+    "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(14,165,233,0.10),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]",
+    "shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
+  ].join(" ");
 }
 
 function sectionLabelClassName(): string {
@@ -208,6 +222,30 @@ function progressPercent(current?: number, hardLimit?: number | null): number {
 
   const percent = Math.round((current / hardLimit) * 100);
   return Math.max(0, Math.min(percent, 100));
+}
+
+function formatNumber(value?: number | null): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? new Intl.NumberFormat("fr-FR").format(value)
+    : "0";
+}
+
+function formatOptionalNumber(value?: number | null): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? new Intl.NumberFormat("fr-FR").format(value)
+    : "—";
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return "—";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
 }
 
 function humanizePlanLabel(workspace?: WorkspaceInfo): string {
@@ -355,14 +393,9 @@ async function fetchWorkspaceUsage(params?: {
   estimatedTokens?: number;
   projectRequestedRun?: boolean;
 }): Promise<WorkspaceUsageResponse | null> {
-  const baseUrl =
-    process.env.BOSAI_WORKER_URL ||
-    process.env.NEXT_PUBLIC_BOSAI_WORKER_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "";
-
-  const workspaceId = process.env.BOSAI_WORKSPACE_ID || "";
-  const workspaceApiKey = process.env.BOSAI_WORKSPACE_API_KEY || "";
+  const baseUrl = getWorkerBaseUrl();
+  const workspaceId = getWorkspaceId();
+  const workspaceApiKey = getWorkspaceApiKey();
 
   if (!baseUrl || !workspaceId || !workspaceApiKey) {
     return null;
@@ -388,7 +421,7 @@ async function fetchWorkspaceUsage(params?: {
     searchParams.set("project_requested_run", "1");
   }
 
-  const url = `${baseUrl.replace(/\/+$/, "")}/workspace/usage?${searchParams.toString()}`;
+  const url = `${baseUrl}/workspace/usage?${searchParams.toString()}`;
 
   try {
     const response = await fetch(url, {
@@ -664,12 +697,24 @@ function SignalList({
 }
 
 export default async function SettingsPage() {
-  const currentUsage = await fetchWorkspaceUsage();
-  const previewUsage = await fetchWorkspaceUsage({
-    capability: "http_exec",
-    estimatedTokens: 700,
-    projectRequestedRun: true,
-  });
+  const envReady =
+    Boolean(getWorkerBaseUrl()) &&
+    Boolean(getWorkspaceId()) &&
+    Boolean(getWorkspaceApiKey());
+
+  let currentUsage: WorkspaceUsageResponse | null = null;
+  let previewUsage: WorkspaceUsageResponse | null = null;
+
+  if (envReady) {
+    [currentUsage, previewUsage] = await Promise.all([
+      fetchWorkspaceUsage(),
+      fetchWorkspaceUsage({
+        capability: "http_exec",
+        estimatedTokens: 700,
+        projectRequestedRun: true,
+      }),
+    ]);
+  }
 
   const workspace = currentUsage?.workspace;
   const usage = currentUsage?.usage;
@@ -712,14 +757,6 @@ export default async function SettingsPage() {
     previewReasonContext
   );
 
-  const envReady =
-    Boolean(
-      process.env.BOSAI_WORKER_URL ||
-        process.env.NEXT_PUBLIC_BOSAI_WORKER_URL
-    ) &&
-    Boolean(process.env.BOSAI_WORKSPACE_ID) &&
-    Boolean(process.env.BOSAI_WORKSPACE_API_KEY);
-
   const currentQuickRead = getCurrentQuickRead({
     blocked,
     warningsCount: warnings.length,
@@ -749,7 +786,7 @@ export default async function SettingsPage() {
         >
           <div className="space-y-3 text-sm text-zinc-400">
             <div>
-              <span className="text-zinc-200">BOSAI_WORKER_URL</span>
+              <span className="text-zinc-200">BOSAI_WORKER_BASE_URL / BOSAI_WORKER_URL</span>
             </div>
             <div>
               <span className="text-zinc-200">BOSAI_WORKSPACE_ID</span>
@@ -763,90 +800,86 @@ export default async function SettingsPage() {
 
       {envReady ? (
         <>
-          <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.3fr_0.9fr]">
-            <DashboardCard
-              title="Workspace posture"
-              subtitle="Lecture rapide du tenant courant avant toute exécution."
-            >
-              <div className="flex flex-wrap gap-2">
-                <span
-                  className={badgeClassName(
-                    statusBadgeVariant(workspace?.is_active, blocked)
+          <section className={shellCardClassName()}>
+            <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+              <div className="min-w-0 space-y-5">
+                <div className="flex flex-wrap gap-2">
+                  <span
+                    className={badgeClassName(
+                      statusBadgeVariant(workspace?.is_active, blocked)
+                    )}
+                  >
+                    {blocked
+                      ? "BLOCKED"
+                      : workspace?.is_active
+                        ? "ACTIVE"
+                        : "INACTIVE"}
+                  </span>
+
+                  {workspace?.type ? (
+                    <span className={badgeClassName("info")}>
+                      {workspace.type.toUpperCase()}
+                    </span>
+                  ) : null}
+
+                  {(workspace?.plan_label ||
+                    workspace?.plan_code ||
+                    workspace?.plan_id) && (
+                    <span className={badgeClassName("violet")}>
+                      {humanizePlanLabel(workspace)}
+                    </span>
                   )}
-                >
-                  {blocked
-                    ? "BLOCKED"
-                    : workspace?.is_active
-                      ? "ACTIVE"
-                      : "INACTIVE"}
-                </span>
 
-                {workspace?.type ? (
-                  <span className={badgeClassName("info")}>
-                    {workspace.type.toUpperCase()}
+                  <span className={badgeClassName("default")}>
+                    Workspace Settings
                   </span>
-                ) : null}
+                </div>
 
-                {workspace?.plan_label ||
-                workspace?.plan_code ||
-                workspace?.plan_id ? (
-                  <span className={badgeClassName("violet")}>
-                    {humanizePlanLabel(workspace)}
-                  </span>
-                ) : null}
-              </div>
+                <div className="space-y-3">
+                  <div className={sectionLabelClassName()}>
+                    BOSAI Settings Layer
+                  </div>
 
-              <div className="mt-5 text-3xl font-semibold tracking-tight text-white">
-                {workspace?.name || workspace?.workspace_id || "Workspace"}
-              </div>
-              <p className="mt-2 break-all text-sm text-zinc-400">
-                {workspace?.workspace_id || "—"}
-              </p>
+                  <h2 className="max-w-4xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                    {workspace?.name || workspace?.workspace_id || "Workspace"}
+                  </h2>
 
-              <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
-                <div className={metaLabelClassName()}>Quick read</div>
-                <div className="mt-2 text-sm leading-6 text-zinc-300">
-                  {currentQuickRead}
+                  <p className="max-w-3xl text-base leading-8 text-zinc-400">
+                    Surface de pilotage quota et posture d’exécution. Ici,
+                    l’utilisateur doit comprendre en un regard l’état du tenant,
+                    la pression sur les limites, et le risque avant le prochain run.
+                  </p>
                 </div>
               </div>
 
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Link href="/workspaces" className={actionLinkClassName("soft")}>
-                  Ouvrir Workspaces
-                </Link>
-                <Link href="/runs" className={actionLinkClassName("default")}>
-                  Voir Runs
-                </Link>
-                <Link href="/sla" className={actionLinkClassName("default")}>
-                  Voir SLA
-                </Link>
-              </div>
-            </DashboardCard>
+              <div className="w-full max-w-md">
+                <div className="rounded-[24px] border border-white/10 bg-black/20 p-5 md:p-6">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+                    Quick read
+                  </div>
 
-            <DashboardCard
-              title="Workspace metadata"
-              subtitle="Informations produit et identité du tenant."
-            >
-              <div className="space-y-3">
-                <InfoRow
-                  label="Workspace ID"
-                  value={workspace?.workspace_id || "—"}
-                />
-                <InfoRow label="Slug" value={workspace?.slug || "—"} />
-                <InfoRow label="Type" value={workspace?.type || "—"} />
-                <InfoRow label="Plan" value={humanizePlanLabel(workspace)} />
-                <InfoRow
-                  label="Plan code"
-                  value={workspace?.plan_code || workspace?.plan_label || "—"}
-                />
-                <InfoRow label="Plan ref" value={workspace?.plan_id || "—"} />
-                <InfoRow label="Status" value={workspace?.status || "—"} />
-                <InfoRow
-                  label="Last reset"
-                  value={formatDate(workspace?.last_usage_reset_at)}
-                />
+                  <div className="mt-3 text-2xl font-semibold tracking-tight text-white">
+                    Workspace posture
+                  </div>
+
+                  <div className="mt-3 text-sm leading-6 text-white/70">
+                    {currentQuickRead}
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Link href="/workspaces" className={actionLinkClassName("soft")}>
+                      Ouvrir Workspaces
+                    </Link>
+                    <Link href="/runs" className={actionLinkClassName("default")}>
+                      Voir Runs
+                    </Link>
+                    <Link href="/sla" className={actionLinkClassName("danger")}>
+                      Voir SLA
+                    </Link>
+                  </div>
+                </div>
               </div>
-            </DashboardCard>
+            </div>
           </section>
 
           <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
