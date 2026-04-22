@@ -16,6 +16,8 @@ import {
   type DashboardStatusKind,
 } from "@/components/dashboard/StatusBadge";
 
+export const dynamic = "force-dynamic";
+
 type SearchParams = {
   workspace_id?: string | string[];
   flow_id?: string | string[];
@@ -270,6 +272,35 @@ function getCommandStatusBadgeKind(status: string): DashboardStatusKind {
   if (bucket === "failed") return "failed";
   if (bucket === "done") return "success";
   return "unknown";
+}
+
+function safeDecodeParam(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function extractCommandsFromResponse(data: unknown): CommandItem[] {
+  if (!data || typeof data !== "object") return [];
+
+  const raw = data as Record<string, unknown>;
+  const candidates = [
+    raw.commands,
+    raw.items,
+    raw.data,
+    raw.results,
+    raw.records,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as CommandItem[];
+    }
+  }
+
+  return [];
 }
 
 /* ----------------------------- Command helpers ---------------------------- */
@@ -760,12 +791,6 @@ function buildFlowHref(command: CommandItem, workspaceId: string): string {
     });
   }
 
-  if (command.id) {
-    return buildHref(`/flows/${encodeURIComponent(String(command.id))}`, {
-      workspace_id: workspaceId || undefined,
-    });
-  }
-
   return "";
 }
 
@@ -881,7 +906,9 @@ export default async function CommandDetailPage({
     ? await Promise.resolve(searchParams)
     : {};
 
-  const id = decodeURIComponent(resolvedParams.id);
+  const rawId = String(resolvedParams.id || "").trim();
+  const id = safeDecodeParam(rawId);
+
   const activeWorkspaceId = firstParam(resolvedSearchParams.workspace_id).trim();
   const incomingFlowId = firstParam(resolvedSearchParams.flow_id).trim();
   const incomingRootEventId = firstParam(resolvedSearchParams.root_event_id).trim();
@@ -889,6 +916,10 @@ export default async function CommandDetailPage({
     resolvedSearchParams.source_event_id
   ).trim();
   const from = firstParam(resolvedSearchParams.from).trim();
+
+  if (!id) {
+    notFound();
+  }
 
   let command: CommandItem | null = null;
 
@@ -902,11 +933,8 @@ export default async function CommandDetailPage({
 
   if (!command && !activeWorkspaceId) {
     try {
-      const commandsData = await fetchCommands(500);
-      const commands = Array.isArray(commandsData?.commands)
-        ? commandsData.commands
-        : [];
-
+      const commandsData = await fetchCommands({ limit: 500 });
+      const commands = extractCommandsFromResponse(commandsData);
       command = commands.find((item) => String(item.id) === id) || null;
     } catch {
       command = null;
@@ -972,7 +1000,7 @@ export default async function CommandDetailPage({
   const commandIdText = String(command.id || "");
   const compactCommandId = compactTechnicalId(commandIdText, 30);
   const flowTarget =
-    flowId || rootEventId || sourceEventId || commandIdText || "—";
+    flowId || rootEventId || sourceEventId || "—";
 
   const commandsListHref = buildHref("/commands", {
     workspace_id: effectiveWorkspaceId || undefined,
@@ -1227,7 +1255,10 @@ export default async function CommandDetailPage({
                   kind={getCommandStatusBadgeKind(status)}
                   label={humanStatusLabel(status).toUpperCase()}
                 />
-                <DashboardStatusBadge kind="success" label="FLOW LINKED" />
+                <DashboardStatusBadge
+                  kind={hasFlow ? "success" : "unknown"}
+                  label={hasFlow ? "FLOW LINKED" : "NO FLOW LINK"}
+                />
                 <DashboardStatusBadge
                   kind={hasEvent ? "success" : "unknown"}
                   label={hasEvent ? "EVENT LINKED" : "NO EVENT LINK"}
