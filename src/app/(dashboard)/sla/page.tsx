@@ -19,10 +19,21 @@ import {
   workspaceMatchesOrUnscoped,
 } from "@/lib/workspace";
 
+export const dynamic = "force-dynamic";
+
 type SearchParams = Record<string, string | string[] | undefined>;
 
 type PageProps = {
   searchParams?: Promise<SearchParams> | SearchParams;
+};
+
+type FlexibleSlaResponse = {
+  incidents?: SlaItem[];
+  items?: SlaItem[];
+  results?: SlaItem[];
+  records?: SlaItem[];
+  data?: unknown;
+  stats?: Record<string, unknown>;
 };
 
 function cardClassName() {
@@ -114,7 +125,7 @@ function toNumber(value: unknown, fallback = Number.NaN): number {
 }
 
 function statValue(value?: number): number {
-  return typeof value === "number" ? value : 0;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function firstParam(value?: string | string[]): string {
@@ -143,18 +154,115 @@ function isRecordIdLike(value: string): boolean {
   return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
 }
 
+function toRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function safeResolveSlaWorkspaceId(args: {
+  searchParams: SearchParams;
+  cookieValues: Record<string, string | undefined>;
+}): string {
+  try {
+    return resolveWorkspaceContext(args).activeWorkspaceId || "";
+  } catch {
+    return "";
+  }
+}
+
+function extractSlaItems(payload: unknown): SlaItem[] {
+  if (!payload) return [];
+
+  if (Array.isArray(payload)) {
+    return payload.filter(
+      (item): item is SlaItem =>
+        Boolean(item) && typeof item === "object" && !Array.isArray(item)
+    );
+  }
+
+  if (typeof payload !== "object") return [];
+
+  const raw = payload as Record<string, unknown>;
+  const candidates: unknown[] = [
+    raw.incidents,
+    raw.items,
+    raw.results,
+    raw.records,
+    raw.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter(
+        (item): item is SlaItem =>
+          Boolean(item) && typeof item === "object" && !Array.isArray(item)
+      );
+    }
+
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      const nested = candidate as Record<string, unknown>;
+
+      for (const key of ["incidents", "items", "results", "records", "data"]) {
+        const inner = nested[key];
+        if (Array.isArray(inner)) {
+          return inner.filter(
+            (item): item is SlaItem =>
+              Boolean(item) && typeof item === "object" && !Array.isArray(item)
+          );
+        }
+      }
+    }
+  }
+
+  return [];
+}
+
+function extractSlaStats(payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return {};
+  }
+
+  const raw = payload as Record<string, unknown>;
+
+  if (raw.stats && typeof raw.stats === "object" && !Array.isArray(raw.stats)) {
+    return raw.stats as Record<string, unknown>;
+  }
+
+  if (raw.data && typeof raw.data === "object" && !Array.isArray(raw.data)) {
+    const nested = raw.data as Record<string, unknown>;
+    if (
+      nested.stats &&
+      typeof nested.stats === "object" &&
+      !Array.isArray(nested.stats)
+    ) {
+      return nested.stats as Record<string, unknown>;
+    }
+  }
+
+  return {};
+}
+
+function getItemRecord(item: SlaItem): Record<string, unknown> {
+  return item as Record<string, unknown>;
+}
+
 function getSlaTitle(item: SlaItem): string {
+  const record = getItemRecord(item);
+
   return (
-    toTextOrEmpty(item.title) ||
-    toTextOrEmpty(item.name) ||
-    toTextOrEmpty(item.category) ||
-    toTextOrEmpty(item.reason) ||
-    (item.id ? `SLA ${item.id}` : "SLA item")
+    toTextOrEmpty(record.title) ||
+    toTextOrEmpty(record.name) ||
+    toTextOrEmpty(record.category) ||
+    toTextOrEmpty(record.reason) ||
+    (toTextOrEmpty(record.id) ? `SLA ${toTextOrEmpty(record.id)}` : "SLA item")
   );
 }
 
 function getSlaStatusNormalized(item: SlaItem): string {
-  const raw = toText(item.sla_status, "").toLowerCase();
+  const record = getItemRecord(item);
+  const raw = toText(record.sla_status, "").toLowerCase();
 
   if (["ok"].includes(raw)) return "ok";
   if (["warning", "warn"].includes(raw)) return "warning";
@@ -198,32 +306,43 @@ function getSlaTone(item: SlaItem): string {
 }
 
 function getRemainingMinutes(item: SlaItem): string {
-  const primary = toNumber(item.sla_remaining_minutes);
-  const fallback = toNumber(item.remaining_minutes);
+  const record = getItemRecord(item);
+  const primary = toNumber(record.sla_remaining_minutes);
+  const fallback = toNumber(record.remaining_minutes);
   const value = Number.isFinite(primary) ? primary : fallback;
 
   return Number.isFinite(value) ? `${value} min` : "—";
 }
 
 function getRemainingMinutesValue(item: SlaItem): number | null {
-  const primary = toNumber(item.sla_remaining_minutes);
-  const fallback = toNumber(item.remaining_minutes);
+  const record = getItemRecord(item);
+  const primary = toNumber(record.sla_remaining_minutes);
+  const fallback = toNumber(record.remaining_minutes);
   const value = Number.isFinite(primary) ? primary : fallback;
 
   return Number.isFinite(value) ? value : null;
 }
 
 function getLastCheck(item: SlaItem): string {
+  const record = getItemRecord(item);
+
   return (
-    toTextOrEmpty(item.last_sla_check) ||
-    toTextOrEmpty(item.updated_at) ||
-    toTextOrEmpty(item.created_at) ||
+    toTextOrEmpty(record.last_sla_check) ||
+    toTextOrEmpty(record.updated_at) ||
+    toTextOrEmpty(record.created_at) ||
     ""
   );
 }
 
 function getWorkspaceScope(item: SlaItem): string {
-  return toTextOrEmpty(item.workspace_id) || toTextOrEmpty(item.workspace) || "";
+  const record = getItemRecord(item);
+
+  return (
+    toTextOrEmpty(record.workspace_id) ||
+    toTextOrEmpty(record.workspaceId) ||
+    toTextOrEmpty(record.workspace) ||
+    ""
+  );
 }
 
 function getWorkspace(item: SlaItem): string {
@@ -231,51 +350,59 @@ function getWorkspace(item: SlaItem): string {
 }
 
 function getFlowTarget(item: SlaItem): string {
+  const record = getItemRecord(item);
+
   return (
-    toTextOrEmpty(item.flow_id) ||
-    toTextOrEmpty(item.root_event_id) ||
-    toTextOrEmpty(item.source_record_id) ||
+    toTextOrEmpty(record.flow_id) ||
+    toTextOrEmpty(record.root_event_id) ||
+    toTextOrEmpty(record.source_record_id) ||
+    toTextOrEmpty(record.source_event_id) ||
     ""
   );
 }
 
 function getCommandTarget(item: SlaItem): string {
+  const record = getItemRecord(item);
+
   return (
-    toTextOrEmpty(item.linked_command) ||
-    toTextOrEmpty(item.command_id) ||
+    toTextOrEmpty(record.linked_command) ||
+    toTextOrEmpty(record.command_id) ||
     ""
   );
 }
 
 function getIncidentTarget(item: SlaItem): string {
-  return toTextOrEmpty(item.id);
+  return toTextOrEmpty(getItemRecord(item).id);
 }
 
 function getEventTarget(item: SlaItem): string {
-  const sourceRecordId = toTextOrEmpty(item.source_record_id);
+  const record = getItemRecord(item);
+  const sourceRecordId = toTextOrEmpty(record.source_record_id);
   if (sourceRecordId && isRecordIdLike(sourceRecordId)) return sourceRecordId;
 
-  const rootEventId = toTextOrEmpty(item.root_event_id);
+  const rootEventId = toTextOrEmpty(record.root_event_id);
   if (rootEventId && isRecordIdLike(rootEventId)) return rootEventId;
 
   return "";
 }
 
 function getRunTarget(item: SlaItem): string {
+  const record = getItemRecord(item);
+
   return (
-    toTextOrEmpty(item.run_record_id) ||
-    toTextOrEmpty(item.linked_run) ||
-    toTextOrEmpty(item.run_id) ||
+    toTextOrEmpty(record.run_record_id) ||
+    toTextOrEmpty(record.linked_run) ||
+    toTextOrEmpty(record.run_id) ||
     "—"
   );
 }
 
 function getSlaCategory(item: SlaItem): string {
-  return toText(item.category, "—");
+  return toText(getItemRecord(item).category, "—");
 }
 
 function getSlaReason(item: SlaItem): string {
-  return toText(item.reason, "—");
+  return toText(getItemRecord(item).reason, "—");
 }
 
 function getSlaLatestTs(item: SlaItem): number {
@@ -283,12 +410,26 @@ function getSlaLatestTs(item: SlaItem): number {
   return Number.isFinite(ts) ? ts : 0;
 }
 
+function getEscalationQueued(item: SlaItem): boolean {
+  const record = getItemRecord(item);
+  const raw = record.escalation_queued;
+
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "number") return raw !== 0;
+  if (typeof raw === "string") {
+    const normalized = raw.trim().toLowerCase();
+    return ["true", "1", "yes", "oui"].includes(normalized);
+  }
+
+  return false;
+}
+
 function getAttentionPriority(item: SlaItem): number {
   const status = getSlaStatusNormalized(item);
 
   if (status === "escalated") return 0;
   if (status === "breached") return 1;
-  if (item.escalation_queued) return 2;
+  if (getEscalationQueued(item)) return 2;
   if (status === "warning") return 3;
   if (status === "unknown") return 4;
   return 5;
@@ -368,11 +509,16 @@ function getCommandHref(item: SlaItem, activeWorkspaceId: string): string {
   const target = getCommandTarget(item);
   if (!target) return "";
 
+  const record = getItemRecord(item);
+
   return buildHref(`/commands/${encodeURIComponent(target)}`, {
     workspace_id: activeWorkspaceId || getWorkspaceScope(item) || undefined,
-    flow_id: toTextOrEmpty(item.flow_id) || undefined,
-    root_event_id: toTextOrEmpty(item.root_event_id) || undefined,
-    source_event_id: toTextOrEmpty(item.source_record_id) || undefined,
+    flow_id: toTextOrEmpty(record.flow_id) || undefined,
+    root_event_id: toTextOrEmpty(record.root_event_id) || undefined,
+    source_event_id:
+      toTextOrEmpty(record.source_record_id) ||
+      toTextOrEmpty(record.source_event_id) ||
+      undefined,
     from: "sla",
   });
 }
@@ -381,11 +527,16 @@ function getIncidentHref(item: SlaItem, activeWorkspaceId: string): string {
   const target = getIncidentTarget(item);
   if (!target) return "";
 
+  const record = getItemRecord(item);
+
   return buildHref(`/incidents/${encodeURIComponent(target)}`, {
     workspace_id: activeWorkspaceId || getWorkspaceScope(item) || undefined,
-    flow_id: toTextOrEmpty(item.flow_id) || undefined,
-    root_event_id: toTextOrEmpty(item.root_event_id) || undefined,
-    source_record_id: toTextOrEmpty(item.source_record_id) || undefined,
+    flow_id: toTextOrEmpty(record.flow_id) || undefined,
+    root_event_id: toTextOrEmpty(record.root_event_id) || undefined,
+    source_record_id:
+      toTextOrEmpty(record.source_record_id) ||
+      toTextOrEmpty(record.source_event_id) ||
+      undefined,
     command_id: getCommandTarget(item) || undefined,
     from: "sla",
   });
@@ -395,11 +546,16 @@ function getEventHref(item: SlaItem, activeWorkspaceId: string): string {
   const target = getEventTarget(item);
   if (!target) return "";
 
+  const record = getItemRecord(item);
+
   return buildHref(`/events/${encodeURIComponent(target)}`, {
     workspace_id: activeWorkspaceId || getWorkspaceScope(item) || undefined,
-    flow_id: toTextOrEmpty(item.flow_id) || undefined,
-    root_event_id: toTextOrEmpty(item.root_event_id) || undefined,
-    source_event_id: toTextOrEmpty(item.source_record_id) || undefined,
+    flow_id: toTextOrEmpty(record.flow_id) || undefined,
+    root_event_id: toTextOrEmpty(record.root_event_id) || undefined,
+    source_event_id:
+      toTextOrEmpty(record.source_record_id) ||
+      toTextOrEmpty(record.source_event_id) ||
+      undefined,
     from: "sla",
   });
 }
@@ -430,12 +586,11 @@ function SlaListCard({
   item: SlaItem;
   activeWorkspaceId: string;
 }) {
-  const id = String(item.id || "");
+  const id = String(getItemRecord(item).id || "");
   const title = getSlaTitle(item);
   const flowTarget = getFlowTarget(item);
   const commandTarget = getCommandTarget(item);
   const incidentTarget = getIncidentTarget(item);
-  const eventTarget = getEventTarget(item);
 
   const flowHref = getFlowHref(item, activeWorkspaceId);
   const commandHref = getCommandHref(item, activeWorkspaceId);
@@ -480,7 +635,7 @@ function SlaListCard({
                   {getSlaStatusLabel(item)}
                 </span>
 
-                {item.escalation_queued ? (
+                {getEscalationQueued(item) ? (
                   <DashboardStatusBadge kind="queued" label="QUEUE ACTIVE" />
                 ) : null}
               </div>
@@ -538,7 +693,12 @@ function SlaListCard({
 
           <div className="md:col-span-2 xl:col-span-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>Record ID</div>
-            <div className="mt-2 break-all text-zinc-100">{id}</div>
+            <div className="mt-2 break-all text-zinc-100">{id || "—"}</div>
+          </div>
+
+          <div className="md:col-span-2 xl:col-span-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Incident target</div>
+            <div className="mt-2 break-all text-zinc-100">{incidentTarget || "—"}</div>
           </div>
         </div>
 
@@ -616,13 +776,13 @@ function SectionBlock({
 }
 
 export default async function SlaPage({ searchParams }: PageProps) {
-  const resolvedSearchParams = searchParams
-    ? await Promise.resolve(searchParams)
-    : {};
+  const resolvedSearchParams = (await Promise.resolve(
+    searchParams ?? {}
+  )) as SearchParams;
 
   const cookieStore = await cookies();
 
-  const workspaceContext = resolveWorkspaceContext({
+  const fallbackWorkspaceId = safeResolveSlaWorkspaceId({
     searchParams: resolvedSearchParams,
     cookieValues: {
       bosai_active_workspace_id:
@@ -639,43 +799,55 @@ export default async function SlaPage({ searchParams }: PageProps) {
   const activeWorkspaceId =
     firstParam(resolvedSearchParams.workspace_id).trim() ||
     firstParam(resolvedSearchParams.workspaceId).trim() ||
-    workspaceContext.activeWorkspaceId ||
+    fallbackWorkspaceId ||
     "";
 
-  let data: Awaited<ReturnType<typeof fetchSla>> | null = null;
+  let rawPayload: unknown = null;
   let fetchFailed = false;
 
   try {
-    data = await fetchSla({
+    rawPayload = await fetchSla({
       limit: 200,
       workspaceId: activeWorkspaceId || undefined,
     });
   } catch {
-    data = null;
+    rawPayload = null;
     fetchFailed = true;
   }
 
-  const rawItems: SlaItem[] = Array.isArray(data?.incidents) ? data.incidents : [];
+  const rawItems = extractSlaItems(rawPayload);
+  const rawStats = extractSlaStats(rawPayload);
 
   const items = rawItems.filter((item) =>
     workspaceMatchesOrUnscoped(getWorkspaceScope(item), activeWorkspaceId)
   );
 
-  const stats = data?.stats ?? {};
-
   const okItems = items.filter((item) => getSlaStatusNormalized(item) === "ok");
-  const warningItems = items.filter((item) => getSlaStatusNormalized(item) === "warning");
-  const breachedItems = items.filter((item) => getSlaStatusNormalized(item) === "breached");
-  const escalatedItems = items.filter((item) => getSlaStatusNormalized(item) === "escalated");
-  const unknownItems = items.filter((item) => getSlaStatusNormalized(item) === "unknown");
-  const queuedItems = items.filter((item) => Boolean(item.escalation_queued));
+  const warningItems = items.filter(
+    (item) => getSlaStatusNormalized(item) === "warning"
+  );
+  const breachedItems = items.filter(
+    (item) => getSlaStatusNormalized(item) === "breached"
+  );
+  const escalatedItems = items.filter(
+    (item) => getSlaStatusNormalized(item) === "escalated"
+  );
+  const unknownItems = items.filter(
+    (item) => getSlaStatusNormalized(item) === "unknown"
+  );
+  const queuedItems = items.filter((item) => getEscalationQueued(item));
 
-  const okCount = statValue(stats.ok) || okItems.length;
-  const warningCount = statValue(stats.warning) || warningItems.length;
-  const breachedCount = statValue(stats.breached) || breachedItems.length;
-  const escalatedCount = statValue(stats.escalated) || escalatedItems.length;
-  const queuedCount = statValue(stats.escalation_queued) || queuedItems.length;
-  const unknownCount = statValue(stats.unknown) || unknownItems.length;
+  const okCount = statValue(toNumber(rawStats.ok, Number.NaN)) || okItems.length;
+  const warningCount =
+    statValue(toNumber(rawStats.warning, Number.NaN)) || warningItems.length;
+  const breachedCount =
+    statValue(toNumber(rawStats.breached, Number.NaN)) || breachedItems.length;
+  const escalatedCount =
+    statValue(toNumber(rawStats.escalated, Number.NaN)) || escalatedItems.length;
+  const queuedCount =
+    statValue(toNumber(rawStats.escalation_queued, Number.NaN)) || queuedItems.length;
+  const unknownCount =
+    statValue(toNumber(rawStats.unknown, Number.NaN)) || unknownItems.length;
 
   const attentionItems = sortAttentionItems(
     items.filter((item) => {
@@ -685,7 +857,7 @@ export default async function SlaPage({ searchParams }: PageProps) {
         status === "breached" ||
         status === "escalated" ||
         status === "unknown" ||
-        Boolean(item.escalation_queued)
+        getEscalationQueued(item)
       );
     })
   );
@@ -702,7 +874,7 @@ export default async function SlaPage({ searchParams }: PageProps) {
   const mostCritical =
     attentionItems.find((item) => getSlaStatusNormalized(item) === "escalated") ||
     attentionItems.find((item) => getSlaStatusNormalized(item) === "breached") ||
-    attentionItems.find((item) => Boolean(item.escalation_queued)) ||
+    attentionItems.find((item) => getEscalationQueued(item)) ||
     attentionItems[0] ||
     null;
 
@@ -829,7 +1001,7 @@ export default async function SlaPage({ searchParams }: PageProps) {
                   >
                     {getSlaStatusLabel(focusItem)}
                   </span>
-                  {focusItem.escalation_queued ? (
+                  {getEscalationQueued(focusItem) ? (
                     <DashboardStatusBadge kind="queued" label="QUEUE ACTIVE" />
                   ) : null}
                 </div>
@@ -969,7 +1141,7 @@ export default async function SlaPage({ searchParams }: PageProps) {
               <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
                 {attentionItems.map((item) => (
                   <SlaListCard
-                    key={String(item.id)}
+                    key={String(getItemRecord(item).id || getFlowTarget(item) || Math.random())}
                     item={item}
                     activeWorkspaceId={activeWorkspaceId}
                   />
@@ -994,7 +1166,7 @@ export default async function SlaPage({ searchParams }: PageProps) {
               <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
                 {stableItems.map((item) => (
                   <SlaListCard
-                    key={String(item.id)}
+                    key={String(getItemRecord(item).id || getFlowTarget(item) || Math.random())}
                     item={item}
                     activeWorkspaceId={activeWorkspaceId}
                   />
