@@ -876,12 +876,10 @@ function buildIncidentHref(
   matchedIncident: IncidentItem | null,
   workspaceId: string
 ): string {
-  if (!matchedIncident) return "";
+  const incidentId = String(matchedIncident?.id || "").trim();
+  if (!incidentId) return "";
 
-  const routeId = getIncidentRouteId(matchedIncident);
-  if (!routeId) return "";
-
-  return buildHref(`/incidents/${encodeURIComponent(routeId)}`, {
+  return buildHref(`/incidents/${encodeURIComponent(incidentId)}`, {
     workspace_id: workspaceId || undefined,
   });
 }
@@ -1348,7 +1346,7 @@ export default async function CommandDetailPage({
                 />
                 <DiagnosticMeta
                   label="Matched incident"
-                  value={matchedIncident ? getIncidentRouteId(matchedIncident) : "Aucun incident lié trouvé"}
+                  value={matchedIncident?.id || "Aucun incident lié trouvé"}
                 />
                 <DiagnosticMeta label="Flow href" value={flowHref || "—"} />
               </div>
@@ -1379,7 +1377,7 @@ export default async function CommandDetailPage({
               />
               <DiagnosticMeta
                 label="Matched incident ID"
-                value={matchedIncident ? getIncidentRouteId(matchedIncident) : "Aucun incident lié trouvé"}
+                value={matchedIncident?.id || "Aucun incident lié trouvé"}
               />
             </div>
           </div>
