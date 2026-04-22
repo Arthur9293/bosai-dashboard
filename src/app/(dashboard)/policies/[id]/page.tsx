@@ -4,6 +4,9 @@ import { PageHeader } from "../../../../components/ui/page-header";
 import { DashboardCard } from "../../../../components/ui/dashboard-card";
 import { fetchPolicies, type PolicyItem } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type PageProps = {
   params:
     | Promise<{
@@ -211,7 +214,10 @@ function getPolicyStatusRaw(policy: PolicyItem): string {
 }
 
 function isPolicyEnabled(policy: PolicyItem): boolean {
-  return toBoolean(policy.enabled, getPolicyStatusRaw(policy).toLowerCase() !== "disabled");
+  return toBoolean(
+    policy.enabled,
+    getPolicyStatusRaw(policy).toLowerCase() !== "disabled"
+  );
 }
 
 function getPolicyStatusLabel(policy: PolicyItem): string {
@@ -290,7 +296,10 @@ function getSuggestedLabel(policy: PolicyItem): string {
   return "Voir les policies";
 }
 
-function sortRelatedPolicies(policies: PolicyItem[], current: PolicyItem): PolicyItem[] {
+function sortRelatedPolicies(
+  policies: PolicyItem[],
+  current: PolicyItem
+): PolicyItem[] {
   const currentId = getPolicyId(current) || getPolicyName(current);
 
   return [...policies]
@@ -398,7 +407,9 @@ export default async function PolicyDetailPage({ params }: PageProps) {
   const suggestedRoute = getSuggestedRoute(policy);
   const suggestedLabel = getSuggestedLabel(policy);
   const relatedPolicies = sortRelatedPolicies(policies, policy);
-  const activePoliciesCount = policies.filter((item) => isPolicyEnabled(item)).length;
+  const activePoliciesCount = policies.filter((item) =>
+    isPolicyEnabled(item)
+  ).length;
   const sameCategoryCount = policies.filter(
     (item) =>
       getPolicyCategory(item) === category &&
@@ -423,7 +434,11 @@ export default async function PolicyDetailPage({ params }: PageProps) {
           {category.toUpperCase()}
         </span>
 
-        <span className={toneChipClassName(isPolicyEnabled(policy) ? "success" : "danger")}>
+        <span
+          className={toneChipClassName(
+            isPolicyEnabled(policy) ? "success" : "danger"
+          )}
+        >
           {isPolicyEnabled(policy) ? "ENABLED" : "DISABLED"}
         </span>
 
@@ -431,9 +446,7 @@ export default async function PolicyDetailPage({ params }: PageProps) {
           {type.toUpperCase()}
         </span>
 
-        <span className={toneChipClassName("default")}>
-          {registrySource}
-        </span>
+        <span className={toneChipClassName("default")}>{registrySource}</span>
       </section>
 
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -453,10 +466,7 @@ export default async function PolicyDetailPage({ params }: PageProps) {
           value={enabled}
           tone={enabled === "Yes" ? "text-emerald-300" : "text-zinc-300"}
         />
-        <StatCard
-          label="Same category"
-          value={sameCategoryCount}
-        />
+        <StatCard label="Same category" value={sameCategoryCount} />
         <StatCard
           label="Registry active"
           value={activePoliciesCount}
@@ -526,11 +536,16 @@ export default async function PolicyDetailPage({ params }: PageProps) {
           <div className="space-y-4">
             <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
               <div className={metaLabelClassName()}>Suggested route</div>
-              <div className="mt-2 break-all text-zinc-200">{suggestedRoute}</div>
+              <div className="mt-2 break-all text-zinc-200">
+                {suggestedRoute}
+              </div>
             </div>
 
             <div className="flex flex-col gap-3">
-              <Link href={suggestedRoute} className={actionLinkClassName("primary")}>
+              <Link
+                href={suggestedRoute}
+                className={actionLinkClassName("primary")}
+              >
                 {suggestedLabel}
               </Link>
 
@@ -572,7 +587,9 @@ export default async function PolicyDetailPage({ params }: PageProps) {
                         </div>
                       </div>
 
-                      <span className={toneChipClassName(getStatusChipTone(item))}>
+                      <span
+                        className={toneChipClassName(getStatusChipTone(item))}
+                      >
                         {getPolicyStatusLabel(item)}
                       </span>
                     </div>
@@ -598,7 +615,10 @@ export default async function PolicyDetailPage({ params }: PageProps) {
               Voir toutes les policies
             </Link>
 
-            <Link href={suggestedRoute} className={actionLinkClassName("primary")}>
+            <Link
+              href={suggestedRoute}
+              className={actionLinkClassName("primary")}
+            >
               {suggestedLabel}
             </Link>
           </div>
