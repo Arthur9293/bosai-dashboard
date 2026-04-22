@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import {
@@ -13,9 +14,16 @@ import {
   DashboardStatusBadge,
   type DashboardStatusKind,
 } from "@/components/dashboard/StatusBadge";
+import {
+  resolveWorkspaceContext,
+  workspaceMatchesOrUnscoped,
+} from "@/lib/workspace";
+
+export const dynamic = "force-dynamic";
 
 type SearchParams = {
   workspace_id?: string | string[];
+  workspaceId?: string | string[];
   flow_id?: string | string[];
   root_event_id?: string | string[];
   source_event_id?: string | string[];
@@ -187,10 +195,6 @@ function uniq(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
-function isRecordIdLike(value: string): boolean {
-  return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
-}
-
 function compactTechnicalId(value: string, max = 34): string {
   const clean = value.trim();
   if (!clean) return "—";
@@ -200,6 +204,125 @@ function compactTechnicalId(value: string, max = 34): string {
   const keepEnd = Math.max(8, max - keepStart - 3);
 
   return `${clean.slice(0, keepStart)}...${clean.slice(-keepEnd)}`;
+}
+
+function safeResolveEventDetailActiveWorkspaceId(args: {
+  searchParams: SearchParams;
+  cookieValues: Record<string, string | undefined>;
+}): string {
+  try {
+    return resolveWorkspaceContext(args).activeWorkspaceId || "";
+  } catch {
+    return "";
+  }
+}
+
+function extractEventItems(payload: unknown): EventItem[] {
+  if (!payload) return [];
+
+  if (Array.isArray(payload)) {
+    return payload.filter(
+      (item): item is EventItem =>
+        Boolean(item) && typeof item === "object" && !Array.isArray(item)
+    );
+  }
+
+  if (typeof payload !== "object") return [];
+
+  const raw = payload as Record<string, unknown>;
+  const candidates: unknown[] = [
+    raw.events,
+    raw.items,
+    raw.results,
+    raw.records,
+    raw.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter(
+        (item): item is EventItem =>
+          Boolean(item) && typeof item === "object" && !Array.isArray(item)
+      );
+    }
+
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      const nested = candidate as Record<string, unknown>;
+      for (const key of ["events", "items", "results", "records", "data"]) {
+        const inner = nested[key];
+        if (Array.isArray(inner)) {
+          return inner.filter(
+            (item): item is EventItem =>
+              Boolean(item) && typeof item === "object" && !Array.isArray(item)
+          );
+        }
+      }
+    }
+  }
+
+  return [];
+}
+
+function extractCommandItems(payload: unknown): CommandItem[] {
+  if (!payload || typeof payload !== "object") return [];
+
+  const raw = payload as Record<string, unknown>;
+  const candidates: unknown[] = [
+    raw.commands,
+    raw.items,
+    raw.results,
+    raw.records,
+    raw.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as CommandItem[];
+    }
+
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      const nested = candidate as Record<string, unknown>;
+      for (const key of ["commands", "items", "results", "records", "data"]) {
+        const inner = nested[key];
+        if (Array.isArray(inner)) {
+          return inner as CommandItem[];
+        }
+      }
+    }
+  }
+
+  return [];
+}
+
+function extractIncidentItems(payload: unknown): IncidentItem[] {
+  if (!payload || typeof payload !== "object") return [];
+
+  const raw = payload as Record<string, unknown>;
+  const candidates: unknown[] = [
+    raw.incidents,
+    raw.items,
+    raw.results,
+    raw.records,
+    raw.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as IncidentItem[];
+    }
+
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      const nested = candidate as Record<string, unknown>;
+      for (const key of ["incidents", "items", "results", "records", "data"]) {
+        const inner = nested[key];
+        if (Array.isArray(inner)) {
+          return inner as IncidentItem[];
+        }
+      }
+    }
+  }
+
+  return [];
 }
 
 function getStatusBucket(status?: string): string {
@@ -655,7 +778,28 @@ export default async function EventDetailPage({
     : {};
 
   const id = decodeURIComponent(resolvedParams.id);
-  const activeWorkspaceId = firstParam(resolvedSearchParams.workspace_id).trim();
+  const cookieStore = await cookies();
+
+  const fallbackWorkspaceId = safeResolveEventDetailActiveWorkspaceId({
+    searchParams: resolvedSearchParams,
+    cookieValues: {
+      bosai_active_workspace_id:
+        cookieStore.get("bosai_active_workspace_id")?.value,
+      bosai_workspace_id: cookieStore.get("bosai_workspace_id")?.value,
+      workspace_id: cookieStore.get("workspace_id")?.value,
+      bosai_allowed_workspace_ids:
+        cookieStore.get("bosai_allowed_workspace_ids")?.value,
+      allowed_workspace_ids:
+        cookieStore.get("allowed_workspace_ids")?.value,
+    },
+  });
+
+  const activeWorkspaceId =
+    firstParam(resolvedSearchParams.workspace_id).trim() ||
+    firstParam(resolvedSearchParams.workspaceId).trim() ||
+    fallbackWorkspaceId ||
+    "";
+
   const incomingFlowId = firstParam(resolvedSearchParams.flow_id).trim();
   const incomingRootEventId = firstParam(resolvedSearchParams.root_event_id).trim();
   const incomingSourceEventId = firstParam(
@@ -666,11 +810,15 @@ export default async function EventDetailPage({
   let event: EventItem | null = null;
 
   try {
-    const data = await fetchEvents({
+    const rawEvents = await fetchEvents({
       limit: 500,
       workspaceId: activeWorkspaceId || undefined,
     });
-    const events = Array.isArray(data?.events) ? data.events : [];
+
+    const events = extractEventItems(rawEvents).filter((item) =>
+      workspaceMatchesOrUnscoped(getEventWorkspace(item), activeWorkspaceId)
+    );
+
     event = events.find((item) => String(item.id) === id) || null;
   } catch {
     event = null;
@@ -678,13 +826,14 @@ export default async function EventDetailPage({
 
   if (!event) {
     try {
-      const commandsData = await fetchCommands({
+      const rawCommands = await fetchCommands({
         limit: 500,
         workspaceId: activeWorkspaceId || undefined,
       });
-      const commands = Array.isArray(commandsData?.commands)
-        ? commandsData.commands
-        : [];
+
+      const commands = extractCommandItems(rawCommands).filter((command) =>
+        workspaceMatchesOrUnscoped(getCommandWorkspace(command), activeWorkspaceId)
+      );
 
       const matchedCommand =
         commands.find((command) => getCommandRootEventId(command) === id) ||
@@ -719,13 +868,20 @@ export default async function EventDetailPage({
 
   let matchedIncident: IncidentItem | null = null;
   try {
-    const incidentsData = await fetchIncidents({
+    const rawIncidents = await fetchIncidents({
       limit: 300,
       workspaceId: effectiveWorkspaceId || undefined,
     });
-    const incidents = Array.isArray(incidentsData?.incidents)
-      ? incidentsData.incidents
-      : [];
+
+    const incidents = extractIncidentItems(rawIncidents).filter((incident) =>
+      workspaceMatchesOrUnscoped(
+        toTextOrEmpty((incident as Record<string, unknown>).workspace_id) ||
+          toTextOrEmpty((incident as Record<string, unknown>).Workspace_ID) ||
+          toTextOrEmpty((incident as Record<string, unknown>).workspace) ||
+          toTextOrEmpty((incident as Record<string, unknown>).Workspace),
+        effectiveWorkspaceId
+      )
+    );
 
     const identifiers = [
       String(event.id || ""),
