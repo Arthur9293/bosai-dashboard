@@ -532,14 +532,28 @@ function getIncidentRouteId(incident: IncidentItem): string {
   return candidates[0] || "";
 }
 
+function getCanonicalWorkspaceForIncidentLinks(
+  incident: IncidentItem,
+  activeWorkspaceId?: string
+): string {
+  const incidentWorkspace = getWorkspace(incident).trim();
+  if (incidentWorkspace && incidentWorkspace !== "—") return incidentWorkspace;
+  return (activeWorkspaceId || "").trim();
+}
+
 function getFlowHref(incident: IncidentItem, activeWorkspaceId?: string): string {
   const target = getBestFlowTargetFromIncident(incident);
-  return target
-    ? appendWorkspaceIdToHref(
-        `/flows/${encodeURIComponent(target)}`,
-        activeWorkspaceId || getWorkspace(incident)
-      )
-    : "";
+  if (!target) return "";
+
+  const linkWorkspaceId = getCanonicalWorkspaceForIncidentLinks(
+    incident,
+    activeWorkspaceId
+  );
+
+  return appendWorkspaceIdToHref(
+    `/flows/${encodeURIComponent(target)}`,
+    linkWorkspaceId || undefined
+  );
 }
 
 function getCommandHref(
@@ -549,9 +563,14 @@ function getCommandHref(
   const commandTarget = getCommandRouteTargetFromIncident(incident);
   if (!commandTarget) return "";
 
+  const linkWorkspaceId = getCanonicalWorkspaceForIncidentLinks(
+    incident,
+    activeWorkspaceId
+  );
+
   return appendWorkspaceIdToHref(
     `/commands/${encodeURIComponent(commandTarget)}`,
-    activeWorkspaceId || getWorkspace(incident)
+    linkWorkspaceId || undefined
   );
 }
 
@@ -562,9 +581,14 @@ function getEventHref(
   const eventTarget = getEventTargetFromIncident(incident);
   if (!eventTarget) return "";
 
+  const linkWorkspaceId = getCanonicalWorkspaceForIncidentLinks(
+    incident,
+    activeWorkspaceId
+  );
+
   return appendWorkspaceIdToHref(
     `/events/${encodeURIComponent(eventTarget)}`,
-    activeWorkspaceId || getWorkspace(incident)
+    linkWorkspaceId || undefined
   );
 }
 
@@ -572,12 +596,17 @@ function getIncidentHref(
   incident: IncidentItem,
   activeWorkspaceId?: string
 ): string {
-  const routeId = getIncidentRouteId(incident);
-  if (!routeId) return "";
+  const canonicalIncidentId = String(incident.id || "").trim();
+  if (!canonicalIncidentId) return "";
+
+  const linkWorkspaceId = getCanonicalWorkspaceForIncidentLinks(
+    incident,
+    activeWorkspaceId
+  );
 
   return appendWorkspaceIdToHref(
-    `/incidents/${encodeURIComponent(routeId)}`,
-    activeWorkspaceId || getWorkspace(incident)
+    `/incidents/${encodeURIComponent(canonicalIncidentId)}`,
+    linkWorkspaceId || undefined
   );
 }
 
@@ -730,6 +759,16 @@ function SignalCard({
   );
 }
 
+function findIncidentInList(items: IncidentItem[], id: string): IncidentItem | null {
+  const cleanItems = items.filter((item) => !isLegacyNoiseIncident(item));
+
+  return (
+    cleanItems.find((item) => matchesIncidentRouteId(item, id)) ||
+    items.find((item) => matchesIncidentRouteId(item, id)) ||
+    null
+  );
+}
+
 export default async function IncidentDetailPage({
   params,
   searchParams,
@@ -766,33 +805,40 @@ export default async function IncidentDetailPage({
     firstParam(resolvedSearchParams.source_event_id).trim();
   const incomingCommandId = firstParam(resolvedSearchParams.command_id).trim();
 
-  let data: IncidentsResponse | null = null;
+  let scopedData: IncidentsResponse | null = null;
 
   try {
-    data = await fetchIncidents({
+    scopedData = await fetchIncidents({
       workspaceId: activeWorkspaceId || undefined,
       limit: 500,
     });
   } catch {
-    data = null;
+    scopedData = null;
   }
 
-  const incidents: IncidentItem[] = Array.isArray(data?.incidents)
-    ? data.incidents
+  const scopedIncidents: IncidentItem[] = Array.isArray(scopedData?.incidents)
+    ? scopedData.incidents
     : [];
 
-  const workspaceScoped = incidents.filter((item) =>
+  const workspaceScoped = scopedIncidents.filter((item) =>
     workspaceMatchesOrUnscoped(getWorkspace(item), activeWorkspaceId)
   );
 
-  const cleanIncidents = workspaceScoped.filter(
-    (item) => !isLegacyNoiseIncident(item)
-  );
+  let incident = findIncidentInList(workspaceScoped, id);
 
-  const incident =
-    cleanIncidents.find((item) => matchesIncidentRouteId(item, id)) ||
-    workspaceScoped.find((item) => matchesIncidentRouteId(item, id)) ||
-    null;
+  if (!incident) {
+    try {
+      const fallbackData = await fetchIncidents({ limit: 500 });
+      const fallbackIncidents: IncidentItem[] = Array.isArray(
+        fallbackData?.incidents
+      )
+        ? fallbackData.incidents
+        : [];
+      incident = findIncidentInList(fallbackIncidents, id);
+    } catch {
+      incident = null;
+    }
+  }
 
   if (!incident) {
     notFound();
@@ -1191,7 +1237,7 @@ export default async function IncidentDetailPage({
             value={
               <MetaValueLink
                 href={getIncidentHref(incident, effectiveWorkspaceId)}
-                value={getIncidentRouteId(incident) || "—"}
+                value={String(incident.id || "") || "—"}
               />
             }
             breakAll
