@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -85,7 +86,8 @@ export default async function FlowsPage({
 }) {
   const params = await Promise.resolve(searchParams ?? {});
   const workspaceId = readSearchParam(params.workspace_id);
-  const view = (readSearchParam(params.view) || "all") as FlowView;
+  const rawView = readSearchParam(params.view) || "all";
+  const view = normalizeView(rawView);
   const query = readSearchParam(params.q).trim();
 
   const [commandsResult, incidentsResult] = await Promise.all([
@@ -362,6 +364,7 @@ export default async function FlowsPage({
           title="Needs attention"
           subtitle="Flows à surveiller en priorité. Cette section remonte ce qui mérite une lecture immédiate sans réécrire la logique métier."
           flows={needsAttention}
+          activeWorkspaceId={workspaceId}
         />
       ) : null}
 
@@ -370,6 +373,7 @@ export default async function FlowsPage({
           title="Flows actifs / récents"
           subtitle="Flows enrichis lisibles proprement, avec une hiérarchie plus cohérente avec le shell et le workspace hub."
           flows={healthyFlows}
+          activeWorkspaceId={workspaceId}
         />
       ) : null}
 
@@ -378,6 +382,7 @@ export default async function FlowsPage({
           title="Registry-only / partiels"
           subtitle="Lecture assumée quand le graphe causal complet n’est pas disponible. On garde l’information visible sans inventer une causalité absente."
           flows={registryOnlyFlows}
+          activeWorkspaceId={workspaceId}
         />
       ) : null}
     </div>
@@ -388,10 +393,12 @@ function FlowSection({
   title,
   subtitle,
   flows,
+  activeWorkspaceId,
 }: {
   title: string;
   subtitle: string;
   flows: FlowGroup[];
+  activeWorkspaceId: string;
 }) {
   return (
     <section className="space-y-3">
@@ -406,14 +413,53 @@ function FlowSection({
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {flows.map((flow) => (
-          <FlowCard key={flow.key} flow={flow} />
+          <FlowCard key={flow.key} flow={flow} activeWorkspaceId={activeWorkspaceId} />
         ))}
       </div>
     </section>
   );
 }
 
-function FlowCard({ flow }: { flow: FlowGroup }) {
+function FlowCard({
+  flow,
+  activeWorkspaceId,
+}: {
+  flow: FlowGroup;
+  activeWorkspaceId: string;
+}) {
+  const scopedWorkspaceId = activeWorkspaceId || flow.workspaceId || "";
+
+  const commandsHref = flow.flowId
+    ? buildHref("/commands", {
+        workspace_id: scopedWorkspaceId || undefined,
+        flow_id: flow.flowId,
+        from: "flows",
+      })
+    : buildHref("/commands", {
+        workspace_id: scopedWorkspaceId || undefined,
+        root_event_id: flow.rootEventId || undefined,
+        source_event_id: flow.sourceRecordId || undefined,
+        from: "flows",
+      });
+
+  const incidentsHref = flow.flowId
+    ? buildHref("/incidents", {
+        workspace_id: scopedWorkspaceId || undefined,
+        flow_id: flow.flowId,
+      })
+    : buildHref("/incidents", {
+        workspace_id: scopedWorkspaceId || undefined,
+        root_event_id: flow.rootEventId || undefined,
+        source_record_id: flow.sourceRecordId || undefined,
+      });
+
+  const eventsHref = flow.rootEventId
+    ? buildHref("/events", {
+        workspace_id: scopedWorkspaceId || undefined,
+        root_event_id: flow.rootEventId,
+      })
+    : "";
+
   return (
     <article className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm transition hover:shadow-md">
       <div className="space-y-4 p-5 sm:p-6">
@@ -498,46 +544,11 @@ function FlowCard({ flow }: { flow: FlowGroup }) {
         ) : null}
 
         <div className="flex flex-wrap gap-2 pt-0.5">
-          {flow.flowId ? (
-            <LinkButton href={buildHref("/commands", { flow_id: flow.flowId })}>
-              Voir les commandes
-            </LinkButton>
-          ) : (
-            <LinkButton
-              href={buildHref(
-                "/commands",
-                flow.rootEventId ? { root_event_id: flow.rootEventId } : {},
-              )}
-            >
-              Voir les commandes
-            </LinkButton>
-          )}
+          <LinkButton href={commandsHref}>Voir les commandes</LinkButton>
+          <LinkButton href={incidentsHref}>Voir les incidents</LinkButton>
 
-          {flow.flowId ? (
-            <LinkButton href={buildHref("/incidents", { flow_id: flow.flowId })}>
-              Voir les incidents
-            </LinkButton>
-          ) : (
-            <LinkButton
-              href={buildHref(
-                "/incidents",
-                flow.rootEventId
-                  ? { root_event_id: flow.rootEventId }
-                  : flow.sourceRecordId
-                    ? { source_record_id: flow.sourceRecordId }
-                    : {},
-              )}
-            >
-              Voir les incidents
-            </LinkButton>
-          )}
-
-          {flow.rootEventId ? (
-            <LinkButton
-              href={buildHref("/events", { root_event_id: flow.rootEventId })}
-            >
-              Voir les événements
-            </LinkButton>
+          {eventsHref ? (
+            <LinkButton href={eventsHref}>Voir les événements</LinkButton>
           ) : null}
         </div>
       </div>
@@ -621,7 +632,7 @@ function StatusBadge({ status }: { status: FlowStatus }) {
   );
 }
 
-function SoftBadge({ children }: { children: React.ReactNode }) {
+function SoftBadge({ children }: { children: ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700">
       {children}
@@ -636,7 +647,7 @@ function FilterPill({
 }: {
   href: string;
   active?: boolean;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <Link
@@ -665,7 +676,7 @@ function LinkButton({
   children,
 }: {
   href: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <Link
@@ -1136,6 +1147,21 @@ function normalizeFlowStatus(input: string): FlowStatus {
   }
 
   return "unknown";
+}
+
+function normalizeView(input: string): FlowView {
+  const value = input.trim().toLowerCase();
+  if (
+    value === "all" ||
+    value === "attention" ||
+    value === "running" ||
+    value === "success" ||
+    value === "registry" ||
+    value === "partial"
+  ) {
+    return value;
+  }
+  return "all";
 }
 
 function extractArray(input: unknown): any[] {
