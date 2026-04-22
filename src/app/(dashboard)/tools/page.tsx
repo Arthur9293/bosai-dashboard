@@ -5,7 +5,10 @@ import {
   DashboardStatusBadge,
   type DashboardStatusKind,
 } from "@/components/dashboard/StatusBadge";
-import { fetchTools, type ToolItem } from "../../../lib/api";
+import { fetchTools, type ToolItem } from "@/lib/api";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const fallbackTools: ToolItem[] = [
   {
@@ -167,7 +170,12 @@ function getToolId(tool: ToolItem): string {
 }
 
 function getToolName(tool: ToolItem): string {
-  return toText(tool.name, "") || toText(tool.tool_key, "") || getToolId(tool) || "Unknown tool";
+  return (
+    toText(tool.name, "") ||
+    toText(tool.tool_key, "") ||
+    getToolId(tool) ||
+    "Unknown tool"
+  );
 }
 
 function getToolDescription(tool: ToolItem): string {
@@ -353,7 +361,6 @@ function ToolCard({ tool }: { tool: ToolItem }) {
   const toolId = getToolId(tool);
   const toolName = getToolName(tool);
   const description = getToolDescription(tool);
-  const status = getToolStatus(tool);
   const category = getToolCategory(tool);
   const mode = getToolMode(tool);
   const enabled = isToolEnabled(tool);
@@ -419,7 +426,7 @@ export default async function ToolsPage() {
 
   try {
     const data = await fetchTools();
-    if (data?.tools?.length) {
+    if (Array.isArray(data?.tools) && data.tools.length > 0) {
       fetchedTools = data.tools;
       registrySource = "Dynamic registry";
     }
