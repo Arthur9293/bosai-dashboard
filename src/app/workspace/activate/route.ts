@@ -159,11 +159,23 @@ function resolveOnboardingPlanCode(args: {
   workspaceId?: string | null;
   cookieValues: Record<string, string | undefined>;
 }): CommercialPlanCode {
+  const workspaceId = text(args.workspaceId);
+  const inferredFromWorkspace = inferPlanCodeFromWorkspaceId(workspaceId);
+
+  /**
+   * Pour un workspace onboarding synthétique, le workspace_id courant
+   * doit être la source de vérité. Cela évite qu’un ancien cookie
+   * starter pollue une activation pro/agency/custom.
+   */
+  if (isOnboardingWorkspaceId(workspaceId)) {
+    return inferredFromWorkspace;
+  }
+
   return normalizePlanCode(
     args.cookieValues.bosai_plan_code ||
       args.cookieValues.plan_code ||
       args.cookieValues.selected_plan ||
-      inferPlanCodeFromWorkspaceId(args.workspaceId)
+      inferredFromWorkspace
   );
 }
 
@@ -194,10 +206,7 @@ function isLoginPath(path: string): boolean {
   );
 }
 
-function sanitizeRedirectTarget(
-  candidate: string,
-  fallback: string
-): string {
+function sanitizeRedirectTarget(candidate: string, fallback: string): string {
   const normalizedCandidate = normalizeInternalPath(candidate);
   const normalizedFallback =
     normalizeInternalPath(fallback) || DEFAULT_DASHBOARD_TARGET;
