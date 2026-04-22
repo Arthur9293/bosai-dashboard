@@ -143,6 +143,140 @@ function statusTone(
   return "default";
 }
 
+function inferCategoryFromDedicatedSpace(
+  dedicatedSpace?: string | null
+): WorkspaceSummary["category"] {
+  const normalized = text(dedicatedSpace).toLowerCase();
+
+  if (normalized === "agency_space") return "agency";
+  if (normalized === "company_space") return "company";
+  if (normalized === "freelance_space") return "freelance";
+  return "personal";
+}
+
+function inferPlanFromDedicatedSpace(
+  dedicatedSpace?: string | null
+): WorkspaceSummary["plan"] {
+  const normalized = text(dedicatedSpace).toLowerCase();
+
+  if (normalized === "agency_space") return "agency";
+  if (normalized === "company_space") return "company";
+  if (normalized === "freelance_space") return "freelance";
+  return "personal";
+}
+
+function inferPlanFromWorkspaceId(
+  workspaceId?: string | null
+): WorkspaceSummary["plan"] {
+  const normalized = text(workspaceId).toLowerCase();
+
+  if (normalized.endsWith("_agency")) return "agency";
+  if (normalized.endsWith("_custom")) return "company";
+  if (normalized.endsWith("_company")) return "company";
+  if (normalized.endsWith("_pro")) return "freelance";
+  if (normalized.endsWith("_starter")) return "personal";
+
+  return "personal";
+}
+
+function inferCategoryFromWorkspaceId(
+  workspaceId?: string | null,
+  fallback?: WorkspaceSummary["category"]
+): WorkspaceSummary["category"] {
+  const normalized = text(workspaceId).toLowerCase();
+
+  if (normalized.endsWith("_agency")) return "agency";
+  if (normalized.endsWith("_custom")) return "company";
+  if (normalized.endsWith("_company")) return "company";
+  if (normalized.endsWith("_pro")) return "freelance";
+  if (normalized.endsWith("_starter")) return "personal";
+
+  return fallback || "personal";
+}
+
+function inferSyntheticWorkspaceName(
+  category: WorkspaceSummary["category"]
+): string {
+  if (category === "agency") return "BOSAI Agency Workspace";
+  if (category === "company") return "BOSAI Company Workspace";
+  if (category === "freelance") return "BOSAI Freelance Workspace";
+  return "BOSAI Personal Workspace";
+}
+
+function dedupeMemberships(items: WorkspaceSummary[]): WorkspaceSummary[] {
+  const map = new Map<string, WorkspaceSummary>();
+
+  for (const item of items) {
+    const workspaceId = text(item.workspaceId);
+    if (!workspaceId) continue;
+
+    if (!map.has(workspaceId)) {
+      map.set(workspaceId, item);
+      continue;
+    }
+
+    const existing = map.get(workspaceId)!;
+    map.set(workspaceId, {
+      ...existing,
+      ...item,
+      isDefault: existing.isDefault || item.isDefault,
+    });
+  }
+
+  return Array.from(map.values());
+}
+
+function buildSyntheticWorkspaceFromSession(
+  session: Awaited<ReturnType<typeof resolveAuthSession>>
+): WorkspaceSummary | null {
+  const workspaceId = text(session.cookieSnapshot.activeWorkspaceId);
+  if (!workspaceId) return null;
+
+  const dedicatedSpace =
+    text((session as { target?: string | null }).target) ||
+    text(session.cookieSnapshot.dedicatedSpace);
+
+  const categoryFromDedicatedSpace = inferCategoryFromDedicatedSpace(dedicatedSpace);
+  const category = inferCategoryFromWorkspaceId(
+    workspaceId,
+    categoryFromDedicatedSpace
+  );
+
+  const planFromDedicatedSpace = inferPlanFromDedicatedSpace(dedicatedSpace);
+  const planFromWorkspaceId = inferPlanFromWorkspaceId(workspaceId);
+  const plan = planFromWorkspaceId || planFromDedicatedSpace || "personal";
+
+  return {
+    workspaceId,
+    slug: workspaceId,
+    name: inferSyntheticWorkspaceName(category),
+    category,
+    plan,
+    status: "active",
+    membershipRole: "owner",
+    membershipStatus: "active",
+    isDefault: true,
+  };
+}
+
+function pickActiveWorkspace(args: {
+  activeWorkspace: WorkspaceSummary | null;
+  memberships: WorkspaceSummary[];
+  cookieWorkspaceId: string;
+  syntheticWorkspace: WorkspaceSummary | null;
+}): WorkspaceSummary | null {
+  if (args.activeWorkspace) return args.activeWorkspace;
+
+  const cookieMatch = args.memberships.find(
+    (item) => text(item.workspaceId) === text(args.cookieWorkspaceId)
+  );
+  if (cookieMatch) return cookieMatch;
+
+  if (args.syntheticWorkspace) return args.syntheticWorkspace;
+
+  return args.memberships[0] || null;
+}
+
 function getDashboardRouteForCategory(category?: string | null): string {
   const normalized = text(category).toLowerCase();
 
@@ -171,22 +305,19 @@ function getCategoryHeadline(category?: string | null): string {
   return "Espace personnel orienté lecture simple et accès direct aux surfaces utiles.";
 }
 
-function getCategoryCards(category?: string | null): HubCard[] {
+function getCategoryCards(
+  category?: string | null,
+  entitlements?: WorkspaceEntitlements | null
+): HubCard[] {
   const normalized = text(category).toLowerCase();
 
   if (normalized === "agency") {
-    return [
+    const cards: HubCard[] = [
       {
         title: "Flows",
         description: "Entrée principale pour suivre les chaînes d’exécution.",
         href: "/flows",
         tone: "primary",
-      },
-      {
-        title: "Incidents",
-        description: "Suivre les incidents ouverts, critiques et escaladés.",
-        href: "/incidents",
-        tone: "soft",
       },
       {
         title: "Commands",
@@ -199,14 +330,25 @@ function getCategoryCards(category?: string | null): HubCard[] {
         href: "/sla",
       },
     ];
+
+    if (entitlements?.canViewIncidents) {
+      cards.splice(1, 0, {
+        title: "Incidents",
+        description: "Suivre les incidents ouverts, critiques et escaladés.",
+        href: "/incidents",
+        tone: "soft",
+      });
+    }
+
+    return cards;
   }
 
   if (normalized === "company") {
-    return [
+    const cards: HubCard[] = [
       {
-        title: "Workspaces",
-        description: "Piloter les tenants, quotas et détails d’espace.",
-        href: "/workspaces",
+        title: "Overview",
+        description: "Voir la posture globale du cockpit.",
+        href: "/overview",
         tone: "primary",
       },
       {
@@ -215,21 +357,31 @@ function getCategoryCards(category?: string | null): HubCard[] {
         href: "/settings",
         tone: "soft",
       },
-      {
-        title: "Overview",
-        description: "Voir la posture globale du cockpit.",
-        href: "/overview",
-      },
-      {
+    ];
+
+    if (entitlements?.canManageWorkspaces) {
+      cards.unshift({
+        title: "Workspaces",
+        description: "Piloter les tenants, quotas et détails d’espace.",
+        href: "/workspaces",
+        tone: "primary",
+      });
+      cards[1].tone = "soft";
+    }
+
+    if (entitlements?.canManagePolicies) {
+      cards.push({
         title: "Policies",
         description: "Consulter les politiques visibles et leurs détails.",
         href: "/policies",
-      },
-    ];
+      });
+    }
+
+    return cards;
   }
 
   if (normalized === "freelance") {
-    return [
+    const cards: HubCard[] = [
       {
         title: "Commands",
         description: "Entrée principale pour piloter l’exécution.",
@@ -253,10 +405,20 @@ function getCategoryCards(category?: string | null): HubCard[] {
         href: "/overview",
       },
     ];
+
+    if (entitlements?.canViewIncidents) {
+      cards.push({
+        title: "Incidents",
+        description: "Lire les incidents utiles à l’exécution.",
+        href: "/incidents",
+      });
+    }
+
+    return cards;
   }
 
   if (normalized === "personal") {
-    return [
+    const cards: HubCard[] = [
       {
         title: "Overview",
         description: "Point d’entrée principal du workspace personnel.",
@@ -270,16 +432,21 @@ function getCategoryCards(category?: string | null): HubCard[] {
         tone: "soft",
       },
       {
-        title: "Commands",
-        description: "Voir les actions exécutées par le control plane.",
-        href: "/commands",
-      },
-      {
         title: "Changer d’espace",
         description: "Basculer simplement vers un autre espace.",
         href: MANUAL_WORKSPACE_SELECT_HREF,
       },
     ];
+
+    if (entitlements?.canRunHttp) {
+      cards.splice(2, 0, {
+        title: "Commands",
+        description: "Voir les actions exécutées par le control plane.",
+        href: "/commands",
+      });
+    }
+
+    return cards;
   }
 
   return [
@@ -294,11 +461,6 @@ function getCategoryCards(category?: string | null): HubCard[] {
       description: "Lire les réglages visibles du cockpit.",
       href: "/settings",
       tone: "soft",
-    },
-    {
-      title: "Commands",
-      description: "Voir les actions exécutées par le control plane.",
-      href: "/commands",
     },
     {
       title: "Events",
@@ -703,7 +865,11 @@ function PersonalOperatingView({
   );
 }
 
-function AgencyPrioritySection() {
+function AgencyPrioritySection({
+  entitlements,
+}: {
+  entitlements?: WorkspaceEntitlements | null;
+}) {
   return (
     <section className={cardClassName()}>
       <div className="mb-4 text-lg font-medium text-white">
@@ -714,9 +880,11 @@ function AgencyPrioritySection() {
         <Link href="/flows" className={buttonClassName("primary")}>
           Ouvrir Flows
         </Link>
-        <Link href="/incidents" className={buttonClassName("soft")}>
-          Ouvrir Incidents
-        </Link>
+        {entitlements?.canViewIncidents ? (
+          <Link href="/incidents" className={buttonClassName("soft")}>
+            Ouvrir Incidents
+          </Link>
+        ) : null}
         <Link href="/sla" className={buttonClassName("default")}>
           Ouvrir SLA
         </Link>
@@ -737,7 +905,11 @@ function AgencyPrioritySection() {
   );
 }
 
-function CompanyPrioritySection() {
+function CompanyPrioritySection({
+  entitlements,
+}: {
+  entitlements?: WorkspaceEntitlements | null;
+}) {
   return (
     <section className={cardClassName()}>
       <div className="mb-4 text-lg font-medium text-white">
@@ -745,15 +917,19 @@ function CompanyPrioritySection() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Link href="/workspaces" className={buttonClassName("primary")}>
-          Ouvrir Workspaces
-        </Link>
+        {entitlements?.canManageWorkspaces ? (
+          <Link href="/workspaces" className={buttonClassName("primary")}>
+            Ouvrir Workspaces
+          </Link>
+        ) : null}
         <Link href="/settings" className={buttonClassName("soft")}>
           Ouvrir Settings
         </Link>
-        <Link href="/policies" className={buttonClassName("default")}>
-          Ouvrir Policies
-        </Link>
+        {entitlements?.canManagePolicies ? (
+          <Link href="/policies" className={buttonClassName("default")}>
+            Ouvrir Policies
+          </Link>
+        ) : null}
         <Link href="/overview" className={buttonClassName("default")}>
           Ouvrir Overview
         </Link>
@@ -771,7 +947,11 @@ function CompanyPrioritySection() {
   );
 }
 
-function FreelancePrioritySection() {
+function FreelancePrioritySection({
+  entitlements,
+}: {
+  entitlements?: WorkspaceEntitlements | null;
+}) {
   return (
     <section className={cardClassName()}>
       <div className="mb-4 text-lg font-medium text-white">
@@ -788,9 +968,15 @@ function FreelancePrioritySection() {
         <Link href="/events" className={buttonClassName("default")}>
           Ouvrir Events
         </Link>
-        <Link href="/overview" className={buttonClassName("default")}>
-          Ouvrir Overview
-        </Link>
+        {entitlements?.canViewIncidents ? (
+          <Link href="/incidents" className={buttonClassName("default")}>
+            Ouvrir Incidents
+          </Link>
+        ) : (
+          <Link href="/overview" className={buttonClassName("default")}>
+            Ouvrir Overview
+          </Link>
+        )}
       </div>
 
       <div className="mt-5 rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
@@ -805,7 +991,11 @@ function FreelancePrioritySection() {
   );
 }
 
-function PersonalPrioritySection() {
+function PersonalPrioritySection({
+  entitlements,
+}: {
+  entitlements?: WorkspaceEntitlements | null;
+}) {
   return (
     <section className={cardClassName()}>
       <div className="mb-4 text-lg font-medium text-white">
@@ -819,9 +1009,11 @@ function PersonalPrioritySection() {
         <Link href="/settings" className={buttonClassName("soft")}>
           Ouvrir Settings
         </Link>
-        <Link href="/commands" className={buttonClassName("default")}>
-          Ouvrir Commands
-        </Link>
+        {entitlements?.canRunHttp ? (
+          <Link href="/commands" className={buttonClassName("default")}>
+            Ouvrir Commands
+          </Link>
+        ) : null}
         <Link
           href={MANUAL_WORKSPACE_SELECT_HREF}
           className={buttonClassName("default")}
@@ -1112,274 +1304,6 @@ function PersonalWorkspaceSection({
   );
 }
 
-function AgencyPortfolioSection({
-  memberships,
-  activeWorkspaceId,
-}: {
-  memberships: WorkspaceSummary[];
-  activeWorkspaceId: string;
-}) {
-  return (
-    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-      <div className={cardClassName()}>
-        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className={sectionLabelClassName()}>Memberships</div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
-              Espaces accessibles
-            </div>
-          </div>
-
-          <Link
-            href={MANUAL_WORKSPACE_SELECT_HREF}
-            className={buttonClassName("soft")}
-          >
-            Changer d’espace
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3">
-          {memberships.map((workspace) => (
-            <WorkspaceCard
-              key={workspace.workspaceId}
-              workspace={workspace}
-              isActive={workspace.workspaceId === activeWorkspaceId}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">
-          Navigation rapide
-        </div>
-
-        <div className="grid grid-cols-1 gap-3">
-          <Link href="/flows" className={buttonClassName("primary")}>
-            Ouvrir la lane principale
-          </Link>
-
-          <Link
-            href={MANUAL_WORKSPACE_SELECT_HREF}
-            className={buttonClassName("soft")}
-          >
-            Changer d’espace
-          </Link>
-
-          <Link href="/overview" className={buttonClassName("default")}>
-            Ouvrir Overview
-          </Link>
-
-          <Link href="/settings" className={buttonClassName("default")}>
-            Ouvrir Settings
-          </Link>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function CompanyPortfolioSection({
-  memberships,
-  activeWorkspaceId,
-}: {
-  memberships: WorkspaceSummary[];
-  activeWorkspaceId: string;
-}) {
-  return (
-    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-      <div className={cardClassName()}>
-        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className={sectionLabelClassName()}>Memberships</div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
-              Périmètre workspace
-            </div>
-          </div>
-
-          <Link
-            href={MANUAL_WORKSPACE_SELECT_HREF}
-            className={buttonClassName("soft")}
-          >
-            Changer d’espace
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3">
-          {memberships.map((workspace) => (
-            <WorkspaceCard
-              key={workspace.workspaceId}
-              workspace={workspace}
-              isActive={workspace.workspaceId === activeWorkspaceId}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">
-          Navigation rapide
-        </div>
-
-        <div className="grid grid-cols-1 gap-3">
-          <Link href="/workspaces" className={buttonClassName("primary")}>
-            Ouvrir la lane principale
-          </Link>
-
-          <Link
-            href={MANUAL_WORKSPACE_SELECT_HREF}
-            className={buttonClassName("soft")}
-          >
-            Changer d’espace
-          </Link>
-
-          <Link href="/overview" className={buttonClassName("default")}>
-            Ouvrir Overview
-          </Link>
-
-          <Link href="/settings" className={buttonClassName("default")}>
-            Ouvrir Settings
-          </Link>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function FreelancePortfolioSection({
-  memberships,
-  activeWorkspaceId,
-}: {
-  memberships: WorkspaceSummary[];
-  activeWorkspaceId: string;
-}) {
-  return (
-    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-      <div className={cardClassName()}>
-        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className={sectionLabelClassName()}>Memberships</div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
-              Espaces accessibles
-            </div>
-          </div>
-
-          <Link
-            href={MANUAL_WORKSPACE_SELECT_HREF}
-            className={buttonClassName("soft")}
-          >
-            Changer d’espace
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3">
-          {memberships.map((workspace) => (
-            <WorkspaceCard
-              key={workspace.workspaceId}
-              workspace={workspace}
-              isActive={workspace.workspaceId === activeWorkspaceId}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">
-          Navigation rapide
-        </div>
-
-        <div className="grid grid-cols-1 gap-3">
-          <Link href="/commands" className={buttonClassName("primary")}>
-            Ouvrir la lane principale
-          </Link>
-
-          <Link
-            href={MANUAL_WORKSPACE_SELECT_HREF}
-            className={buttonClassName("soft")}
-          >
-            Changer d’espace
-          </Link>
-
-          <Link href="/overview" className={buttonClassName("default")}>
-            Ouvrir Overview
-          </Link>
-
-          <Link href="/settings" className={buttonClassName("default")}>
-            Ouvrir Settings
-          </Link>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function PersonalPortfolioSection({
-  memberships,
-  activeWorkspaceId,
-}: {
-  memberships: WorkspaceSummary[];
-  activeWorkspaceId: string;
-}) {
-  return (
-    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-      <div className={cardClassName()}>
-        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className={sectionLabelClassName()}>Memberships</div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
-              Espaces accessibles
-            </div>
-          </div>
-
-          <Link
-            href={MANUAL_WORKSPACE_SELECT_HREF}
-            className={buttonClassName("soft")}
-          >
-            Changer d’espace
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3">
-          {memberships.map((workspace) => (
-            <WorkspaceCard
-              key={workspace.workspaceId}
-              workspace={workspace}
-              isActive={workspace.workspaceId === activeWorkspaceId}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className={cardClassName()}>
-        <div className="mb-5 text-lg font-medium text-white">
-          Navigation rapide
-        </div>
-
-        <div className="grid grid-cols-1 gap-3">
-          <Link href="/overview" className={buttonClassName("primary")}>
-            Ouvrir la lane principale
-          </Link>
-
-          <Link
-            href={MANUAL_WORKSPACE_SELECT_HREF}
-            className={buttonClassName("soft")}
-          >
-            Changer d’espace
-          </Link>
-
-          <Link href="/settings" className={buttonClassName("default")}>
-            Ouvrir Settings
-          </Link>
-
-          <Link href="/commands" className={buttonClassName("default")}>
-            Ouvrir Commands
-          </Link>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function GenericWorkspaceSection({
   activeWorkspace,
   defaultLane,
@@ -1536,20 +1460,31 @@ export default async function WorkspaceHomePage() {
     redirect(AUTH_LOGIN_ROUTE);
   }
 
-  const memberships = session.context?.memberships ?? [];
-  const activeWorkspace = session.context?.activeWorkspace ?? null;
+  const rawMemberships = session.context?.memberships ?? [];
+  const syntheticWorkspace = buildSyntheticWorkspaceFromSession(session);
+
+  const memberships = dedupeMemberships(
+    syntheticWorkspace ? [...rawMemberships, syntheticWorkspace] : rawMemberships
+  );
+
+  const cookieWorkspaceId = text(session.cookieSnapshot.activeWorkspaceId);
+
+  const activeWorkspace = pickActiveWorkspace({
+    activeWorkspace: session.context?.activeWorkspace ?? null,
+    memberships,
+    cookieWorkspaceId,
+    syntheticWorkspace,
+  });
 
   if (!activeWorkspace) {
-    if (memberships.length === 0) {
-      redirect("/workspace/create");
-    }
-
     redirect(MANUAL_WORKSPACE_SELECT_HREF);
   }
 
+  const entitlements = session.context?.entitlements;
   const category = activeWorkspace.category;
-  const cards = getCategoryCards(category);
-  const defaultLane = getDashboardRouteForCategory(category);
+  const cards = getCategoryCards(category, entitlements);
+  const defaultLane =
+    cards[0]?.href || getDashboardRouteForCategory(category);
 
   return (
     <main className={pageWrapClassName()}>
@@ -1623,10 +1558,10 @@ export default async function WorkspaceHomePage() {
           <>
             <AgencyOperatingView
               memberships={memberships}
-              entitlements={session.context?.entitlements}
+              entitlements={entitlements}
             />
 
-            <AgencyPrioritySection />
+            <AgencyPrioritySection entitlements={entitlements} />
 
             <AgencyPortfolioSection
               memberships={memberships}
@@ -1636,17 +1571,17 @@ export default async function WorkspaceHomePage() {
             <AgencyWorkspaceSection
               activeWorkspace={activeWorkspace}
               defaultLane={defaultLane}
-              entitlements={session.context?.entitlements}
+              entitlements={entitlements}
             />
           </>
         ) : category === "company" ? (
           <>
             <CompanyOperatingView
               memberships={memberships}
-              entitlements={session.context?.entitlements}
+              entitlements={entitlements}
             />
 
-            <CompanyPrioritySection />
+            <CompanyPrioritySection entitlements={entitlements} />
 
             <CompanyPortfolioSection
               memberships={memberships}
@@ -1656,17 +1591,17 @@ export default async function WorkspaceHomePage() {
             <CompanyWorkspaceSection
               activeWorkspace={activeWorkspace}
               defaultLane={defaultLane}
-              entitlements={session.context?.entitlements}
+              entitlements={entitlements}
             />
           </>
         ) : category === "freelance" ? (
           <>
             <FreelanceOperatingView
               memberships={memberships}
-              entitlements={session.context?.entitlements}
+              entitlements={entitlements}
             />
 
-            <FreelancePrioritySection />
+            <FreelancePrioritySection entitlements={entitlements} />
 
             <FreelancePortfolioSection
               memberships={memberships}
@@ -1676,17 +1611,17 @@ export default async function WorkspaceHomePage() {
             <FreelanceWorkspaceSection
               activeWorkspace={activeWorkspace}
               defaultLane={defaultLane}
-              entitlements={session.context?.entitlements}
+              entitlements={entitlements}
             />
           </>
         ) : category === "personal" ? (
           <>
             <PersonalOperatingView
               memberships={memberships}
-              entitlements={session.context?.entitlements}
+              entitlements={entitlements}
             />
 
-            <PersonalPrioritySection />
+            <PersonalPrioritySection entitlements={entitlements} />
 
             <PersonalPortfolioSection
               memberships={memberships}
@@ -1696,7 +1631,7 @@ export default async function WorkspaceHomePage() {
             <PersonalWorkspaceSection
               activeWorkspace={activeWorkspace}
               defaultLane={defaultLane}
-              entitlements={session.context?.entitlements}
+              entitlements={entitlements}
             />
           </>
         ) : (
@@ -1712,7 +1647,7 @@ export default async function WorkspaceHomePage() {
             <GenericWorkspaceSection
               activeWorkspace={activeWorkspace}
               defaultLane={defaultLane}
-              entitlements={session.context?.entitlements}
+              entitlements={entitlements}
             />
           </>
         )}
