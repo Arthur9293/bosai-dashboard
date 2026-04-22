@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
@@ -409,7 +410,37 @@ function getRunRecord(incident: IncidentItem): string {
 }
 
 function getCommandRecord(incident: IncidentItem): string {
-  return firstText([incident.command_id, incident.linked_command], "—");
+  const record = incident as Record<string, unknown>;
+
+  return firstText(
+    [
+      incident.linked_command,
+      record.linked_command,
+      record.Linked_Command,
+      incident.command_id,
+      record.command_id,
+      record.Command_ID,
+    ],
+    "—"
+  );
+}
+
+function getCommandRouteTargetFromIncident(incident: IncidentItem): string {
+  const record = incident as Record<string, unknown>;
+
+  const candidates = uniq([
+    toText(incident.linked_command, ""),
+    toText(record.linked_command, ""),
+    toText(record.Linked_Command, ""),
+    toText(incident.command_id, ""),
+    toText(record.command_id, ""),
+    toText(record.Command_ID, ""),
+  ]);
+
+  const recordLike = candidates.find((value) => isRecordIdLike(value));
+  if (recordLike) return recordLike;
+
+  return candidates[0] || "";
 }
 
 function getFlowId(incident: IncidentItem): string {
@@ -516,11 +547,11 @@ function getCommandHref(
   incident: IncidentItem,
   activeWorkspaceId?: string
 ): string {
-  const commandRecord = getCommandRecord(incident);
-  if (!commandRecord || commandRecord === "—") return "";
+  const commandTarget = getCommandRouteTargetFromIncident(incident);
+  if (!commandTarget) return "";
 
   return appendWorkspaceIdToHref(
-    `/commands/${encodeURIComponent(commandRecord)}`,
+    `/commands/${encodeURIComponent(commandTarget)}`,
     activeWorkspaceId || getWorkspace(incident)
   );
 }
@@ -792,7 +823,8 @@ export default async function IncidentDetailPage({
   const nextAction = getNextAction(incident);
   const priorityScore = getPriorityScore(incident);
 
-  const effectiveWorkspaceId = activeWorkspaceId || (workspace !== "—" ? workspace : "");
+  const effectiveWorkspaceId =
+    activeWorkspaceId || (workspace !== "—" ? workspace : "");
 
   const flowHref = getFlowHref(incident, effectiveWorkspaceId);
   const commandHref = getCommandHref(incident, effectiveWorkspaceId);
@@ -818,7 +850,6 @@ export default async function IncidentDetailPage({
   const remainingMinutes = toNumber(incident.sla_remaining_minutes, Number.NaN);
 
   const flowTarget = flowId || sourceRecordId || rootEventId || "—";
-  const eventTarget = getEventTargetFromIncident(incident) || "—";
 
   const shellBadges: { label: string; tone?: ShellBadgeTone }[] = [
     { label: statusLabel, tone: getShellBadgeToneFromStatus(incident) },
@@ -901,7 +932,10 @@ export default async function IncidentDetailPage({
 
               <div className="space-y-2 text-sm leading-6 text-white/65">
                 <div>
-                  Workspace : <span className="text-white/90">{effectiveWorkspaceId || workspace}</span>
+                  Workspace :{" "}
+                  <span className="text-white/90">
+                    {effectiveWorkspaceId || workspace}
+                  </span>
                 </div>
                 <div>
                   Flow :{" "}
@@ -938,7 +972,10 @@ export default async function IncidentDetailPage({
                 Retour à la liste incidents
               </Link>
 
-              <Link href={allIncidentsHref} className={actionLinkClassName("primary")}>
+              <Link
+                href={allIncidentsHref}
+                className={actionLinkClassName("primary")}
+              >
                 Voir tous les incidents
               </Link>
 
@@ -1108,7 +1145,7 @@ export default async function IncidentDetailPage({
             </div>
           </div>
 
-          <div className={`${wideBoxClassName()} sm:col-span-2 xl:grid-cols-2 xl:col-span-2`}>
+          <div className={`${wideBoxClassName()} sm:col-span-2 xl:col-span-2`}>
             <div className={metaLabelClassName()}>Next action</div>
             <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
               {nextAction || "—"}
