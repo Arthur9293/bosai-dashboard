@@ -61,6 +61,10 @@ function subtleBoxClassName(): string {
   return "rounded-[22px] border border-white/10 bg-black/20 px-4 py-4";
 }
 
+function metaLabelClassName(): string {
+  return "text-[11px] uppercase tracking-[0.18em] text-zinc-500";
+}
+
 type NavCardProps = {
   href: string;
   eyebrow: string;
