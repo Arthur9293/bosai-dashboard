@@ -201,6 +201,10 @@ function isRecordIdLike(value: string): boolean {
   return /^rec[a-zA-Z0-9]+$/i.test(value.trim());
 }
 
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
 function getIncidentTitle(incident: IncidentItem): string {
   return firstText(
     [incident.title, incident.name, incident.error_id],
@@ -472,6 +476,32 @@ function getEventTargetFromIncident(incident: IncidentItem): string {
   return "";
 }
 
+function getIncidentRouteCandidates(incident: IncidentItem): string[] {
+  const record = incident as Record<string, unknown>;
+
+  return uniq([
+    toText(incident.id, ""),
+    toText(record.record_id, ""),
+    toText(record.Record_ID, ""),
+    toText(record.incident_id, ""),
+    toText(record.Incident_ID, ""),
+    toText(incident.error_id, ""),
+  ]);
+}
+
+function matchesIncidentRouteId(incident: IncidentItem, id: string): boolean {
+  const needle = id.trim();
+  if (!needle) return false;
+  return getIncidentRouteCandidates(incident).includes(needle);
+}
+
+function getIncidentRouteId(incident: IncidentItem): string {
+  const candidates = getIncidentRouteCandidates(incident);
+  const recordLike = candidates.find((value) => isRecordIdLike(value));
+  if (recordLike) return recordLike;
+  return candidates[0] || "";
+}
+
 function getFlowHref(incident: IncidentItem, activeWorkspaceId?: string): string {
   const target = getBestFlowTargetFromIncident(incident);
   return target
@@ -512,8 +542,11 @@ function getIncidentHref(
   incident: IncidentItem,
   activeWorkspaceId?: string
 ): string {
+  const routeId = getIncidentRouteId(incident);
+  if (!routeId) return "";
+
   return appendWorkspaceIdToHref(
-    `/incidents/${encodeURIComponent(String(incident.id))}`,
+    `/incidents/${encodeURIComponent(routeId)}`,
     activeWorkspaceId || getWorkspace(incident)
   );
 }
@@ -727,10 +760,8 @@ export default async function IncidentDetailPage({
   );
 
   const incident =
-    cleanIncidents.find((item) => String(item.id) === id) ||
-    cleanIncidents.find((item) => toText(item.error_id, "") === id) ||
-    workspaceScoped.find((item) => String(item.id) === id) ||
-    workspaceScoped.find((item) => toText(item.error_id, "") === id) ||
+    cleanIncidents.find((item) => matchesIncidentRouteId(item, id)) ||
+    workspaceScoped.find((item) => matchesIncidentRouteId(item, id)) ||
     null;
 
   if (!incident) {
@@ -1077,7 +1108,7 @@ export default async function IncidentDetailPage({
             </div>
           </div>
 
-          <div className={`${wideBoxClassName()} sm:col-span-2 xl:col-span-2`}>
+          <div className={`${wideBoxClassName()} sm:col-span-2 xl:grid-cols-2 xl:col-span-2`}>
             <div className={metaLabelClassName()}>Next action</div>
             <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
               {nextAction || "—"}
@@ -1121,7 +1152,12 @@ export default async function IncidentDetailPage({
 
           <MetaItem
             label="Record ID"
-            value={<MetaValueLink href={getIncidentHref(incident, effectiveWorkspaceId)} value={String(incident.id)} />}
+            value={
+              <MetaValueLink
+                href={getIncidentHref(incident, effectiveWorkspaceId)}
+                value={getIncidentRouteId(incident) || "—"}
+              />
+            }
             breakAll
           />
         </div>
