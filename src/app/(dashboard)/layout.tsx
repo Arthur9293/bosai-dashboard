@@ -12,7 +12,10 @@ import {
   resolveBosaiAccessState,
 } from "@/lib/onboarding-access";
 import { resolveWorkspaceAccess } from "@/lib/workspaces/resolver";
-import type { WorkspaceEntitlements } from "@/lib/workspaces/types";
+import type {
+  WorkspaceEntitlements,
+  WorkspaceSummary,
+} from "@/lib/workspaces/types";
 
 type DashboardLayoutProps = {
   children: ReactNode;
@@ -30,6 +33,146 @@ const FALLBACK_ENTITLEMENTS: WorkspaceEntitlements = {
 
 function text(value?: string | null): string {
   return String(value || "").trim();
+}
+
+function inferCategoryFromPlanCode(
+  planCode?: string | null
+): WorkspaceSummary["category"] {
+  const normalized = text(planCode).toLowerCase();
+
+  if (normalized === "agency") return "agency";
+  if (normalized === "custom" || normalized === "company") return "company";
+  if (normalized === "pro" || normalized === "freelance") return "freelance";
+  return "personal";
+}
+
+function inferPlanFromPlanCode(
+  planCode?: string | null
+): WorkspaceSummary["plan"] {
+  const normalized = text(planCode).toLowerCase();
+
+  if (normalized === "agency") return "agency";
+  if (normalized === "custom" || normalized === "company") return "company";
+  if (normalized === "pro" || normalized === "freelance") return "freelance";
+  return "personal";
+}
+
+function inferCategoryFromDedicatedSpace(
+  dedicatedSpace?: string | null
+): WorkspaceSummary["category"] {
+  const normalized = text(dedicatedSpace).toLowerCase();
+
+  if (normalized === "agency_space") return "agency";
+  if (normalized === "company_space") return "company";
+  if (normalized === "freelance_space") return "freelance";
+  return "personal";
+}
+
+function inferPlanFromDedicatedSpace(
+  dedicatedSpace?: string | null
+): WorkspaceSummary["plan"] {
+  const normalized = text(dedicatedSpace).toLowerCase();
+
+  if (normalized === "agency_space") return "agency";
+  if (normalized === "company_space") return "company";
+  if (normalized === "freelance_space") return "freelance";
+  return "personal";
+}
+
+function inferCategoryFromWorkspaceId(
+  workspaceId?: string | null,
+  fallback?: WorkspaceSummary["category"]
+): WorkspaceSummary["category"] {
+  const normalized = text(workspaceId).toLowerCase();
+
+  if (normalized.endsWith("_agency")) return "agency";
+  if (normalized.endsWith("_custom") || normalized.endsWith("_company")) {
+    return "company";
+  }
+  if (normalized.endsWith("_pro") || normalized.endsWith("_freelance")) {
+    return "freelance";
+  }
+  if (normalized.endsWith("_starter") || normalized.endsWith("_personal")) {
+    return "personal";
+  }
+
+  return fallback || "personal";
+}
+
+function inferPlanFromWorkspaceId(
+  workspaceId?: string | null,
+  fallback?: WorkspaceSummary["plan"]
+): WorkspaceSummary["plan"] {
+  const normalized = text(workspaceId).toLowerCase();
+
+  if (normalized.endsWith("_agency")) return "agency";
+  if (normalized.endsWith("_custom") || normalized.endsWith("_company")) {
+    return "company";
+  }
+  if (normalized.endsWith("_pro") || normalized.endsWith("_freelance")) {
+    return "freelance";
+  }
+  if (normalized.endsWith("_starter") || normalized.endsWith("_personal")) {
+    return "personal";
+  }
+
+  return fallback || "personal";
+}
+
+function inferSyntheticWorkspaceName(
+  category: WorkspaceSummary["category"]
+): string {
+  if (category === "agency") return "BOSAI Agency Workspace";
+  if (category === "company") return "BOSAI Company Workspace";
+  if (category === "freelance") return "BOSAI Freelance Workspace";
+  return "BOSAI Personal Workspace";
+}
+
+function buildSyntheticWorkspace(args: {
+  workspaceId: string;
+  dedicatedSpace?: string | null;
+  planCode?: string | null;
+}): WorkspaceSummary {
+  const categoryFromPlan = inferCategoryFromPlanCode(args.planCode);
+  const categoryFromDedicatedSpace = inferCategoryFromDedicatedSpace(
+    args.dedicatedSpace
+  );
+  const category = inferCategoryFromWorkspaceId(
+    args.workspaceId,
+    categoryFromPlan || categoryFromDedicatedSpace
+  );
+
+  const planFromPlan = inferPlanFromPlanCode(args.planCode);
+  const planFromDedicatedSpace = inferPlanFromDedicatedSpace(args.dedicatedSpace);
+  const plan = inferPlanFromWorkspaceId(
+    args.workspaceId,
+    planFromPlan || planFromDedicatedSpace
+  );
+
+  return {
+    workspaceId: args.workspaceId,
+    slug: args.workspaceId,
+    name: inferSyntheticWorkspaceName(category),
+    category,
+    plan,
+    status: "active",
+    membershipRole: "owner",
+    membershipStatus: "active",
+    isDefault: true,
+  };
+}
+
+function shouldUseSyntheticWorkspace(args: {
+  requestedWorkspaceId: string;
+  onboardingSignals: boolean;
+}): boolean {
+  const workspaceId = text(args.requestedWorkspaceId);
+
+  if (!workspaceId) return false;
+  if (workspaceId.startsWith("ws_onboarding_")) return true;
+  if (args.onboardingSignals) return true;
+
+  return false;
 }
 
 export default async function DashboardLayout({
@@ -63,14 +206,13 @@ export default async function DashboardLayout({
       cookieStore.get("force_commercial_onboarding")?.value,
   };
 
-  /**
-   * Priorité absolue :
-   * si un workspace dashboard valide existe, on entre.
-   * On ne laisse pas les cookies onboarding reprendre la main.
-   */
+  const requestedWorkspaceId =
+    text(session.cookieSnapshot.activeWorkspaceId) ||
+    text(onboardingCookieValues.bosai_pending_workspace_id);
+
   const resolution = await resolveWorkspaceAccess({
     userId: text(session.user?.userId),
-    requestedWorkspaceId: text(session.cookieSnapshot.activeWorkspaceId),
+    requestedWorkspaceId,
     nextPath: text(session.homeRoute) || "/overview",
     onboardingCookieValues,
   });
@@ -90,11 +232,39 @@ export default async function DashboardLayout({
     );
   }
 
-  /**
-   * La garde commerciale ne s'applique que si aucun workspace dashboard
-   * n'est autorisé.
-   */
-  if (hasCommercialOnboardingSignals(onboardingCookieValues)) {
+  const onboardingSignals = hasCommercialOnboardingSignals(onboardingCookieValues);
+
+  if (
+    shouldUseSyntheticWorkspace({
+      requestedWorkspaceId,
+      onboardingSignals,
+    })
+  ) {
+    const planCode =
+      text(onboardingCookieValues.selected_plan) ||
+      text(onboardingCookieValues.bosai_plan_code) ||
+      text(onboardingCookieValues.plan_code);
+
+    const dedicatedSpace =
+      text(session.cookieSnapshot.dedicatedSpace) ||
+      text(onboardingCookieValues.bosai_plan_code) ||
+      text(onboardingCookieValues.plan_code);
+
+    const syntheticWorkspace = buildSyntheticWorkspace({
+      workspaceId: requestedWorkspaceId,
+      dedicatedSpace,
+      planCode,
+    });
+
+    return (
+      <AppShell workspace={syntheticWorkspace} entitlements={FALLBACK_ENTITLEMENTS}>
+        <WorkspaceRouteMemory workspaceId={syntheticWorkspace.workspaceId} />
+        {children}
+      </AppShell>
+    );
+  }
+
+  if (onboardingSignals) {
     const accessState = resolveBosaiAccessState({
       cookieValues: onboardingCookieValues,
     });
