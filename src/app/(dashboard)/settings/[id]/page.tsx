@@ -87,11 +87,9 @@ function toPrettyJson(value: unknown): string {
   }
 }
 
-function getStatusChipTone(status?: string):
-  | "default"
-  | "success"
-  | "warning"
-  | "danger" {
+function getStatusChipTone(
+  status?: string
+): "default" | "success" | "warning" | "danger" {
   const s = String(status || "").trim().toLowerCase();
 
   if (s === "active") return "success";
@@ -101,12 +99,9 @@ function getStatusChipTone(status?: string):
   return "default";
 }
 
-function getCategoryChipTone(category?: string):
-  | "default"
-  | "info"
-  | "violet"
-  | "warning"
-  | "success" {
+function getCategoryChipTone(
+  category?: string
+): "default" | "info" | "violet" | "warning" | "success" {
   const c = String(category || "").trim().toLowerCase();
 
   if (c === "workspace") return "info";
@@ -217,8 +212,19 @@ export default async function SettingDetailPage({ params }: PageProps) {
   const relatedSettings = sortRelatedSettings(SETTINGS_REGISTRY, setting);
   const configPreview = toPrettyJson(setting.value);
   const activeSettingsCount = SETTINGS_REGISTRY.filter(
-    (item) => item.status === "active"
+    (item) => String(item.status || "").trim().toLowerCase() === "active"
   ).length;
+
+  const normalizedStatus = String(setting.status || "").trim().toLowerCase();
+  const safeSuggestedRoute =
+    typeof setting.suggestedRoute === "string" && setting.suggestedRoute.trim()
+      ? setting.suggestedRoute
+      : "/settings";
+  const safeSuggestedRouteLabel =
+    typeof setting.suggestedRouteLabel === "string" &&
+    setting.suggestedRouteLabel.trim()
+      ? setting.suggestedRouteLabel
+      : "Ouvrir la surface liée";
 
   return (
     <div className="space-y-8">
@@ -251,11 +257,13 @@ export default async function SettingDetailPage({ params }: PageProps) {
           label="Status"
           value={getStatusLabel(setting.status)}
           tone={
-            setting.status === "active"
+            normalizedStatus === "active"
               ? "text-emerald-300"
-              : setting.status === "paused"
+              : normalizedStatus === "paused"
                 ? "text-amber-300"
-                : "text-rose-300"
+                : normalizedStatus === "disabled"
+                  ? "text-rose-300"
+                  : "text-white"
           }
         />
         <StatCard
@@ -263,10 +271,7 @@ export default async function SettingDetailPage({ params }: PageProps) {
           value={setting.enabled ? "Yes" : "No"}
           tone={setting.enabled ? "text-emerald-300" : "text-zinc-300"}
         />
-        <StatCard
-          label="Same category"
-          value={sameCategoryCount}
-        />
+        <StatCard label="Same category" value={sameCategoryCount} />
         <StatCard
           label="Registry active"
           value={activeSettingsCount}
@@ -289,7 +294,7 @@ export default async function SettingDetailPage({ params }: PageProps) {
             <MetaCard label="ID" value={setting.id} breakAll />
             <MetaCard
               label="Suggested route"
-              value={String(setting.suggestedRoute || "—")}
+              value={safeSuggestedRoute}
               breakAll
             />
           </div>
@@ -343,16 +348,16 @@ export default async function SettingDetailPage({ params }: PageProps) {
             <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-4">
               <div className={metaLabelClassName()}>Suggested route</div>
               <div className="mt-2 break-all text-zinc-200">
-                {setting.suggestedRoute}
+                {safeSuggestedRoute}
               </div>
             </div>
 
             <div className="flex flex-col gap-3">
               <Link
-                href={setting.suggestedRoute}
+                href={safeSuggestedRoute}
                 className={actionLinkClassName("primary")}
               >
-                {setting.suggestedRouteLabel}
+                {safeSuggestedRouteLabel}
               </Link>
 
               <Link href="/settings" className={actionLinkClassName("soft")}>
@@ -414,10 +419,10 @@ export default async function SettingDetailPage({ params }: PageProps) {
             </Link>
 
             <Link
-              href={setting.suggestedRoute}
+              href={safeSuggestedRoute}
               className={actionLinkClassName("primary")}
             >
-              {setting.suggestedRouteLabel}
+              {safeSuggestedRouteLabel}
             </Link>
           </div>
         </DashboardCard>
