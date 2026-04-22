@@ -7,6 +7,9 @@ import {
 } from "@/components/dashboard/StatusBadge";
 import { fetchPolicies, type PolicyItem } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const fallbackPolicies: PolicyItem[] = [
   {
     id: "run_guardrails",
@@ -190,7 +193,10 @@ function getPolicyStatusRaw(policy: PolicyItem): string {
 }
 
 function isPolicyEnabled(policy: PolicyItem): boolean {
-  return toBoolean(policy.enabled, getPolicyStatusRaw(policy).toLowerCase() !== "disabled");
+  return toBoolean(
+    policy.enabled,
+    getPolicyStatusRaw(policy).toLowerCase() !== "disabled"
+  );
 }
 
 function getPolicyStatusLabel(policy: PolicyItem): string {
@@ -369,7 +375,11 @@ function PolicyCard({ policy }: { policy: PolicyItem }) {
           {getPolicyCategory(policy)}
         </span>
 
-        <span className={toneChipClassName(isPolicyEnabled(policy) ? "success" : "danger")}>
+        <span
+          className={toneChipClassName(
+            isPolicyEnabled(policy) ? "success" : "danger"
+          )}
+        >
           {isPolicyEnabled(policy) ? "ENABLED" : "DISABLED"}
         </span>
       </div>
@@ -455,22 +465,22 @@ export default async function PoliciesPage() {
         eyebrow="Capabilities"
         title="Policies"
         description="Inventaire des politiques BOSAI avec lecture du registre, de l’état d’activation et des catégories de contrôle."
-        badges={[
-          { label: "Policy registry", tone: "info" },
-          { label: "Guardrails aware", tone: "muted" },
-          { label: source, tone: "muted" },
-        ]}
-        actions={
-          <>
-            <Link href="/tools" className={actionLinkClassName("soft")}>
-              Ouvrir Tools
-            </Link>
-            <Link href="/settings" className={actionLinkClassName("default")}>
-              Voir Settings
-            </Link>
-          </>
-        }
       />
+
+      <section className="flex flex-wrap gap-2">
+        <span className={toneChipClassName("info")}>Policy registry</span>
+        <span className={toneChipClassName("default")}>Guardrails aware</span>
+        <span className={toneChipClassName("default")}>{source}</span>
+      </section>
+
+      <section className="flex flex-wrap gap-3">
+        <Link href="/tools" className={actionLinkClassName("soft")}>
+          Ouvrir Tools
+        </Link>
+        <Link href="/settings" className={actionLinkClassName("default")}>
+          Voir Settings
+        </Link>
+      </section>
 
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <StatCard label="Total policies" value={sortedPolicies.length} />
