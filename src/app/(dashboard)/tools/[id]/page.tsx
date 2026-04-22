@@ -4,6 +4,9 @@ import { PageHeader } from "../../../../components/ui/page-header";
 import { DashboardCard } from "../../../../components/ui/dashboard-card";
 import { fetchTools, type ToolItem } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type PageProps = {
   params:
     | Promise<{
@@ -171,6 +174,14 @@ function toBoolean(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
+function toPrettyJson(value: unknown): string {
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return JSON.stringify({ value: "unserializable" }, null, 2);
+  }
+}
+
 function getToolId(tool: ToolItem): string {
   return (
     toText(tool.id, "") ||
@@ -180,7 +191,12 @@ function getToolId(tool: ToolItem): string {
 }
 
 function getToolName(tool: ToolItem): string {
-  return toText(tool.name, "") || toText(tool.tool_key, "") || getToolId(tool) || "Unknown tool";
+  return (
+    toText(tool.name, "") ||
+    toText(tool.tool_key, "") ||
+    getToolId(tool) ||
+    "Unknown tool"
+  );
 }
 
 function getToolDescription(tool: ToolItem): string {
@@ -189,6 +205,16 @@ function getToolDescription(tool: ToolItem): string {
 
 function getToolStatus(tool: ToolItem): string {
   return toText(tool.status, "unknown");
+}
+
+function getToolStatusLabel(tool: ToolItem): string {
+  const status = getToolStatus(tool).toLowerCase();
+
+  if (status === "active") return "ACTIVE";
+  if (status === "paused") return "PAUSED";
+  if (status === "disabled") return "DISABLED";
+
+  return status ? status.toUpperCase() : "UNKNOWN";
 }
 
 function getToolCategory(tool: ToolItem): string {
@@ -275,8 +301,8 @@ function mergeTools(primary: ToolItem[], fallback: ToolItem[]): ToolItem[] {
   return Array.from(map.values());
 }
 
-function findTool(registry: ToolItem[], rawId: string): ToolItem | null {
-  const target = decodeURIComponent(rawId).trim().toLowerCase();
+function findTool(registry: ToolItem[], targetId: string): ToolItem | null {
+  const target = targetId.trim().toLowerCase();
   if (!target) return null;
 
   return (
@@ -415,7 +441,7 @@ export default async function ToolDetailPage({ params }: PageProps) {
 
   const name = getToolName(tool);
   const description = getToolDescription(tool);
-  const status = getToolStatus(tool).toUpperCase();
+  const status = getToolStatusLabel(tool);
   const enabled = isToolEnabled(tool) ? "Yes" : "No";
   const category = getToolCategory(tool);
   const toolKey = getToolKey(tool);
@@ -430,6 +456,7 @@ export default async function ToolDetailPage({ params }: PageProps) {
       getToolCategory(item).toLowerCase() === getToolCategory(tool).toLowerCase() &&
       getToolId(item).toLowerCase() !== getToolId(tool).toLowerCase()
   ).length;
+  const configPreview = toPrettyJson(tool);
 
   return (
     <div className="space-y-8">
@@ -452,13 +479,9 @@ export default async function ToolDetailPage({ params }: PageProps) {
           {isToolEnabled(tool) ? "ENABLED" : "DISABLED"}
         </span>
 
-        <span className={toneChipClassName("default")}>
-          {mode}
-        </span>
+        <span className={toneChipClassName("default")}>{mode}</span>
 
-        <span className={toneChipClassName("default")}>
-          {registrySource}
-        </span>
+        <span className={toneChipClassName("default")}>{registrySource}</span>
       </section>
 
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -478,10 +501,7 @@ export default async function ToolDetailPage({ params }: PageProps) {
           value={enabled}
           tone={enabled === "Yes" ? "text-emerald-300" : "text-zinc-300"}
         />
-        <StatCard
-          label="Same category"
-          value={sameCategoryCount}
-        />
+        <StatCard label="Same category" value={sameCategoryCount} />
         <StatCard
           label="Registry active"
           value={activeCount}
@@ -536,6 +556,15 @@ export default async function ToolDetailPage({ params }: PageProps) {
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <DashboardCard
+          title="Configuration preview"
+          subtitle="Aperçu brut du tool et de ses attributs visibles."
+        >
+          <pre className="overflow-x-auto rounded-[18px] border border-white/10 bg-black/30 p-4 text-xs leading-6 text-zinc-300">
+{configPreview}
+          </pre>
+        </DashboardCard>
+
+        <DashboardCard
           title="Suggested cockpit surface"
           subtitle="Surface la plus logique pour continuer la lecture."
         >
@@ -564,7 +593,9 @@ export default async function ToolDetailPage({ params }: PageProps) {
             </div>
           </div>
         </DashboardCard>
+      </section>
 
+      <section>
         <DashboardCard
           title="Related tools"
           subtitle="Autres tools de la même catégorie."
@@ -595,7 +626,7 @@ export default async function ToolDetailPage({ params }: PageProps) {
                       </div>
 
                       <span className={toneChipClassName(getStatusChipTone(item))}>
-                        {getToolStatus(item).toUpperCase()}
+                        {getToolStatusLabel(item)}
                       </span>
                     </div>
                   </Link>
