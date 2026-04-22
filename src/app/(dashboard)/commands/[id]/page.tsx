@@ -485,6 +485,36 @@ function getCommandCommandCandidates(command: CommandItem): string[] {
   return uniq([String(command.id || ""), getCommandParentId(command)]);
 }
 
+function getCommandRouteCandidates(command: CommandItem): string[] {
+  const input = getCommandInput(command);
+  const result = getCommandResult(command);
+  const record = command as Record<string, unknown>;
+
+  return uniq([
+    toTextOrEmpty(command.id),
+    toTextOrEmpty(record.command_id),
+    toTextOrEmpty(record.Command_ID),
+    toTextOrEmpty(record.linked_command),
+    toTextOrEmpty(record.Linked_Command),
+    toTextOrEmpty(record.record_id),
+    toTextOrEmpty(record.Record_ID),
+    toTextOrEmpty(input.command_id),
+    toTextOrEmpty(input.commandId),
+    toTextOrEmpty(input.linked_command),
+    toTextOrEmpty(input.linkedCommand),
+    toTextOrEmpty(result.command_id),
+    toTextOrEmpty(result.commandId),
+    toTextOrEmpty(result.linked_command),
+    toTextOrEmpty(result.linkedCommand),
+  ]);
+}
+
+function matchesCommandRouteId(command: CommandItem, candidateId: string): boolean {
+  const needle = candidateId.trim();
+  if (!needle) return false;
+  return getCommandRouteCandidates(command).includes(needle);
+}
+
 function getCommandRunCandidates(command: CommandItem): string[] {
   const input = getCommandInput(command);
   const result = getCommandResult(command);
@@ -718,6 +748,26 @@ function getIncidentFlowCandidates(incident: IncidentItem): string[] {
   ]);
 }
 
+function getIncidentRouteCandidates(incident: IncidentItem): string[] {
+  const record = incident as Record<string, unknown>;
+
+  return uniq([
+    toTextOrEmpty(incident.id),
+    toTextOrEmpty(record.record_id),
+    toTextOrEmpty(record.Record_ID),
+    toTextOrEmpty(record.incident_id),
+    toTextOrEmpty(record.Incident_ID),
+    toTextOrEmpty(incident.error_id),
+  ]);
+}
+
+function getIncidentRouteId(incident: IncidentItem): string {
+  const candidates = getIncidentRouteCandidates(incident);
+  const recordLike = candidates.find((value) => isRecordIdLike(value));
+  if (recordLike) return recordLike;
+  return candidates[0] || "";
+}
+
 function scoreIncidentMatch(incident: IncidentItem, command: CommandItem): number {
   let score = 0;
 
@@ -826,8 +876,12 @@ function buildIncidentHref(
   matchedIncident: IncidentItem | null,
   workspaceId: string
 ): string {
-  if (!matchedIncident?.id) return "";
-  return buildHref(`/incidents/${encodeURIComponent(matchedIncident.id)}`, {
+  if (!matchedIncident) return "";
+
+  const routeId = getIncidentRouteId(matchedIncident);
+  if (!routeId) return "";
+
+  return buildHref(`/incidents/${encodeURIComponent(routeId)}`, {
     workspace_id: workspaceId || undefined,
   });
 }
@@ -931,11 +985,24 @@ export default async function CommandDetailPage({
     command = await tryFetchCommandByIdScoped(id);
   }
 
+  if (!command) {
+    try {
+      const commandsData = await fetchCommands({
+        limit: 500,
+        workspaceId: activeWorkspaceId || undefined,
+      });
+      const commands = extractCommandsFromResponse(commandsData);
+      command = commands.find((item) => matchesCommandRouteId(item, id)) || null;
+    } catch {
+      command = null;
+    }
+  }
+
   if (!command && !activeWorkspaceId) {
     try {
       const commandsData = await fetchCommands({ limit: 500 });
       const commands = extractCommandsFromResponse(commandsData);
-      command = commands.find((item) => String(item.id) === id) || null;
+      command = commands.find((item) => matchesCommandRouteId(item, id)) || null;
     } catch {
       command = null;
     }
@@ -999,8 +1066,7 @@ export default async function CommandDetailPage({
 
   const commandIdText = String(command.id || "");
   const compactCommandId = compactTechnicalId(commandIdText, 30);
-  const flowTarget =
-    flowId || rootEventId || sourceEventId || "—";
+  const flowTarget = flowId || rootEventId || sourceEventId || "—";
 
   const commandsListHref = buildHref("/commands", {
     workspace_id: effectiveWorkspaceId || undefined,
@@ -1157,7 +1223,7 @@ export default async function CommandDetailPage({
                 breakAll
               />
 
-              {(toolKey || toolMode) ? (
+              {toolKey || toolMode ? (
                 <MetaItem
                   label="Tooling"
                   value={
@@ -1282,7 +1348,7 @@ export default async function CommandDetailPage({
                 />
                 <DiagnosticMeta
                   label="Matched incident"
-                  value={matchedIncident?.id || "Aucun incident lié trouvé"}
+                  value={matchedIncident ? getIncidentRouteId(matchedIncident) : "Aucun incident lié trouvé"}
                 />
                 <DiagnosticMeta label="Flow href" value={flowHref || "—"} />
               </div>
@@ -1313,7 +1379,7 @@ export default async function CommandDetailPage({
               />
               <DiagnosticMeta
                 label="Matched incident ID"
-                value={matchedIncident?.id || "Aucun incident lié trouvé"}
+                value={matchedIncident ? getIncidentRouteId(matchedIncident) : "Aucun incident lié trouvé"}
               />
             </div>
           </div>
