@@ -1304,6 +1304,274 @@ function PersonalWorkspaceSection({
   );
 }
 
+function AgencyPortfolioSection({
+  memberships,
+  activeWorkspaceId,
+}: {
+  memberships: WorkspaceSummary[];
+  activeWorkspaceId: string;
+}) {
+  return (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className={cardClassName()}>
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className={sectionLabelClassName()}>Memberships</div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
+              Espaces accessibles
+            </div>
+          </div>
+
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
+            Changer d’espace
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          {memberships.map((workspace) => (
+            <WorkspaceCard
+              key={workspace.workspaceId}
+              workspace={workspace}
+              isActive={workspace.workspaceId === activeWorkspaceId}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">
+          Navigation rapide
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          <Link href="/flows" className={buttonClassName("primary")}>
+            Ouvrir la lane principale
+          </Link>
+
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
+            Changer d’espace
+          </Link>
+
+          <Link href="/overview" className={buttonClassName("default")}>
+            Ouvrir Overview
+          </Link>
+
+          <Link href="/settings" className={buttonClassName("default")}>
+            Ouvrir Settings
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CompanyPortfolioSection({
+  memberships,
+  activeWorkspaceId,
+}: {
+  memberships: WorkspaceSummary[];
+  activeWorkspaceId: string;
+}) {
+  return (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className={cardClassName()}>
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className={sectionLabelClassName()}>Memberships</div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
+              Périmètre workspace
+            </div>
+          </div>
+
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
+            Changer d’espace
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          {memberships.map((workspace) => (
+            <WorkspaceCard
+              key={workspace.workspaceId}
+              workspace={workspace}
+              isActive={workspace.workspaceId === activeWorkspaceId}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">
+          Navigation rapide
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          <Link href="/workspaces" className={buttonClassName("primary")}>
+            Ouvrir la lane principale
+          </Link>
+
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
+            Changer d’espace
+          </Link>
+
+          <Link href="/overview" className={buttonClassName("default")}>
+            Ouvrir Overview
+          </Link>
+
+          <Link href="/settings" className={buttonClassName("default")}>
+            Ouvrir Settings
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FreelancePortfolioSection({
+  memberships,
+  activeWorkspaceId,
+}: {
+  memberships: WorkspaceSummary[];
+  activeWorkspaceId: string;
+}) {
+  return (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className={cardClassName()}>
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className={sectionLabelClassName()}>Memberships</div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
+              Espaces accessibles
+            </div>
+          </div>
+
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
+            Changer d’espace
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          {memberships.map((workspace) => (
+            <WorkspaceCard
+              key={workspace.workspaceId}
+              workspace={workspace}
+              isActive={workspace.workspaceId === activeWorkspaceId}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">
+          Navigation rapide
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          <Link href="/commands" className={buttonClassName("primary")}>
+            Ouvrir la lane principale
+          </Link>
+
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
+            Changer d’espace
+          </Link>
+
+          <Link href="/overview" className={buttonClassName("default")}>
+            Ouvrir Overview
+          </Link>
+
+          <Link href="/settings" className={buttonClassName("default")}>
+            Ouvrir Settings
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PersonalPortfolioSection({
+  memberships,
+  activeWorkspaceId,
+}: {
+  memberships: WorkspaceSummary[];
+  activeWorkspaceId: string;
+}) {
+  return (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className={cardClassName()}>
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className={sectionLabelClassName()}>Memberships</div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">
+              Espaces accessibles
+            </div>
+          </div>
+
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
+            Changer d’espace
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          {memberships.map((workspace) => (
+            <WorkspaceCard
+              key={workspace.workspaceId}
+              workspace={workspace}
+              isActive={workspace.workspaceId === activeWorkspaceId}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className={cardClassName()}>
+        <div className="mb-5 text-lg font-medium text-white">
+          Navigation rapide
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          <Link href="/overview" className={buttonClassName("primary")}>
+            Ouvrir la lane principale
+          </Link>
+
+          <Link
+            href={MANUAL_WORKSPACE_SELECT_HREF}
+            className={buttonClassName("soft")}
+          >
+            Changer d’espace
+          </Link>
+
+          <Link href="/settings" className={buttonClassName("default")}>
+            Ouvrir Settings
+          </Link>
+
+          <Link href="/commands" className={buttonClassName("default")}>
+            Ouvrir Commands
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function GenericWorkspaceSection({
   activeWorkspace,
   defaultLane,
@@ -1483,8 +1751,7 @@ export default async function WorkspaceHomePage() {
   const entitlements = session.context?.entitlements;
   const category = activeWorkspace.category;
   const cards = getCategoryCards(category, entitlements);
-  const defaultLane =
-    cards[0]?.href || getDashboardRouteForCategory(category);
+  const defaultLane = cards[0]?.href || getDashboardRouteForCategory(category);
 
   return (
     <main className={pageWrapClassName()}>
