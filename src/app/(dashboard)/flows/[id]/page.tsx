@@ -1118,6 +1118,52 @@ function executiveRecommendationLabel(args: {
   return "Relire la timeline";
 }
 
+function controlPathLabel(args: {
+  hasIncident: boolean;
+  sourceEvent: EventItem | null;
+  investigationTarget: TimelineItem | null;
+  graphCommandsCount: number;
+}): string {
+  const { hasIncident, sourceEvent, investigationTarget, graphCommandsCount } = args;
+
+  if (hasIncident) return "Pilotage par incidents";
+  if (sourceEvent) return "Pilotage par event source";
+  if (investigationTarget) return "Pilotage par timeline";
+  if (graphCommandsCount > 0) return "Pilotage par graphe";
+  return "Pilotage par revue";
+}
+
+function controlNextActionLabel(args: {
+  hasIncident: boolean;
+  sourceEvent: EventItem | null;
+  investigationTarget: TimelineItem | null;
+  graphCommandsCount: number;
+  flowsAvailable: boolean;
+}): string {
+  const { hasIncident, sourceEvent, investigationTarget, graphCommandsCount, flowsAvailable } = args;
+
+  if (hasIncident) return "Ouvrir incidents puis confirmer l’état du flow";
+  if (investigationTarget) return `Ouvrir ${investigationTarget.capability}`;
+  if (sourceEvent) return "Vérifier l’event source";
+  if (graphCommandsCount > 0) return "Relire le graphe d’exécution";
+  if (flowsAvailable) return "Revenir à la liste des flows";
+  return "Aucune action prioritaire";
+}
+
+function controlSurfaceCount(args: {
+  hasIncident: boolean;
+  sourceEvent: EventItem | null;
+  graphCommandsCount: number;
+  investigationTarget: TimelineItem | null;
+}): number {
+  let count = 2; // flows + timeline
+  if (args.hasIncident) count += 1;
+  if (args.sourceEvent) count += 1;
+  if (args.graphCommandsCount > 0) count += 1;
+  if (args.investigationTarget) count += 1;
+  return count;
+}
+
 function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string): string {
   const flowId = toText(flow.flow_id);
 
@@ -1600,6 +1646,26 @@ export default async function FlowDetailPage({
     readingMode,
   });
 
+  const controlPath = controlPathLabel({
+    hasIncident,
+    sourceEvent,
+    investigationTarget,
+    graphCommandsCount: graphCommands.length,
+  });
+  const controlNextAction = controlNextActionLabel({
+    hasIncident,
+    sourceEvent,
+    investigationTarget,
+    graphCommandsCount: graphCommands.length,
+    flowsAvailable: true,
+  });
+  const controlSurfaces = controlSurfaceCount({
+    hasIncident,
+    sourceEvent,
+    graphCommandsCount: graphCommands.length,
+    investigationTarget,
+  });
+
   return (
     <ControlPlaneShell
       className="relative"
@@ -1904,6 +1970,104 @@ export default async function FlowDetailPage({
             ) : (
               <span className={actionLinkClassName("danger", true)}>
                 Ouvrir incidents
+              </span>
+            )}
+          </div>
+        </SectionCard>
+      </div>
+
+      <div id="control-layer">
+        <SectionCard
+          title="Control Layer"
+          description="Couche de pilotage locale pour savoir quelle voie de contrôle suivre et quelle action ouvrir ensuite selon l’état réel du flow."
+          action={<SectionCountPill value={controlSurfaces} tone="info" />}
+          className={blueSectionClassName()}
+        >
+          <div className="flex flex-wrap gap-2">
+            <DashboardStatusBadge
+              kind={flowStatusBadgeKind(resolvedStatus)}
+              label={flowStatusLabel(resolvedStatus)}
+            />
+            <DashboardStatusBadge
+              kind={hasIncident ? "incident" : "queued"}
+              label={controlPath.toUpperCase()}
+            />
+            <DashboardStatusBadge
+              kind={readingMode === "registry-only" ? "retry" : "success"}
+              label={readingMode === "registry-only" ? "MODE PARTIEL" : "MODE ENRICHI"}
+            />
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Voie de contrôle</div>
+              <div className="mt-2 text-zinc-100">{controlPath}</div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Surface principale à utiliser pour piloter ce flow.
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Action suivante</div>
+              <div className="mt-2 text-zinc-100">{controlNextAction}</div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Action de contrôle prioritaire recommandée.
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Surfaces disponibles</div>
+              <div className="mt-2 text-zinc-100">{controlSurfaces}</div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Nombre de points d’accès de pilotage visibles ici.
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Retour de contrôle</div>
+              <div className="mt-2 text-zinc-100">Liste des flows</div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Point de retour stable pour reprendre le pilotage global.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <Link href={flowsHref} className={actionLinkClassName("soft")}>
+              Revenir aux flows
+            </Link>
+
+            <a href="#flow-timeline" className={actionLinkClassName("soft")}>
+              Piloter via timeline
+            </a>
+
+            {graphCommands.length > 0 ? (
+              <a href="#flow-graph" className={actionLinkClassName("soft")}>
+                Piloter via graphe
+              </a>
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Piloter via graphe
+              </span>
+            )}
+
+            {sourceEventHref ? (
+              <Link href={sourceEventHref} className={actionLinkClassName("soft")}>
+                Ouvrir event source
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir event source
+              </span>
+            )}
+
+            {hasIncident ? (
+              <Link href={incidentsHref} className={actionLinkClassName("danger")}>
+                Contrôler incidents
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("danger", true)}>
+                Contrôler incidents
               </span>
             )}
           </div>
