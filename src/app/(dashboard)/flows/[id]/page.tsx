@@ -64,6 +64,7 @@ type TimelineItem = {
 };
 
 type ExecutiveRiskLevel = "critical" | "elevated" | "watch" | "stable";
+type ModuleExtensionState = "available" | "partial" | "unavailable";
 
 function cardClassName() {
   return "rounded-[28px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(6,18,45,0.78)_0%,rgba(4,10,26,0.64)_100%)] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
@@ -1156,12 +1157,36 @@ function controlSurfaceCount(args: {
   graphCommandsCount: number;
   investigationTarget: TimelineItem | null;
 }): number {
-  let count = 2; // flows + timeline
+  let count = 2;
   if (args.hasIncident) count += 1;
   if (args.sourceEvent) count += 1;
   if (args.graphCommandsCount > 0) count += 1;
   if (args.investigationTarget) count += 1;
   return count;
+}
+
+function moduleStateKind(state: ModuleExtensionState): DashboardStatusKind {
+  switch (state) {
+    case "available":
+      return "success";
+    case "partial":
+      return "retry";
+    case "unavailable":
+    default:
+      return "unknown";
+  }
+}
+
+function moduleStateLabel(state: ModuleExtensionState): string {
+  switch (state) {
+    case "available":
+      return "AVAILABLE";
+    case "partial":
+      return "PARTIAL";
+    case "unavailable":
+    default:
+      return "UNAVAILABLE";
+  }
 }
 
 function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string): string {
@@ -1666,6 +1691,27 @@ export default async function FlowDetailPage({
     investigationTarget,
   });
 
+  const moduleSignalState: ModuleExtensionState = "available";
+  const moduleInvestigationState: ModuleExtensionState = "available";
+  const moduleExecutiveState: ModuleExtensionState = "available";
+  const moduleControlState: ModuleExtensionState = "available";
+  const moduleEventSourceState: ModuleExtensionState = sourceEventHref
+    ? "available"
+    : sourceEvent
+      ? "partial"
+      : "unavailable";
+  const moduleGraphState: ModuleExtensionState =
+    graphCommands.length > 0
+      ? "available"
+      : readingMode === "registry-only"
+        ? "partial"
+        : "unavailable";
+  const moduleTimelineState: ModuleExtensionState =
+    sortedTimeline.length > 0 ? "available" : "partial";
+  const moduleIncidentsState: ModuleExtensionState = hasIncident
+    ? "available"
+    : "unavailable";
+
   return (
     <ControlPlaneShell
       className="relative"
@@ -2070,6 +2116,191 @@ export default async function FlowDetailPage({
                 Contrôler incidents
               </span>
             )}
+          </div>
+        </SectionCard>
+      </div>
+
+      <div id="module-extensions">
+        <SectionCard
+          title="Module Extensions"
+          description="Vue modulaire du flow pour exposer clairement quelles couches et quelles surfaces sont disponibles, partielles ou indisponibles."
+          action={<SectionCountPill value={8} tone="info" />}
+          className={blueSectionClassName()}
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Signal</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={moduleStateKind(moduleSignalState)}
+                  label={moduleStateLabel(moduleSignalState)}
+                />
+              </div>
+              <div className="mt-3 text-sm text-zinc-400">
+                Couche de signal visible et active.
+              </div>
+              <div className="mt-4">
+                <Link href={flowsHref} className={actionLinkClassName("soft")}>
+                  Ouvrir liste flows
+                </Link>
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Investigation</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={moduleStateKind(moduleInvestigationState)}
+                  label={moduleStateLabel(moduleInvestigationState)}
+                />
+              </div>
+              <div className="mt-3 text-sm text-zinc-400">
+                Point d’enquête et point chaud disponibles.
+              </div>
+              <div className="mt-4">
+                <a href="#investigation-layer" className={actionLinkClassName("soft")}>
+                  Ouvrir Investigation
+                </a>
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Executive</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={moduleStateKind(moduleExecutiveState)}
+                  label={moduleStateLabel(moduleExecutiveState)}
+                />
+              </div>
+              <div className="mt-3 text-sm text-zinc-400">
+                Synthèse dirigeant disponible.
+              </div>
+              <div className="mt-4">
+                <a href="#executive-layer" className={actionLinkClassName("soft")}>
+                  Ouvrir Executive
+                </a>
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Control</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={moduleStateKind(moduleControlState)}
+                  label={moduleStateLabel(moduleControlState)}
+                />
+              </div>
+              <div className="mt-3 text-sm text-zinc-400">
+                Pilotage local disponible.
+              </div>
+              <div className="mt-4">
+                <a href="#control-layer" className={actionLinkClassName("soft")}>
+                  Ouvrir Control
+                </a>
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Event source</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={moduleStateKind(moduleEventSourceState)}
+                  label={moduleStateLabel(moduleEventSourceState)}
+                />
+              </div>
+              <div className="mt-3 text-sm text-zinc-400">
+                {sourceEventHref
+                  ? "Source événement exploitable."
+                  : sourceEvent
+                    ? "Source partiellement ancrée."
+                    : "Aucune source événement directement exploitable."}
+              </div>
+              <div className="mt-4">
+                {sourceEventHref ? (
+                  <a href="#event-source" className={actionLinkClassName("soft")}>
+                    Ouvrir Event source
+                  </a>
+                ) : (
+                  <span className={actionLinkClassName("soft", true)}>
+                    Ouvrir Event source
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Graph</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={moduleStateKind(moduleGraphState)}
+                  label={moduleStateLabel(moduleGraphState)}
+                />
+              </div>
+              <div className="mt-3 text-sm text-zinc-400">
+                {graphCommands.length > 0
+                  ? "Graphe d’exécution exploitable."
+                  : readingMode === "registry-only"
+                    ? "Graphe partiel ou non reconstruit."
+                    : "Graphe indisponible."}
+              </div>
+              <div className="mt-4">
+                {graphCommands.length > 0 ? (
+                  <a href="#flow-graph" className={actionLinkClassName("soft")}>
+                    Ouvrir Graph
+                  </a>
+                ) : (
+                  <span className={actionLinkClassName("soft", true)}>
+                    Ouvrir Graph
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Timeline</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={moduleStateKind(moduleTimelineState)}
+                  label={moduleStateLabel(moduleTimelineState)}
+                />
+              </div>
+              <div className="mt-3 text-sm text-zinc-400">
+                {sortedTimeline.length > 0
+                  ? `${sortedTimeline.length} étape${sortedTimeline.length > 1 ? "s" : ""} disponible${sortedTimeline.length > 1 ? "s" : ""}.`
+                  : "Timeline partielle."}
+              </div>
+              <div className="mt-4">
+                <a href="#flow-timeline" className={actionLinkClassName("soft")}>
+                  Ouvrir Timeline
+                </a>
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Incidents</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <DashboardStatusBadge
+                  kind={moduleStateKind(moduleIncidentsState)}
+                  label={moduleStateLabel(moduleIncidentsState)}
+                />
+              </div>
+              <div className="mt-3 text-sm text-zinc-400">
+                {hasIncident
+                  ? `${incidentCount} incident${incidentCount > 1 ? "s" : ""} rattaché${incidentCount > 1 ? "s" : ""}.`
+                  : "Aucun incident rattaché."}
+              </div>
+              <div className="mt-4">
+                {hasIncident ? (
+                  <Link href={incidentsHref} className={actionLinkClassName("danger")}>
+                    Ouvrir Incidents
+                  </Link>
+                ) : (
+                  <span className={actionLinkClassName("danger", true)}>
+                    Ouvrir Incidents
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </SectionCard>
       </div>
