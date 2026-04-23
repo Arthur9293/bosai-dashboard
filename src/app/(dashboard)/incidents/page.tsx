@@ -67,7 +67,7 @@ function cardClassName(): string {
 }
 
 function actionLinkClassName(
-  variant: "default" | "primary" | "soft" | "danger" = "default"
+  variant: "default" | "primary" | "soft" | "danger" = "default",
 ): string {
   if (variant === "primary") {
     return "inline-flex w-full items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20";
@@ -188,7 +188,7 @@ function safeUpper(text: string): string {
 
 function buildHref(
   pathname: string,
-  params: Record<string, string | undefined>
+  params: Record<string, string | undefined>,
 ): string {
   const search = new URLSearchParams();
 
@@ -231,7 +231,7 @@ function extractIncidentItems(payload: unknown): IncidentItem[] {
   if (Array.isArray(payload)) {
     return payload.filter(
       (item): item is IncidentItem =>
-        Boolean(item) && typeof item === "object" && !Array.isArray(item)
+        Boolean(item) && typeof item === "object" && !Array.isArray(item),
     );
   }
 
@@ -250,7 +250,7 @@ function extractIncidentItems(payload: unknown): IncidentItem[] {
     if (Array.isArray(candidate)) {
       return candidate.filter(
         (item): item is IncidentItem =>
-          Boolean(item) && typeof item === "object" && !Array.isArray(item)
+          Boolean(item) && typeof item === "object" && !Array.isArray(item),
       );
     }
 
@@ -261,7 +261,7 @@ function extractIncidentItems(payload: unknown): IncidentItem[] {
         if (Array.isArray(inner)) {
           return inner.filter(
             (item): item is IncidentItem =>
-              Boolean(item) && typeof item === "object" && !Array.isArray(item)
+              Boolean(item) && typeof item === "object" && !Array.isArray(item),
           );
         }
       }
@@ -272,9 +272,7 @@ function extractIncidentItems(payload: unknown): IncidentItem[] {
 }
 
 function getIncidentTitle(incident: IncidentItem): string {
-  return (
-    incident.title || incident.name || incident.error_id || "Untitled incident"
-  );
+  return incident.title || incident.name || incident.error_id || "Untitled incident";
 }
 
 function getIncidentStatusRaw(incident: IncidentItem): string {
@@ -453,9 +451,7 @@ function getRootEventId(incident: IncidentItem): string {
 }
 
 function getSourceRecordId(incident: IncidentItem): string {
-  return toTextOrEmpty(
-    (incident as Record<string, unknown>).source_record_id
-  );
+  return toTextOrEmpty((incident as Record<string, unknown>).source_record_id);
 }
 
 function getCategory(incident: IncidentItem): string {
@@ -489,16 +485,12 @@ function getDecisionStatusDisplay(incident: IncidentItem): string {
 
 function getDecisionReasonDisplay(incident: IncidentItem): string {
   const reason = getDecisionReason(incident).trim();
-  return reason
-    ? normalizeDisplayText(reason)
-    : "NO DECISION REASON";
+  return reason ? normalizeDisplayText(reason) : "NO DECISION REASON";
 }
 
 function getNextActionDisplay(incident: IncidentItem): string {
   const action = getNextAction(incident).trim();
-  return action
-    ? normalizeDisplayText(action)
-    : "NO NEXT ACTION";
+  return action ? normalizeDisplayText(action) : "NO NEXT ACTION";
 }
 
 function getIncidentDisplayTitle(incident: IncidentItem): string {
@@ -547,7 +539,7 @@ function getSummaryLine(incident: IncidentItem): string {
   const status = getIncidentStatusNormalized(incident);
 
   return `${safeUpper(status)} · ${getIncidentSeverityDisplayLabel(
-    incident
+    incident,
   )} · ${getWorkspaceDisplay(incident)} · ${getCategoryDisplay(incident)}`;
 }
 
@@ -565,7 +557,7 @@ function getActivePriority(incident: IncidentItem): number {
 
 function getIncidentTimestampForSort(incident: IncidentItem): number {
   return new Date(
-    getUpdatedAt(incident) || getOpenedAt(incident) || getResolvedAt(incident) || 0
+    getUpdatedAt(incident) || getOpenedAt(incident) || getResolvedAt(incident) || 0,
   ).getTime();
 }
 
@@ -581,10 +573,10 @@ function sortActiveIncidents(items: IncidentItem[]): IncidentItem[] {
 function sortResolvedIncidents(items: IncidentItem[]): IncidentItem[] {
   return [...items].sort((a, b) => {
     const aTs = new Date(
-      getResolvedAt(a) || getUpdatedAt(a) || getOpenedAt(a) || 0
+      getResolvedAt(a) || getUpdatedAt(a) || getOpenedAt(a) || 0,
     ).getTime();
     const bTs = new Date(
-      getResolvedAt(b) || getUpdatedAt(b) || getOpenedAt(b) || 0
+      getResolvedAt(b) || getUpdatedAt(b) || getOpenedAt(b) || 0,
     ).getTime();
 
     return bTs - aTs;
@@ -593,10 +585,10 @@ function sortResolvedIncidents(items: IncidentItem[]): IncidentItem[] {
 
 function latestIncidentByStatus(
   items: IncidentItem[],
-  status: "open" | "escalated" | "resolved"
+  status: "open" | "escalated" | "resolved",
 ): IncidentItem | null {
   const filtered = items.filter(
-    (item) => getIncidentStatusNormalized(item) === status
+    (item) => getIncidentStatusNormalized(item) === status,
   );
   const sorted =
     status === "resolved"
@@ -657,7 +649,7 @@ function incidentMatchesFilters(
     rootEventId: string;
     sourceRecordId: string;
     commandId: string;
-  }
+  },
 ): boolean {
   const filterValues = [
     filters.flowId,
@@ -706,7 +698,7 @@ function getBackToFlowsHref(
     rootEventId: string;
     sourceRecordId: string;
   },
-  activeWorkspaceId?: string
+  activeWorkspaceId?: string,
 ): string {
   const target = getBestFlowTargetFromFilters(filters);
   const baseHref = target ? `/flows/${encodeURIComponent(target)}` : "/flows";
@@ -714,7 +706,7 @@ function getBackToFlowsHref(
 }
 
 function getIncidentStatusBadgeKind(
-  incident: IncidentItem
+  incident: IncidentItem,
 ): DashboardStatusKind {
   const status = getIncidentStatusNormalized(incident);
 
@@ -725,7 +717,7 @@ function getIncidentStatusBadgeKind(
 }
 
 function getIncidentSeverityBadgeKind(
-  incident: IncidentItem
+  incident: IncidentItem,
 ): DashboardStatusKind {
   const severity = getIncidentSeverityNormalized(incident);
 
@@ -737,7 +729,7 @@ function getIncidentSeverityBadgeKind(
 }
 
 function getIncidentSlaBadgeKind(
-  incident: IncidentItem
+  incident: IncidentItem,
 ): DashboardStatusKind {
   const resolvedLike =
     Boolean(incident.resolved_at) ||
@@ -762,7 +754,7 @@ function getIncidentSlaBadgeKind(
 }
 
 function getDecisionBadgeKind(
-  incident: IncidentItem
+  incident: IncidentItem,
 ): DashboardStatusKind {
   const decision = getDecisionStatus(incident).toLowerCase();
 
@@ -792,7 +784,7 @@ function getIncidentHref(
     sourceRecordId?: string;
     commandId?: string;
     from?: string;
-  }
+  },
 ): string {
   return buildHref(`/incidents/${encodeURIComponent(incident.id)}`, {
     workspace_id: activeWorkspaceId || getIncidentWorkspaceId(incident) || undefined,
@@ -807,20 +799,20 @@ function getIncidentHref(
 
 function getFlowHref(
   incident: IncidentItem,
-  activeWorkspaceId?: string
+  activeWorkspaceId?: string,
 ): string {
   const flowTarget = getBestFlowTargetFromIncident(incident);
   return flowTarget
     ? appendWorkspaceIdToHref(
         `/flows/${encodeURIComponent(flowTarget)}`,
-        activeWorkspaceId || getIncidentWorkspaceId(incident)
+        activeWorkspaceId || getIncidentWorkspaceId(incident),
       )
     : "";
 }
 
 function getCommandHref(
   incident: IncidentItem,
-  activeWorkspaceId?: string
+  activeWorkspaceId?: string,
 ): string {
   const commandRecord = getCommandRecord(incident);
   if (!commandRecord || commandRecord === "—") return "";
@@ -836,7 +828,7 @@ function getCommandHref(
 
 function getEventHref(
   incident: IncidentItem,
-  activeWorkspaceId?: string
+  activeWorkspaceId?: string,
 ): string {
   const eventTarget = getEventTargetFromIncident(incident);
   if (!eventTarget) return "";
@@ -913,7 +905,7 @@ function getMostRecentIncident(items: IncidentItem[]): IncidentItem | null {
   if (items.length === 0) return null;
 
   const sorted = [...items].sort(
-    (a, b) => getIncidentTimestampForSort(b) - getIncidentTimestampForSort(a)
+    (a, b) => getIncidentTimestampForSort(b) - getIncidentTimestampForSort(a),
   );
 
   return sorted[0] || null;
@@ -1024,14 +1016,14 @@ function getInvestigationEntryLabel(args: {
   if (flowHref) {
     return `Flow · ${compactTechnicalId(
       getBestFlowTargetFromIncident(incident),
-      48
+      48,
     )}`;
   }
 
   if (eventHref) {
     return `Event · ${compactTechnicalId(
       getEventTargetFromIncident(incident),
-      48
+      48,
     )}`;
   }
 
@@ -1136,6 +1128,79 @@ function getInvestigationPrimaryAction(args: {
     label: "Ouvrir le détail prioritaire",
     href: detailHref,
   };
+}
+
+function countAvailableControlSurfaces(
+  values: Array<string | undefined | null>,
+): number {
+  return Array.from(
+    new Set(values.map((value) => (value || "").trim()).filter(Boolean)),
+  ).length;
+}
+
+function getIncidentsControlRouteLabel(args: {
+  hasFilters: boolean;
+  focusIncident: IncidentItem | null;
+  primaryAction: InvestigationPrimaryAction | null;
+}): string {
+  const { hasFilters, focusIncident, primaryAction } = args;
+
+  if (!focusIncident) return "Aucune voie";
+  if (hasFilters) return "Pilotage depuis flow";
+
+  if (!primaryAction) return "Pilotage par incident";
+  if (primaryAction.key === "command") return "Pilotage par command";
+  if (primaryAction.key === "flow") return "Pilotage par flow";
+  if (primaryAction.key === "event") return "Pilotage par event";
+  return "Pilotage par incident";
+}
+
+function getIncidentsControlNextActionLabel(args: {
+  focusIncident: IncidentItem | null;
+  primaryAction: InvestigationPrimaryAction | null;
+}): string {
+  const { focusIncident, primaryAction } = args;
+
+  if (!focusIncident) return "Aucune action disponible";
+
+  const status = getIncidentStatusNormalized(focusIncident);
+  const sla = getSlaLabel(focusIncident);
+
+  if (status === "escalated" && primaryAction?.key === "command") {
+    return "Ouvrir la command prioritaire puis confirmer l’escalade";
+  }
+
+  if (sla === "BREACHED") {
+    return "Ouvrir le détail prioritaire puis confirmer le SLA";
+  }
+
+  if (primaryAction?.key === "flow") {
+    return "Ouvrir le flow prioritaire puis confirmer l’état global";
+  }
+
+  if (primaryAction?.key === "command") {
+    return "Ouvrir la command prioritaire puis confirmer l’impact";
+  }
+
+  if (primaryAction?.key === "event") {
+    return "Ouvrir l’event prioritaire puis confirmer la source";
+  }
+
+  return "Ouvrir le détail prioritaire puis confirmer l’état";
+}
+
+function getIncidentsControlReturnLabel(hasFilters: boolean): string {
+  return hasFilters ? "Retour au flow source" : "Liste des incidents";
+}
+
+function getIncidentsControlPrimaryCtaLabel(
+  primaryAction: InvestigationPrimaryAction | null,
+): string {
+  if (!primaryAction) return "Voir tous les incidents";
+  if (primaryAction.key === "flow") return "Ouvrir le flow prioritaire";
+  if (primaryAction.key === "command") return "Ouvrir la command prioritaire";
+  if (primaryAction.key === "event") return "Ouvrir l’event prioritaire";
+  return "Ouvrir le détail prioritaire";
 }
 
 function MetaItem({
@@ -1404,7 +1469,9 @@ function IncidentListCard({
             <InvestigationField
               label="Decision"
               value={decisionStatus}
-              valueClassName={getDecisionStatus(incident) ? "text-purple-300" : "text-zinc-400"}
+              valueClassName={
+                getDecisionStatus(incident) ? "text-purple-300" : "text-zinc-400"
+              }
             />
             <InvestigationField
               label="Decision reason"
@@ -1486,7 +1553,11 @@ function IncidentListCard({
             breakAll
           />
 
-          <MetaItem label="Root event" value={toText(rootEventId, "No root event")} breakAll />
+          <MetaItem
+            label="Root event"
+            value={toText(rootEventId, "No root event")}
+            breakAll
+          />
           <MetaItem label="Run record" value={toText(runRecord, "No run record")} breakAll />
 
           <MetaItem
@@ -1525,7 +1596,11 @@ function IncidentListCard({
 
           <MetaItem
             label="Resolved"
-            value={formatDate(getResolvedAt(incident)) === "—" ? "Not resolved yet" : formatDate(getResolvedAt(incident))}
+            value={
+              formatDate(getResolvedAt(incident)) === "—"
+                ? "Not resolved yet"
+                : formatDate(getResolvedAt(incident))
+            }
           />
 
           <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
@@ -1642,11 +1717,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   }
 
   const workspaceScoped = incidentsUnfiltered.filter((item) =>
-    workspaceMatchesOrUnscoped(getIncidentWorkspaceId(item), activeWorkspaceId)
+    workspaceMatchesOrUnscoped(getIncidentWorkspaceId(item), activeWorkspaceId),
   );
 
   const cleanNormalized = workspaceScoped.filter(
-    (item) => !isLegacyNoiseIncident(item)
+    (item) => !isLegacyNoiseIncident(item),
   );
 
   const hasFilters = Boolean(flowId || rootEventId || sourceRecordId || commandId);
@@ -1658,21 +1733,21 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
           rootEventId,
           sourceRecordId,
           commandId,
-        })
+        }),
       )
     : cleanNormalized;
 
   const openIncidents = visibleIncidents.filter(
-    (item) => getIncidentStatusNormalized(item) === "open"
+    (item) => getIncidentStatusNormalized(item) === "open",
   );
   const escalatedIncidents = visibleIncidents.filter(
-    (item) => getIncidentStatusNormalized(item) === "escalated"
+    (item) => getIncidentStatusNormalized(item) === "escalated",
   );
   const resolvedIncidents = visibleIncidents.filter(
-    (item) => getIncidentStatusNormalized(item) === "resolved"
+    (item) => getIncidentStatusNormalized(item) === "resolved",
   );
   const criticalIncidents = visibleIncidents.filter(
-    (item) => getIncidentSeverityNormalized(item) === "critical"
+    (item) => getIncidentSeverityNormalized(item) === "critical",
   );
 
   const activeIncidents = sortActiveIncidents([
@@ -1685,29 +1760,29 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const latestOpenIncident = latestIncidentByStatus(visibleIncidents, "open");
   const latestEscalatedIncident = latestIncidentByStatus(
     visibleIncidents,
-    "escalated"
+    "escalated",
   );
   const latestResolvedIncident = latestIncidentByStatus(
     visibleIncidents,
-    "resolved"
+    "resolved",
   );
 
   const criticalActiveIncidents = activeIncidents.filter(
-    (item) => getIncidentSeverityNormalized(item) === "critical"
+    (item) => getIncidentSeverityNormalized(item) === "critical",
   );
 
   const escalatedOrBreachedActiveIncidents = activeIncidents.filter(
     (item) =>
-      getIncidentStatusNormalized(item) === "escalated" || getSlaLabel(item) === "BREACHED"
+      getIncidentStatusNormalized(item) === "escalated" || getSlaLabel(item) === "BREACHED",
   );
 
   const signalGapIncidents = visibleIncidents.filter((item) =>
-    isSignalGapIncident(item)
+    isSignalGapIncident(item),
   );
 
   const signalReadyCount = Math.max(
     0,
-    visibleIncidents.length - signalGapIncidents.length
+    visibleIncidents.length - signalGapIncidents.length,
   );
 
   const mostRecentIncident = getMostRecentIncident(visibleIncidents);
@@ -1780,6 +1855,42 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
         eventHref: focusIncidentEventHref,
       })
     : null;
+
+  const controlRouteLabel = getIncidentsControlRouteLabel({
+    hasFilters,
+    focusIncident,
+    primaryAction: focusPrimaryInvestigationAction,
+  });
+
+  const controlNextAction = getIncidentsControlNextActionLabel({
+    focusIncident,
+    primaryAction: focusPrimaryInvestigationAction,
+  });
+
+  const controlReturnLabel = getIncidentsControlReturnLabel(hasFilters);
+
+  const controlBackHref = hasFilters
+    ? backToFlowsHref
+    : appendWorkspaceIdToHref("/flows", activeWorkspaceId);
+
+  const controlBackLabel = hasFilters ? "Retour au flow" : "Ouvrir Flows";
+
+  const controlPrimaryCtaHref =
+    focusPrimaryInvestigationAction?.href || allIncidentsHref;
+
+  const controlPrimaryCtaLabel = getIncidentsControlPrimaryCtaLabel(
+    focusPrimaryInvestigationAction,
+  );
+
+  const controlSurfaceCount = countAvailableControlSurfaces([
+    controlBackHref,
+    allIncidentsHref,
+    commandsHref,
+    focusIncidentDetailHref,
+    focusIncidentFlowHref,
+    focusIncidentCommandHref,
+    focusIncidentEventHref,
+  ]);
 
   const quickRead =
     escalatedIncidents.length > 0
@@ -1924,7 +2035,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     Flow :{" "}
                     <span className="break-all text-white/90">
                       {compactTechnicalId(
-                        getBestFlowTargetFromIncident(focusIncident)
+                        getBestFlowTargetFromIncident(focusIncident),
                       )}
                     </span>
                   </div>
@@ -1932,7 +2043,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     Activité :{" "}
                     <span className="text-white/90">
                       {formatDate(
-                        getUpdatedAt(focusIncident) || getOpenedAt(focusIncident)
+                        getUpdatedAt(focusIncident) || getOpenedAt(focusIncident),
                       )}
                     </span>
                   </div>
@@ -2076,7 +2187,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   {formatDate(
                     latestOpenIncident
                       ? getUpdatedAt(latestOpenIncident) || getOpenedAt(latestOpenIncident)
-                      : undefined
+                      : undefined,
                   )}
                 </div>
               </div>
@@ -2088,7 +2199,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     latestEscalatedIncident
                       ? getUpdatedAt(latestEscalatedIncident) ||
                           getOpenedAt(latestEscalatedIncident)
-                      : undefined
+                      : undefined,
                   )}
                 </div>
               </div>
@@ -2100,7 +2211,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     latestResolvedIncident
                       ? getResolvedAt(latestResolvedIncident) ||
                           getUpdatedAt(latestResolvedIncident)
-                      : undefined
+                      : undefined,
                   )}
                 </div>
               </div>
@@ -2315,10 +2426,10 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     ? `${formatDate(
                         getUpdatedAt(mostRecentIncident) ||
                           getOpenedAt(mostRecentIncident) ||
-                          getResolvedAt(mostRecentIncident)
+                          getResolvedAt(mostRecentIncident),
                       )} · ${compactTechnicalId(
                         getIncidentDisplayTitle(mostRecentIncident),
-                        56
+                        56,
                       )}`
                     : "—"
                 }
@@ -2347,6 +2458,92 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 }
               />
             </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Control Layer"
+            description="Couche de pilotage global pour savoir quelle voie suivre, quelle action ouvrir ensuite, quelle surface stable utiliser et quel CTA prioriser."
+            action={<SectionCountPill value={controlSurfaceCount} tone="info" />}
+          >
+            {focusIncident ? (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <DashboardStatusBadge
+                    kind={getIncidentStatusBadgeKind(focusIncident)}
+                    label={getIncidentStatusLabel(focusIncident)}
+                  />
+                  <DashboardStatusBadge
+                    kind="queued"
+                    label={safeUpper(controlRouteLabel)}
+                  />
+                  <DashboardStatusBadge
+                    kind={getIncidentSlaBadgeKind(focusIncident)}
+                    label={`SLA ${getSlaDisplayLabel(focusIncident)}`}
+                  />
+                  {isSignalGapIncident(focusIncident) ? (
+                    <DashboardStatusBadge kind="unknown" label="PARTIAL SIGNAL" />
+                  ) : null}
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <InvestigationField
+                    label="Control route"
+                    value={controlRouteLabel}
+                    valueClassName="text-sky-300"
+                  />
+                  <InvestigationField
+                    label="Next action"
+                    value={controlNextAction}
+                    valueClassName="text-white"
+                  />
+                  <InvestigationField
+                    label="Stable return surface"
+                    value={controlReturnLabel}
+                    valueClassName="text-zinc-200"
+                  />
+                  <InvestigationField
+                    label="Pilot surfaces"
+                    value={controlSurfaceCount}
+                    valueClassName="text-emerald-300"
+                  />
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <Link
+                    href={controlPrimaryCtaHref}
+                    className={actionLinkClassName("primary")}
+                  >
+                    {controlPrimaryCtaLabel}
+                  </Link>
+
+                  <Link
+                    href={controlBackHref}
+                    className={actionLinkClassName("soft")}
+                  >
+                    {controlBackLabel}
+                  </Link>
+
+                  {focusPrimaryInvestigationAction?.key !== "detail" &&
+                  focusIncidentDetailHref ? (
+                    <Link
+                      href={focusIncidentDetailHref}
+                      className={actionLinkClassName("soft")}
+                    >
+                      Ouvrir le détail
+                    </Link>
+                  ) : null}
+
+                  <Link href={commandsHref} className={actionLinkClassName("danger")}>
+                    Voir Commands
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <EmptyStatePanel
+                title="Aucun contrôle prioritaire"
+                description="Aucun incident n’est disponible pour construire une couche de pilotage globale."
+              />
+            )}
           </SectionCard>
 
           <SectionBlock
