@@ -550,9 +550,7 @@ function FlowCard({
             </SignalChip>
 
             <SignalChip
-              tone={
-                flow.registryOnly || flow.partial ? "warning" : "info"
-              }
+              tone={flow.registryOnly || flow.partial ? "warning" : "info"}
             >
               {observabilityLabel}
             </SignalChip>
