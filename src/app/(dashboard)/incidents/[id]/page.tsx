@@ -43,6 +43,8 @@ type ShellBadgeTone =
   | "danger"
   | "muted";
 
+type ExecutiveRiskLevel = "critical" | "elevated" | "watch" | "stable";
+
 function sectionFrameClassName(
   tone: "default" | "attention" | "neutral" = "default",
 ): string {
@@ -809,6 +811,86 @@ function getInvestigationRouteLabel(incident: IncidentItem): string {
   return "Lecture locale";
 }
 
+function getIncidentLinkCoverageCount(incident: IncidentItem): number {
+  return [
+    getBestFlowTargetFromIncident(incident),
+    getCommandRouteTargetFromIncident(incident),
+    getEventTargetFromIncident(incident),
+    getRunRecord(incident) !== "—" ? getRunRecord(incident) : "",
+  ].filter(Boolean).length;
+}
+
+function getExecutiveRiskLevel(incident: IncidentItem): ExecutiveRiskLevel {
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+  const sla = getSlaLabel(incident).toLowerCase();
+  const priorityScore = getPriorityScore(incident);
+
+  if (status === "resolved") return "stable";
+  if (status === "escalated" || severity === "critical" || sla === "breached") {
+    return "critical";
+  }
+  if (severity === "high" || sla === "warning" || priorityScore >= 80) {
+    return "elevated";
+  }
+  if (severity === "medium" || status === "open") {
+    return "watch";
+  }
+  return "stable";
+}
+
+function getExecutiveRiskLabel(level: ExecutiveRiskLevel): string {
+  if (level === "critical") return "Risque critique";
+  if (level === "elevated") return "Risque élevé";
+  if (level === "watch") return "À surveiller";
+  return "Stable";
+}
+
+function getExecutiveRiskBadgeKind(level: ExecutiveRiskLevel): DashboardStatusKind {
+  if (level === "critical") return "incident";
+  if (level === "elevated") return "retry";
+  if (level === "watch") return "queued";
+  return "success";
+}
+
+function getExecutiveImpactLabel(incident: IncidentItem): string {
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+  const sla = getSlaLabel(incident).toLowerCase();
+  const coverage = getIncidentLinkCoverageCount(incident);
+
+  if (status === "resolved") return "Impact contenu";
+  if (status === "escalated") return "Escalade active";
+  if (sla === "breached") return "Impact SLA réel";
+  if (severity === "critical" || severity === "high") {
+    return "Impact opérationnel probable";
+  }
+  if (coverage === 0) return "Contexte encore limité";
+  return "Impact localisé";
+}
+
+function getExecutiveCoverageLabel(incident: IncidentItem): string {
+  const coverage = getIncidentLinkCoverageCount(incident);
+
+  if (coverage >= 4) return "Couverture enrichie";
+  if (coverage >= 2) return "Couverture reliée";
+  if (coverage >= 1) return "Couverture partielle";
+  return "Couverture minimale";
+}
+
+function getExecutiveRecommendationLabel(incident: IncidentItem): string {
+  const nextAction = getNextAction(incident);
+  if (nextAction) return nextAction;
+
+  const decisionReason = getDecisionReason(incident);
+  if (decisionReason) return decisionReason;
+
+  const decisionStatus = getDecisionStatus(incident);
+  if (decisionStatus) return `Confirmer ${decisionStatus.toLowerCase()}`;
+
+  return getSuggestedAction(incident);
+}
+
 function MetaValueLink({
   href,
   value,
@@ -1022,6 +1104,12 @@ export default async function IncidentDetailPage({
   const investigationMode = getInvestigationModeLabel(incident);
   const investigationFocus = getInvestigationFocusLabel(incident);
   const investigationRoute = getInvestigationRouteLabel(incident);
+
+  const executiveRiskLevel = getExecutiveRiskLevel(incident);
+  const executiveRiskLabel = getExecutiveRiskLabel(executiveRiskLevel);
+  const executiveImpact = getExecutiveImpactLabel(incident);
+  const executiveCoverage = getExecutiveCoverageLabel(incident);
+  const executiveRecommendation = getExecutiveRecommendationLabel(incident);
 
   const shellBadges: { label: string; tone?: ShellBadgeTone }[] = [
     { label: statusLabel, tone: getShellBadgeToneFromStatus(incident) },
@@ -1354,6 +1442,97 @@ export default async function IncidentDetailPage({
             ) : (
               <span className={actionLinkClassName("soft", true)}>
                 Ouvrir l’event lié
+              </span>
+            )}
+
+            <Link href={allIncidentsHref} className={actionLinkClassName("danger")}>
+              Voir tous les incidents
+            </Link>
+          </div>
+        </SectionCard>
+      </div>
+
+      <div id="incident-executive-layer">
+        <SectionCard
+          title="Executive Layer"
+          description="Synthèse cockpit pour lire immédiatement le niveau de risque, l’impact probable, la couverture disponible et la recommandation prioritaire."
+          tone="neutral"
+          className={sectionFrameClassName("neutral")}
+        >
+          <div className="flex flex-wrap gap-2">
+            <DashboardStatusBadge
+              kind={getExecutiveRiskBadgeKind(executiveRiskLevel)}
+              label={executiveRiskLabel.toUpperCase()}
+            />
+            <DashboardStatusBadge
+              kind={getIncidentStatusBadgeKind(incident)}
+              label={statusLabel}
+            />
+            <DashboardStatusBadge
+              kind={getIncidentSlaBadgeKind(incident)}
+              label={`SLA ${slaLabel}`}
+            />
+            {decisionStatus ? (
+              <DashboardStatusBadge
+                kind={getDecisionBadgeKind(incident)}
+                label={`DECISION ${decisionStatus.toUpperCase()}`}
+              />
+            ) : null}
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <SignalCard
+              label="Risque"
+              value={executiveRiskLabel}
+              tone={
+                executiveRiskLevel === "critical"
+                  ? "danger"
+                  : executiveRiskLevel === "elevated"
+                    ? "warning"
+                    : executiveRiskLevel === "watch"
+                      ? "info"
+                      : "success"
+              }
+            />
+            <SignalCard
+              label="Impact"
+              value={executiveImpact}
+              tone="warning"
+            />
+            <SignalCard
+              label="Couverture"
+              value={executiveCoverage}
+              tone="info"
+            />
+            <SignalCard
+              label="Recommandation"
+              value={executiveRecommendation}
+              tone="success"
+            />
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <Link href={incidentsHref} className={actionLinkClassName("soft")}>
+              Retour aux incidents
+            </Link>
+
+            {flowHref ? (
+              <Link href={flowHref} className={actionLinkClassName("soft")}>
+                Ouvrir le flow lié
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir le flow lié
+              </span>
+            )}
+
+            {commandHref ? (
+              <Link href={commandHref} className={actionLinkClassName("primary")}>
+                Ouvrir la command liée
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("primary", true)}>
+                Ouvrir la command liée
               </span>
             )}
 
