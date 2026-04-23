@@ -44,7 +44,7 @@ type ShellBadgeTone =
   | "muted";
 
 function sectionFrameClassName(
-  tone: "default" | "attention" | "neutral" = "default"
+  tone: "default" | "attention" | "neutral" = "default",
 ): string {
   if (tone === "attention") {
     return "bg-[radial-gradient(120%_120%_at_100%_0%,rgba(245,158,11,0.08),transparent_48%),linear-gradient(180deg,rgba(7,18,43,0.72)_0%,rgba(3,8,22,0.56)_100%)]";
@@ -63,7 +63,7 @@ function sidePanelClassName(): string {
 
 function actionLinkClassName(
   variant: "default" | "primary" | "soft" | "danger" = "default",
-  disabled = false
+  disabled = false,
 ): string {
   const base =
     "inline-flex w-full items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition";
@@ -155,7 +155,7 @@ function firstParam(value?: string | string[]) {
 
 function buildHref(
   pathname: string,
-  params: Record<string, string | undefined>
+  params: Record<string, string | undefined>,
 ): string {
   const search = new URLSearchParams();
 
@@ -171,7 +171,7 @@ function buildHref(
 function appendWorkspaceAndParams(
   pathname: string,
   workspaceId?: string,
-  params?: Record<string, string | undefined>
+  params?: Record<string, string | undefined>,
 ): string {
   return buildHref(pathname, {
     workspace_id: workspaceId || undefined,
@@ -208,7 +208,7 @@ function uniq(values: string[]): string[] {
 function getIncidentTitle(incident: IncidentItem): string {
   return firstText(
     [incident.title, incident.name, incident.error_id],
-    "Untitled incident"
+    "Untitled incident",
   );
 }
 
@@ -289,7 +289,7 @@ function getIncidentSeverityLabel(incident: IncidentItem): string {
 }
 
 function getIncidentStatusBadgeKind(
-  incident: IncidentItem
+  incident: IncidentItem,
 ): DashboardStatusKind {
   const status = getIncidentStatusNormalized(incident);
 
@@ -300,7 +300,7 @@ function getIncidentStatusBadgeKind(
 }
 
 function getIncidentSeverityBadgeKind(
-  incident: IncidentItem
+  incident: IncidentItem,
 ): DashboardStatusKind {
   const severity = getIncidentSeverityNormalized(incident);
 
@@ -328,7 +328,7 @@ function getPriorityScore(incident: IncidentItem): number {
 }
 
 function getDecisionBadgeKind(
-  incident: IncidentItem
+  incident: IncidentItem,
 ): DashboardStatusKind {
   const decision = getDecisionStatus(incident).toLowerCase();
 
@@ -358,7 +358,7 @@ function getSlaLabel(incident: IncidentItem): string {
 }
 
 function getIncidentSlaBadgeKind(
-  incident: IncidentItem
+  incident: IncidentItem,
 ): DashboardStatusKind {
   const resolvedLike =
     Boolean(toText(incident.resolved_at, "")) ||
@@ -404,7 +404,7 @@ function getWorkspace(incident: IncidentItem): string {
 function getRunRecord(incident: IncidentItem): string {
   return firstText(
     [incident.run_record_id, incident.linked_run, incident.run_id],
-    "—"
+    "—",
   );
 }
 
@@ -420,7 +420,7 @@ function getCommandRecord(incident: IncidentItem): string {
       record.command_id,
       record.Command_ID,
     ],
-    "—"
+    "—",
   );
 }
 
@@ -534,7 +534,7 @@ function getIncidentRouteId(incident: IncidentItem): string {
 
 function getCanonicalWorkspaceForIncidentLinks(
   incident: IncidentItem,
-  activeWorkspaceId?: string
+  activeWorkspaceId?: string,
 ): string {
   const incidentWorkspace = getWorkspace(incident).trim();
   if (incidentWorkspace && incidentWorkspace !== "—") return incidentWorkspace;
@@ -547,66 +547,66 @@ function getFlowHref(incident: IncidentItem, activeWorkspaceId?: string): string
 
   const linkWorkspaceId = getCanonicalWorkspaceForIncidentLinks(
     incident,
-    activeWorkspaceId
+    activeWorkspaceId,
   );
 
   return appendWorkspaceIdToHref(
     `/flows/${encodeURIComponent(target)}`,
-    linkWorkspaceId || undefined
+    linkWorkspaceId || undefined,
   );
 }
 
 function getCommandHref(
   incident: IncidentItem,
-  activeWorkspaceId?: string
+  activeWorkspaceId?: string,
 ): string {
   const commandTarget = getCommandRouteTargetFromIncident(incident);
   if (!commandTarget) return "";
 
   const linkWorkspaceId = getCanonicalWorkspaceForIncidentLinks(
     incident,
-    activeWorkspaceId
+    activeWorkspaceId,
   );
 
   return appendWorkspaceIdToHref(
     `/commands/${encodeURIComponent(commandTarget)}`,
-    linkWorkspaceId || undefined
+    linkWorkspaceId || undefined,
   );
 }
 
 function getEventHref(
   incident: IncidentItem,
-  activeWorkspaceId?: string
+  activeWorkspaceId?: string,
 ): string {
   const eventTarget = getEventTargetFromIncident(incident);
   if (!eventTarget) return "";
 
   const linkWorkspaceId = getCanonicalWorkspaceForIncidentLinks(
     incident,
-    activeWorkspaceId
+    activeWorkspaceId,
   );
 
   return appendWorkspaceIdToHref(
     `/events/${encodeURIComponent(eventTarget)}`,
-    linkWorkspaceId || undefined
+    linkWorkspaceId || undefined,
   );
 }
 
 function getIncidentHref(
   incident: IncidentItem,
-  activeWorkspaceId?: string
+  activeWorkspaceId?: string,
 ): string {
   const canonicalIncidentId = String(incident.id || "").trim();
   if (!canonicalIncidentId) return "";
 
   const linkWorkspaceId = getCanonicalWorkspaceForIncidentLinks(
     incident,
-    activeWorkspaceId
+    activeWorkspaceId,
   );
 
   return appendWorkspaceIdToHref(
     `/incidents/${encodeURIComponent(canonicalIncidentId)}`,
-    linkWorkspaceId || undefined
+    linkWorkspaceId || undefined,
   );
 }
 
@@ -685,6 +685,75 @@ function getShellBadgeToneFromSla(incident: IncidentItem): ShellBadgeTone {
   if (sla === "warning") return "warning";
   if (sla === "breached") return "danger";
   return "muted";
+}
+
+function getIncidentSignalPressureLabel(incident: IncidentItem): string {
+  const severity = getIncidentSeverityNormalized(incident);
+  const status = getIncidentStatusNormalized(incident);
+  const sla = getSlaLabel(incident).toLowerCase();
+
+  if (status === "resolved") return "Sous contrôle";
+  if (status === "escalated" || severity === "critical" || sla === "breached") {
+    return "Pression critique";
+  }
+  if (severity === "high" || sla === "warning") {
+    return "Pression élevée";
+  }
+  return "À surveiller";
+}
+
+function getIncidentSignalPressureTone(
+  incident: IncidentItem,
+): "default" | "danger" | "success" | "warning" | "info" {
+  const severity = getIncidentSeverityNormalized(incident);
+  const status = getIncidentStatusNormalized(incident);
+  const sla = getSlaLabel(incident).toLowerCase();
+
+  if (status === "resolved") return "success";
+  if (status === "escalated" || severity === "critical" || sla === "breached") {
+    return "danger";
+  }
+  if (severity === "high" || sla === "warning") return "warning";
+  return "info";
+}
+
+function getIncidentSignalEntryLabel(incident: IncidentItem): string {
+  const command = getCommandRouteTargetFromIncident(incident);
+  const flow = getBestFlowTargetFromIncident(incident);
+  const event = getEventTargetFromIncident(incident);
+
+  if (command) return "Entrée par command";
+  if (flow) return "Entrée par flow";
+  if (event) return "Entrée par event";
+  return "Entrée incident";
+}
+
+function getIncidentSignalObservabilityLabel(incident: IncidentItem): string {
+  const signals = [
+    getBestFlowTargetFromIncident(incident),
+    getCommandRouteTargetFromIncident(incident),
+    getEventTargetFromIncident(incident),
+    getRunRecord(incident) !== "—" ? getRunRecord(incident) : "",
+  ].filter(Boolean).length;
+
+  if (signals >= 4) return "Contexte enrichi";
+  if (signals >= 2) return "Contexte relié";
+  if (signals >= 1) return "Contexte partiel";
+  return "Incident isolé";
+}
+
+function getIncidentSignalObservabilityTone(
+  incident: IncidentItem,
+): "default" | "danger" | "success" | "warning" | "info" {
+  const label = getIncidentSignalObservabilityLabel(incident);
+  if (label === "Contexte enrichi") return "success";
+  if (label === "Contexte relié") return "info";
+  if (label === "Contexte partiel") return "warning";
+  return "default";
+}
+
+function getIncidentSignalNextMove(incident: IncidentItem): string {
+  return getNextAction(incident) || getSuggestedAction(incident);
 }
 
 function MetaValueLink({
@@ -775,7 +844,7 @@ export default async function IncidentDetailPage({
 }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
   const resolvedSearchParams = (await Promise.resolve(
-    searchParams ?? {}
+    searchParams ?? {},
   )) as SearchParams;
 
   const cookieStore = await cookies();
@@ -821,7 +890,7 @@ export default async function IncidentDetailPage({
     : [];
 
   const workspaceScoped = scopedIncidents.filter((item) =>
-    workspaceMatchesOrUnscoped(getWorkspace(item), activeWorkspaceId)
+    workspaceMatchesOrUnscoped(getWorkspace(item), activeWorkspaceId),
   );
 
   let incident = findIncidentInList(workspaceScoped, id);
@@ -830,7 +899,7 @@ export default async function IncidentDetailPage({
     try {
       const fallbackData = await fetchIncidents({ limit: 500 });
       const fallbackIncidents: IncidentItem[] = Array.isArray(
-        fallbackData?.incidents
+        fallbackData?.incidents,
       )
         ? fallbackData.incidents
         : [];
@@ -884,12 +953,12 @@ export default async function IncidentDetailPage({
       root_event_id: incomingRootEventId || undefined,
       source_record_id: incomingSourceRecordId || undefined,
       command_id: incomingCommandId || undefined,
-    }
+    },
   );
 
   const allIncidentsHref = appendWorkspaceIdToHref(
     "/incidents",
-    effectiveWorkspaceId
+    effectiveWorkspaceId,
   );
 
   const remainingMinutes = toNumber(incident.sla_remaining_minutes, Number.NaN);
@@ -1058,30 +1127,76 @@ export default async function IncidentDetailPage({
         </div>
       }
     >
-      <SectionCard
-        title="Signal incident"
-        description="Lecture rapide du statut, de l’impact et de la priorité opérationnelle."
-        tone="attention"
-        className={sectionFrameClassName("attention")}
-      >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <SignalCard label="Statut" value={statusLabel} tone="warning" />
-          <SignalCard label="Sévérité" value={severityLabel} tone="danger" />
-          <SignalCard label="SLA" value={slaLabel} tone="info" />
-          <SignalCard
-            label="Priorité"
-            value={String(priorityScore)}
-            tone="default"
-          />
-        </div>
-
-        <div className="mt-4 rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
-          <div className={metaLabelClassName()}>Résumé</div>
-          <div className="mt-2 text-sm leading-6 text-zinc-300 [overflow-wrap:anywhere]">
-            {getSummaryLine(incident)}
+      <div id="incident-signal-layer">
+        <SectionCard
+          title="Signal Layer"
+          description="Lecture immédiate de la pression opérationnelle, du point d’entrée, du niveau d’observabilité et de l’action à lancer maintenant."
+          tone="attention"
+          className={sectionFrameClassName("attention")}
+        >
+          <div className="flex flex-wrap gap-2">
+            <DashboardStatusBadge
+              kind={getIncidentStatusBadgeKind(incident)}
+              label={statusLabel}
+            />
+            <DashboardStatusBadge
+              kind={getIncidentSeverityBadgeKind(incident)}
+              label={severityLabel}
+            />
+            <DashboardStatusBadge
+              kind={getIncidentSlaBadgeKind(incident)}
+              label={`SLA ${slaLabel}`}
+            />
+            {decisionStatus ? (
+              <DashboardStatusBadge
+                kind={getDecisionBadgeKind(incident)}
+                label={`DECISION ${decisionStatus.toUpperCase()}`}
+              />
+            ) : null}
           </div>
-        </div>
-      </SectionCard>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <SignalCard
+              label="Pression"
+              value={getIncidentSignalPressureLabel(incident)}
+              tone={getIncidentSignalPressureTone(incident)}
+            />
+            <SignalCard
+              label="Point d’entrée"
+              value={getIncidentSignalEntryLabel(incident)}
+              tone="info"
+            />
+            <SignalCard
+              label="Observabilité"
+              value={getIncidentSignalObservabilityLabel(incident)}
+              tone={getIncidentSignalObservabilityTone(incident)}
+            />
+            <SignalCard
+              label="Action immédiate"
+              value={getIncidentSignalNextMove(incident)}
+              tone="warning"
+            />
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <SignalCard label="Statut" value={statusLabel} tone="warning" />
+            <SignalCard label="Sévérité" value={severityLabel} tone="danger" />
+            <SignalCard label="SLA" value={slaLabel} tone="info" />
+            <SignalCard
+              label="Priorité"
+              value={String(priorityScore)}
+              tone="default"
+            />
+          </div>
+
+          <div className="mt-4 rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
+            <div className={metaLabelClassName()}>Résumé</div>
+            <div className="mt-2 text-sm leading-6 text-zinc-300 [overflow-wrap:anywhere]">
+              {getSummaryLine(incident)}
+            </div>
+          </div>
+        </SectionCard>
+      </div>
 
       <SectionCard
         title="Contexte incident"
