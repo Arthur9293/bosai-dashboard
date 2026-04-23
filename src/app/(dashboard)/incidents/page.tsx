@@ -47,6 +47,8 @@ type FlexibleIncidentsResponse = {
   data?: unknown;
 };
 
+type SignalTone = "default" | "info" | "success" | "warning" | "danger";
+
 function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
@@ -83,6 +85,22 @@ function metaBoxClassName(): string {
 
 function statCardClassName(): string {
   return "rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+}
+
+function signalRingClassName(tone: SignalTone): string {
+  if (tone === "danger") return "ring-1 ring-inset ring-rose-500/20";
+  if (tone === "warning") return "ring-1 ring-inset ring-amber-500/20";
+  if (tone === "success") return "ring-1 ring-inset ring-emerald-500/20";
+  if (tone === "info") return "ring-1 ring-inset ring-sky-500/20";
+  return "ring-1 ring-inset ring-white/5";
+}
+
+function signalDotClassName(tone: SignalTone): string {
+  if (tone === "danger") return "bg-rose-300";
+  if (tone === "warning") return "bg-amber-300";
+  if (tone === "success") return "bg-emerald-300";
+  if (tone === "info") return "bg-sky-300";
+  return "bg-zinc-400";
 }
 
 function compactTechnicalId(value: string, max = 34): string {
@@ -722,6 +740,49 @@ function getEventHref(
   });
 }
 
+function getStatusSignalTone(incident: IncidentItem): SignalTone {
+  const status = getIncidentStatusNormalized(incident);
+  if (status === "resolved") return "success";
+  if (status === "escalated") return "warning";
+  if (status === "open") return "info";
+  return "default";
+}
+
+function getSeveritySignalTone(incident: IncidentItem): SignalTone {
+  const severity = getIncidentSeverityNormalized(incident);
+  if (severity === "critical" || severity === "high") return "danger";
+  if (severity === "medium") return "warning";
+  if (severity === "low") return "success";
+  return "default";
+}
+
+function getSlaSignalTone(incident: IncidentItem): SignalTone {
+  const resolvedLike =
+    Boolean(incident.resolved_at) ||
+    getIncidentStatusNormalized(incident) === "resolved";
+
+  if (resolvedLike) return "success";
+
+  const sla = (incident.sla_status || "").toLowerCase();
+
+  if (sla === "breached") return "danger";
+  if (sla === "warning") return "warning";
+  if (sla === "ok") return "success";
+
+  if (
+    typeof incident.sla_remaining_minutes === "number" &&
+    incident.sla_remaining_minutes < 0
+  ) {
+    return "danger";
+  }
+
+  return "default";
+}
+
+function getWorkspaceSignalTone(incident: IncidentItem): SignalTone {
+  return getIncidentWorkspaceId(incident) ? "info" : "default";
+}
+
 function MetaItem({
   label,
   value,
@@ -743,17 +804,54 @@ function IncidentMiniStat({
   label,
   value,
   toneClass,
+  panelTone = "default",
 }: {
   label: string;
   value: number | string;
   toneClass: string;
+  panelTone?: SignalTone;
 }) {
   return (
-    <div className={statCardClassName()}>
-      <div className="text-sm text-zinc-400">{label}</div>
+    <div className={`${statCardClassName()} ${signalRingClassName(panelTone)}`}>
+      <div className="flex items-center gap-2">
+        <span
+          className={`h-2.5 w-2.5 rounded-full ${signalDotClassName(panelTone)}`}
+          aria-hidden="true"
+        />
+        <div className="text-sm text-zinc-400">{label}</div>
+      </div>
       <div className={`mt-3 text-3xl font-semibold tracking-tight ${toneClass}`}>
         {value}
       </div>
+    </div>
+  );
+}
+
+function SignalMetaPill({
+  label,
+  value,
+  tone = "default",
+  breakAll = false,
+}: {
+  label: string;
+  value: ReactNode;
+  tone?: SignalTone;
+  breakAll?: boolean;
+}) {
+  return (
+    <div
+      className={`${metaBoxClassName()} ${signalRingClassName(tone)} ${
+        breakAll ? "break-all" : ""
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={`h-2 w-2 rounded-full ${signalDotClassName(tone)}`}
+          aria-hidden="true"
+        />
+        <div className={metaLabelClassName()}>{label}</div>
+      </div>
+      <div className="mt-2 text-zinc-100">{value}</div>
     </div>
   );
 }
@@ -786,6 +884,29 @@ function IncidentListCard({
         <div className="space-y-4 border-b border-white/10 pb-4">
           <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
             BOSAI Incident
+          </div>
+
+          <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+            <SignalMetaPill
+              label="Status signal"
+              value={statusLabel}
+              tone={getStatusSignalTone(incident)}
+            />
+            <SignalMetaPill
+              label="Severity signal"
+              value={severityLabel}
+              tone={getSeveritySignalTone(incident)}
+            />
+            <SignalMetaPill
+              label="SLA signal"
+              value={slaLabel}
+              tone={getSlaSignalTone(incident)}
+            />
+            <SignalMetaPill
+              label="Workspace signal"
+              value={getWorkspace(incident)}
+              tone={getWorkspaceSignalTone(incident)}
+            />
           </div>
 
           <div className="space-y-3">
@@ -1362,8 +1483,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
       ) : (
         <>
           <SectionCard
-            title="Incident posture"
-            description="Lecture rapide de l’activité récente de la surface Incidents."
+            title="Signal Layer"
+            description="Lecture primaire de la surface Incidents : statut, sévérité, SLA et activité récente."
             action={<SectionCountPill value={visibleIncidents.length} tone="info" />}
           >
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
@@ -1371,26 +1492,31 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 label="Open"
                 value={openIncidents.length}
                 toneClass="text-sky-300"
+                panelTone="info"
               />
               <IncidentMiniStat
                 label="Escalated"
                 value={escalatedIncidents.length}
                 toneClass="text-amber-300"
+                panelTone="warning"
               />
               <IncidentMiniStat
                 label="Critical"
                 value={criticalIncidents.length}
                 toneClass="text-red-300"
+                panelTone="danger"
               />
               <IncidentMiniStat
                 label="Resolved"
                 value={resolvedIncidents.length}
                 toneClass="text-emerald-300"
+                panelTone="success"
               />
               <IncidentMiniStat
                 label="Visible"
                 value={visibleIncidents.length}
                 toneClass="text-white"
+                panelTone="default"
               />
             </div>
 
