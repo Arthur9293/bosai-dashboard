@@ -73,6 +73,16 @@ type ModuleCard = {
   ctaLabel: string;
 };
 
+type FocusPriorityBucket =
+  | "escalated-critical"
+  | "escalated"
+  | "critical-open"
+  | "high-open"
+  | "sla-breached"
+  | "open-standard"
+  | "resolved-recent"
+  | "resolved";
+
 function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
@@ -562,16 +572,178 @@ function getSummaryLine(incident: IncidentItem): string {
   )} · ${getWorkspaceDisplay(incident)} · ${getCategoryDisplay(incident)}`;
 }
 
-function getActivePriority(incident: IncidentItem): number {
+function isIncidentResolved(incident: IncidentItem): boolean {
+  return getIncidentStatusNormalized(incident) === "resolved";
+}
+
+function isIncidentEscalated(incident: IncidentItem): boolean {
+  return getIncidentStatusNormalized(incident) === "escalated";
+}
+
+function isIncidentOpen(incident: IncidentItem): boolean {
+  return getIncidentStatusNormalized(incident) === "open";
+}
+
+function isIncidentCritical(incident: IncidentItem): boolean {
+  return getIncidentSeverityNormalized(incident) === "critical";
+}
+
+function isIncidentHigh(incident: IncidentItem): boolean {
+  return getIncidentSeverityNormalized(incident) === "high";
+}
+
+function isIncidentSlaBreached(incident: IncidentItem): boolean {
+  return getSlaLabel(incident) === "BREACHED";
+}
+
+function isRecentResolvedIncident(incident: IncidentItem): boolean {
+  if (!isIncidentResolved(incident)) return false;
+
+  const timestamp =
+    new Date(getResolvedAt(incident) || getUpdatedAt(incident) || 0).getTime();
+
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return false;
+
+  return Date.now() - timestamp <= 72 * 60 * 60 * 1000;
+}
+
+function getIncidentFocusBucket(incident: IncidentItem): FocusPriorityBucket {
+  if (isIncidentEscalated(incident) && isIncidentCritical(incident)) {
+    return "escalated-critical";
+  }
+
+  if (isIncidentEscalated(incident)) {
+    return "escalated";
+  }
+
+  if (!isIncidentResolved(incident) && isIncidentCritical(incident)) {
+    return "critical-open";
+  }
+
+  if (!isIncidentResolved(incident) && isIncidentHigh(incident)) {
+    return "high-open";
+  }
+
+  if (!isIncidentResolved(incident) && isIncidentSlaBreached(incident)) {
+    return "sla-breached";
+  }
+
+  if (!isIncidentResolved(incident)) {
+    return "open-standard";
+  }
+
+  if (isRecentResolvedIncident(incident)) {
+    return "resolved-recent";
+  }
+
+  return "resolved";
+}
+
+function getIncidentFocusPriority(incident: IncidentItem): number {
+  const bucket = getIncidentFocusBucket(incident);
+
+  if (bucket === "escalated-critical") return 0;
+  if (bucket === "escalated") return 1;
+  if (bucket === "critical-open") return 2;
+  if (bucket === "high-open") return 3;
+  if (bucket === "sla-breached") return 4;
+  if (bucket === "open-standard") return 5;
+  if (bucket === "resolved-recent") return 6;
+  return 7;
+}
+
+function getIncidentHasPartialControlSignal(incident: IncidentItem): boolean {
+  return isSignalGapIncident(incident) || getIncidentLinkCoverageCount(incident) === 0;
+}
+
+function getIncidentPrimaryRouteKey(args: {
+  incident: IncidentItem;
+  flowHref: string;
+  commandHref: string;
+  eventHref: string;
+}): InvestigationPrimaryAction["key"] {
+  const { incident, flowHref, commandHref, eventHref } = args;
   const status = getIncidentStatusNormalized(incident);
   const severity = getIncidentSeverityNormalized(incident);
 
-  if (status === "escalated" && severity === "critical") return 0;
-  if (status === "escalated") return 1;
-  if (severity === "critical") return 2;
-  if (severity === "high") return 3;
-  if (status === "open") return 4;
-  return 5;
+  if (getIncidentHasPartialControlSignal(incident)) {
+    return "detail";
+  }
+
+  if (status === "escalated" && severity === "critical") {
+    if (commandHref) return "command";
+    if (flowHref) return "flow";
+    if (eventHref) return "event";
+    return "detail";
+  }
+
+  if (status === "escalated") {
+    if (commandHref) return "command";
+    if (flowHref) return "flow";
+    if (eventHref) return "event";
+    return "detail";
+  }
+
+  if (status === "open" && severity === "critical") {
+    if (commandHref) return "command";
+    if (flowHref) return "flow";
+    if (eventHref) return "event";
+    return "detail";
+  }
+
+  if (status === "open" && severity === "high") {
+    if (flowHref) return "flow";
+    if (commandHref) return "command";
+    if (eventHref) return "event";
+    return "detail";
+  }
+
+  if (status === "open" && isIncidentSlaBreached(incident)) {
+    if (commandHref) return "command";
+    if (flowHref) return "flow";
+    if (eventHref) return "event";
+    return "detail";
+  }
+
+  if (status === "open") {
+    if (flowHref) return "flow";
+    if (commandHref) return "command";
+    if (eventHref) return "event";
+    return "detail";
+  }
+
+  return "detail";
+}
+
+function getRouteShortLabel(
+  key: InvestigationPrimaryAction["key"],
+): string {
+  if (key === "command") return "Command";
+  if (key === "flow") return "Flow";
+  if (key === "event") return "Event";
+  return "Detail";
+}
+
+function getRoutePriorityLabel(
+  key: InvestigationPrimaryAction["key"],
+): string {
+  if (key === "command") return "Command-first";
+  if (key === "flow") return "Flow-first";
+  if (key === "event") return "Event-first";
+  return "Detail-first";
+}
+
+function getActivePriority(incident: IncidentItem): number {
+  const bucket = getIncidentFocusBucket(incident);
+
+  if (bucket === "escalated-critical") return 0;
+  if (bucket === "escalated") return 1;
+  if (bucket === "critical-open") return 2;
+  if (bucket === "high-open") return 3;
+  if (bucket === "sla-breached") return 4;
+  if (bucket === "open-standard") return 5;
+
+  return 6;
 }
 
 function getIncidentTimestampForSort(incident: IncidentItem): number {
@@ -599,6 +771,15 @@ function sortResolvedIncidents(items: IncidentItem[]): IncidentItem[] {
     ).getTime();
 
     return bTs - aTs;
+  });
+}
+
+function sortVisibleIncidentsForFocus(items: IncidentItem[]): IncidentItem[] {
+  return [...items].sort((a, b) => {
+    const priorityDiff = getIncidentFocusPriority(a) - getIncidentFocusPriority(b);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    return getIncidentTimestampForSort(b) - getIncidentTimestampForSort(a);
   });
 }
 
@@ -1012,6 +1193,10 @@ function getIncidentLinkCoverageCount(incident: IncidentItem): number {
 }
 
 function getInvestigationCoverageLabel(incident: IncidentItem): string {
+  if (getIncidentHasPartialControlSignal(incident)) {
+    return "Couverture partielle";
+  }
+
   const count = getIncidentLinkCoverageCount(incident);
 
   if (count >= 4) return "Couverture enrichie";
@@ -1027,19 +1212,25 @@ function getInvestigationEntryLabel(args: {
   eventHref: string;
 }): string {
   const { incident, flowHref, commandHref, eventHref } = args;
+  const routeKey = getIncidentPrimaryRouteKey({
+    incident,
+    flowHref,
+    commandHref,
+    eventHref,
+  });
 
-  if (commandHref) {
+  if (routeKey === "command") {
     return `Command · ${compactTechnicalId(getCommandRecord(incident), 48)}`;
   }
 
-  if (flowHref) {
+  if (routeKey === "flow") {
     return `Flow · ${compactTechnicalId(
       getBestFlowTargetFromIncident(incident),
       48,
     )}`;
   }
 
-  if (eventHref) {
+  if (routeKey === "event") {
     return `Event · ${compactTechnicalId(
       getEventTargetFromIncident(incident),
       48,
@@ -1068,19 +1259,8 @@ function getInvestigationRouteLabel(args: {
   commandHref: string;
   eventHref: string;
 }): string {
-  const { incident, flowHref, commandHref, eventHref } = args;
-  const status = getIncidentStatusNormalized(incident);
-  const severity = getIncidentSeverityNormalized(incident);
-
-  if (isSignalGapIncident(incident)) return "Detail-first";
-  if (status === "escalated" && commandHref) return "Command-first";
-  if ((severity === "critical" || severity === "high") && flowHref) {
-    return "Flow-first";
-  }
-  if (commandHref) return "Command-linked";
-  if (flowHref) return "Flow-linked";
-  if (eventHref) return "Event-linked";
-  return "Detail-only";
+  const routeKey = getIncidentPrimaryRouteKey(args);
+  return getRoutePriorityLabel(routeKey);
 }
 
 function getInvestigationPrimaryAction(args: {
@@ -1091,18 +1271,14 @@ function getInvestigationPrimaryAction(args: {
   eventHref: string;
 }): InvestigationPrimaryAction {
   const { incident, detailHref, flowHref, commandHref, eventHref } = args;
-  const status = getIncidentStatusNormalized(incident);
-  const severity = getIncidentSeverityNormalized(incident);
+  const routeKey = getIncidentPrimaryRouteKey({
+    incident,
+    flowHref,
+    commandHref,
+    eventHref,
+  });
 
-  if (isSignalGapIncident(incident)) {
-    return {
-      key: "detail",
-      label: "Ouvrir le détail prioritaire",
-      href: detailHref,
-    };
-  }
-
-  if (status === "escalated" && commandHref) {
+  if (routeKey === "command" && commandHref) {
     return {
       key: "command",
       label: "Ouvrir la command prioritaire",
@@ -1110,7 +1286,7 @@ function getInvestigationPrimaryAction(args: {
     };
   }
 
-  if ((severity === "critical" || severity === "high") && flowHref) {
+  if (routeKey === "flow" && flowHref) {
     return {
       key: "flow",
       label: "Ouvrir le flow prioritaire",
@@ -1118,26 +1294,10 @@ function getInvestigationPrimaryAction(args: {
     };
   }
 
-  if (commandHref) {
-    return {
-      key: "command",
-      label: "Ouvrir la command liée",
-      href: commandHref,
-    };
-  }
-
-  if (flowHref) {
-    return {
-      key: "flow",
-      label: "Ouvrir le flow lié",
-      href: flowHref,
-    };
-  }
-
-  if (eventHref) {
+  if (routeKey === "event" && eventHref) {
     return {
       key: "event",
-      label: "Ouvrir l’event lié",
+      label: "Ouvrir l’event prioritaire",
       href: eventHref,
     };
   }
@@ -1164,8 +1324,8 @@ function getControlRouteLabel(args: {
   if (primaryAction?.key === "command") return "Pilotage par command";
   if (primaryAction?.key === "flow") return "Pilotage par flow";
   if (primaryAction?.key === "event") return "Pilotage par event";
-  if (hasFilters) return "Pilotage flow filtré";
-  return "Pilotage par détail incident";
+  if (hasFilters) return "Pilotage par incident";
+  return "Pilotage par incident";
 }
 
 function getControlNextActionLabel(args: {
@@ -1186,23 +1346,27 @@ function getControlSurfaceNote(args: {
 }): string {
   const { surfaceCount, hasFilters, primaryAction } = args;
 
+  if (primaryAction?.key === "command") {
+    return "La command liée devient la voie de contrôle principale pour ce focus incident.";
+  }
+
+  if (primaryAction?.key === "flow") {
+    return "Le flow lié devient la voie de contrôle principale pour ce focus incident.";
+  }
+
+  if (primaryAction?.key === "event") {
+    return "L’event lié devient la voie de contrôle principale pour ce focus incident.";
+  }
+
+  if (hasFilters) {
+    return "Le signal reste partiel ou local. Le détail incident devient prioritaire, avec un retour stable vers le flow filtré.";
+  }
+
   if (surfaceCount <= 1) {
     return "Le détail incident reste la surface de pilotage la plus fiable.";
   }
 
-  if (primaryAction?.key === "command") {
-    return "La command liée devient la meilleure entrée de pilotage sur ce scope.";
-  }
-
-  if (primaryAction?.key === "flow") {
-    return "Le flow lié devient la meilleure surface globale pour piloter ce scope.";
-  }
-
-  if (hasFilters) {
-    return "Le retour au flow filtré reste la sortie stable de cette lecture.";
-  }
-
-  return "La surface conserve plusieurs points de pilotage exploitables.";
+  return "Le détail incident reste la surface principale tant qu’aucune route riche plus cohérente n’est disponible.";
 }
 
 function getControlPrimaryAction(args: {
@@ -1427,28 +1591,59 @@ function IncidentListCard({
       : null,
   ].filter(Boolean) as ControlAction[];
 
-  const primaryLinkedAction = linkedActions[0] || null;
+  const cardPrimaryRouteKey = getIncidentPrimaryRouteKey({
+    incident,
+    flowHref,
+    commandHref,
+    eventHref,
+  });
+
+  const cardPrimaryRouteLabel = getInvestigationRouteLabel({
+    incident,
+    flowHref,
+    commandHref,
+    eventHref,
+  });
+
+  const cardPrimaryControlAction = getInvestigationPrimaryAction({
+    incident,
+    detailHref,
+    flowHref,
+    commandHref,
+    eventHref,
+  });
+
+  const primaryLinkedAction =
+    cardPrimaryRouteKey !== "detail"
+      ? linkedActions.find((action) => action.key === cardPrimaryRouteKey) || null
+      : null;
+
   const secondaryLinkedActions =
-    hasSignalGap || linkedActions.length <= 1 ? [] : linkedActions.slice(1);
+    hasSignalGap
+      ? []
+      : linkedActions.filter((action) => action.key !== primaryLinkedAction?.key);
 
   const bestLinkedSurfaceLabel = primaryLinkedAction
     ? primaryLinkedAction.shortLabel
-    : "Detail only";
+    : linkedActions[0]?.shortLabel || "Detail only";
 
-  const controlNote = primaryLinkedAction
-    ? hasSignalGap
-      ? "Signal partiel : détail + meilleure surface liée seulement."
-      : `${linkedActions.length} surface(s) liée(s) exploitable(s) depuis cette carte.`
-    : hasSignalGap
-      ? "Signal partiel : le détail reste la seule entrée fiable."
-      : "Aucune surface liée exploitable : le détail reste la meilleure entrée.";
+  const controlNote =
+    hasSignalGap
+      ? "Signal partiel : le détail reste prioritaire malgré une couverture incomplète."
+      : cardPrimaryRouteKey === "command"
+        ? "La command liée devient la meilleure surface de pilotage pour cette carte."
+        : cardPrimaryRouteKey === "flow"
+          ? "Le flow lié devient la meilleure surface de pilotage pour cette carte."
+          : cardPrimaryRouteKey === "event"
+            ? "L’event lié devient la meilleure surface de pilotage pour cette carte."
+            : linkedActions.length > 0
+              ? `${linkedActions.length} surface(s) liée(s) exploitable(s) depuis cette carte.`
+              : "Aucune surface liée exploitable : le détail reste la meilleure entrée.";
 
-  const controlTone: SignalTone = primaryLinkedAction
-    ? hasSignalGap
-      ? "warning"
-      : "info"
-    : hasSignalGap
-      ? "warning"
+  const controlTone: SignalTone = hasSignalGap
+    ? "warning"
+    : cardPrimaryRouteKey !== "detail"
+      ? "info"
       : "default";
 
   return (
@@ -1567,8 +1762,8 @@ function IncidentListCard({
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <InvestigationField
               label="Primary route"
-              value="Incident detail"
-              valueClassName="text-emerald-300"
+              value={cardPrimaryRouteLabel}
+              valueClassName={toneTextClassName(controlTone)}
             />
             <InvestigationField
               label="Best linked surface"
@@ -1871,7 +2066,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const allIncidentsHref = appendWorkspaceIdToHref("/incidents", activeWorkspaceId);
 
   const focusIncident =
-    activeIncidents[0] ?? sortedResolvedIncidents[0] ?? visibleIncidents[0] ?? null;
+    sortVisibleIncidentsForFocus(visibleIncidents)[0] || null;
 
   const focusIncidentDetailHref = focusIncident
     ? getIncidentHref(focusIncident, activeWorkspaceId)
