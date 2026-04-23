@@ -856,6 +856,29 @@ function SignalMetaPill({
   );
 }
 
+function InvestigationField({
+  label,
+  value,
+  valueClassName = "text-zinc-200",
+  breakAll = false,
+}: {
+  label: string;
+  value: ReactNode;
+  valueClassName?: string;
+  breakAll?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-[18px] border border-white/10 bg-white/[0.02] px-4 py-3.5 ${
+        breakAll ? "break-all" : ""
+      }`}
+    >
+      <div className={metaLabelClassName()}>{label}</div>
+      <div className={`mt-2 text-sm leading-6 ${valueClassName}`}>{value}</div>
+    </div>
+  );
+}
+
 function IncidentListCard({
   incident,
   activeWorkspaceId,
@@ -868,6 +891,8 @@ function IncidentListCard({
   const severityLabel = getIncidentSeverityLabel(incident);
   const slaLabel = getSlaLabel(incident);
   const decisionStatus = getDecisionStatus(incident);
+  const decisionReason = getDecisionReason(incident);
+  const nextAction = getNextAction(incident);
   const flowTarget = getBestFlowTargetFromIncident(incident);
   const commandRecord = getCommandRecord(incident);
   const rootEventId = getRootEventId(incident);
@@ -942,6 +967,35 @@ function IncidentListCard({
                 />
               ) : null}
             </div>
+          </div>
+        </div>
+
+        <div className="rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-violet-300" aria-hidden="true" />
+            <div className={metaLabelClassName()}>Investigation Layer</div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <InvestigationField label="Category" value={getCategory(incident)} />
+            <InvestigationField label="Reason" value={getReason(incident)} breakAll />
+            <InvestigationField
+              label="Suggested action"
+              value={suggestedAction}
+            />
+            <InvestigationField
+              label="Decision"
+              value={decisionStatus || "—"}
+              valueClassName="text-purple-300"
+            />
+            <InvestigationField
+              label="Decision reason"
+              value={decisionReason || "—"}
+            />
+            <InvestigationField
+              label="Next action"
+              value={nextAction || "—"}
+            />
           </div>
         </div>
 
@@ -1022,36 +1076,11 @@ function IncidentListCard({
             breakAll
           />
 
-          <MetaItem label="Reason" value={getReason(incident)} breakAll />
           <MetaItem label="Resolved" value={formatDate(getResolvedAt(incident))} />
 
           <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
-            <div className={metaLabelClassName()}>Action suggested</div>
-            <div className="mt-1 text-zinc-200">{suggestedAction}</div>
-          </div>
-
-          <div className="md:col-span-2 xl:col-span-3 space-y-2 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
-            <div>
-              <span className={metaLabelClassName()}>Decision</span>
-              <div className="mt-1 text-purple-300">{decisionStatus || "—"}</div>
-            </div>
-
-            <div>
-              <span className={metaLabelClassName()}>Decision reason</span>
-              <div className="mt-1 text-zinc-300">
-                {getDecisionReason(incident) || "—"}
-              </div>
-            </div>
-
-            <div>
-              <span className={metaLabelClassName()}>Next action</span>
-              <div className="mt-1 text-zinc-300">{getNextAction(incident) || "—"}</div>
-            </div>
-
-            <div>
-              <span className={metaLabelClassName()}>Priority score</span>
-              <div className="mt-1 text-zinc-300">{getPriorityScore(incident)}</div>
-            </div>
+            <div className={metaLabelClassName()}>Priority score</div>
+            <div className="mt-1 text-zinc-200">{getPriorityScore(incident)}</div>
           </div>
         </div>
 
