@@ -44,6 +44,7 @@ type ShellBadgeTone =
   | "muted";
 
 type ExecutiveRiskLevel = "critical" | "elevated" | "watch" | "stable";
+type ModuleState = "available" | "partial" | "unavailable";
 
 function sectionFrameClassName(
   tone: "default" | "attention" | "neutral" = "default",
@@ -935,6 +936,90 @@ function countAvailableControlSurfaces(values: string[]): number {
   return uniq(values.filter(Boolean)).length;
 }
 
+function getModuleStateLabel(state: ModuleState): string {
+  if (state === "available") return "AVAILABLE";
+  if (state === "partial") return "PARTIAL";
+  return "UNAVAILABLE";
+}
+
+function getModuleStateBadgeKind(state: ModuleState): DashboardStatusKind {
+  if (state === "available") return "success";
+  if (state === "partial") return "retry";
+  return "unknown";
+}
+
+function getContextModuleState(incident: IncidentItem): ModuleState {
+  const signals = [
+    getCategory(incident) !== "—",
+    getReason(incident) !== "—",
+    getWorkspace(incident) !== "—",
+    toText(incident.source, "") !== "",
+    toText(incident.worker, "") !== "",
+    toText(incident.error_id, "") !== "",
+  ].filter(Boolean).length;
+
+  if (signals >= 3) return "available";
+  if (signals >= 1) return "partial";
+  return "unavailable";
+}
+
+function getOrchestrationModuleState(incident: IncidentItem): ModuleState {
+  const signals = [
+    getDecisionStatus(incident),
+    getDecisionReason(incident),
+    getNextAction(incident),
+    getSlaLabel(incident) !== "—" ? getSlaLabel(incident) : "",
+    getPriorityScore(incident) > 0 ? String(getPriorityScore(incident)) : "",
+  ].filter(Boolean).length;
+
+  if (signals >= 3) return "available";
+  if (signals >= 1) return "partial";
+  return "unavailable";
+}
+
+function ModuleExtensionCard({
+  title,
+  state,
+  summary,
+  href,
+  ctaLabel,
+}: {
+  title: string;
+  state: ModuleState;
+  summary: string;
+  href?: string;
+  ctaLabel: string;
+}) {
+  const disabled = !href || state === "unavailable";
+
+  return (
+    <article className="rounded-[24px] border border-white/10 bg-black/20 px-5 py-5">
+      <div className={metaLabelClassName()}>{title}</div>
+
+      <div className="mt-3">
+        <DashboardStatusBadge
+          kind={getModuleStateBadgeKind(state)}
+          label={getModuleStateLabel(state)}
+        />
+      </div>
+
+      <div className="mt-4 text-base leading-7 text-zinc-300 [overflow-wrap:anywhere]">
+        {summary}
+      </div>
+
+      <div className="mt-5">
+        {disabled ? (
+          <span className={actionLinkClassName("soft", true)}>{ctaLabel}</span>
+        ) : (
+          <Link href={href} className={actionLinkClassName("soft")}>
+            {ctaLabel}
+          </Link>
+        )}
+      </div>
+    </article>
+  );
+}
+
 function MetaValueLink({
   href,
   value,
@@ -1167,6 +1252,100 @@ export default async function IncidentDetailPage({
     eventHref,
   ]);
   const controlReturnLabel = "Liste des incidents";
+
+  const contextModuleState = getContextModuleState(incident);
+  const orchestrationModuleState = getOrchestrationModuleState(incident);
+
+  const moduleCards = [
+    {
+      key: "signal",
+      title: "Signal",
+      state: "available" as ModuleState,
+      summary: "Couche de signal visible et active.",
+      href: "#incident-signal-layer",
+      ctaLabel: "Ouvrir Signal",
+    },
+    {
+      key: "investigation",
+      title: "Investigation",
+      state: "available" as ModuleState,
+      summary: "Point d’enquête immédiat disponible.",
+      href: "#incident-investigation-layer",
+      ctaLabel: "Ouvrir Investigation",
+    },
+    {
+      key: "executive",
+      title: "Executive",
+      state: "available" as ModuleState,
+      summary: "Synthèse cockpit dirigeant disponible.",
+      href: "#incident-executive-layer",
+      ctaLabel: "Ouvrir Executive",
+    },
+    {
+      key: "control",
+      title: "Control",
+      state: "available" as ModuleState,
+      summary: "Pilotage local disponible.",
+      href: "#incident-control-layer",
+      ctaLabel: "Ouvrir Control",
+    },
+    {
+      key: "context",
+      title: "Contexte",
+      state: contextModuleState,
+      summary:
+        contextModuleState === "available"
+          ? "Contexte incident exploitable."
+          : contextModuleState === "partial"
+            ? "Contexte partiel disponible."
+            : "Contexte encore limité.",
+      href: "#incident-context",
+      ctaLabel: "Ouvrir Contexte",
+    },
+    {
+      key: "orchestration",
+      title: "Orchestration",
+      state: orchestrationModuleState,
+      summary:
+        orchestrationModuleState === "available"
+          ? "Décision et orchestration exploitables."
+          : orchestrationModuleState === "partial"
+            ? "Quelques signaux d’orchestration sont présents."
+            : "Aucune orchestration directement exploitable.",
+      href: "#incident-orchestration",
+      ctaLabel: "Ouvrir Orchestration",
+    },
+    {
+      key: "flow",
+      title: "Flow lié",
+      state: flowHref ? "available" : "unavailable",
+      summary: flowHref
+        ? `Flow ${compactTechnicalId(flowTarget)} disponible.`
+        : "Aucun flow lié directement exploitable.",
+      href: flowHref,
+      ctaLabel: "Ouvrir Flow",
+    },
+    {
+      key: "command",
+      title: "Command liée",
+      state: commandHref ? "available" : "unavailable",
+      summary: commandHref
+        ? `Command ${compactTechnicalId(commandRecord)} disponible.`
+        : "Aucune command liée directement exploitable.",
+      href: commandHref,
+      ctaLabel: "Ouvrir Command",
+    },
+    {
+      key: "event",
+      title: "Event lié",
+      state: eventHref ? "available" : "unavailable",
+      summary: eventHref
+        ? `Event ${compactTechnicalId(rootEventId || sourceRecordId)} disponible.`
+        : "Aucun event lié directement exploitable.",
+      href: eventHref,
+      ctaLabel: "Ouvrir Event",
+    },
+  ];
 
   const shellBadges: { label: string; tone?: ShellBadgeTone }[] = [
     { label: statusLabel, tone: getShellBadgeToneFromStatus(incident) },
@@ -1608,10 +1787,7 @@ export default async function IncidentDetailPage({
               kind={getIncidentStatusBadgeKind(incident)}
               label={statusLabel}
             />
-            <DashboardStatusBadge
-              kind="queued"
-              label={controlBadgeLabel}
-            />
+            <DashboardStatusBadge kind="queued" label={controlBadgeLabel} />
             <DashboardStatusBadge
               kind={getIncidentSlaBadgeKind(incident)}
               label={`SLA ${slaLabel}`}
@@ -1706,167 +1882,199 @@ export default async function IncidentDetailPage({
         </SectionCard>
       </div>
 
-      <SectionCard
-        title="Contexte incident"
-        description="Contexte opérationnel, source et informations utiles pour comprendre l’incident."
-        className={sectionFrameClassName("default")}
-      >
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-3">
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Catégorie</div>
-            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
-              {category}
-            </div>
+      <div id="incident-module-extensions">
+        <SectionCard
+          title="Module Extensions"
+          description="Vue modulaire de l’incident pour exposer clairement quelles surfaces et quelles liaisons sont disponibles, partielles ou indisponibles."
+          tone="neutral"
+          className={sectionFrameClassName("neutral")}
+        >
+          <div className="mb-5 inline-flex h-11 min-w-[56px] items-center justify-center rounded-full border border-sky-500/20 bg-sky-500/10 px-4 text-lg font-semibold text-sky-300">
+            {moduleCards.length}
           </div>
 
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Raison</div>
-            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
-              {reason}
-            </div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Workspace</div>
-            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
-              {effectiveWorkspaceId || workspace}
-            </div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Source</div>
-            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
-              {toText(incident.source, "Incidents")}
-            </div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Worker</div>
-            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
-              {toText(incident.worker, "—")}
-            </div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Error ID</div>
-            <div className="mt-2 break-all text-zinc-100">{errorId}</div>
-          </div>
-
-          <div className={`${wideBoxClassName()} sm:col-span-2 xl:col-span-3`}>
-            <div className={metaLabelClassName()}>Action suggérée</div>
-            <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
-              {suggestedAction}
-            </div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Dernière action</div>
-            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
-              {lastAction}
-            </div>
-          </div>
-
-          <div className={`${wideBoxClassName()} sm:col-span-2`}>
-            <div className={metaLabelClassName()}>Note de résolution</div>
-            <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
-              {resolutionNote}
-            </div>
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        title="Décision & orchestration"
-        description="Éléments de pilotage utilisés pour l’escalade, la résolution ou l’action suivante."
-        tone="neutral"
-        className={sectionFrameClassName("neutral")}
-      >
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-4">
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Décision</div>
-            <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
-              {decisionStatus || "—"}
-            </div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>Priority score</div>
-            <div className="mt-2 text-zinc-100">{priorityScore}</div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>SLA</div>
-            <div className="mt-2 text-zinc-100">{slaLabel}</div>
-          </div>
-
-          <div className={metaBoxClassName()}>
-            <div className={metaLabelClassName()}>SLA restant</div>
-            <div className="mt-2 text-zinc-100">
-              {Number.isFinite(remainingMinutes) ? `${remainingMinutes} min` : "—"}
-            </div>
-          </div>
-
-          <div className={`${wideBoxClassName()} sm:col-span-2 xl:col-span-2`}>
-            <div className={metaLabelClassName()}>Raison décision</div>
-            <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
-              {decisionReason || "—"}
-            </div>
-          </div>
-
-          <div className={`${wideBoxClassName()} sm:col-span-2 xl:col-span-2`}>
-            <div className={metaLabelClassName()}>Next action</div>
-            <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
-              {nextAction || "—"}
-            </div>
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        title="Liens BOSAI"
-        description="Objets liés pour naviguer entre l’incident, le flow, la command, l’event et les identifiants techniques."
-        tone="neutral"
-        className={sectionFrameClassName("neutral")}
-      >
-        <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-3">
-          <MetaItem
-            label="Flow"
-            value={<MetaValueLink href={flowHref} value={flowTarget} />}
-            breakAll
-          />
-
-          <MetaItem
-            label="Root event"
-            value={<MetaValueLink href={eventHref} value={rootEventId || "—"} />}
-            breakAll
-          />
-
-          <MetaItem
-            label="Source record"
-            value={<MetaValueLink href={eventHref} value={sourceRecordId || "—"} />}
-            breakAll
-          />
-
-          <MetaItem label="Run record" value={runRecord} breakAll />
-
-          <MetaItem
-            label="Command"
-            value={<MetaValueLink href={commandHref} value={commandRecord} />}
-            breakAll
-          />
-
-          <MetaItem
-            label="Record ID"
-            value={
-              <MetaValueLink
-                href={canonicalIncidentHref}
-                value={String(incident.id || "") || "—"}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {moduleCards.map((moduleCard) => (
+              <ModuleExtensionCard
+                key={moduleCard.key}
+                title={moduleCard.title}
+                state={moduleCard.state}
+                summary={moduleCard.summary}
+                href={moduleCard.href}
+                ctaLabel={moduleCard.ctaLabel}
               />
-            }
-            breakAll
-          />
-        </div>
-      </SectionCard>
+            ))}
+          </div>
+        </SectionCard>
+      </div>
+
+      <div id="incident-context">
+        <SectionCard
+          title="Contexte incident"
+          description="Contexte opérationnel, source et informations utiles pour comprendre l’incident."
+          className={sectionFrameClassName("default")}
+        >
+          <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-3">
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Catégorie</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {category}
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Raison</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {reason}
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Workspace</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {effectiveWorkspaceId || workspace}
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Source</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {toText(incident.source, "Incidents")}
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Worker</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {toText(incident.worker, "—")}
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Error ID</div>
+              <div className="mt-2 break-all text-zinc-100">{errorId}</div>
+            </div>
+
+            <div className={`${wideBoxClassName()} sm:col-span-2 xl:col-span-3`}>
+              <div className={metaLabelClassName()}>Action suggérée</div>
+              <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
+                {suggestedAction}
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Dernière action</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {lastAction}
+              </div>
+            </div>
+
+            <div className={`${wideBoxClassName()} sm:col-span-2`}>
+              <div className={metaLabelClassName()}>Note de résolution</div>
+              <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
+                {resolutionNote}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      </div>
+
+      <div id="incident-orchestration">
+        <SectionCard
+          title="Décision & orchestration"
+          description="Éléments de pilotage utilisés pour l’escalade, la résolution ou l’action suivante."
+          tone="neutral"
+          className={sectionFrameClassName("neutral")}
+        >
+          <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-4">
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Décision</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {decisionStatus || "—"}
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Priority score</div>
+              <div className="mt-2 text-zinc-100">{priorityScore}</div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>SLA</div>
+              <div className="mt-2 text-zinc-100">{slaLabel}</div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>SLA restant</div>
+              <div className="mt-2 text-zinc-100">
+                {Number.isFinite(remainingMinutes) ? `${remainingMinutes} min` : "—"}
+              </div>
+            </div>
+
+            <div className={`${wideBoxClassName()} sm:col-span-2 xl:col-span-2`}>
+              <div className={metaLabelClassName()}>Raison décision</div>
+              <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
+                {decisionReason || "—"}
+              </div>
+            </div>
+
+            <div className={`${wideBoxClassName()} sm:col-span-2 xl:col-span-2`}>
+              <div className={metaLabelClassName()}>Next action</div>
+              <div className="mt-1 text-zinc-200 [overflow-wrap:anywhere]">
+                {nextAction || "—"}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      </div>
+
+      <div id="incident-links">
+        <SectionCard
+          title="Liens BOSAI"
+          description="Objets liés pour naviguer entre l’incident, le flow, la command, l’event et les identifiants techniques."
+          tone="neutral"
+          className={sectionFrameClassName("neutral")}
+        >
+          <div className="grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-3">
+            <MetaItem
+              label="Flow"
+              value={<MetaValueLink href={flowHref} value={flowTarget} />}
+              breakAll
+            />
+
+            <MetaItem
+              label="Root event"
+              value={<MetaValueLink href={eventHref} value={rootEventId || "—"} />}
+              breakAll
+            />
+
+            <MetaItem
+              label="Source record"
+              value={<MetaValueLink href={eventHref} value={sourceRecordId || "—"} />}
+              breakAll
+            />
+
+            <MetaItem label="Run record" value={runRecord} breakAll />
+
+            <MetaItem
+              label="Command"
+              value={<MetaValueLink href={commandHref} value={commandRecord} />}
+              breakAll
+            />
+
+            <MetaItem
+              label="Record ID"
+              value={
+                <MetaValueLink
+                  href={canonicalIncidentHref}
+                  value={String(incident.id || "") || "—"}
+                />
+              }
+              breakAll
+            />
+          </div>
+        </SectionCard>
+      </div>
     </ControlPlaneShell>
   );
 }
