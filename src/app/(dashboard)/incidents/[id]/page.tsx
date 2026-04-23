@@ -525,13 +525,6 @@ function matchesIncidentRouteId(incident: IncidentItem, id: string): boolean {
   return getIncidentRouteCandidates(incident).includes(needle);
 }
 
-function getIncidentRouteId(incident: IncidentItem): string {
-  const candidates = getIncidentRouteCandidates(incident);
-  const recordLike = candidates.find((value) => isRecordIdLike(value));
-  if (recordLike) return recordLike;
-  return candidates[0] || "";
-}
-
 function getCanonicalWorkspaceForIncidentLinks(
   incident: IncidentItem,
   activeWorkspaceId?: string,
@@ -756,6 +749,66 @@ function getIncidentSignalNextMove(incident: IncidentItem): string {
   return getNextAction(incident) || getSuggestedAction(incident);
 }
 
+function getInvestigationEntryLabel(incident: IncidentItem): string {
+  const commandTarget = getCommandRouteTargetFromIncident(incident);
+  if (commandTarget) {
+    return `Command ${compactTechnicalId(commandTarget)}`;
+  }
+
+  const flowTarget = getBestFlowTargetFromIncident(incident);
+  if (flowTarget) {
+    return `Flow ${compactTechnicalId(flowTarget)}`;
+  }
+
+  const eventTarget = getEventTargetFromIncident(incident);
+  if (eventTarget) {
+    return `Event ${compactTechnicalId(eventTarget)}`;
+  }
+
+  return `Incident ${compactTechnicalId(String(incident.id || ""))}`;
+}
+
+function getInvestigationModeLabel(incident: IncidentItem): string {
+  const hasCommand = Boolean(getCommandRouteTargetFromIncident(incident));
+  const hasFlow = Boolean(getBestFlowTargetFromIncident(incident));
+  const hasEvent = Boolean(getEventTargetFromIncident(incident));
+
+  if (hasCommand && hasFlow && hasEvent) return "Flow + command + event";
+  if (hasCommand && hasFlow) return "Flow + command";
+  if (hasFlow && hasEvent) return "Flow + event";
+  if (hasCommand) return "Command-linked";
+  if (hasFlow) return "Flow-linked";
+  if (hasEvent) return "Event-linked";
+  return "Record-only";
+}
+
+function getInvestigationFocusLabel(incident: IncidentItem): string {
+  const nextAction = getNextAction(incident);
+  if (nextAction) return nextAction;
+
+  const decision = getDecisionStatus(incident);
+  if (decision) return `Decision ${decision.toUpperCase()}`;
+
+  const reason = getReason(incident);
+  if (reason && reason !== "—") return reason;
+
+  return getSuggestedAction(incident);
+}
+
+function getInvestigationRouteLabel(incident: IncidentItem): string {
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+  const sla = getSlaLabel(incident).toLowerCase();
+
+  if (status === "resolved") return "Vérifier résolution";
+  if (status === "escalated") return "Contrôler escalade";
+  if (sla === "breached") return "Priorité SLA";
+  if (severity === "critical" || severity === "high") return "Priorité sévérité";
+  if (getCommandRouteTargetFromIncident(incident)) return "Commencer par la command";
+  if (getBestFlowTargetFromIncident(incident)) return "Commencer par le flow";
+  return "Lecture locale";
+}
+
 function MetaValueLink({
   href,
   value,
@@ -943,6 +996,7 @@ export default async function IncidentDetailPage({
   const flowHref = getFlowHref(incident, effectiveWorkspaceId);
   const commandHref = getCommandHref(incident, effectiveWorkspaceId);
   const eventHref = getEventHref(incident, effectiveWorkspaceId);
+  const canonicalIncidentHref = getIncidentHref(incident, effectiveWorkspaceId);
 
   const incidentsHref = appendWorkspaceAndParams(
     "/incidents",
@@ -962,8 +1016,12 @@ export default async function IncidentDetailPage({
   );
 
   const remainingMinutes = toNumber(incident.sla_remaining_minutes, Number.NaN);
-
   const flowTarget = flowId || sourceRecordId || rootEventId || "—";
+
+  const investigationEntry = getInvestigationEntryLabel(incident);
+  const investigationMode = getInvestigationModeLabel(incident);
+  const investigationFocus = getInvestigationFocusLabel(incident);
+  const investigationRoute = getInvestigationRouteLabel(incident);
 
   const shellBadges: { label: string; tone?: ShellBadgeTone }[] = [
     { label: statusLabel, tone: getShellBadgeToneFromStatus(incident) },
@@ -1198,6 +1256,114 @@ export default async function IncidentDetailPage({
         </SectionCard>
       </div>
 
+      <div id="incident-investigation-layer">
+        <SectionCard
+          title="Investigation Layer"
+          description="Couche d’enquête immédiate pour identifier le meilleur point d’entrée, le focus actif et la route de lecture prioritaire."
+          tone="neutral"
+          className={sectionFrameClassName("neutral")}
+        >
+          <div className="flex flex-wrap gap-2">
+            <DashboardStatusBadge
+              kind={getIncidentStatusBadgeKind(incident)}
+              label={statusLabel}
+            />
+            <DashboardStatusBadge
+              kind={getIncidentSeverityBadgeKind(incident)}
+              label={severityLabel}
+            />
+            <DashboardStatusBadge
+              kind={getIncidentSlaBadgeKind(incident)}
+              label={`SLA ${slaLabel}`}
+            />
+            {decisionStatus ? (
+              <DashboardStatusBadge
+                kind={getDecisionBadgeKind(incident)}
+                label={`DECISION ${decisionStatus.toUpperCase()}`}
+              />
+            ) : null}
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-4">
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Point d’entrée</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {investigationEntry}
+              </div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Premier objet recommandé pour démarrer l’enquête.
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Mode</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {investigationMode}
+              </div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Niveau de liaison disponible sur cet incident.
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Focus</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {investigationFocus}
+              </div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Élément le plus utile à vérifier maintenant.
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Route d’enquête</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {investigationRoute}
+              </div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Stratégie d’investigation prioritaire.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {flowHref ? (
+              <Link href={flowHref} className={actionLinkClassName("soft")}>
+                Ouvrir le flow lié
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir le flow lié
+              </span>
+            )}
+
+            {commandHref ? (
+              <Link href={commandHref} className={actionLinkClassName("primary")}>
+                Ouvrir la command liée
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("primary", true)}>
+                Ouvrir la command liée
+              </span>
+            )}
+
+            {eventHref ? (
+              <Link href={eventHref} className={actionLinkClassName("soft")}>
+                Ouvrir l’event lié
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir l’event lié
+              </span>
+            )}
+
+            <Link href={allIncidentsHref} className={actionLinkClassName("danger")}>
+              Voir tous les incidents
+            </Link>
+          </div>
+        </SectionCard>
+      </div>
+
       <SectionCard
         title="Contexte incident"
         description="Contexte opérationnel, source et informations utiles pour comprendre l’incident."
@@ -1351,7 +1517,7 @@ export default async function IncidentDetailPage({
             label="Record ID"
             value={
               <MetaValueLink
-                href={getIncidentHref(incident, effectiveWorkspaceId)}
+                href={canonicalIncidentHref}
                 value={String(incident.id || "") || "—"}
               />
             }
