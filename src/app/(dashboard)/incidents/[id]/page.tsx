@@ -891,6 +891,50 @@ function getExecutiveRecommendationLabel(incident: IncidentItem): string {
   return getSuggestedAction(incident);
 }
 
+function getIncidentControlRouteLabel(incident: IncidentItem): string {
+  const status = getIncidentStatusNormalized(incident);
+  const hasCommand = Boolean(getCommandRouteTargetFromIncident(incident));
+  const hasFlow = Boolean(getBestFlowTargetFromIncident(incident));
+
+  if (status === "resolved") return "Pilotage de vérification";
+  if (hasCommand) return "Pilotage par command";
+  if (hasFlow) return "Pilotage par flow";
+  return "Pilotage par incident";
+}
+
+function getIncidentControlActionLabel(incident: IncidentItem): string {
+  const status = getIncidentStatusNormalized(incident);
+  const sla = getSlaLabel(incident).toLowerCase();
+  const decision = getDecisionStatus(incident).toLowerCase();
+  const hasCommand = Boolean(getCommandRouteTargetFromIncident(incident));
+  const hasFlow = Boolean(getBestFlowTargetFromIncident(incident));
+
+  if (status === "resolved") {
+    return "Vérifier la résolution puis clôturer la lecture";
+  }
+  if (decision === "escalate" || decision === "escalated") {
+    return "Confirmer l’escalade puis revalider l’incident";
+  }
+  if (sla === "breached") {
+    return "Contrôler l’incident puis confirmer l’état SLA";
+  }
+  if (hasCommand) {
+    return "Ouvrir la command puis confirmer l’impact";
+  }
+  if (hasFlow) {
+    return "Ouvrir le flow puis confirmer l’état";
+  }
+  return "Ouvrir l’incident puis confirmer l’état";
+}
+
+function getIncidentControlBadgeLabel(incident: IncidentItem): string {
+  return getIncidentControlRouteLabel(incident).toUpperCase();
+}
+
+function countAvailableControlSurfaces(values: string[]): number {
+  return uniq(values.filter(Boolean)).length;
+}
+
 function MetaValueLink({
   href,
   value,
@@ -1110,6 +1154,19 @@ export default async function IncidentDetailPage({
   const executiveImpact = getExecutiveImpactLabel(incident);
   const executiveCoverage = getExecutiveCoverageLabel(incident);
   const executiveRecommendation = getExecutiveRecommendationLabel(incident);
+
+  const controlRoute = getIncidentControlRouteLabel(incident);
+  const controlAction = getIncidentControlActionLabel(incident);
+  const controlBadgeLabel = getIncidentControlBadgeLabel(incident);
+  const controlSurfacesCount = countAvailableControlSurfaces([
+    incidentsHref,
+    allIncidentsHref,
+    canonicalIncidentHref,
+    flowHref,
+    commandHref,
+    eventHref,
+  ]);
+  const controlReturnLabel = "Liste des incidents";
 
   const shellBadges: { label: string; tone?: ShellBadgeTone }[] = [
     { label: statusLabel, tone: getShellBadgeToneFromStatus(incident) },
@@ -1494,11 +1551,7 @@ export default async function IncidentDetailPage({
                       : "success"
               }
             />
-            <SignalCard
-              label="Impact"
-              value={executiveImpact}
-              tone="warning"
-            />
+            <SignalCard label="Impact" value={executiveImpact} tone="warning" />
             <SignalCard
               label="Couverture"
               value={executiveCoverage}
@@ -1533,6 +1586,116 @@ export default async function IncidentDetailPage({
             ) : (
               <span className={actionLinkClassName("primary", true)}>
                 Ouvrir la command liée
+              </span>
+            )}
+
+            <Link href={allIncidentsHref} className={actionLinkClassName("danger")}>
+              Voir tous les incidents
+            </Link>
+          </div>
+        </SectionCard>
+      </div>
+
+      <div id="incident-control-layer">
+        <SectionCard
+          title="Control Layer"
+          description="Couche de pilotage locale pour savoir quelle voie de contrôle suivre et quelle action ouvrir ensuite selon l’état réel de l’incident."
+          tone="neutral"
+          className={sectionFrameClassName("neutral")}
+        >
+          <div className="flex flex-wrap gap-2">
+            <DashboardStatusBadge
+              kind={getIncidentStatusBadgeKind(incident)}
+              label={statusLabel}
+            />
+            <DashboardStatusBadge
+              kind="queued"
+              label={controlBadgeLabel}
+            />
+            <DashboardStatusBadge
+              kind={getIncidentSlaBadgeKind(incident)}
+              label={`SLA ${slaLabel}`}
+            />
+            {decisionStatus ? (
+              <DashboardStatusBadge
+                kind={getDecisionBadgeKind(incident)}
+                label={`DECISION ${decisionStatus.toUpperCase()}`}
+              />
+            ) : null}
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-4 text-sm text-zinc-300 sm:grid-cols-2 xl:grid-cols-4">
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Voie de contrôle</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {controlRoute}
+              </div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Surface principale à utiliser pour piloter cet incident.
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Action suivante</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {controlAction}
+              </div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Action de contrôle prioritaire recommandée.
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Surfaces disponibles</div>
+              <div className="mt-2 text-zinc-100">{controlSurfacesCount}</div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Nombre de points d’accès de pilotage visibles ici.
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Retour de contrôle</div>
+              <div className="mt-2 text-zinc-100 [overflow-wrap:anywhere]">
+                {controlReturnLabel}
+              </div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Point de retour stable pour reprendre le pilotage global.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <Link href={incidentsHref} className={actionLinkClassName("soft")}>
+              Revenir aux incidents
+            </Link>
+
+            {flowHref ? (
+              <Link href={flowHref} className={actionLinkClassName("soft")}>
+                Ouvrir le flow lié
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir le flow lié
+              </span>
+            )}
+
+            {commandHref ? (
+              <Link href={commandHref} className={actionLinkClassName("primary")}>
+                Ouvrir la command liée
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("primary", true)}>
+                Ouvrir la command liée
+              </span>
+            )}
+
+            {eventHref ? (
+              <Link href={eventHref} className={actionLinkClassName("soft")}>
+                Ouvrir l’event lié
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("soft", true)}>
+                Ouvrir l’event lié
               </span>
             )}
 
