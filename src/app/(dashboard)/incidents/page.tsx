@@ -103,6 +103,14 @@ function signalDotClassName(tone: SignalTone): string {
   return "bg-zinc-400";
 }
 
+function toneTextClassName(tone: SignalTone): string {
+  if (tone === "danger") return "text-rose-300";
+  if (tone === "warning") return "text-amber-300";
+  if (tone === "success") return "text-emerald-300";
+  if (tone === "info") return "text-sky-300";
+  return "text-zinc-200";
+}
+
 function compactTechnicalId(value: string, max = 34): string {
   const clean = value.trim();
   if (!clean) return "—";
@@ -783,6 +791,100 @@ function getWorkspaceSignalTone(incident: IncidentItem): SignalTone {
   return getIncidentWorkspaceId(incident) ? "info" : "default";
 }
 
+function isSignalGapIncident(incident: IncidentItem): boolean {
+  const missingSignals = [
+    getIncidentTitle(incident) === "Untitled incident",
+    getIncidentSeverityNormalized(incident) === "unknown",
+    getWorkspace(incident) === "—",
+    getCategory(incident) === "—",
+    getReason(incident) === "—",
+  ].filter(Boolean).length;
+
+  return missingSignals >= 2;
+}
+
+function getMostRecentIncident(items: IncidentItem[]): IncidentItem | null {
+  if (items.length === 0) return null;
+
+  const sorted = [...items].sort(
+    (a, b) => getIncidentTimestampForSort(b) - getIncidentTimestampForSort(a)
+  );
+
+  return sorted[0] || null;
+}
+
+function getExecutivePosture(args: {
+  activeCount: number;
+  escalatedCount: number;
+  criticalActiveCount: number;
+  resolvedCount: number;
+  visibleCount: number;
+  signalGapCount: number;
+}): {
+  label: string;
+  summary: string;
+  tone: SignalTone;
+  countTone: "default" | "info" | "success" | "warning" | "danger" | "muted";
+} {
+  if (args.escalatedCount > 0) {
+    return {
+      label: "Escalation pressure",
+      summary:
+        "Des incidents escaladés restent visibles. La surface demande une attention dirigeant immédiate.",
+      tone: "warning",
+      countTone: "warning",
+    };
+  }
+
+  if (args.criticalActiveCount > 0) {
+    return {
+      label: "Critical pressure",
+      summary:
+        "Des incidents critiques actifs restent visibles. La priorité doit rester sur la réduction du risque.",
+      tone: "danger",
+      countTone: "danger",
+    };
+  }
+
+  if (args.activeCount > 0) {
+    return {
+      label: "Active watch",
+      summary:
+        "La surface reste active mais non escaladée. Le cockpit doit surveiller cadence, SLA et résolution.",
+      tone: "info",
+      countTone: "info",
+    };
+  }
+
+  if (args.visibleCount > 0 && args.signalGapCount > 0) {
+    return {
+      label: "Low signal confidence",
+      summary:
+        "La surface visible reste calme mais la qualité du signal n’est pas parfaite. La lecture dirigeant doit garder cette réserve.",
+      tone: "warning",
+      countTone: "warning",
+    };
+  }
+
+  if (args.resolvedCount > 0) {
+    return {
+      label: "Stabilized",
+      summary:
+        "La surface visible est principalement stabilisée. Les incidents présents sont majoritairement résolus.",
+      tone: "success",
+      countTone: "success",
+    };
+  }
+
+  return {
+    label: "Quiet surface",
+    summary:
+      "Aucune pression notable n’est visible. La surface semble calme sur le scope actuel.",
+    tone: "default",
+    countTone: "default",
+  };
+}
+
 function MetaItem({
   label,
   value,
@@ -1240,6 +1342,35 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     "resolved"
   );
 
+  const criticalActiveIncidents = activeIncidents.filter(
+    (item) => getIncidentSeverityNormalized(item) === "critical"
+  );
+
+  const escalatedOrBreachedActiveIncidents = activeIncidents.filter(
+    (item) =>
+      getIncidentStatusNormalized(item) === "escalated" || getSlaLabel(item) === "BREACHED"
+  );
+
+  const signalGapIncidents = visibleIncidents.filter((item) =>
+    isSignalGapIncident(item)
+  );
+
+  const signalReadyCount = Math.max(
+    0,
+    visibleIncidents.length - signalGapIncidents.length
+  );
+
+  const mostRecentIncident = getMostRecentIncident(visibleIncidents);
+
+  const executivePosture = getExecutivePosture({
+    activeCount: activeIncidents.length,
+    escalatedCount: escalatedIncidents.length,
+    criticalActiveCount: criticalActiveIncidents.length,
+    resolvedCount: resolvedIncidents.length,
+    visibleCount: visibleIncidents.length,
+    signalGapCount: signalGapIncidents.length,
+  });
+
   const backToFlowsHref =
     from === "flows" || from === "flow_detail"
       ? getBackToFlowsHref({ flowId, rootEventId, sourceRecordId }, activeWorkspaceId)
@@ -1600,6 +1731,100 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
               <div className="mt-2 text-sm leading-6 text-zinc-300">
                 {quickRead}
               </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Executive Layer"
+            description="Lecture dirigeant / cockpit : posture, backlog, activité récente, criticité réelle et qualité du signal visible."
+            action={
+              <SectionCountPill
+                value={activeIncidents.length}
+                tone={executivePosture.countTone}
+              />
+            }
+          >
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <IncidentMiniStat
+                label="Active backlog"
+                value={activeIncidents.length}
+                toneClass="text-white"
+                panelTone={
+                  activeIncidents.length > 0 ? executivePosture.tone : "success"
+                }
+              />
+              <IncidentMiniStat
+                label="Critical active"
+                value={criticalActiveIncidents.length}
+                toneClass="text-red-300"
+                panelTone={
+                  criticalActiveIncidents.length > 0 ? "danger" : "default"
+                }
+              />
+              <IncidentMiniStat
+                label="Signal ready"
+                value={signalReadyCount}
+                toneClass="text-emerald-300"
+                panelTone={signalReadyCount > 0 ? "success" : "default"}
+              />
+              <IncidentMiniStat
+                label="Signal gaps"
+                value={signalGapIncidents.length}
+                toneClass="text-amber-300"
+                panelTone={signalGapIncidents.length > 0 ? "warning" : "default"}
+              />
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <InvestigationField
+                label="Executive posture"
+                value={executivePosture.label}
+                valueClassName={toneTextClassName(executivePosture.tone)}
+              />
+
+              <InvestigationField
+                label="Posture note"
+                value={executivePosture.summary}
+              />
+
+              <InvestigationField
+                label="Recent activity"
+                value={
+                  mostRecentIncident
+                    ? `${formatDate(
+                        getUpdatedAt(mostRecentIncident) ||
+                          getOpenedAt(mostRecentIncident) ||
+                          getResolvedAt(mostRecentIncident)
+                      )} · ${compactTechnicalId(
+                        getIncidentTitle(mostRecentIncident),
+                        56
+                      )}`
+                    : "—"
+                }
+              />
+
+              <InvestigationField
+                label="Backlog focus"
+                value={
+                  activeIncidents.length > 0
+                    ? `${activeIncidents.length} active · ${escalatedIncidents.length} escalated`
+                    : "No active backlog visible"
+                }
+              />
+
+              <InvestigationField
+                label="Criticality real"
+                value={`${criticalActiveIncidents.length} critical active · ${escalatedOrBreachedActiveIncidents.length} escalated/breached`}
+              />
+
+              <InvestigationField
+                label="Signal quality"
+                value={
+                  visibleIncidents.length > 0
+                    ? `${signalReadyCount}/${visibleIncidents.length} ready · ${signalGapIncidents.length} gaps`
+                    : "—"
+                }
+              />
             </div>
           </SectionCard>
 
