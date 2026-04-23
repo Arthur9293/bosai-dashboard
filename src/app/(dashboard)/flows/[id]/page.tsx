@@ -63,6 +63,8 @@ type TimelineItem = {
   syntheticSource?: "event";
 };
 
+type ExecutiveRiskLevel = "critical" | "elevated" | "watch" | "stable";
+
 function cardClassName() {
   return "rounded-[28px] border border-cyan-500/10 bg-[linear-gradient(180deg,rgba(6,18,45,0.78)_0%,rgba(4,10,26,0.64)_100%)] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
@@ -984,6 +986,138 @@ function getInvestigationTargetItem(items: TimelineItem[]): TimelineItem | null 
   return items[0] || null;
 }
 
+function getExecutiveRiskLevel(args: {
+  resolvedStatus: string;
+  hasIncident: boolean;
+  readingMode: "registry-only" | "enriched";
+  failedCount: number;
+  runningCount: number;
+}): ExecutiveRiskLevel {
+  const { resolvedStatus, hasIncident, readingMode, failedCount, runningCount } = args;
+
+  if (hasIncident || resolvedStatus === "failed" || failedCount > 0) {
+    return "critical";
+  }
+
+  if (resolvedStatus === "retry" || resolvedStatus === "running" || runningCount > 0) {
+    return "elevated";
+  }
+
+  if (readingMode === "registry-only" || resolvedStatus === "partial") {
+    return "watch";
+  }
+
+  return "stable";
+}
+
+function executiveRiskBadgeKind(level: ExecutiveRiskLevel): DashboardStatusKind {
+  switch (level) {
+    case "critical":
+      return "incident";
+    case "elevated":
+      return "retry";
+    case "watch":
+      return "queued";
+    case "stable":
+    default:
+      return "success";
+  }
+}
+
+function executiveRiskLabel(level: ExecutiveRiskLevel): string {
+  switch (level) {
+    case "critical":
+      return "RISQUE CRITIQUE";
+    case "elevated":
+      return "RISQUE ÉLEVÉ";
+    case "watch":
+      return "À SURVEILLER";
+    case "stable":
+    default:
+      return "STABLE";
+  }
+}
+
+function executiveImpactLabel(args: {
+  resolvedStatus: string;
+  hasIncident: boolean;
+  runningCount: number;
+  readingMode: "registry-only" | "enriched";
+}): string {
+  const { resolvedStatus, hasIncident, runningCount, readingMode } = args;
+
+  if (hasIncident) {
+    return "Impact métier probable";
+  }
+
+  if (resolvedStatus === "failed") {
+    return "Blocage de chaîne probable";
+  }
+
+  if (resolvedStatus === "retry") {
+    return "Récupération automatique en cours";
+  }
+
+  if (resolvedStatus === "running" || runningCount > 0) {
+    return "Exécution encore active";
+  }
+
+  if (readingMode === "registry-only") {
+    return "Visibilité incomplète";
+  }
+
+  return "Flux terminé proprement";
+}
+
+function executiveCompletenessLabel(args: {
+  readingMode: "registry-only" | "enriched";
+  displayedSteps: number;
+  sourceEvent: EventItem | null;
+}): string {
+  const { readingMode, displayedSteps, sourceEvent } = args;
+
+  if (readingMode === "registry-only") {
+    return sourceEvent ? "Lecture partielle ancrée" : "Lecture partielle";
+  }
+
+  if (displayedSteps <= 0) {
+    return "Aucune étape détaillée";
+  }
+
+  if (displayedSteps === 1) {
+    return "1 étape lisible";
+  }
+
+  return `${displayedSteps} étapes lisibles`;
+}
+
+function executiveRecommendationLabel(args: {
+  hasIncident: boolean;
+  investigationTarget: TimelineItem | null;
+  sourceEvent: EventItem | null;
+  readingMode: "registry-only" | "enriched";
+}): string {
+  const { hasIncident, investigationTarget, sourceEvent, readingMode } = args;
+
+  if (hasIncident) {
+    return "Ouvrir incidents puis point chaud";
+  }
+
+  if (investigationTarget) {
+    return `Commencer par ${investigationTarget.capability}`;
+  }
+
+  if (sourceEvent) {
+    return "Vérifier l’event source";
+  }
+
+  if (readingMode === "registry-only") {
+    return "Revenir à la lecture registre";
+  }
+
+  return "Relire la timeline";
+}
+
 function buildTitle(flow: FlowDetail, sourceEvent: EventItem | null, id: string): string {
   const flowId = toText(flow.flow_id);
 
@@ -1441,6 +1575,31 @@ export default async function FlowDetailPage({
     ? `${investigationTarget.capability} · step ${investigationTarget.stepIndex} · ${flowStatusLabel(investigationTarget.status)}`
     : "Aucune étape détaillée";
 
+  const executiveRisk = getExecutiveRiskLevel({
+    resolvedStatus,
+    hasIncident,
+    readingMode,
+    failedCount,
+    runningCount,
+  });
+  const executiveImpact = executiveImpactLabel({
+    resolvedStatus,
+    hasIncident,
+    runningCount,
+    readingMode,
+  });
+  const executiveCompleteness = executiveCompletenessLabel({
+    readingMode,
+    displayedSteps,
+    sourceEvent,
+  });
+  const executiveRecommendation = executiveRecommendationLabel({
+    hasIncident,
+    investigationTarget,
+    sourceEvent,
+    readingMode,
+  });
+
   return (
     <ControlPlaneShell
       className="relative"
@@ -1639,6 +1798,94 @@ export default async function FlowDetailPage({
                 Aller à l’event source
               </span>
             )}
+
+            {investigationTarget ? (
+              <a href={investigationTargetHref} className={actionLinkClassName("primary")}>
+                Ouvrir le point chaud
+              </a>
+            ) : (
+              <span className={actionLinkClassName("primary", true)}>
+                Ouvrir le point chaud
+              </span>
+            )}
+
+            {hasIncident ? (
+              <Link href={incidentsHref} className={actionLinkClassName("danger")}>
+                Ouvrir incidents
+              </Link>
+            ) : (
+              <span className={actionLinkClassName("danger", true)}>
+                Ouvrir incidents
+              </span>
+            )}
+          </div>
+        </SectionCard>
+      </div>
+
+      <div id="executive-layer">
+        <SectionCard
+          title="Executive Layer"
+          description="Lecture de synthèse pour évaluer rapidement le risque, l’impact, la complétude et l’action recommandée sans relire toute la page."
+          action={<SectionCountPill value={displayedSteps} tone="info" />}
+          className={blueSectionClassName()}
+        >
+          <div className="flex flex-wrap gap-2">
+            <DashboardStatusBadge
+              kind={executiveRiskBadgeKind(executiveRisk)}
+              label={executiveRiskLabel(executiveRisk)}
+            />
+            <DashboardStatusBadge
+              kind={flowStatusBadgeKind(resolvedStatus)}
+              label={flowStatusLabel(resolvedStatus)}
+            />
+            <DashboardStatusBadge
+              kind={readingMode === "registry-only" ? "retry" : "success"}
+              label={readingMode === "registry-only" ? "LECTURE PARTIELLE" : "LECTURE COMPLÈTE"}
+            />
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Risque</div>
+              <div className="mt-2 text-zinc-100">{executiveRiskLabel(executiveRisk)}</div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Basé sur le statut, les incidents et la lecture disponible.
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Impact</div>
+              <div className="mt-2 text-zinc-100">{executiveImpact}</div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Résumé immédiat de la situation métier du flow.
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Complétude</div>
+              <div className="mt-2 text-zinc-100">{executiveCompleteness}</div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Niveau de profondeur disponible dans cette lecture.
+              </div>
+            </div>
+
+            <div className={metaBoxClassName()}>
+              <div className={metaLabelClassName()}>Recommandation</div>
+              <div className="mt-2 text-zinc-100">{executiveRecommendation}</div>
+              <div className="mt-2 text-sm text-zinc-400">
+                Action la plus utile à lancer maintenant.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <a href="#investigation-layer" className={actionLinkClassName("soft")}>
+              Ouvrir Investigation Layer
+            </a>
+
+            <a href="#flow-timeline" className={actionLinkClassName("soft")}>
+              Aller à la timeline
+            </a>
 
             {investigationTarget ? (
               <a href={investigationTargetHref} className={actionLinkClassName("primary")}>
