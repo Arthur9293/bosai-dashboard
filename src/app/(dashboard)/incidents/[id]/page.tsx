@@ -1256,11 +1256,18 @@ export default async function IncidentDetailPage({
   const contextModuleState = getContextModuleState(incident);
   const orchestrationModuleState = getOrchestrationModuleState(incident);
 
-  const moduleCards = [
+  const moduleCards: Array<{
+    key: string;
+    title: string;
+    state: ModuleState;
+    summary: string;
+    href?: string;
+    ctaLabel: string;
+  }> = [
     {
       key: "signal",
       title: "Signal",
-      state: "available" as ModuleState,
+      state: "available",
       summary: "Couche de signal visible et active.",
       href: "#incident-signal-layer",
       ctaLabel: "Ouvrir Signal",
@@ -1268,7 +1275,7 @@ export default async function IncidentDetailPage({
     {
       key: "investigation",
       title: "Investigation",
-      state: "available" as ModuleState,
+      state: "available",
       summary: "Point d’enquête immédiat disponible.",
       href: "#incident-investigation-layer",
       ctaLabel: "Ouvrir Investigation",
@@ -1276,7 +1283,7 @@ export default async function IncidentDetailPage({
     {
       key: "executive",
       title: "Executive",
-      state: "available" as ModuleState,
+      state: "available",
       summary: "Synthèse cockpit dirigeant disponible.",
       href: "#incident-executive-layer",
       ctaLabel: "Ouvrir Executive",
@@ -1284,7 +1291,7 @@ export default async function IncidentDetailPage({
     {
       key: "control",
       title: "Control",
-      state: "available" as ModuleState,
+      state: "available",
       summary: "Pilotage local disponible.",
       href: "#incident-control-layer",
       ctaLabel: "Ouvrir Control",
@@ -1322,7 +1329,7 @@ export default async function IncidentDetailPage({
       summary: flowHref
         ? `Flow ${compactTechnicalId(flowTarget)} disponible.`
         : "Aucun flow lié directement exploitable.",
-      href: flowHref,
+      href: flowHref || undefined,
       ctaLabel: "Ouvrir Flow",
     },
     {
@@ -1332,7 +1339,7 @@ export default async function IncidentDetailPage({
       summary: commandHref
         ? `Command ${compactTechnicalId(commandRecord)} disponible.`
         : "Aucune command liée directement exploitable.",
-      href: commandHref,
+      href: commandHref || undefined,
       ctaLabel: "Ouvrir Command",
     },
     {
@@ -1342,7 +1349,7 @@ export default async function IncidentDetailPage({
       summary: eventHref
         ? `Event ${compactTechnicalId(rootEventId || sourceRecordId)} disponible.`
         : "Aucun event lié directement exploitable.",
-      href: eventHref,
+      href: eventHref || undefined,
       ctaLabel: "Ouvrir Event",
     },
   ];
