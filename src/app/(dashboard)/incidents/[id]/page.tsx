@@ -210,6 +210,15 @@ function safeResolveIncidentsActiveWorkspaceId(args: {
   }
 }
 
+function normalizeDisplayText(value: string): string {
+  return value.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function titleLooksGeneric(value: string): boolean {
+  const clean = value.trim().toLowerCase();
+  return clean === "" || clean === "incident" || clean === "untitled incident";
+}
+
 function extractIncidentItems(payload: unknown): IncidentItem[] {
   if (!payload) return [];
 
@@ -342,6 +351,17 @@ function getIncidentSeverityLabel(incident: IncidentItem): string {
   return raw ? raw.toUpperCase() : "UNKNOWN";
 }
 
+function getIncidentSeverityDisplayLabel(incident: IncidentItem): string {
+  const normalized = getIncidentSeverityNormalized(incident);
+
+  if (normalized === "critical") return "CRITICAL";
+  if (normalized === "high") return "HIGH";
+  if (normalized === "medium") return "MEDIUM";
+  if (normalized === "low") return "LOW";
+
+  return "UNCLASSIFIED";
+}
+
 function getDecisionStatus(incident: IncidentItem): string {
   return toText(incident.decision_status, "");
 }
@@ -378,6 +398,11 @@ function getSlaLabel(incident: IncidentItem): string {
   return "—";
 }
 
+function getSlaDisplayLabel(incident: IncidentItem): string {
+  const label = getSlaLabel(incident).trim();
+  return label && label !== "—" ? label : "NO SLA SIGNAL";
+}
+
 function getOpenedAt(incident: IncidentItem): string | undefined {
   return incident.opened_at || incident.created_at;
 }
@@ -398,6 +423,11 @@ function getResolvedAt(incident: IncidentItem): string | undefined {
 
 function getWorkspace(incident: IncidentItem): string {
   return incident.workspace_id || incident.workspace || "—";
+}
+
+function getWorkspaceDisplay(incident: IncidentItem): string {
+  const workspace = getIncidentWorkspaceId(incident).trim();
+  return workspace || "UNSCOPED";
 }
 
 function getRunRecord(incident: IncidentItem): string {
@@ -426,8 +456,68 @@ function getCategory(incident: IncidentItem): string {
   return incident.category || "—";
 }
 
+function getCategoryDisplay(incident: IncidentItem): string {
+  const category = getCategory(incident).trim();
+  return category && category !== "—"
+    ? normalizeDisplayText(category)
+    : "UNCATEGORIZED";
+}
+
 function getReason(incident: IncidentItem): string {
   return incident.reason || "—";
+}
+
+function getReasonDisplay(incident: IncidentItem): string {
+  const reason = getReason(incident).trim();
+  return reason && reason !== "—"
+    ? normalizeDisplayText(reason)
+    : "NO REASON SIGNAL";
+}
+
+function getDecisionStatusDisplay(incident: IncidentItem): string {
+  const decision = getDecisionStatus(incident).trim();
+  return decision
+    ? normalizeDisplayText(decision).toUpperCase()
+    : "NO DECISION YET";
+}
+
+function getDecisionReasonDisplay(incident: IncidentItem): string {
+  const reason = getDecisionReason(incident).trim();
+  return reason
+    ? normalizeDisplayText(reason)
+    : "NO DECISION REASON";
+}
+
+function getNextActionDisplay(incident: IncidentItem): string {
+  const action = getNextAction(incident).trim();
+  return action
+    ? normalizeDisplayText(action)
+    : "NO NEXT ACTION";
+}
+
+function getIncidentDisplayTitle(incident: IncidentItem): string {
+  const rawTitle = getIncidentTitle(incident).trim();
+
+  if (!titleLooksGeneric(rawTitle)) return rawTitle;
+
+  const errorId = toTextOrEmpty(incident.error_id);
+  if (errorId) return `Incident · ${compactTechnicalId(errorId, 42)}`;
+
+  const category = getCategory(incident).trim();
+  if (category && category !== "—") {
+    return `Incident · ${normalizeDisplayText(category)}`;
+  }
+
+  const reason = getReason(incident).trim();
+  if (reason && reason !== "—") {
+    return `Incident · ${normalizeDisplayText(reason)}`;
+  }
+
+  if (getFlowId(incident)) return "Incident linked to flow";
+  if (getCommandRecord(incident) !== "—") return "Incident linked to command";
+  if (getRootEventId(incident)) return "Incident linked to event";
+
+  return "Incident with partial signal";
 }
 
 function getSuggestedAction(incident: IncidentItem): string {
@@ -449,11 +539,10 @@ function getSuggestedAction(incident: IncidentItem): string {
 
 function getSummaryLine(incident: IncidentItem): string {
   const status = getIncidentStatusNormalized(incident);
-  const severity = getIncidentSeverityNormalized(incident);
-  const workspace = getWorkspace(incident);
-  const category = getCategory(incident);
 
-  return `${safeUpper(status)} · ${safeUpper(severity)} · ${workspace} · ${category}`;
+  return `${safeUpper(status)} · ${getIncidentSeverityDisplayLabel(
+    incident
+  )} · ${getWorkspaceDisplay(incident)} · ${getCategoryDisplay(incident)}`;
 }
 
 function getActivePriority(incident: IncidentItem): number {
@@ -800,7 +889,7 @@ function getWorkspaceSignalTone(incident: IncidentItem): SignalTone {
 
 function isSignalGapIncident(incident: IncidentItem): boolean {
   const missingSignals = [
-    getIncidentTitle(incident) === "Untitled incident",
+    titleLooksGeneric(getIncidentTitle(incident)),
     getIncidentSeverityNormalized(incident) === "unknown",
     getWorkspace(incident) === "—",
     getCategory(incident) === "—",
@@ -808,6 +897,10 @@ function isSignalGapIncident(incident: IncidentItem): boolean {
   ].filter(Boolean).length;
 
   return missingSignals >= 2;
+}
+
+function getSignalTruthLabel(incident: IncidentItem): string {
+  return isSignalGapIncident(incident) ? "PARTIAL SIGNAL" : "SIGNAL READY";
 }
 
 function getMostRecentIncident(items: IncidentItem[]): IncidentItem | null {
@@ -995,13 +1088,13 @@ function IncidentListCard({
   incident: IncidentItem;
   activeWorkspaceId?: string;
 }) {
-  const title = getIncidentTitle(incident);
+  const title = getIncidentDisplayTitle(incident);
   const statusLabel = getIncidentStatusLabel(incident);
-  const severityLabel = getIncidentSeverityLabel(incident);
-  const slaLabel = getSlaLabel(incident);
-  const decisionStatus = getDecisionStatus(incident);
-  const decisionReason = getDecisionReason(incident);
-  const nextAction = getNextAction(incident);
+  const severityLabel = getIncidentSeverityDisplayLabel(incident);
+  const slaLabel = getSlaDisplayLabel(incident);
+  const decisionStatus = getDecisionStatusDisplay(incident);
+  const decisionReason = getDecisionReasonDisplay(incident);
+  const nextAction = getNextActionDisplay(incident);
   const flowTarget = getBestFlowTargetFromIncident(incident);
   const commandRecord = getCommandRecord(incident);
   const rootEventId = getRootEventId(incident);
@@ -1050,15 +1143,19 @@ function IncidentListCard({
 
   const controlNote = primaryLinkedAction
     ? hasSignalGap
-      ? "Signal partiel : une seule navigation secondaire priorisée."
+      ? "Signal partiel : détail + meilleure surface liée seulement."
       : `${linkedActions.length} surface(s) liée(s) exploitable(s) depuis cette carte.`
-    : "Aucune surface liée exploitable : le détail reste la meilleure entrée.";
+    : hasSignalGap
+      ? "Signal partiel : le détail reste la seule entrée fiable."
+      : "Aucune surface liée exploitable : le détail reste la meilleure entrée.";
 
   const controlTone: SignalTone = primaryLinkedAction
     ? hasSignalGap
       ? "warning"
       : "info"
-    : "default";
+    : hasSignalGap
+      ? "warning"
+      : "default";
 
   return (
     <article className={cardClassName()}>
@@ -1086,7 +1183,7 @@ function IncidentListCard({
             />
             <SignalMetaPill
               label="Workspace signal"
-              value={getWorkspace(incident)}
+              value={getWorkspaceDisplay(incident)}
               tone={getWorkspaceSignalTone(incident)}
             />
           </div>
@@ -1117,10 +1214,17 @@ function IncidentListCard({
                 label={`SLA ${slaLabel}`}
               />
 
-              {decisionStatus ? (
+              {hasSignalGap ? (
+                <DashboardStatusBadge
+                  kind="unknown"
+                  label={getSignalTruthLabel(incident)}
+                />
+              ) : null}
+
+              {getDecisionStatus(incident) ? (
                 <DashboardStatusBadge
                   kind={getDecisionBadgeKind(incident)}
-                  label={`DECISION ${decisionStatus.toUpperCase()}`}
+                  label={`DECISION ${decisionStatus}`}
                 />
               ) : null}
             </div>
@@ -1134,24 +1238,28 @@ function IncidentListCard({
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <InvestigationField label="Category" value={getCategory(incident)} />
-            <InvestigationField label="Reason" value={getReason(incident)} breakAll />
+            <InvestigationField label="Category" value={getCategoryDisplay(incident)} />
+            <InvestigationField
+              label="Reason"
+              value={getReasonDisplay(incident)}
+              breakAll
+            />
             <InvestigationField
               label="Suggested action"
               value={suggestedAction}
             />
             <InvestigationField
               label="Decision"
-              value={decisionStatus || "—"}
-              valueClassName="text-purple-300"
+              value={decisionStatus}
+              valueClassName={getDecisionStatus(incident) ? "text-purple-300" : "text-zinc-400"}
             />
             <InvestigationField
               label="Decision reason"
-              value={decisionReason || "—"}
+              value={decisionReason}
             />
             <InvestigationField
               label="Next action"
-              value={nextAction || "—"}
+              value={nextAction}
             />
           </div>
         </div>
@@ -1198,12 +1306,12 @@ function IncidentListCard({
 
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Workspace</div>
-            <div className="mt-2 text-zinc-100">{getWorkspace(incident)}</div>
+            <div className="mt-2 text-zinc-100">{getWorkspaceDisplay(incident)}</div>
           </div>
 
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Category</div>
-            <div className="mt-2 text-zinc-100">{getCategory(incident)}</div>
+            <div className="mt-2 text-zinc-100">{getCategoryDisplay(incident)}</div>
           </div>
         </div>
 
@@ -1219,14 +1327,14 @@ function IncidentListCard({
                   {flowTarget}
                 </Link>
               ) : (
-                "—"
+                "No linked flow"
               )
             }
             breakAll
           />
 
-          <MetaItem label="Root event" value={toText(rootEventId)} breakAll />
-          <MetaItem label="Run record" value={toText(runRecord)} breakAll />
+          <MetaItem label="Root event" value={toText(rootEventId, "No root event")} breakAll />
+          <MetaItem label="Run record" value={toText(runRecord, "No run record")} breakAll />
 
           <MetaItem
             label="Command"
@@ -1239,7 +1347,7 @@ function IncidentListCard({
                   {commandRecord}
                 </Link>
               ) : (
-                "—"
+                "No linked command"
               )
             }
             breakAll
@@ -1256,13 +1364,16 @@ function IncidentListCard({
                   {getEventTargetFromIncident(incident)}
                 </Link>
               ) : (
-                "—"
+                "No linked event"
               )
             }
             breakAll
           />
 
-          <MetaItem label="Resolved" value={formatDate(getResolvedAt(incident))} />
+          <MetaItem
+            label="Resolved"
+            value={formatDate(getResolvedAt(incident)) === "—" ? "Not resolved yet" : formatDate(getResolvedAt(incident))}
+          />
 
           <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
             <div className={metaLabelClassName()}>Priority score</div>
@@ -1591,7 +1702,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     Titre
                   </div>
                   <div className="mt-2 text-sm font-medium leading-6 text-white">
-                    {getIncidentTitle(focusIncident)}
+                    {getIncidentDisplayTitle(focusIncident)}
                   </div>
                 </div>
 
@@ -1602,19 +1713,22 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   />
                   <DashboardStatusBadge
                     kind={getIncidentSeverityBadgeKind(focusIncident)}
-                    label={getIncidentSeverityLabel(focusIncident)}
+                    label={getIncidentSeverityDisplayLabel(focusIncident)}
                   />
                   <DashboardStatusBadge
                     kind={getIncidentSlaBadgeKind(focusIncident)}
-                    label={`SLA ${getSlaLabel(focusIncident)}`}
+                    label={`SLA ${getSlaDisplayLabel(focusIncident)}`}
                   />
+                  {isSignalGapIncident(focusIncident) ? (
+                    <DashboardStatusBadge kind="unknown" label="PARTIAL SIGNAL" />
+                  ) : null}
                 </div>
 
                 <div className="space-y-2 text-sm leading-6 text-white/65">
                   <div>
                     Workspace :{" "}
                     <span className="text-white/90">
-                      {activeWorkspaceId || getWorkspace(focusIncident)}
+                      {activeWorkspaceId || getWorkspaceDisplay(focusIncident)}
                     </span>
                   </div>
                   <div>
@@ -1882,7 +1996,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                           getOpenedAt(mostRecentIncident) ||
                           getResolvedAt(mostRecentIncident)
                       )} · ${compactTechnicalId(
-                        getIncidentTitle(mostRecentIncident),
+                        getIncidentDisplayTitle(mostRecentIncident),
                         56
                       )}`
                     : "—"
