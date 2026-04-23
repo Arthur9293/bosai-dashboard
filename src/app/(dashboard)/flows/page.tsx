@@ -71,6 +71,8 @@ type FetchResult<T> = {
   error?: string;
 };
 
+type SignalTone = "neutral" | "info" | "success" | "warning" | "danger";
+
 const WORKER_BASE_URL = stripTrailingSlash(
   process.env.BOSAI_WORKER_BASE_URL ||
     process.env.NEXT_PUBLIC_BOSAI_WORKER_URL ||
@@ -413,7 +415,11 @@ function FlowSection({
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {flows.map((flow) => (
-          <FlowCard key={flow.key} flow={flow} activeWorkspaceId={activeWorkspaceId} />
+          <FlowCard
+            key={flow.key}
+            flow={flow}
+            activeWorkspaceId={activeWorkspaceId}
+          />
         ))}
       </div>
     </section>
@@ -428,6 +434,13 @@ function FlowCard({
   activeWorkspaceId: string;
 }) {
   const scopedWorkspaceId = activeWorkspaceId || flow.workspaceId || "";
+  const flowDetailId = flow.flowId || flow.rootEventId || flow.sourceRecordId || "";
+
+  const flowDetailHref = flowDetailId
+    ? buildHref(`/flows/${encodeURIComponent(flowDetailId)}`, {
+        workspace_id: scopedWorkspaceId || undefined,
+      })
+    : "";
 
   const commandsHref = flow.flowId
     ? buildHref("/commands", {
@@ -459,6 +472,22 @@ function FlowCard({
         root_event_id: flow.rootEventId,
       })
     : "";
+
+  const openIncidents = flow.incidents.filter(
+    (incident) => incident.status === "open",
+  );
+  const openIncidentCount = openIncidents.length;
+  const highestOpenSeverity = getHighestOpenIncidentSeverity(openIncidents);
+  const maxStepIndex = flow.commands.reduce(
+    (max, command) => Math.max(max, command.stepIndex),
+    0,
+  );
+
+  const observabilityLabel = flow.registryOnly
+    ? "Registry-only"
+    : flow.partial
+      ? "Partial observability"
+      : "Enriched";
 
   return (
     <article className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm transition hover:shadow-md">
@@ -503,6 +532,39 @@ function FlowCard({
           />
         </div>
 
+        <div className="space-y-3 rounded-3xl border border-zinc-200 bg-zinc-50/70 p-4">
+          <div className="text-sm font-medium text-zinc-900">Signal layer</div>
+
+          <div className="flex flex-wrap gap-2">
+            <SignalChip tone={signalToneForFlowStatus(flow.status)}>
+              {signalLabelForFlowStatus(flow.status)}
+            </SignalChip>
+
+            <SignalChip
+              tone={signalToneForIncidentSeverity(
+                highestOpenSeverity,
+                openIncidentCount,
+              )}
+            >
+              {signalLabelForIncident(highestOpenSeverity, openIncidentCount)}
+            </SignalChip>
+
+            <SignalChip
+              tone={
+                flow.registryOnly || flow.partial ? "warning" : "info"
+              }
+            >
+              {observabilityLabel}
+            </SignalChip>
+
+            <SignalChip tone={flow.commands.length > 0 ? "info" : "neutral"}>
+              {flow.commands.length > 0
+                ? `${flow.commands.length} cmd · max step #${maxStepIndex}`
+                : "No detailed commands"}
+            </SignalChip>
+          </div>
+        </div>
+
         {flow.capabilities.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {flow.capabilities.map((capability) => (
@@ -544,6 +606,10 @@ function FlowCard({
         ) : null}
 
         <div className="flex flex-wrap gap-2 pt-0.5">
+          {flowDetailHref ? (
+            <LinkButton href={flowDetailHref}>Ouvrir le flow</LinkButton>
+          ) : null}
+
           <LinkButton href={commandsHref}>Voir les commandes</LinkButton>
           <LinkButton href={incidentsHref}>Voir les incidents</LinkButton>
 
@@ -686,6 +752,123 @@ function LinkButton({
       <span className="block leading-none text-zinc-700">{children}</span>
     </Link>
   );
+}
+
+function SignalChip({
+  tone,
+  children,
+}: {
+  tone: SignalTone;
+  children: ReactNode;
+}) {
+  const map: Record<SignalTone, string> = {
+    neutral: "border-zinc-200 bg-white text-zinc-700",
+    info: "border-sky-200 bg-sky-50 text-sky-700",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    warning: "border-amber-200 bg-amber-50 text-amber-700",
+    danger: "border-red-200 bg-red-50 text-red-700",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${map[tone]}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function signalToneForFlowStatus(status: FlowStatus): SignalTone {
+  switch (status) {
+    case "failed":
+      return "danger";
+    case "retry":
+    case "partial":
+      return "warning";
+    case "running":
+      return "info";
+    case "success":
+      return "success";
+    case "queued":
+      return "neutral";
+    case "unknown":
+    default:
+      return "neutral";
+  }
+}
+
+function signalLabelForFlowStatus(status: FlowStatus): string {
+  switch (status) {
+    case "failed":
+      return "Flow failed";
+    case "retry":
+      return "Retry active";
+    case "running":
+      return "Flow running";
+    case "queued":
+      return "Flow queued";
+    case "success":
+      return "Flow healthy";
+    case "partial":
+      return "Flow partial";
+    case "unknown":
+    default:
+      return "Flow unknown";
+  }
+}
+
+function getHighestOpenIncidentSeverity(
+  incidents: IncidentItem[],
+): IncidentItem["severity"] {
+  if (incidents.some((incident) => incident.severity === "critical")) {
+    return "critical";
+  }
+  if (incidents.some((incident) => incident.severity === "high")) {
+    return "high";
+  }
+  if (incidents.some((incident) => incident.severity === "medium")) {
+    return "medium";
+  }
+  if (incidents.some((incident) => incident.severity === "low")) {
+    return "low";
+  }
+  return "unknown";
+}
+
+function signalToneForIncidentSeverity(
+  severity: IncidentItem["severity"],
+  count: number,
+): SignalTone {
+  if (count <= 0) return "neutral";
+  if (severity === "critical" || severity === "high") return "danger";
+  if (severity === "medium" || severity === "low") return "warning";
+  return "warning";
+}
+
+function signalLabelForIncident(
+  severity: IncidentItem["severity"],
+  count: number,
+): string {
+  if (count <= 0) return "No open incident";
+
+  const severityLabel =
+    severity === "critical"
+      ? "critical"
+      : severity === "high"
+        ? "high"
+        : severity === "medium"
+          ? "medium"
+          : severity === "low"
+            ? "low"
+            : "";
+
+  if (!severityLabel) {
+    return count === 1 ? "1 open incident" : `${count} open incidents`;
+  }
+
+  return count === 1
+    ? `1 open ${severityLabel} incident`
+    : `${count} open incidents · ${severityLabel}`;
 }
 
 async function fetchJson(
