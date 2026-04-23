@@ -56,6 +56,12 @@ type ControlAction = {
   href: string;
 };
 
+type InvestigationPrimaryAction = {
+  key: "detail" | "flow" | "command" | "event";
+  label: string;
+  href: string;
+};
+
 function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
@@ -985,6 +991,153 @@ function getExecutivePosture(args: {
   };
 }
 
+function getIncidentLinkCoverageCount(incident: IncidentItem): number {
+  return [
+    getBestFlowTargetFromIncident(incident),
+    getCommandRecord(incident) !== "—" ? getCommandRecord(incident) : "",
+    getEventTargetFromIncident(incident),
+    getRunRecord(incident) !== "—" ? getRunRecord(incident) : "",
+  ].filter(Boolean).length;
+}
+
+function getInvestigationCoverageLabel(incident: IncidentItem): string {
+  const count = getIncidentLinkCoverageCount(incident);
+
+  if (count >= 4) return "Couverture enrichie";
+  if (count >= 2) return "Couverture reliée";
+  if (count >= 1) return "Couverture partielle";
+  return "Lecture locale";
+}
+
+function getInvestigationEntryLabel(args: {
+  incident: IncidentItem;
+  flowHref: string;
+  commandHref: string;
+  eventHref: string;
+}): string {
+  const { incident, flowHref, commandHref, eventHref } = args;
+
+  if (commandHref) {
+    return `Command · ${compactTechnicalId(getCommandRecord(incident), 48)}`;
+  }
+
+  if (flowHref) {
+    return `Flow · ${compactTechnicalId(
+      getBestFlowTargetFromIncident(incident),
+      48
+    )}`;
+  }
+
+  if (eventHref) {
+    return `Event · ${compactTechnicalId(
+      getEventTargetFromIncident(incident),
+      48
+    )}`;
+  }
+
+  return `Incident · ${compactTechnicalId(String(incident.id || ""), 48)}`;
+}
+
+function getInvestigationFocusLabel(incident: IncidentItem): string {
+  const nextAction = getNextAction(incident).trim();
+  if (nextAction) return nextAction;
+
+  const decision = getDecisionStatus(incident).trim();
+  if (decision) return `Decision ${normalizeDisplayText(decision)}`;
+
+  const reason = getReason(incident).trim();
+  if (reason && reason !== "—") return normalizeDisplayText(reason);
+
+  return getSuggestedAction(incident);
+}
+
+function getInvestigationRouteLabel(args: {
+  incident: IncidentItem;
+  flowHref: string;
+  commandHref: string;
+  eventHref: string;
+}): string {
+  const { incident, flowHref, commandHref, eventHref } = args;
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+
+  if (isSignalGapIncident(incident)) return "Detail-first";
+  if (status === "escalated" && commandHref) return "Command-first";
+  if ((severity === "critical" || severity === "high") && flowHref) {
+    return "Flow-first";
+  }
+  if (commandHref) return "Command-linked";
+  if (flowHref) return "Flow-linked";
+  if (eventHref) return "Event-linked";
+  return "Detail-only";
+}
+
+function getInvestigationPrimaryAction(args: {
+  incident: IncidentItem;
+  detailHref: string;
+  flowHref: string;
+  commandHref: string;
+  eventHref: string;
+}): InvestigationPrimaryAction {
+  const { incident, detailHref, flowHref, commandHref, eventHref } = args;
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+
+  if (isSignalGapIncident(incident)) {
+    return {
+      key: "detail",
+      label: "Ouvrir le détail prioritaire",
+      href: detailHref,
+    };
+  }
+
+  if (status === "escalated" && commandHref) {
+    return {
+      key: "command",
+      label: "Ouvrir la command prioritaire",
+      href: commandHref,
+    };
+  }
+
+  if ((severity === "critical" || severity === "high") && flowHref) {
+    return {
+      key: "flow",
+      label: "Ouvrir le flow prioritaire",
+      href: flowHref,
+    };
+  }
+
+  if (commandHref) {
+    return {
+      key: "command",
+      label: "Ouvrir la command liée",
+      href: commandHref,
+    };
+  }
+
+  if (flowHref) {
+    return {
+      key: "flow",
+      label: "Ouvrir le flow lié",
+      href: flowHref,
+    };
+  }
+
+  if (eventHref) {
+    return {
+      key: "event",
+      label: "Ouvrir l’event lié",
+      href: eventHref,
+    };
+  }
+
+  return {
+    key: "detail",
+    label: "Ouvrir le détail prioritaire",
+    href: detailHref,
+  };
+}
+
 function MetaItem({
   label,
   value,
@@ -1592,6 +1745,42 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     ? getEventHref(focusIncident, activeWorkspaceId)
     : "";
 
+  const focusInvestigationEntry = focusIncident
+    ? getInvestigationEntryLabel({
+        incident: focusIncident,
+        flowHref: focusIncidentFlowHref,
+        commandHref: focusIncidentCommandHref,
+        eventHref: focusIncidentEventHref,
+      })
+    : "Aucun point d’entrée";
+
+  const focusInvestigationRoute = focusIncident
+    ? getInvestigationRouteLabel({
+        incident: focusIncident,
+        flowHref: focusIncidentFlowHref,
+        commandHref: focusIncidentCommandHref,
+        eventHref: focusIncidentEventHref,
+      })
+    : "Aucune route";
+
+  const focusInvestigationCoverage = focusIncident
+    ? getInvestigationCoverageLabel(focusIncident)
+    : "Aucune couverture";
+
+  const focusInvestigationFocus = focusIncident
+    ? getInvestigationFocusLabel(focusIncident)
+    : "Aucun incident focus";
+
+  const focusPrimaryInvestigationAction = focusIncident
+    ? getInvestigationPrimaryAction({
+        incident: focusIncident,
+        detailHref: focusIncidentDetailHref,
+        flowHref: focusIncidentFlowHref,
+        commandHref: focusIncidentCommandHref,
+        eventHref: focusIncidentEventHref,
+      })
+    : null;
+
   const quickRead =
     escalatedIncidents.length > 0
       ? "Priorité : ouvrir les incidents escaladés et vérifier les flows liés."
@@ -1932,6 +2121,138 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 {quickRead}
               </div>
             </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Investigation Layer"
+            description="Couche d’enquête globale pour identifier le meilleur point d’entrée, l’incident focus, la route prioritaire et le CTA de contrôle à lancer."
+            action={
+              <SectionCountPill
+                value={focusIncident ? getIncidentLinkCoverageCount(focusIncident) : 0}
+                tone="info"
+              />
+            }
+          >
+            {focusIncident ? (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <DashboardStatusBadge
+                    kind={getIncidentStatusBadgeKind(focusIncident)}
+                    label={getIncidentStatusLabel(focusIncident)}
+                  />
+                  <DashboardStatusBadge
+                    kind={getIncidentSeverityBadgeKind(focusIncident)}
+                    label={getIncidentSeverityDisplayLabel(focusIncident)}
+                  />
+                  <DashboardStatusBadge
+                    kind={getIncidentSlaBadgeKind(focusIncident)}
+                    label={`SLA ${getSlaDisplayLabel(focusIncident)}`}
+                  />
+                  {isSignalGapIncident(focusIncident) ? (
+                    <DashboardStatusBadge kind="unknown" label="PARTIAL SIGNAL" />
+                  ) : null}
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <InvestigationField
+                    label="Incident focus"
+                    value={getIncidentDisplayTitle(focusIncident)}
+                    valueClassName="text-white"
+                  />
+                  <InvestigationField
+                    label="Best entry point"
+                    value={focusInvestigationEntry}
+                    valueClassName="text-sky-300"
+                    breakAll
+                  />
+                  <InvestigationField
+                    label="Priority route"
+                    value={focusInvestigationRoute}
+                    valueClassName="text-violet-300"
+                  />
+                  <InvestigationField
+                    label="Coverage"
+                    value={focusInvestigationCoverage}
+                    valueClassName={
+                      focusInvestigationCoverage === "Couverture enrichie"
+                        ? "text-emerald-300"
+                        : focusInvestigationCoverage === "Couverture reliée"
+                          ? "text-sky-300"
+                          : focusInvestigationCoverage === "Couverture partielle"
+                            ? "text-amber-300"
+                            : "text-zinc-300"
+                    }
+                  />
+                </div>
+
+                <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                  <div className={metaLabelClassName()}>Focus actif</div>
+                  <div className="mt-2 text-sm leading-6 text-zinc-300">
+                    {focusInvestigationFocus}
+                  </div>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {focusPrimaryInvestigationAction ? (
+                    <Link
+                      href={focusPrimaryInvestigationAction.href}
+                      className={actionLinkClassName("primary")}
+                    >
+                      {focusPrimaryInvestigationAction.label}
+                    </Link>
+                  ) : null}
+
+                  {focusPrimaryInvestigationAction?.key !== "detail" &&
+                  focusIncidentDetailHref ? (
+                    <Link
+                      href={focusIncidentDetailHref}
+                      className={actionLinkClassName("soft")}
+                    >
+                      Ouvrir le détail
+                    </Link>
+                  ) : null}
+
+                  {focusPrimaryInvestigationAction?.key !== "flow" &&
+                  focusIncidentFlowHref ? (
+                    <Link
+                      href={focusIncidentFlowHref}
+                      className={actionLinkClassName("soft")}
+                    >
+                      Ouvrir le flow lié
+                    </Link>
+                  ) : null}
+
+                  {focusPrimaryInvestigationAction?.key !== "command" &&
+                  focusIncidentCommandHref ? (
+                    <Link
+                      href={focusIncidentCommandHref}
+                      className={actionLinkClassName("soft")}
+                    >
+                      Ouvrir la command liée
+                    </Link>
+                  ) : null}
+
+                  {focusPrimaryInvestigationAction?.key !== "event" &&
+                  focusIncidentEventHref ? (
+                    <Link
+                      href={focusIncidentEventHref}
+                      className={actionLinkClassName("soft")}
+                    >
+                      Ouvrir l’event lié
+                    </Link>
+                  ) : null}
+
+                  <Link href={allIncidentsHref} className={actionLinkClassName("danger")}>
+                    Voir tous les incidents
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <EmptyStatePanel
+                title="Aucun incident focus"
+                description="Aucun incident n’est disponible pour construire une route d’enquête globale."
+              />
+            )}
           </SectionCard>
 
           <SectionCard
