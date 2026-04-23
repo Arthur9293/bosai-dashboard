@@ -733,6 +733,40 @@ function getRoutePriorityLabel(
   return "Detail-first";
 }
 
+function getRouteActionLabel(
+  key: InvestigationPrimaryAction["key"],
+): string {
+  if (key === "command") return "Ouvrir la command prioritaire";
+  if (key === "flow") return "Ouvrir le flow prioritaire";
+  if (key === "event") return "Ouvrir l’event prioritaire";
+  return "Ouvrir le détail prioritaire";
+}
+
+function getIncidentRouteNote(args: {
+  incident: IncidentItem;
+  key: InvestigationPrimaryAction["key"];
+}): string {
+  const { incident, key } = args;
+
+  if (getIncidentHasPartialControlSignal(incident)) {
+    return "Signal partiel : le détail reste prioritaire malgré une couverture incomplète.";
+  }
+
+  if (key === "command") {
+    return "La command liée devient la voie de pilotage principale pour cet incident.";
+  }
+
+  if (key === "flow") {
+    return "Le flow lié devient la voie de pilotage principale pour cet incident.";
+  }
+
+  if (key === "event") {
+    return "L’event lié devient la voie de pilotage principale pour cet incident.";
+  }
+
+  return "Le détail incident reste la voie de pilotage principale pour cet incident.";
+}
+
 function getActivePriority(incident: IncidentItem): number {
   const bucket = getIncidentFocusBucket(incident);
 
@@ -1598,12 +1632,8 @@ function IncidentListCard({
     eventHref,
   });
 
-  const cardPrimaryRouteLabel = getInvestigationRouteLabel({
-    incident,
-    flowHref,
-    commandHref,
-    eventHref,
-  });
+  const cardPrimaryRouteLabel = getRoutePriorityLabel(cardPrimaryRouteKey);
+  const cardCoverageLabel = getInvestigationCoverageLabel(incident);
 
   const cardPrimaryControlAction = getInvestigationPrimaryAction({
     incident,
@@ -1613,38 +1643,25 @@ function IncidentListCard({
     eventHref,
   });
 
-  const primaryLinkedAction =
-    cardPrimaryRouteKey !== "detail"
-      ? linkedActions.find((action) => action.key === cardPrimaryRouteKey) || null
-      : null;
+  const primarySurfaceLabel =
+    cardPrimaryRouteKey === "detail"
+      ? "Incident detail"
+      : getRouteShortLabel(cardPrimaryRouteKey);
 
-  const secondaryLinkedActions =
-    hasSignalGap
-      ? []
-      : linkedActions.filter((action) => action.key !== primaryLinkedAction?.key);
-
-  const bestLinkedSurfaceLabel = primaryLinkedAction
-    ? primaryLinkedAction.shortLabel
-    : linkedActions[0]?.shortLabel || "Detail only";
-
-  const controlNote =
-    hasSignalGap
-      ? "Signal partiel : le détail reste prioritaire malgré une couverture incomplète."
-      : cardPrimaryRouteKey === "command"
-        ? "La command liée devient la meilleure surface de pilotage pour cette carte."
-        : cardPrimaryRouteKey === "flow"
-          ? "Le flow lié devient la meilleure surface de pilotage pour cette carte."
-          : cardPrimaryRouteKey === "event"
-            ? "L’event lié devient la meilleure surface de pilotage pour cette carte."
-            : linkedActions.length > 0
-              ? `${linkedActions.length} surface(s) liée(s) exploitable(s) depuis cette carte.`
-              : "Aucune surface liée exploitable : le détail reste la meilleure entrée.";
+  const controlNote = getIncidentRouteNote({
+    incident,
+    key: cardPrimaryRouteKey,
+  });
 
   const controlTone: SignalTone = hasSignalGap
     ? "warning"
     : cardPrimaryRouteKey !== "detail"
       ? "info"
       : "default";
+
+  const secondaryLinkedActions = linkedActions.filter(
+    (action) => action.key !== cardPrimaryControlAction.key,
+  );
 
   return (
     <article className={cardClassName()}>
@@ -1766,14 +1783,22 @@ function IncidentListCard({
               valueClassName={toneTextClassName(controlTone)}
             />
             <InvestigationField
-              label="Best linked surface"
-              value={bestLinkedSurfaceLabel}
+              label="Primary surface"
+              value={primarySurfaceLabel}
               valueClassName={toneTextClassName(controlTone)}
             />
             <InvestigationField
-              label="Linked surfaces"
-              value={linkedActions.length}
-              valueClassName={toneTextClassName(controlTone)}
+              label="Coverage"
+              value={cardCoverageLabel}
+              valueClassName={
+                cardCoverageLabel === "Couverture enrichie"
+                  ? "text-emerald-300"
+                  : cardCoverageLabel === "Couverture reliée"
+                    ? "text-sky-300"
+                    : cardCoverageLabel === "Couverture partielle"
+                      ? "text-amber-300"
+                      : "text-zinc-300"
+              }
             />
             <InvestigationField
               label="Control note"
@@ -1871,13 +1896,16 @@ function IncidentListCard({
         </div>
 
         <div className="mt-auto flex flex-col gap-2.5 pt-1">
-          <Link href={detailHref} className={actionLinkClassName("primary")}>
-            Ouvrir le détail
+          <Link
+            href={cardPrimaryControlAction.href}
+            className={actionLinkClassName("primary")}
+          >
+            {cardPrimaryControlAction.label}
           </Link>
 
-          {primaryLinkedAction ? (
-            <Link href={primaryLinkedAction.href} className={actionLinkClassName("soft")}>
-              {primaryLinkedAction.label}
+          {cardPrimaryControlAction.key !== "detail" ? (
+            <Link href={detailHref} className={actionLinkClassName("soft")}>
+              Ouvrir le détail
             </Link>
           ) : null}
 
