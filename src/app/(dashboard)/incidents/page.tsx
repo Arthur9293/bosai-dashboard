@@ -62,6 +62,17 @@ type InvestigationPrimaryAction = {
   href: string;
 };
 
+type ModuleState = "available" | "partial" | "unavailable";
+
+type ModuleCard = {
+  key: string;
+  title: string;
+  state: ModuleState;
+  summary: string;
+  href?: string;
+  ctaLabel: string;
+};
+
 function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
@@ -272,7 +283,9 @@ function extractIncidentItems(payload: unknown): IncidentItem[] {
 }
 
 function getIncidentTitle(incident: IncidentItem): string {
-  return incident.title || incident.name || incident.error_id || "Untitled incident";
+  return (
+    incident.title || incident.name || incident.error_id || "Untitled incident"
+  );
 }
 
 function getIncidentStatusRaw(incident: IncidentItem): string {
@@ -451,7 +464,9 @@ function getRootEventId(incident: IncidentItem): string {
 }
 
 function getSourceRecordId(incident: IncidentItem): string {
-  return toTextOrEmpty((incident as Record<string, unknown>).source_record_id);
+  return toTextOrEmpty(
+    (incident as Record<string, unknown>).source_record_id,
+  );
 }
 
 function getCategory(incident: IncidentItem): string {
@@ -485,12 +500,16 @@ function getDecisionStatusDisplay(incident: IncidentItem): string {
 
 function getDecisionReasonDisplay(incident: IncidentItem): string {
   const reason = getDecisionReason(incident).trim();
-  return reason ? normalizeDisplayText(reason) : "NO DECISION REASON";
+  return reason
+    ? normalizeDisplayText(reason)
+    : "NO DECISION REASON";
 }
 
 function getNextActionDisplay(incident: IncidentItem): string {
   const action = getNextAction(incident).trim();
-  return action ? normalizeDisplayText(action) : "NO NEXT ACTION";
+  return action
+    ? normalizeDisplayText(action)
+    : "NO NEXT ACTION";
 }
 
 function getIncidentDisplayTitle(incident: IncidentItem): string {
@@ -1130,77 +1149,134 @@ function getInvestigationPrimaryAction(args: {
   };
 }
 
-function countAvailableControlSurfaces(
-  values: Array<string | undefined | null>,
-): number {
+function countDistinctSurfaces(values: string[]): number {
   return Array.from(
-    new Set(values.map((value) => (value || "").trim()).filter(Boolean)),
+    new Set(values.map((value) => value.trim()).filter(Boolean)),
   ).length;
 }
 
-function getIncidentsControlRouteLabel(args: {
+function getControlRouteLabel(args: {
   hasFilters: boolean;
-  focusIncident: IncidentItem | null;
   primaryAction: InvestigationPrimaryAction | null;
 }): string {
-  const { hasFilters, focusIncident, primaryAction } = args;
+  const { hasFilters, primaryAction } = args;
 
-  if (!focusIncident) return "Aucune voie";
-  if (hasFilters) return "Pilotage depuis flow";
-
-  if (!primaryAction) return "Pilotage par incident";
-  if (primaryAction.key === "command") return "Pilotage par command";
-  if (primaryAction.key === "flow") return "Pilotage par flow";
-  if (primaryAction.key === "event") return "Pilotage par event";
-  return "Pilotage par incident";
+  if (primaryAction?.key === "command") return "Pilotage par command";
+  if (primaryAction?.key === "flow") return "Pilotage par flow";
+  if (primaryAction?.key === "event") return "Pilotage par event";
+  if (hasFilters) return "Pilotage flow filtré";
+  return "Pilotage par détail incident";
 }
 
-function getIncidentsControlNextActionLabel(args: {
-  focusIncident: IncidentItem | null;
+function getControlNextActionLabel(args: {
   primaryAction: InvestigationPrimaryAction | null;
 }): string {
-  const { focusIncident, primaryAction } = args;
+  if (args.primaryAction) return args.primaryAction.label;
+  return "Voir tous les incidents";
+}
 
-  if (!focusIncident) return "Aucune action disponible";
+function getControlReturnLabel(hasFilters: boolean): string {
+  return hasFilters ? "Retour aux flows" : "Liste incidents";
+}
 
-  const status = getIncidentStatusNormalized(focusIncident);
-  const sla = getSlaLabel(focusIncident);
+function getControlSurfaceNote(args: {
+  surfaceCount: number;
+  hasFilters: boolean;
+  primaryAction: InvestigationPrimaryAction | null;
+}): string {
+  const { surfaceCount, hasFilters, primaryAction } = args;
 
-  if (status === "escalated" && primaryAction?.key === "command") {
-    return "Ouvrir la command prioritaire puis confirmer l’escalade";
-  }
-
-  if (sla === "BREACHED") {
-    return "Ouvrir le détail prioritaire puis confirmer le SLA";
-  }
-
-  if (primaryAction?.key === "flow") {
-    return "Ouvrir le flow prioritaire puis confirmer l’état global";
+  if (surfaceCount <= 1) {
+    return "Le détail incident reste la surface de pilotage la plus fiable.";
   }
 
   if (primaryAction?.key === "command") {
-    return "Ouvrir la command prioritaire puis confirmer l’impact";
+    return "La command liée devient la meilleure entrée de pilotage sur ce scope.";
   }
 
-  if (primaryAction?.key === "event") {
-    return "Ouvrir l’event prioritaire puis confirmer la source";
+  if (primaryAction?.key === "flow") {
+    return "Le flow lié devient la meilleure surface globale pour piloter ce scope.";
   }
 
-  return "Ouvrir le détail prioritaire puis confirmer l’état";
+  if (hasFilters) {
+    return "Le retour au flow filtré reste la sortie stable de cette lecture.";
+  }
+
+  return "La surface conserve plusieurs points de pilotage exploitables.";
 }
 
-function getIncidentsControlReturnLabel(hasFilters: boolean): string {
-  return hasFilters ? "Retour au flow source" : "Liste des incidents";
+function getControlPrimaryAction(args: {
+  primaryAction: InvestigationPrimaryAction | null;
+  allIncidentsHref: string;
+}): InvestigationPrimaryAction | null {
+  if (args.primaryAction) return args.primaryAction;
+
+  if (args.allIncidentsHref) {
+    return {
+      key: "detail",
+      label: "Voir tous les incidents",
+      href: args.allIncidentsHref,
+    };
+  }
+
+  return null;
 }
 
-function getIncidentsControlPrimaryCtaLabel(
-  primaryAction: InvestigationPrimaryAction | null,
-): string {
-  if (!primaryAction) return "Voir tous les incidents";
-  if (primaryAction.key === "flow") return "Ouvrir le flow prioritaire";
-  if (primaryAction.key === "command") return "Ouvrir la command prioritaire";
-  if (primaryAction.key === "event") return "Ouvrir l’event prioritaire";
-  return "Ouvrir le détail prioritaire";
+function getModuleStateLabel(state: ModuleState): string {
+  if (state === "available") return "AVAILABLE";
+  if (state === "partial") return "PARTIAL";
+  return "UNAVAILABLE";
+}
+
+function getModuleStateBadgeKind(state: ModuleState): DashboardStatusKind {
+  if (state === "available") return "success";
+  if (state === "partial") return "retry";
+  return "unknown";
+}
+
+function ModuleExtensionCard({
+  title,
+  state,
+  summary,
+  href,
+  ctaLabel,
+}: {
+  title: string;
+  state: ModuleState;
+  summary: string;
+  href?: string;
+  ctaLabel: string;
+}) {
+  const disabled = !href || state === "unavailable";
+
+  return (
+    <article className="rounded-[24px] border border-white/10 bg-black/20 px-5 py-5">
+      <div className={metaLabelClassName()}>{title}</div>
+
+      <div className="mt-3">
+        <DashboardStatusBadge
+          kind={getModuleStateBadgeKind(state)}
+          label={getModuleStateLabel(state)}
+        />
+      </div>
+
+      <div className="mt-4 text-base leading-7 text-zinc-300 [overflow-wrap:anywhere]">
+        {summary}
+      </div>
+
+      <div className="mt-5">
+        {disabled ? (
+          <span className={actionLinkClassName("soft") + " opacity-60 pointer-events-none"}>
+            {ctaLabel}
+          </span>
+        ) : (
+          <Link href={href} className={actionLinkClassName("soft")}>
+            {ctaLabel}
+          </Link>
+        )}
+      </div>
+    </article>
+  );
 }
 
 function MetaItem({
@@ -1469,9 +1545,7 @@ function IncidentListCard({
             <InvestigationField
               label="Decision"
               value={decisionStatus}
-              valueClassName={
-                getDecisionStatus(incident) ? "text-purple-300" : "text-zinc-400"
-              }
+              valueClassName={getDecisionStatus(incident) ? "text-purple-300" : "text-zinc-400"}
             />
             <InvestigationField
               label="Decision reason"
@@ -1553,11 +1627,7 @@ function IncidentListCard({
             breakAll
           />
 
-          <MetaItem
-            label="Root event"
-            value={toText(rootEventId, "No root event")}
-            breakAll
-          />
+          <MetaItem label="Root event" value={toText(rootEventId, "No root event")} breakAll />
           <MetaItem label="Run record" value={toText(runRecord, "No run record")} breakAll />
 
           <MetaItem
@@ -1596,11 +1666,7 @@ function IncidentListCard({
 
           <MetaItem
             label="Resolved"
-            value={
-              formatDate(getResolvedAt(incident)) === "—"
-                ? "Not resolved yet"
-                : formatDate(getResolvedAt(incident))
-            }
+            value={formatDate(getResolvedAt(incident)) === "—" ? "Not resolved yet" : formatDate(getResolvedAt(incident))}
           />
 
           <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
@@ -1856,41 +1922,140 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
       })
     : null;
 
-  const controlRouteLabel = getIncidentsControlRouteLabel({
+  const controlRoute = getControlRouteLabel({
     hasFilters,
-    focusIncident,
     primaryAction: focusPrimaryInvestigationAction,
   });
 
-  const controlNextAction = getIncidentsControlNextActionLabel({
-    focusIncident,
+  const controlNextAction = getControlNextActionLabel({
     primaryAction: focusPrimaryInvestigationAction,
   });
 
-  const controlReturnLabel = getIncidentsControlReturnLabel(hasFilters);
+  const controlReturnLabel = getControlReturnLabel(hasFilters);
 
-  const controlBackHref = hasFilters
-    ? backToFlowsHref
-    : appendWorkspaceIdToHref("/flows", activeWorkspaceId);
-
-  const controlBackLabel = hasFilters ? "Retour au flow" : "Ouvrir Flows";
-
-  const controlPrimaryCtaHref =
-    focusPrimaryInvestigationAction?.href || allIncidentsHref;
-
-  const controlPrimaryCtaLabel = getIncidentsControlPrimaryCtaLabel(
-    focusPrimaryInvestigationAction,
-  );
-
-  const controlSurfaceCount = countAvailableControlSurfaces([
-    controlBackHref,
-    allIncidentsHref,
+  const controlSurfaceCount = countDistinctSurfaces([
+    backToFlowsHref,
     commandsHref,
+    allIncidentsHref,
     focusIncidentDetailHref,
     focusIncidentFlowHref,
     focusIncidentCommandHref,
     focusIncidentEventHref,
   ]);
+
+  const focusPrimaryControlAction = getControlPrimaryAction({
+    primaryAction: focusPrimaryInvestigationAction,
+    allIncidentsHref,
+  });
+
+  const controlSurfaceNote = getControlSurfaceNote({
+    surfaceCount: controlSurfaceCount,
+    hasFilters,
+    primaryAction: focusPrimaryInvestigationAction,
+  });
+
+  const moduleCards: ModuleCard[] = [
+    {
+      key: "signal",
+      title: "Signal Layer",
+      state: visibleIncidents.length > 0 ? "available" : "unavailable",
+      summary:
+        visibleIncidents.length > 0
+          ? `${visibleIncidents.length} incident(s) visibles sur la surface.`
+          : "Aucun incident visible sur ce scope.",
+      href: visibleIncidents.length > 0 ? "#incident-list-signal-layer" : undefined,
+      ctaLabel: "Ouvrir Signal",
+    },
+    {
+      key: "investigation",
+      title: "Investigation Layer",
+      state: focusIncident ? "available" : "unavailable",
+      summary: focusIncident
+        ? `Focus actif : ${compactTechnicalId(
+            getIncidentDisplayTitle(focusIncident),
+            52,
+          )}.`
+        : "Aucun incident focus pour construire une enquête prioritaire.",
+      href: focusIncident ? "#incident-list-investigation-layer" : undefined,
+      ctaLabel: "Ouvrir Investigation",
+    },
+    {
+      key: "executive",
+      title: "Executive Layer",
+      state: visibleIncidents.length > 0 ? "available" : "unavailable",
+      summary: visibleIncidents.length > 0
+        ? executivePosture.summary
+        : "Aucune synthèse cockpit exploitable sans incidents visibles.",
+      href: visibleIncidents.length > 0 ? "#incident-list-executive-layer" : undefined,
+      ctaLabel: "Ouvrir Executive",
+    },
+    {
+      key: "control",
+      title: "Control Layer",
+      state: focusPrimaryControlAction ? "available" : visibleIncidents.length > 0 ? "partial" : "unavailable",
+      summary: focusPrimaryControlAction
+        ? `Voie principale : ${controlRoute}.`
+        : "Aucune action prioritaire globale déterminée.",
+      href: visibleIncidents.length > 0 ? "#incident-list-control-layer" : undefined,
+      ctaLabel: "Ouvrir Control",
+    },
+    {
+      key: "needs-attention",
+      title: "Needs Attention",
+      state:
+        activeIncidents.length > 0
+          ? "available"
+          : visibleIncidents.length > 0
+            ? "partial"
+            : "unavailable",
+      summary:
+        activeIncidents.length > 0
+          ? `${activeIncidents.length} incident(s) actif(s) à traiter.`
+          : visibleIncidents.length > 0
+            ? "Aucun actif, mais la surface reste consultable."
+            : "Aucun backlog actif visible.",
+      href: visibleIncidents.length > 0 ? "#incident-list-needs-attention" : undefined,
+      ctaLabel: "Ouvrir Needs Attention",
+    },
+    {
+      key: "resolved",
+      title: "Resolved",
+      state:
+        sortedResolvedIncidents.length > 0
+          ? "available"
+          : visibleIncidents.length > 0
+            ? "partial"
+            : "unavailable",
+      summary:
+        sortedResolvedIncidents.length > 0
+          ? `${sortedResolvedIncidents.length} incident(s) résolu(s) visibles.`
+          : visibleIncidents.length > 0
+            ? "Aucun résolu sur ce scope, mais la section reste stable."
+            : "Aucun historique résolu visible.",
+      href: visibleIncidents.length > 0 ? "#incident-list-resolved" : undefined,
+      ctaLabel: "Ouvrir Resolved",
+    },
+    {
+      key: "flow-context",
+      title: "Flow Context",
+      state: hasFilters ? "available" : "partial",
+      summary: hasFilters
+        ? "La vue est pilotée depuis un contexte flow filtré."
+        : "Aucun filtre flow actif sur la surface.",
+      href: hasFilters ? "#incident-list-flow-context" : undefined,
+      ctaLabel: "Ouvrir Context",
+    },
+    {
+      key: "commands",
+      title: "Commands Surface",
+      state: commandsHref ? "available" : "unavailable",
+      summary: commandsHref
+        ? "La surface Commands reste disponible comme point de contrôle."
+        : "Surface Commands indisponible.",
+      href: commandsHref || undefined,
+      ctaLabel: "Ouvrir Commands",
+    },
+  ];
 
   const quickRead =
     escalatedIncidents.length > 0
@@ -2093,41 +2258,43 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
       }
     >
       {hasFilters ? (
-        <SectionCard
-          title="Filtré depuis Flows"
-          description="Cette vue est limitée au contexte du flow sélectionné."
-          tone="attention"
-          action={<SectionCountPill value={visibleIncidents.length} tone="warning" />}
-        >
-          <div className="space-y-5">
-            <div className="flex flex-wrap gap-3">
-              {flowId ? <span className={chipClassName()}>flow_id: {flowId}</span> : null}
-              {rootEventId ? (
-                <span className={chipClassName()}>root_event_id: {rootEventId}</span>
-              ) : null}
-              {sourceRecordId ? (
-                <span className={chipClassName()}>
-                  source_record_id: {sourceRecordId}
-                </span>
-              ) : null}
-              {commandId ? (
-                <span className={chipClassName()}>
-                  command_id: {commandId}
-                </span>
-              ) : null}
-            </div>
+        <div id="incident-list-flow-context">
+          <SectionCard
+            title="Filtré depuis Flows"
+            description="Cette vue est limitée au contexte du flow sélectionné."
+            tone="attention"
+            action={<SectionCountPill value={visibleIncidents.length} tone="warning" />}
+          >
+            <div className="space-y-5">
+              <div className="flex flex-wrap gap-3">
+                {flowId ? <span className={chipClassName()}>flow_id: {flowId}</span> : null}
+                {rootEventId ? (
+                  <span className={chipClassName()}>root_event_id: {rootEventId}</span>
+                ) : null}
+                {sourceRecordId ? (
+                  <span className={chipClassName()}>
+                    source_record_id: {sourceRecordId}
+                  </span>
+                ) : null}
+                {commandId ? (
+                  <span className={chipClassName()}>
+                    command_id: {commandId}
+                  </span>
+                ) : null}
+              </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
-                Retour aux flows
-              </Link>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
+                  Retour aux flows
+                </Link>
 
-              <Link href={allIncidentsHref} className={actionLinkClassName("primary")}>
-                Voir tous les incidents
-              </Link>
+                <Link href={allIncidentsHref} className={actionLinkClassName("primary")}>
+                  Voir tous les incidents
+                </Link>
+              </div>
             </div>
-          </div>
-        </SectionCard>
+          </SectionCard>
+        </div>
       ) : null}
 
       {fetchFailed ? (
@@ -2142,459 +2309,504 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
         />
       ) : (
         <>
-          <SectionCard
-            title="Signal Layer"
-            description="Lecture primaire de la surface Incidents : statut, sévérité, SLA et activité récente."
-            action={<SectionCountPill value={visibleIncidents.length} tone="info" />}
-          >
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-              <IncidentMiniStat
-                label="Open"
-                value={openIncidents.length}
-                toneClass="text-sky-300"
-                panelTone="info"
-              />
-              <IncidentMiniStat
-                label="Escalated"
-                value={escalatedIncidents.length}
-                toneClass="text-amber-300"
-                panelTone="warning"
-              />
-              <IncidentMiniStat
-                label="Critical"
-                value={criticalIncidents.length}
-                toneClass="text-red-300"
-                panelTone="danger"
-              />
-              <IncidentMiniStat
-                label="Resolved"
-                value={resolvedIncidents.length}
-                toneClass="text-emerald-300"
-                panelTone="success"
-              />
-              <IncidentMiniStat
-                label="Visible"
-                value={visibleIncidents.length}
-                toneClass="text-white"
-                panelTone="default"
-              />
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <div className={metaBoxClassName()}>
-                <div className={metaLabelClassName()}>Latest open</div>
-                <div className="mt-2 text-zinc-100">
-                  {formatDate(
-                    latestOpenIncident
-                      ? getUpdatedAt(latestOpenIncident) || getOpenedAt(latestOpenIncident)
-                      : undefined,
-                  )}
-                </div>
+          <div id="incident-list-signal-layer">
+            <SectionCard
+              title="Signal Layer"
+              description="Lecture primaire de la surface Incidents : statut, sévérité, SLA et activité récente."
+              action={<SectionCountPill value={visibleIncidents.length} tone="info" />}
+            >
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+                <IncidentMiniStat
+                  label="Open"
+                  value={openIncidents.length}
+                  toneClass="text-sky-300"
+                  panelTone="info"
+                />
+                <IncidentMiniStat
+                  label="Escalated"
+                  value={escalatedIncidents.length}
+                  toneClass="text-amber-300"
+                  panelTone="warning"
+                />
+                <IncidentMiniStat
+                  label="Critical"
+                  value={criticalIncidents.length}
+                  toneClass="text-red-300"
+                  panelTone="danger"
+                />
+                <IncidentMiniStat
+                  label="Resolved"
+                  value={resolvedIncidents.length}
+                  toneClass="text-emerald-300"
+                  panelTone="success"
+                />
+                <IncidentMiniStat
+                  label="Visible"
+                  value={visibleIncidents.length}
+                  toneClass="text-white"
+                  panelTone="default"
+                />
               </div>
 
-              <div className={metaBoxClassName()}>
-                <div className={metaLabelClassName()}>Latest escalated</div>
-                <div className="mt-2 text-zinc-100">
-                  {formatDate(
-                    latestEscalatedIncident
-                      ? getUpdatedAt(latestEscalatedIncident) ||
-                          getOpenedAt(latestEscalatedIncident)
-                      : undefined,
-                  )}
-                </div>
-              </div>
-
-              <div className={metaBoxClassName()}>
-                <div className={metaLabelClassName()}>Latest resolved</div>
-                <div className="mt-2 text-zinc-100">
-                  {formatDate(
-                    latestResolvedIncident
-                      ? getResolvedAt(latestResolvedIncident) ||
-                          getUpdatedAt(latestResolvedIncident)
-                      : undefined,
-                  )}
-                </div>
-              </div>
-
-              <div className={metaBoxClassName()}>
-                <div className={metaLabelClassName()}>Critical ratio</div>
-                <div className="mt-2 text-zinc-100">
-                  {visibleIncidents.length > 0
-                    ? `${criticalIncidents.length}/${visibleIncidents.length}`
-                    : "0/0"}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
-              <div className={metaLabelClassName()}>Quick read</div>
-              <div className="mt-2 text-sm leading-6 text-zinc-300">
-                {quickRead}
-              </div>
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            title="Investigation Layer"
-            description="Couche d’enquête globale pour identifier le meilleur point d’entrée, l’incident focus, la route prioritaire et le CTA de contrôle à lancer."
-            action={
-              <SectionCountPill
-                value={focusIncident ? getIncidentLinkCoverageCount(focusIncident) : 0}
-                tone="info"
-              />
-            }
-          >
-            {focusIncident ? (
-              <>
-                <div className="flex flex-wrap gap-2">
-                  <DashboardStatusBadge
-                    kind={getIncidentStatusBadgeKind(focusIncident)}
-                    label={getIncidentStatusLabel(focusIncident)}
-                  />
-                  <DashboardStatusBadge
-                    kind={getIncidentSeverityBadgeKind(focusIncident)}
-                    label={getIncidentSeverityDisplayLabel(focusIncident)}
-                  />
-                  <DashboardStatusBadge
-                    kind={getIncidentSlaBadgeKind(focusIncident)}
-                    label={`SLA ${getSlaDisplayLabel(focusIncident)}`}
-                  />
-                  {isSignalGapIncident(focusIncident) ? (
-                    <DashboardStatusBadge kind="unknown" label="PARTIAL SIGNAL" />
-                  ) : null}
-                </div>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <InvestigationField
-                    label="Incident focus"
-                    value={getIncidentDisplayTitle(focusIncident)}
-                    valueClassName="text-white"
-                  />
-                  <InvestigationField
-                    label="Best entry point"
-                    value={focusInvestigationEntry}
-                    valueClassName="text-sky-300"
-                    breakAll
-                  />
-                  <InvestigationField
-                    label="Priority route"
-                    value={focusInvestigationRoute}
-                    valueClassName="text-violet-300"
-                  />
-                  <InvestigationField
-                    label="Coverage"
-                    value={focusInvestigationCoverage}
-                    valueClassName={
-                      focusInvestigationCoverage === "Couverture enrichie"
-                        ? "text-emerald-300"
-                        : focusInvestigationCoverage === "Couverture reliée"
-                          ? "text-sky-300"
-                          : focusInvestigationCoverage === "Couverture partielle"
-                            ? "text-amber-300"
-                            : "text-zinc-300"
-                    }
-                  />
-                </div>
-
-                <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
-                  <div className={metaLabelClassName()}>Focus actif</div>
-                  <div className="mt-2 text-sm leading-6 text-zinc-300">
-                    {focusInvestigationFocus}
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className={metaBoxClassName()}>
+                  <div className={metaLabelClassName()}>Latest open</div>
+                  <div className="mt-2 text-zinc-100">
+                    {formatDate(
+                      latestOpenIncident
+                        ? getUpdatedAt(latestOpenIncident) || getOpenedAt(latestOpenIncident)
+                        : undefined,
+                    )}
                   </div>
                 </div>
 
-                <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {focusPrimaryInvestigationAction ? (
-                    <Link
-                      href={focusPrimaryInvestigationAction.href}
-                      className={actionLinkClassName("primary")}
-                    >
-                      {focusPrimaryInvestigationAction.label}
-                    </Link>
-                  ) : null}
-
-                  {focusPrimaryInvestigationAction?.key !== "detail" &&
-                  focusIncidentDetailHref ? (
-                    <Link
-                      href={focusIncidentDetailHref}
-                      className={actionLinkClassName("soft")}
-                    >
-                      Ouvrir le détail
-                    </Link>
-                  ) : null}
-
-                  {focusPrimaryInvestigationAction?.key !== "flow" &&
-                  focusIncidentFlowHref ? (
-                    <Link
-                      href={focusIncidentFlowHref}
-                      className={actionLinkClassName("soft")}
-                    >
-                      Ouvrir le flow lié
-                    </Link>
-                  ) : null}
-
-                  {focusPrimaryInvestigationAction?.key !== "command" &&
-                  focusIncidentCommandHref ? (
-                    <Link
-                      href={focusIncidentCommandHref}
-                      className={actionLinkClassName("soft")}
-                    >
-                      Ouvrir la command liée
-                    </Link>
-                  ) : null}
-
-                  {focusPrimaryInvestigationAction?.key !== "event" &&
-                  focusIncidentEventHref ? (
-                    <Link
-                      href={focusIncidentEventHref}
-                      className={actionLinkClassName("soft")}
-                    >
-                      Ouvrir l’event lié
-                    </Link>
-                  ) : null}
-
-                  <Link href={allIncidentsHref} className={actionLinkClassName("danger")}>
-                    Voir tous les incidents
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <EmptyStatePanel
-                title="Aucun incident focus"
-                description="Aucun incident n’est disponible pour construire une route d’enquête globale."
-              />
-            )}
-          </SectionCard>
-
-          <SectionCard
-            title="Executive Layer"
-            description="Lecture dirigeant / cockpit : posture, backlog, activité récente, criticité réelle et qualité du signal visible."
-            action={
-              <SectionCountPill
-                value={activeIncidents.length}
-                tone={executivePosture.countTone}
-              />
-            }
-          >
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-              <IncidentMiniStat
-                label="Active backlog"
-                value={activeIncidents.length}
-                toneClass="text-white"
-                panelTone={
-                  activeIncidents.length > 0 ? executivePosture.tone : "success"
-                }
-              />
-              <IncidentMiniStat
-                label="Critical active"
-                value={criticalActiveIncidents.length}
-                toneClass="text-red-300"
-                panelTone={
-                  criticalActiveIncidents.length > 0 ? "danger" : "default"
-                }
-              />
-              <IncidentMiniStat
-                label="Signal ready"
-                value={signalReadyCount}
-                toneClass="text-emerald-300"
-                panelTone={signalReadyCount > 0 ? "success" : "default"}
-              />
-              <IncidentMiniStat
-                label="Signal gaps"
-                value={signalGapIncidents.length}
-                toneClass="text-amber-300"
-                panelTone={signalGapIncidents.length > 0 ? "warning" : "default"}
-              />
-            </div>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <InvestigationField
-                label="Executive posture"
-                value={executivePosture.label}
-                valueClassName={toneTextClassName(executivePosture.tone)}
-              />
-
-              <InvestigationField
-                label="Posture note"
-                value={executivePosture.summary}
-              />
-
-              <InvestigationField
-                label="Recent activity"
-                value={
-                  mostRecentIncident
-                    ? `${formatDate(
-                        getUpdatedAt(mostRecentIncident) ||
-                          getOpenedAt(mostRecentIncident) ||
-                          getResolvedAt(mostRecentIncident),
-                      )} · ${compactTechnicalId(
-                        getIncidentDisplayTitle(mostRecentIncident),
-                        56,
-                      )}`
-                    : "—"
-                }
-              />
-
-              <InvestigationField
-                label="Backlog focus"
-                value={
-                  activeIncidents.length > 0
-                    ? `${activeIncidents.length} active · ${escalatedIncidents.length} escalated`
-                    : "No active backlog visible"
-                }
-              />
-
-              <InvestigationField
-                label="Criticality real"
-                value={`${criticalActiveIncidents.length} critical active · ${escalatedOrBreachedActiveIncidents.length} escalated/breached`}
-              />
-
-              <InvestigationField
-                label="Signal quality"
-                value={
-                  visibleIncidents.length > 0
-                    ? `${signalReadyCount}/${visibleIncidents.length} ready · ${signalGapIncidents.length} gaps`
-                    : "—"
-                }
-              />
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            title="Control Layer"
-            description="Couche de pilotage global pour savoir quelle voie suivre, quelle action ouvrir ensuite, quelle surface stable utiliser et quel CTA prioriser."
-            action={<SectionCountPill value={controlSurfaceCount} tone="info" />}
-          >
-            {focusIncident ? (
-              <>
-                <div className="flex flex-wrap gap-2">
-                  <DashboardStatusBadge
-                    kind={getIncidentStatusBadgeKind(focusIncident)}
-                    label={getIncidentStatusLabel(focusIncident)}
-                  />
-                  <DashboardStatusBadge
-                    kind="queued"
-                    label={safeUpper(controlRouteLabel)}
-                  />
-                  <DashboardStatusBadge
-                    kind={getIncidentSlaBadgeKind(focusIncident)}
-                    label={`SLA ${getSlaDisplayLabel(focusIncident)}`}
-                  />
-                  {isSignalGapIncident(focusIncident) ? (
-                    <DashboardStatusBadge kind="unknown" label="PARTIAL SIGNAL" />
-                  ) : null}
+                <div className={metaBoxClassName()}>
+                  <div className={metaLabelClassName()}>Latest escalated</div>
+                  <div className="mt-2 text-zinc-100">
+                    {formatDate(
+                      latestEscalatedIncident
+                        ? getUpdatedAt(latestEscalatedIncident) ||
+                            getOpenedAt(latestEscalatedIncident)
+                        : undefined,
+                    )}
+                  </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <InvestigationField
-                    label="Control route"
-                    value={controlRouteLabel}
-                    valueClassName="text-sky-300"
-                  />
-                  <InvestigationField
-                    label="Next action"
-                    value={controlNextAction}
-                    valueClassName="text-white"
-                  />
-                  <InvestigationField
-                    label="Stable return surface"
-                    value={controlReturnLabel}
-                    valueClassName="text-zinc-200"
-                  />
-                  <InvestigationField
-                    label="Pilot surfaces"
-                    value={controlSurfaceCount}
-                    valueClassName="text-emerald-300"
-                  />
+                <div className={metaBoxClassName()}>
+                  <div className={metaLabelClassName()}>Latest resolved</div>
+                  <div className="mt-2 text-zinc-100">
+                    {formatDate(
+                      latestResolvedIncident
+                        ? getResolvedAt(latestResolvedIncident) ||
+                            getUpdatedAt(latestResolvedIncident)
+                        : undefined,
+                    )}
+                  </div>
                 </div>
 
-                <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <Link
-                    href={controlPrimaryCtaHref}
-                    className={actionLinkClassName("primary")}
-                  >
-                    {controlPrimaryCtaLabel}
-                  </Link>
+                <div className={metaBoxClassName()}>
+                  <div className={metaLabelClassName()}>Critical ratio</div>
+                  <div className="mt-2 text-zinc-100">
+                    {visibleIncidents.length > 0
+                      ? `${criticalIncidents.length}/${visibleIncidents.length}`
+                      : "0/0"}
+                  </div>
+                </div>
+              </div>
 
-                  <Link
-                    href={controlBackHref}
-                    className={actionLinkClassName("soft")}
-                  >
-                    {controlBackLabel}
-                  </Link>
+              <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                <div className={metaLabelClassName()}>Quick read</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-300">
+                  {quickRead}
+                </div>
+              </div>
+            </SectionCard>
+          </div>
 
-                  {focusPrimaryInvestigationAction?.key !== "detail" &&
-                  focusIncidentDetailHref ? (
-                    <Link
-                      href={focusIncidentDetailHref}
-                      className={actionLinkClassName("soft")}
-                    >
-                      Ouvrir le détail
+          <div id="incident-list-investigation-layer">
+            <SectionCard
+              title="Investigation Layer"
+              description="Couche d’enquête globale pour identifier le meilleur point d’entrée, l’incident focus, la route prioritaire et le CTA de contrôle à lancer."
+              action={
+                <SectionCountPill
+                  value={focusIncident ? getIncidentLinkCoverageCount(focusIncident) : 0}
+                  tone="info"
+                />
+              }
+            >
+              {focusIncident ? (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    <DashboardStatusBadge
+                      kind={getIncidentStatusBadgeKind(focusIncident)}
+                      label={getIncidentStatusLabel(focusIncident)}
+                    />
+                    <DashboardStatusBadge
+                      kind={getIncidentSeverityBadgeKind(focusIncident)}
+                      label={getIncidentSeverityDisplayLabel(focusIncident)}
+                    />
+                    <DashboardStatusBadge
+                      kind={getIncidentSlaBadgeKind(focusIncident)}
+                      label={`SLA ${getSlaDisplayLabel(focusIncident)}`}
+                    />
+                    {isSignalGapIncident(focusIncident) ? (
+                      <DashboardStatusBadge kind="unknown" label="PARTIAL SIGNAL" />
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <InvestigationField
+                      label="Incident focus"
+                      value={getIncidentDisplayTitle(focusIncident)}
+                      valueClassName="text-white"
+                    />
+                    <InvestigationField
+                      label="Best entry point"
+                      value={focusInvestigationEntry}
+                      valueClassName="text-sky-300"
+                      breakAll
+                    />
+                    <InvestigationField
+                      label="Priority route"
+                      value={focusInvestigationRoute}
+                      valueClassName="text-violet-300"
+                    />
+                    <InvestigationField
+                      label="Coverage"
+                      value={focusInvestigationCoverage}
+                      valueClassName={
+                        focusInvestigationCoverage === "Couverture enrichie"
+                          ? "text-emerald-300"
+                          : focusInvestigationCoverage === "Couverture reliée"
+                            ? "text-sky-300"
+                            : focusInvestigationCoverage === "Couverture partielle"
+                              ? "text-amber-300"
+                              : "text-zinc-300"
+                      }
+                    />
+                  </div>
+
+                  <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                    <div className={metaLabelClassName()}>Focus actif</div>
+                    <div className="mt-2 text-sm leading-6 text-zinc-300">
+                      {focusInvestigationFocus}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    {focusPrimaryInvestigationAction ? (
+                      <Link
+                        href={focusPrimaryInvestigationAction.href}
+                        className={actionLinkClassName("primary")}
+                      >
+                        {focusPrimaryInvestigationAction.label}
+                      </Link>
+                    ) : null}
+
+                    {focusPrimaryInvestigationAction?.key !== "detail" &&
+                    focusIncidentDetailHref ? (
+                      <Link
+                        href={focusIncidentDetailHref}
+                        className={actionLinkClassName("soft")}
+                      >
+                        Ouvrir le détail
+                      </Link>
+                    ) : null}
+
+                    {focusPrimaryInvestigationAction?.key !== "flow" &&
+                    focusIncidentFlowHref ? (
+                      <Link
+                        href={focusIncidentFlowHref}
+                        className={actionLinkClassName("soft")}
+                      >
+                        Ouvrir le flow lié
+                      </Link>
+                    ) : null}
+
+                    {focusPrimaryInvestigationAction?.key !== "command" &&
+                    focusIncidentCommandHref ? (
+                      <Link
+                        href={focusIncidentCommandHref}
+                        className={actionLinkClassName("soft")}
+                      >
+                        Ouvrir la command liée
+                      </Link>
+                    ) : null}
+
+                    {focusPrimaryInvestigationAction?.key !== "event" &&
+                    focusIncidentEventHref ? (
+                      <Link
+                        href={focusIncidentEventHref}
+                        className={actionLinkClassName("soft")}
+                      >
+                        Ouvrir l’event lié
+                      </Link>
+                    ) : null}
+
+                    <Link href={allIncidentsHref} className={actionLinkClassName("danger")}>
+                      Voir tous les incidents
                     </Link>
-                  ) : null}
+                  </div>
+                </>
+              ) : (
+                <EmptyStatePanel
+                  title="Aucun incident focus"
+                  description="Aucun incident n’est disponible pour construire une route d’enquête globale."
+                />
+              )}
+            </SectionCard>
+          </div>
 
-                  <Link href={commandsHref} className={actionLinkClassName("danger")}>
-                    Voir Commands
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <EmptyStatePanel
-                title="Aucun contrôle prioritaire"
-                description="Aucun incident n’est disponible pour construire une couche de pilotage globale."
-              />
-            )}
-          </SectionCard>
+          <div id="incident-list-executive-layer">
+            <SectionCard
+              title="Executive Layer"
+              description="Lecture dirigeant / cockpit : posture, backlog, activité récente, criticité réelle et qualité du signal visible."
+              action={
+                <SectionCountPill
+                  value={activeIncidents.length}
+                  tone={executivePosture.countTone}
+                />
+              }
+            >
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <IncidentMiniStat
+                  label="Active backlog"
+                  value={activeIncidents.length}
+                  toneClass="text-white"
+                  panelTone={
+                    activeIncidents.length > 0 ? executivePosture.tone : "success"
+                  }
+                />
+                <IncidentMiniStat
+                  label="Critical active"
+                  value={criticalActiveIncidents.length}
+                  toneClass="text-red-300"
+                  panelTone={
+                    criticalActiveIncidents.length > 0 ? "danger" : "default"
+                  }
+                />
+                <IncidentMiniStat
+                  label="Signal ready"
+                  value={signalReadyCount}
+                  toneClass="text-emerald-300"
+                  panelTone={signalReadyCount > 0 ? "success" : "default"}
+                />
+                <IncidentMiniStat
+                  label="Signal gaps"
+                  value={signalGapIncidents.length}
+                  toneClass="text-amber-300"
+                  panelTone={signalGapIncidents.length > 0 ? "warning" : "default"}
+                />
+              </div>
 
-          <SectionBlock
-            title="Needs Attention"
-            description="Incidents à surveiller en priorité : ouverts, escaladés, critiques ou encore non résolus."
-            count={activeIncidents.length}
-            countTone="warning"
-            tone="attention"
-          >
-            {activeIncidents.length === 0 ? (
-              <EmptyStatePanel
-                title="Aucun incident actif"
-                description="Aucun incident ouvert ou escaladé n’est visible pour le moment."
-              />
-            ) : (
-              <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
-                {activeIncidents.map((incident) => (
-                  <IncidentListCard
-                    key={incident.id}
-                    incident={incident}
-                    activeWorkspaceId={activeWorkspaceId}
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <InvestigationField
+                  label="Executive posture"
+                  value={executivePosture.label}
+                  valueClassName={toneTextClassName(executivePosture.tone)}
+                />
+
+                <InvestigationField
+                  label="Posture note"
+                  value={executivePosture.summary}
+                />
+
+                <InvestigationField
+                  label="Recent activity"
+                  value={
+                    mostRecentIncident
+                      ? `${formatDate(
+                          getUpdatedAt(mostRecentIncident) ||
+                            getOpenedAt(mostRecentIncident) ||
+                            getResolvedAt(mostRecentIncident),
+                        )} · ${compactTechnicalId(
+                          getIncidentDisplayTitle(mostRecentIncident),
+                          56,
+                        )}`
+                      : "—"
+                  }
+                />
+
+                <InvestigationField
+                  label="Backlog focus"
+                  value={
+                    activeIncidents.length > 0
+                      ? `${activeIncidents.length} active · ${escalatedIncidents.length} escalated`
+                      : "No active backlog visible"
+                  }
+                />
+
+                <InvestigationField
+                  label="Criticality real"
+                  value={`${criticalActiveIncidents.length} critical active · ${escalatedOrBreachedActiveIncidents.length} escalated/breached`}
+                />
+
+                <InvestigationField
+                  label="Signal quality"
+                  value={
+                    visibleIncidents.length > 0
+                      ? `${signalReadyCount}/${visibleIncidents.length} ready · ${signalGapIncidents.length} gaps`
+                      : "—"
+                  }
+                />
+              </div>
+            </SectionCard>
+          </div>
+
+          <div id="incident-list-control-layer">
+            <SectionCard
+              title="Control Layer"
+              description="Couche de pilotage global pour décider comment agir maintenant sur la surface Incidents, sans quitter le cadre cockpit validé."
+              action={<SectionCountPill value={controlSurfaceCount} tone="info" />}
+            >
+              {focusIncident ? (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    <DashboardStatusBadge
+                      kind={getIncidentStatusBadgeKind(focusIncident)}
+                      label={getIncidentStatusLabel(focusIncident)}
+                    />
+                    <DashboardStatusBadge
+                      kind="queued"
+                      label={controlRoute.toUpperCase()}
+                    />
+                    <DashboardStatusBadge
+                      kind={getIncidentSlaBadgeKind(focusIncident)}
+                      label={`SLA ${getSlaDisplayLabel(focusIncident)}`}
+                    />
+                    {focusPrimaryControlAction ? (
+                      <DashboardStatusBadge kind="success" label="CONTROL READY" />
+                    ) : (
+                      <DashboardStatusBadge kind="unknown" label="CONTROL LIMITED" />
+                    )}
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <InvestigationField
+                      label="Voie de contrôle"
+                      value={controlRoute}
+                      valueClassName="text-sky-300"
+                    />
+                    <InvestigationField
+                      label="Action suivante"
+                      value={controlNextAction}
+                      valueClassName="text-emerald-300"
+                    />
+                    <InvestigationField
+                      label="Retour stable"
+                      value={controlReturnLabel}
+                      valueClassName="text-zinc-200"
+                    />
+                    <InvestigationField
+                      label="Surfaces pilotables"
+                      value={String(controlSurfaceCount)}
+                      valueClassName="text-violet-300"
+                    />
+                  </div>
+
+                  <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                    <div className={metaLabelClassName()}>Control note</div>
+                    <div className="mt-2 text-sm leading-6 text-zinc-300">
+                      {controlSurfaceNote}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    {focusPrimaryControlAction ? (
+                      <Link
+                        href={focusPrimaryControlAction.href}
+                        className={actionLinkClassName("primary")}
+                      >
+                        {focusPrimaryControlAction.label}
+                      </Link>
+                    ) : null}
+
+                    <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
+                      {controlReturnLabel}
+                    </Link>
+
+                    <Link href={allIncidentsHref} className={actionLinkClassName("soft")}>
+                      Voir tous les incidents
+                    </Link>
+
+                    <Link href={commandsHref} className={actionLinkClassName("soft")}>
+                      Ouvrir Commands
+                    </Link>
+
+                    {focusIncidentDetailHref &&
+                    focusPrimaryControlAction?.href !== focusIncidentDetailHref ? (
+                      <Link
+                        href={focusIncidentDetailHref}
+                        className={actionLinkClassName("danger")}
+                      >
+                        Ouvrir le détail
+                      </Link>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <EmptyStatePanel
+                  title="Aucune voie de contrôle"
+                  description="Aucun incident focus n’est disponible pour construire un pilotage global prioritaire."
+                />
+              )}
+            </SectionCard>
+          </div>
+
+          <div id="incident-list-module-extensions">
+            <SectionCard
+              title="Module Extensions"
+              description="Vue modulaire globale de la surface Incidents pour savoir quelles couches et quelles surfaces sont disponibles, partielles ou indisponibles."
+              action={<SectionCountPill value={moduleCards.length} tone="info" />}
+            >
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {moduleCards.map((moduleCard) => (
+                  <ModuleExtensionCard
+                    key={moduleCard.key}
+                    title={moduleCard.title}
+                    state={moduleCard.state}
+                    summary={moduleCard.summary}
+                    href={moduleCard.href}
+                    ctaLabel={moduleCard.ctaLabel}
                   />
                 ))}
               </div>
-            )}
-          </SectionBlock>
+            </SectionCard>
+          </div>
 
-          <SectionBlock
-            title="Resolved incidents"
-            description="Historique des incidents déjà résolus, triés du plus récent au plus ancien."
-            count={sortedResolvedIncidents.length}
-            countTone="success"
-            tone="neutral"
-          >
-            {sortedResolvedIncidents.length === 0 ? (
-              <EmptyStatePanel
-                title="Aucun incident résolu"
-                description="Aucun incident résolu n’est visible sur cette vue pour le moment."
-              />
-            ) : (
-              <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
-                {sortedResolvedIncidents.map((incident) => (
-                  <IncidentListCard
-                    key={incident.id}
-                    incident={incident}
-                    activeWorkspaceId={activeWorkspaceId}
-                  />
-                ))}
-              </div>
-            )}
-          </SectionBlock>
+          <div id="incident-list-needs-attention">
+            <SectionBlock
+              title="Needs Attention"
+              description="Incidents à surveiller en priorité : ouverts, escaladés, critiques ou encore non résolus."
+              count={activeIncidents.length}
+              countTone="warning"
+              tone="attention"
+            >
+              {activeIncidents.length === 0 ? (
+                <EmptyStatePanel
+                  title="Aucun incident actif"
+                  description="Aucun incident ouvert ou escaladé n’est visible pour le moment."
+                />
+              ) : (
+                <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
+                  {activeIncidents.map((incident) => (
+                    <IncidentListCard
+                      key={incident.id}
+                      incident={incident}
+                      activeWorkspaceId={activeWorkspaceId}
+                    />
+                  ))}
+                </div>
+              )}
+            </SectionBlock>
+          </div>
+
+          <div id="incident-list-resolved">
+            <SectionBlock
+              title="Resolved incidents"
+              description="Historique des incidents déjà résolus, triés du plus récent au plus ancien."
+              count={sortedResolvedIncidents.length}
+              countTone="success"
+              tone="neutral"
+            >
+              {sortedResolvedIncidents.length === 0 ? (
+                <EmptyStatePanel
+                  title="Aucun incident résolu"
+                  description="Aucun incident résolu n’est visible sur cette vue pour le moment."
+                />
+              ) : (
+                <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
+                  {sortedResolvedIncidents.map((incident) => (
+                    <IncidentListCard
+                      key={incident.id}
+                      incident={incident}
+                      activeWorkspaceId={activeWorkspaceId}
+                    />
+                  ))}
+                </div>
+              )}
+            </SectionBlock>
+          </div>
         </>
       )}
     </ControlPlaneShell>
