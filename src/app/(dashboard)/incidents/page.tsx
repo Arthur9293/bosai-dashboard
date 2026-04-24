@@ -2267,6 +2267,11 @@ function ModuleExtensionCard({
           kind={getModuleStateBadgeKind(state)}
           label={getModuleStateLabel(state)}
         />
+
+        <DashboardStatusBadge
+          kind={getTriagePriorityBadgeKind(triagePriorityLabel)}
+          label={triagePriorityLabel}
+        />
       </div>
 
       <div className="mt-4 text-base leading-7 text-zinc-300 [overflow-wrap:anywhere]">
