@@ -79,6 +79,13 @@ type OperatorQueueBucket =
   | "CONTEXT QUEUE"
   | "WATCH QUEUE";
 
+const OPERATOR_QUEUE_BUCKET_ORDER: OperatorQueueBucket[] = [
+  "NOW QUEUE",
+  "NEXT QUEUE",
+  "CONTEXT QUEUE",
+  "WATCH QUEUE",
+];
+
 type OperatorSummaryBadgeLabel =
   | "OPERATOR READY"
   | "ACTION FOCUS"
@@ -1897,6 +1904,81 @@ function getOperatorQueueSummaryText(args: {
   return `${args.queueStats.now} now · ${args.queueStats.next} next · ${args.queueStats.context} context · ${args.queueStats.watch} watch`;
 }
 
+function getOperatorQueueItemHref(
+  incident: IncidentItem,
+  activeWorkspaceId?: string,
+): string {
+  const detailHref = getIncidentHref(incident, activeWorkspaceId);
+  const commandHref = getCommandHref(incident, activeWorkspaceId);
+  const flowHref = getFlowHref(incident, activeWorkspaceId);
+  const eventHref = getEventHref(incident, activeWorkspaceId);
+
+  const nextMoveLabel = getIncidentNextMoveLabel({
+    incident,
+    commandHref,
+    flowHref,
+    eventHref,
+  });
+
+  return getIncidentNextMoveHref({
+    label: nextMoveLabel,
+    detailHref,
+    commandHref,
+    flowHref,
+    eventHref,
+  });
+}
+
+function getOperatorQueueBucketItems(args: {
+  incidents: IncidentItem[];
+  bucket: OperatorQueueBucket;
+  activeWorkspaceId?: string;
+}): IncidentItem[] {
+  const { incidents, bucket, activeWorkspaceId } = args;
+
+  return sortVisibleIncidentsForFocus(incidents).filter((incident) => {
+    if (
+      activeWorkspaceId &&
+      !workspaceMatchesOrUnscoped(getIncidentWorkspaceId(incident), activeWorkspaceId)
+    ) {
+      return false;
+    }
+
+    const commandHref = getCommandHref(incident, activeWorkspaceId);
+    const flowHref = getFlowHref(incident, activeWorkspaceId);
+    const eventHref = getEventHref(incident, activeWorkspaceId);
+
+    const nextMoveLabel = getIncidentNextMoveLabel({
+      incident,
+      commandHref,
+      flowHref,
+      eventHref,
+    });
+
+    const actionReadinessLabel = getIncidentActionReadinessLabel(incident);
+
+    const triagePriorityLabel = getIncidentTriagePriorityLabel({
+      incident,
+      nextMoveLabel,
+      actionReadinessLabel,
+    });
+
+    const incidentBucket = getIncidentOperatorQueueBucket({
+      triagePriorityLabel,
+    });
+
+    return incidentBucket === bucket;
+  });
+}
+
+function getOperatorQueueBucketLimitLabel(
+  totalCount: number,
+  visibleLimit = 3,
+): string {
+  const remainingCount = Math.max(totalCount - visibleLimit, 0);
+  return remainingCount > 0 ? `+${remainingCount} autres` : "";
+}
+
 function getPluralLabel(
   count: number,
   singular: string,
@@ -2385,6 +2467,108 @@ function InvestigationField({
       <div className={metaLabelClassName()}>{label}</div>
       <div className={`mt-2 text-sm leading-6 ${valueClassName}`}>{value}</div>
     </div>
+  );
+}
+
+function OperatorQueueBucketCard({
+  bucket,
+  incidents,
+  activeWorkspaceId,
+}: {
+  bucket: OperatorQueueBucket;
+  incidents: IncidentItem[];
+  activeWorkspaceId?: string;
+}) {
+  const bucketItems = getOperatorQueueBucketItems({
+    incidents,
+    bucket,
+    activeWorkspaceId,
+  });
+
+  const visibleItems = bucketItems.slice(0, 3);
+  const overflowLabel = getOperatorQueueBucketLimitLabel(bucketItems.length, 3);
+  const bucketReason = getOperatorQueueBucketReason(bucket);
+
+  return (
+    <article className="rounded-[24px] border border-white/10 bg-black/20 px-5 py-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className={metaLabelClassName()}>{bucket}</div>
+          <div className="mt-2 text-sm leading-6 text-zinc-400">
+            {getPluralLabel(bucketItems.length, "incident", "incidents")}
+          </div>
+        </div>
+
+        <DashboardStatusBadge
+          kind={getOperatorQueueBucketBadgeKind(bucket)}
+          label={bucket}
+        />
+      </div>
+
+      <div className="mt-4 text-sm leading-6 text-zinc-300">{bucketReason}</div>
+
+      {visibleItems.length > 0 ? (
+        <div className="mt-5 space-y-3">
+          {visibleItems.map((incident) => {
+            const itemHref = getOperatorQueueItemHref(incident, activeWorkspaceId);
+            const commandHref = getCommandHref(incident, activeWorkspaceId);
+            const flowHref = getFlowHref(incident, activeWorkspaceId);
+            const eventHref = getEventHref(incident, activeWorkspaceId);
+
+            const nextMoveLabel = getIncidentNextMoveLabel({
+              incident,
+              commandHref,
+              flowHref,
+              eventHref,
+            });
+
+            return (
+              <div
+                key={incident.id}
+                className="rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3.5"
+              >
+                <Link
+                  href={itemHref}
+                  className="block text-sm font-medium leading-6 text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
+                >
+                  {getIncidentDisplayTitle(incident)}
+                </Link>
+
+                <div className="mt-2 text-xs leading-5 text-zinc-500">
+                  {getIncidentStatusLabel(incident)} ·{" "}
+                  {getIncidentSeverityDisplayLabel(incident)} ·{" "}
+                  {getWorkspaceDisplay(incident)}
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <DashboardStatusBadge
+                    kind={getNextMoveBadgeKind(nextMoveLabel)}
+                    label={nextMoveLabel}
+                  />
+
+                  <Link
+                    href={itemHref}
+                    className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/[0.08]"
+                  >
+                    Ouvrir
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+
+          {overflowLabel ? (
+            <div className="rounded-[16px] border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-zinc-400">
+              {overflowLabel}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-5 rounded-[18px] border border-white/10 bg-white/[0.02] px-4 py-4 text-sm leading-6 text-zinc-500">
+          Aucun incident dans cette file.
+        </div>
+      )}
+    </article>
   );
 }
 
@@ -4636,6 +4820,25 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     summary={moduleCard.summary}
                     href={moduleCard.href}
                     ctaLabel={moduleCard.ctaLabel}
+                  />
+                ))}
+              </div>
+            </SectionCard>
+          </div>
+
+          <div id="incident-list-operator-queue-action-board">
+            <SectionCard
+              title="Operator Queue Action Board"
+              description="File opérateur construite depuis Triage Priority et Operator Queue, sans remplacer Needs Attention."
+              action={<SectionCountPill value={visibleIncidents.length} tone="info" />}
+            >
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {OPERATOR_QUEUE_BUCKET_ORDER.map((bucket) => (
+                  <OperatorQueueBucketCard
+                    key={bucket}
+                    bucket={bucket}
+                    incidents={visibleIncidents}
+                    activeWorkspaceId={activeWorkspaceId}
                   />
                 ))}
               </div>
