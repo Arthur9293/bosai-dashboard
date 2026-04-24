@@ -3538,6 +3538,15 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   </div>
                 ) : null}
 
+                {focusTriagePriorityLabel ? (
+                  <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                    <div className={metaLabelClassName()}>Triage priority note</div>
+                    <div className="mt-2 text-sm leading-6 text-zinc-300">
+                      {getIncidentTriagePriorityReason(focusTriagePriorityLabel)}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
                   <div className={metaLabelClassName()}>Control note</div>
                   <div className="mt-2 text-sm leading-6 text-zinc-300">
