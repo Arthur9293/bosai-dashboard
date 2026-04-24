@@ -3094,6 +3094,19 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
         })
       : "";
 
+  const focusActionReadinessLabel = focusIncident
+    ? getIncidentActionReadinessLabel(focusIncident)
+    : null;
+
+  const focusTriagePriorityLabel =
+    focusIncident && focusNextMoveLabel && focusActionReadinessLabel
+      ? getIncidentTriagePriorityLabel({
+          incident: focusIncident,
+          nextMoveLabel: focusNextMoveLabel,
+          actionReadinessLabel: focusActionReadinessLabel,
+         })
+      : null;
+
   const focusRouteLock = focusIncident
     ? getIncidentRouteLock({
         incident: focusIncident,
