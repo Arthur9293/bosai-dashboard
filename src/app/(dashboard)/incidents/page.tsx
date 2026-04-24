@@ -3012,6 +3012,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const actionReadinessStats = getActionReadinessStats(visibleIncidents);
   const nextMoveStats = getNextMoveStats(visibleIncidents, activeWorkspaceId);
 
+  const triagePriorityStats = getTriagePriorityStats(
+  visibleIncidents,
+  activeWorkspaceId,
+  );
+
   const operatorSummaryText = getOperatorSummaryText({
     visibleCount: visibleIncidents.length,
     activeCount: activeIncidents.length,
