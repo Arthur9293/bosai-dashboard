@@ -2129,22 +2129,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
       })
     : null;
 
-  const focusPrimaryRouteLabel = focusRouteLock?.primaryRoute || "Detail-first";
-  const focusPrimarySurfaceLabel =
-    focusRouteLock?.primarySurface || "Incident detail";
-
-  const focusInvestigationCoverage =
-    focusRouteLock?.coverage || "Aucune couverture";
-
   const focusInvestigationFocus = focusIncident
     ? getInvestigationFocusLabel(focusIncident)
     : "Aucun incident focus";
 
   const focusPrimaryInvestigationAction =
     focusRouteLock?.primaryAction || null;
-
-  const focusControlNote =
-    focusRouteLock?.controlNote || "Aucune logique de pilotage disponible.";
 
   const controlRoute =
     focusRouteLock?.primaryRoute ||
@@ -2554,10 +2544,39 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
           description="Le Dashboard n’a pas pu charger la surface Incidents. La vue est protégée, mais il faut vérifier la lecture API côté worker / helper."
         />
       ) : visibleIncidents.length === 0 ? (
-        <EmptyStatePanel
-          title="Aucun incident visible"
-          description="Le Dashboard n’a remonté aucun incident sur la vue actuelle."
-        />
+        <div className="space-y-4">
+          <EmptyStatePanel
+            title={
+              hasFilters
+                ? "Aucun incident visible sur ce filtre"
+                : "Aucun incident visible"
+            }
+            description={
+              hasFilters
+                ? `Le Dashboard a chargé ${cleanNormalized.length} incident(s) sur le scope courant, mais aucun ne correspond au filtre actif. Retire les paramètres flow_id, root_event_id, source_record_id, source_event_id ou command_id pour revoir tous les incidents.`
+                : "Le Dashboard n’a remonté aucun incident sur la vue actuelle."
+            }
+          />
+
+          {hasFilters ? (
+            <SectionCard
+              title="Filtre actif sans résultat"
+              description="Les incidents existent peut-être encore sur le workspace, mais le filtre actuel ne matche aucun enregistrement."
+              tone="attention"
+              action={<SectionCountPill value={cleanNormalized.length} tone="warning" />}
+            >
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Link href={allIncidentsHref} className={actionLinkClassName("primary")}>
+                  Voir tous les incidents
+                </Link>
+
+                <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
+                  Retour aux flows
+                </Link>
+              </div>
+            </SectionCard>
+          ) : null}
+        </div>
       ) : (
         <>
           <div id="incident-list-signal-layer">
