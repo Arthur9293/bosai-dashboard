@@ -724,6 +724,13 @@ function getRouteShortLabel(
   return "Detail";
 }
 
+function getPrimarySurfaceLabel(
+  key: InvestigationPrimaryAction["key"],
+): string {
+  if (key === "detail") return "Incident detail";
+  return getRouteShortLabel(key);
+}
+
 function getRoutePriorityLabel(
   key: InvestigationPrimaryAction["key"],
 ): string {
@@ -1239,41 +1246,6 @@ function getInvestigationCoverageLabel(incident: IncidentItem): string {
   return "Lecture locale";
 }
 
-function getInvestigationEntryLabel(args: {
-  incident: IncidentItem;
-  flowHref: string;
-  commandHref: string;
-  eventHref: string;
-}): string {
-  const { incident, flowHref, commandHref, eventHref } = args;
-  const routeKey = getIncidentPrimaryRouteKey({
-    incident,
-    flowHref,
-    commandHref,
-    eventHref,
-  });
-
-  if (routeKey === "command") {
-    return `Command · ${compactTechnicalId(getCommandRecord(incident), 48)}`;
-  }
-
-  if (routeKey === "flow") {
-    return `Flow · ${compactTechnicalId(
-      getBestFlowTargetFromIncident(incident),
-      48,
-    )}`;
-  }
-
-  if (routeKey === "event") {
-    return `Event · ${compactTechnicalId(
-      getEventTargetFromIncident(incident),
-      48,
-    )}`;
-  }
-
-  return `Incident · ${compactTechnicalId(String(incident.id || ""), 48)}`;
-}
-
 function getInvestigationFocusLabel(incident: IncidentItem): string {
   const nextAction = getNextAction(incident).trim();
   if (nextAction) return nextAction;
@@ -1315,7 +1287,7 @@ function getInvestigationPrimaryAction(args: {
   if (routeKey === "command" && commandHref) {
     return {
       key: "command",
-      label: "Ouvrir la command prioritaire",
+      label: getRouteActionLabel("command"),
       href: commandHref,
     };
   }
@@ -1323,7 +1295,7 @@ function getInvestigationPrimaryAction(args: {
   if (routeKey === "flow" && flowHref) {
     return {
       key: "flow",
-      label: "Ouvrir le flow prioritaire",
+      label: getRouteActionLabel("flow"),
       href: flowHref,
     };
   }
@@ -1331,14 +1303,14 @@ function getInvestigationPrimaryAction(args: {
   if (routeKey === "event" && eventHref) {
     return {
       key: "event",
-      label: "Ouvrir l’event prioritaire",
+      label: getRouteActionLabel("event"),
       href: eventHref,
     };
   }
 
   return {
     key: "detail",
-    label: "Ouvrir le détail prioritaire",
+    label: getRouteActionLabel("detail"),
     href: detailHref,
   };
 }
@@ -1353,54 +1325,11 @@ function getControlRouteLabel(args: {
   hasFilters: boolean;
   primaryAction: InvestigationPrimaryAction | null;
 }): string {
-  const { hasFilters, primaryAction } = args;
-
-  if (primaryAction?.key === "command") return "Pilotage par command";
-  if (primaryAction?.key === "flow") return "Pilotage par flow";
-  if (primaryAction?.key === "event") return "Pilotage par event";
-  if (hasFilters) return "Pilotage par incident";
-  return "Pilotage par incident";
-}
-
-function getControlNextActionLabel(args: {
-  primaryAction: InvestigationPrimaryAction | null;
-}): string {
-  if (args.primaryAction) return args.primaryAction.label;
-  return "Voir tous les incidents";
+  return getRoutePriorityLabel(args.primaryAction?.key || "detail");
 }
 
 function getControlReturnLabel(hasFilters: boolean): string {
   return hasFilters ? "Retour aux flows" : "Liste incidents";
-}
-
-function getControlSurfaceNote(args: {
-  surfaceCount: number;
-  hasFilters: boolean;
-  primaryAction: InvestigationPrimaryAction | null;
-}): string {
-  const { surfaceCount, hasFilters, primaryAction } = args;
-
-  if (primaryAction?.key === "command") {
-    return "La command liée devient la voie de contrôle principale pour ce focus incident.";
-  }
-
-  if (primaryAction?.key === "flow") {
-    return "Le flow lié devient la voie de contrôle principale pour ce focus incident.";
-  }
-
-  if (primaryAction?.key === "event") {
-    return "L’event lié devient la voie de contrôle principale pour ce focus incident.";
-  }
-
-  if (hasFilters) {
-    return "Le signal reste partiel ou local. Le détail incident devient prioritaire, avec un retour stable vers le flow filtré.";
-  }
-
-  if (surfaceCount <= 1) {
-    return "Le détail incident reste la surface de pilotage la plus fiable.";
-  }
-
-  return "Le détail incident reste la surface principale tant qu’aucune route riche plus cohérente n’est disponible.";
 }
 
 function getControlPrimaryAction(args: {
@@ -2109,23 +2038,17 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     ? getEventHref(focusIncident, activeWorkspaceId)
     : "";
 
-  const focusInvestigationEntry = focusIncident
-    ? getInvestigationEntryLabel({
+  const focusPrimaryRouteKey = focusIncident
+    ? getIncidentPrimaryRouteKey({
         incident: focusIncident,
         flowHref: focusIncidentFlowHref,
         commandHref: focusIncidentCommandHref,
         eventHref: focusIncidentEventHref,
       })
-    : "Aucun point d’entrée";
+    : "detail";
 
-  const focusInvestigationRoute = focusIncident
-    ? getInvestigationRouteLabel({
-        incident: focusIncident,
-        flowHref: focusIncidentFlowHref,
-        commandHref: focusIncidentCommandHref,
-        eventHref: focusIncidentEventHref,
-      })
-    : "Aucune route";
+  const focusPrimaryRouteLabel = getRoutePriorityLabel(focusPrimaryRouteKey);
+  const focusPrimarySurfaceLabel = getPrimarySurfaceLabel(focusPrimaryRouteKey);
 
   const focusInvestigationCoverage = focusIncident
     ? getInvestigationCoverageLabel(focusIncident)
@@ -2145,12 +2068,15 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
       })
     : null;
 
+  const focusControlNote = focusIncident
+    ? getIncidentRouteNote({
+        incident: focusIncident,
+        key: focusPrimaryRouteKey,
+      })
+    : "Aucune logique de pilotage disponible.";
+
   const controlRoute = getControlRouteLabel({
     hasFilters,
-    primaryAction: focusPrimaryInvestigationAction,
-  });
-
-  const controlNextAction = getControlNextActionLabel({
     primaryAction: focusPrimaryInvestigationAction,
   });
 
@@ -2169,12 +2095,6 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const focusPrimaryControlAction = getControlPrimaryAction({
     primaryAction: focusPrimaryInvestigationAction,
     allIncidentsHref,
-  });
-
-  const controlSurfaceNote = getControlSurfaceNote({
-    surfaceCount: controlSurfaceCount,
-    hasFilters,
-    primaryAction: focusPrimaryInvestigationAction,
   });
 
   const moduleCards: ModuleCard[] = [
@@ -2412,19 +2332,42 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   ) : null}
                 </div>
 
+                <div className="grid gap-3">
+                  <InvestigationField
+                    label="Primary route"
+                    value={focusPrimaryRouteLabel}
+                    valueClassName="text-sky-300"
+                  />
+                  <InvestigationField
+                    label="Primary surface"
+                    value={focusPrimarySurfaceLabel}
+                    valueClassName="text-sky-300"
+                  />
+                  <InvestigationField
+                    label="Coverage"
+                    value={focusInvestigationCoverage}
+                    valueClassName={
+                      focusInvestigationCoverage === "Couverture enrichie"
+                        ? "text-emerald-300"
+                        : focusInvestigationCoverage === "Couverture reliée"
+                          ? "text-sky-300"
+                          : focusInvestigationCoverage === "Couverture partielle"
+                            ? "text-amber-300"
+                            : "text-zinc-300"
+                    }
+                  />
+                  <InvestigationField
+                    label="Primary action"
+                    value={focusPrimaryInvestigationAction?.label || "Ouvrir le détail prioritaire"}
+                    valueClassName="text-emerald-300"
+                  />
+                </div>
+
                 <div className="space-y-2 text-sm leading-6 text-white/65">
                   <div>
                     Workspace :{" "}
                     <span className="text-white/90">
                       {activeWorkspaceId || getWorkspaceDisplay(focusIncident)}
-                    </span>
-                  </div>
-                  <div>
-                    Flow :{" "}
-                    <span className="break-all text-white/90">
-                      {compactTechnicalId(
-                        getBestFlowTargetFromIncident(focusIncident),
-                      )}
                     </span>
                   </div>
                   <div>
@@ -2437,15 +2380,35 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  <Link
-                    href={focusIncidentDetailHref}
-                    className={actionLinkClassName("primary")}
-                  >
-                    Ouvrir le détail
-                  </Link>
+                <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                  <div className={metaLabelClassName()}>Control note</div>
+                  <div className="mt-2 text-sm leading-6 text-zinc-300">
+                    {focusControlNote}
+                  </div>
+                </div>
 
-                  {focusIncidentFlowHref ? (
+                <div className="flex flex-col gap-2">
+                  {focusPrimaryInvestigationAction ? (
+                    <Link
+                      href={focusPrimaryInvestigationAction.href}
+                      className={actionLinkClassName("primary")}
+                    >
+                      {focusPrimaryInvestigationAction.label}
+                    </Link>
+                  ) : null}
+
+                  {focusPrimaryInvestigationAction?.key !== "detail" &&
+                  focusIncidentDetailHref ? (
+                    <Link
+                      href={focusIncidentDetailHref}
+                      className={actionLinkClassName("soft")}
+                    >
+                      Ouvrir le détail
+                    </Link>
+                  ) : null}
+
+                  {focusPrimaryInvestigationAction?.key !== "flow" &&
+                  focusIncidentFlowHref ? (
                     <Link
                       href={focusIncidentFlowHref}
                       className={actionLinkClassName("soft")}
@@ -2454,7 +2417,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     </Link>
                   ) : null}
 
-                  {focusIncidentCommandHref ? (
+                  {focusPrimaryInvestigationAction?.key !== "command" &&
+                  focusIncidentCommandHref ? (
                     <Link
                       href={focusIncidentCommandHref}
                       className={actionLinkClassName("soft")}
@@ -2463,7 +2427,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     </Link>
                   ) : null}
 
-                  {focusIncidentEventHref ? (
+                  {focusPrimaryInvestigationAction?.key !== "event" &&
+                  focusIncidentEventHref ? (
                     <Link
                       href={focusIncidentEventHref}
                       className={actionLinkClassName("soft")}
@@ -2629,7 +2594,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
           <div id="incident-list-investigation-layer">
             <SectionCard
               title="Investigation Layer"
-              description="Couche d’enquête globale pour identifier le meilleur point d’entrée, l’incident focus, la route prioritaire et le CTA de contrôle à lancer."
+              description="Couche d’enquête globale pour identifier l’incident focus, la route primaire, la surface primaire et la couverture réelle."
               action={
                 <SectionCountPill
                   value={focusIncident ? getIncidentLinkCoverageCount(focusIncident) : 0}
@@ -2664,14 +2629,13 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       valueClassName="text-white"
                     />
                     <InvestigationField
-                      label="Best entry point"
-                      value={focusInvestigationEntry}
+                      label="Primary surface"
+                      value={focusPrimarySurfaceLabel}
                       valueClassName="text-sky-300"
-                      breakAll
                     />
                     <InvestigationField
-                      label="Priority route"
-                      value={focusInvestigationRoute}
+                      label="Primary route"
+                      value={focusPrimaryRouteLabel}
                       valueClassName="text-violet-300"
                     />
                     <InvestigationField
@@ -2886,32 +2850,32 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
                   <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <InvestigationField
-                      label="Voie de contrôle"
-                      value={controlRoute}
+                      label="Primary route"
+                      value={focusPrimaryRouteLabel}
                       valueClassName="text-sky-300"
                     />
                     <InvestigationField
-                      label="Action suivante"
-                      value={controlNextAction}
-                      valueClassName="text-emerald-300"
+                      label="Primary surface"
+                      value={focusPrimarySurfaceLabel}
+                      valueClassName="text-sky-300"
                     />
                     <InvestigationField
-                      label="Retour stable"
-                      value={controlReturnLabel}
-                      valueClassName="text-zinc-200"
+                      label="Coverage"
+                      value={focusInvestigationCoverage}
+                      valueClassName={
+                        focusInvestigationCoverage === "Couverture enrichie"
+                          ? "text-emerald-300"
+                          : focusInvestigationCoverage === "Couverture reliée"
+                            ? "text-sky-300"
+                            : focusInvestigationCoverage === "Couverture partielle"
+                              ? "text-amber-300"
+                              : "text-zinc-300"
+                      }
                     />
                     <InvestigationField
-                      label="Surfaces pilotables"
-                      value={String(controlSurfaceCount)}
-                      valueClassName="text-violet-300"
+                      label="Control note"
+                      value={focusControlNote}
                     />
-                  </div>
-
-                  <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
-                    <div className={metaLabelClassName()}>Control note</div>
-                    <div className="mt-2 text-sm leading-6 text-zinc-300">
-                      {controlSurfaceNote}
-                    </div>
                   </div>
 
                   <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
