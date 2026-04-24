@@ -282,47 +282,77 @@ function titleLooksGeneric(value: string): boolean {
 }
 
 function extractIncidentItems(payload: unknown): IncidentItem[] {
-  if (!payload) return [];
+  const normalizeIncidentArray = (value: unknown): IncidentItem[] => {
+    if (!Array.isArray(value)) return [];
 
-  if (Array.isArray(payload)) {
-    return payload.filter(
+    return value.filter(
       (item): item is IncidentItem =>
         Boolean(item) && typeof item === "object" && !Array.isArray(item),
     );
-  }
+  };
 
-  if (typeof payload !== "object") return [];
+  const extractFromContainer = (container: unknown): IncidentItem[] => {
+    if (!container) return [];
 
-  const raw = payload as Record<string, unknown>;
-  const candidates: unknown[] = [
-    raw.incidents,
-    raw.items,
-    raw.results,
-    raw.records,
-    raw.data,
-  ];
-
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
-      return candidate.filter(
-        (item): item is IncidentItem =>
-          Boolean(item) && typeof item === "object" && !Array.isArray(item),
-      );
+    if (Array.isArray(container)) {
+      return normalizeIncidentArray(container);
     }
 
-    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
-      const nested = candidate as Record<string, unknown>;
-      for (const key of ["incidents", "items", "results", "records", "data"]) {
-        const inner = nested[key];
-        if (Array.isArray(inner)) {
-          return inner.filter(
-            (item): item is IncidentItem =>
-              Boolean(item) && typeof item === "object" && !Array.isArray(item),
-          );
+    if (typeof container !== "object") {
+      return [];
+    }
+
+    const record = container as Record<string, unknown>;
+
+    const candidates: unknown[] = [
+      record.incidents,
+      record.items,
+      record.results,
+      record.records,
+      record.data,
+    ];
+
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        return normalizeIncidentArray(candidate);
+      }
+
+      if (
+        candidate &&
+        typeof candidate === "object" &&
+        !Array.isArray(candidate)
+      ) {
+        const nested = candidate as Record<string, unknown>;
+
+        for (const key of ["incidents", "items", "results", "records", "data"]) {
+          const inner = nested[key];
+
+          if (Array.isArray(inner)) {
+            return normalizeIncidentArray(inner);
+          }
         }
       }
     }
+
+    return [];
+  };
+
+  if (!payload) return [];
+
+  const directItems = extractFromContainer(payload);
+  if (directItems.length > 0) return directItems;
+
+  if (typeof payload !== "object" || Array.isArray(payload)) {
+    return [];
   }
+
+  const raw = payload as Record<string, unknown>;
+
+  const sourceItems = extractFromContainer(raw.source);
+  if (sourceItems.length > 0) return sourceItems;
+
+  const dataItems = extractFromContainer(raw.data);
+  if (dataItems.length > 0) return dataItems;
 
   return [];
 }
