@@ -54,6 +54,11 @@ type SignalConfidenceLabel =
   | "PARTIAL SIGNAL"
   | "LOW SIGNAL";
 
+type ActionReadinessLabel =
+  | "ACTION READY"
+  | "NEEDS CONTEXT"
+  | "WATCH ONLY";
+
 type ControlAction = {
   key: "flow" | "command" | "event";
   label: string;
@@ -1409,6 +1414,150 @@ function getSignalTruthLabel(incident: IncidentItem): string {
   return getSignalConfidenceLabel(incident);
 }
 
+function hasIncidentActionSurface(incident: IncidentItem): boolean {
+  const hasCommand = getCommandRecord(incident) !== "—";
+  const hasFlow = Boolean(getBestFlowTargetFromIncident(incident).trim());
+  const hasEvent = Boolean(getEventTargetFromIncident(incident).trim());
+
+  return hasCommand || hasFlow || hasEvent;
+}
+
+function hasIncidentActionContext(incident: IncidentItem): boolean {
+  const reason = getReason(incident).trim();
+  const nextAction = getNextAction(incident).trim();
+  const decision = getDecisionStatus(incident).trim();
+
+  return (
+    hasIncidentActionSurface(incident) ||
+    !isMissingSignalValue(reason) ||
+    Boolean(nextAction) ||
+    Boolean(decision)
+  );
+}
+
+function getIncidentActionReadinessLabel(
+  incident: IncidentItem,
+): ActionReadinessLabel {
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+  const slaLabel = getSlaLabel(incident).trim().toLowerCase();
+  const signalConfidence = getSignalConfidenceLabel(incident);
+  const hasSurface = hasIncidentActionSurface(incident);
+  const hasContext = hasIncidentActionContext(incident);
+
+  if (status === "resolved") {
+    return "WATCH ONLY";
+  }
+
+  if (status === "escalated") {
+    return hasSurface ? "ACTION READY" : "NEEDS CONTEXT";
+  }
+
+  if (slaLabel === "breached" || slaLabel === "warning") {
+    return hasContext ? "ACTION READY" : "NEEDS CONTEXT";
+  }
+
+  if (severity === "critical" || severity === "high") {
+    return hasContext ? "ACTION READY" : "NEEDS CONTEXT";
+  }
+
+  if (signalConfidence === "LOW SIGNAL") {
+    return "NEEDS CONTEXT";
+  }
+
+  if (status === "open") {
+    return hasContext ? "ACTION READY" : "NEEDS CONTEXT";
+  }
+
+  return "WATCH ONLY";
+}
+
+function getIncidentActionReadinessReason(incident: IncidentItem): string {
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+  const slaLabel = getSlaLabel(incident).trim().toLowerCase();
+  const signalConfidence = getSignalConfidenceLabel(incident);
+  const hasSurface = hasIncidentActionSurface(incident);
+  const hasContext = hasIncidentActionContext(incident);
+
+  if (status === "resolved") {
+    return "Incident résolu : surveillance uniquement.";
+  }
+
+  if (status === "escalated") {
+    return hasSurface
+      ? "Incident escaladé avec surface d’action liée."
+      : "Incident escaladé mais contexte de pilotage incomplet.";
+  }
+
+  if (slaLabel === "breached" || slaLabel === "warning") {
+    return hasContext
+      ? "SLA actif avec contexte suffisant pour agir."
+      : "SLA actif mais contexte incomplet.";
+  }
+
+  if (severity === "critical" || severity === "high") {
+    return hasContext
+      ? "Sévérité élevée avec contexte exploitable."
+      : "Sévérité élevée mais contexte incomplet.";
+  }
+
+  if (signalConfidence === "LOW SIGNAL") {
+    return "Signal faible : ouvrir le détail avant action.";
+  }
+
+  if (status === "open") {
+    return hasContext
+      ? "Incident ouvert avec action ou contexte disponible."
+      : "Incident ouvert mais contexte insuffisant.";
+  }
+
+  return "Aucune action directe détectée.";
+}
+
+function getActionReadinessClassName(label: ActionReadinessLabel): string {
+  if (label === "ACTION READY") {
+    return "border-emerald-400/25 bg-emerald-400/10 text-emerald-200";
+  }
+
+  if (label === "NEEDS CONTEXT") {
+    return "border-amber-400/25 bg-amber-400/10 text-amber-200";
+  }
+
+  return "border-zinc-400/20 bg-white/[0.04] text-zinc-300";
+}
+
+function getActionReadinessBadgeKind(
+  label: ActionReadinessLabel,
+): DashboardStatusKind {
+  if (label === "ACTION READY") return "success";
+  if (label === "NEEDS CONTEXT") return "retry";
+  return "unknown";
+}
+
+function getActionReadinessStats(incidents: IncidentItem[]): {
+  ready: number;
+  needsContext: number;
+  watchOnly: number;
+} {
+  return incidents.reduce(
+    (acc, incident) => {
+      const label = getIncidentActionReadinessLabel(incident);
+
+      if (label === "ACTION READY") acc.ready += 1;
+      if (label === "NEEDS CONTEXT") acc.needsContext += 1;
+      if (label === "WATCH ONLY") acc.watchOnly += 1;
+
+      return acc;
+    },
+    {
+      ready: 0,
+      needsContext: 0,
+      watchOnly: 0,
+    },
+  );
+}
+
 function getMostRecentIncident(items: IncidentItem[]): IncidentItem | null {
   if (items.length === 0) return null;
 
@@ -1839,6 +1988,8 @@ function IncidentListCard({
   const visibleSignalGapReasons = signalGapReasons.slice(0, 3);
   const remainingSignalGapCount = Math.max(signalGapReasons.length - 3, 0);
   const hasSignalGap = signalConfidenceLabel !== "SIGNAL READY";
+  const actionReadinessLabel = getIncidentActionReadinessLabel(incident);
+  const actionReadinessReason = getIncidentActionReadinessReason(incident);
 
   const linkedActions: ControlAction[] = [
     flowHref
@@ -1943,6 +2094,11 @@ function IncidentListCard({
                 />
               ) : null}
 
+              <DashboardStatusBadge
+                kind={getActionReadinessBadgeKind(actionReadinessLabel)}
+                label={actionReadinessLabel}
+              />
+
               {getDecisionStatus(incident) ? (
                 <DashboardStatusBadge
                   kind={getDecisionBadgeKind(incident)}
@@ -1993,6 +2149,24 @@ function IncidentListCard({
                   ) : null}
                 </ul>
               ) : null}
+            </div>
+
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className={metaLabelClassName()}>Action readiness</div>
+                <span
+                  className={[
+                    "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
+                    getActionReadinessClassName(actionReadinessLabel),
+                  ].join(" ")}
+                >
+                  {actionReadinessLabel}
+                </span>
+              </div>
+
+              <div className="mt-3 text-xs leading-5 text-zinc-400">
+                {actionReadinessReason}
+              </div>
             </div>
           </div>
         </div>
@@ -2051,6 +2225,17 @@ function IncidentListCard({
               label="Coverage"
               value={routeLock.coverage}
               valueClassName={coverageTextClassName(routeLock.coverage)}
+            />
+            <InvestigationField
+              label="Action readiness"
+              value={actionReadinessLabel}
+              valueClassName={
+                actionReadinessLabel === "ACTION READY"
+                  ? "text-emerald-300"
+                  : actionReadinessLabel === "NEEDS CONTEXT"
+                    ? "text-amber-300"
+                    : "text-zinc-300"
+              }
             />
             <InvestigationField
               label="Control note"
@@ -2327,6 +2512,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   );
 
   const signalQualityStats = getSignalQualityStats(visibleIncidents);
+  const actionReadinessStats = getActionReadinessStats(visibleIncidents);
 
   const mostRecentIncident = getMostRecentIncident(visibleIncidents);
 
@@ -2640,6 +2826,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       label={getSignalConfidenceLabel(focusIncident)}
                     />
                   ) : null}
+                  <DashboardStatusBadge
+                    kind={getActionReadinessBadgeKind(
+                      getIncidentActionReadinessLabel(focusIncident),
+                    )}
+                    label={getIncidentActionReadinessLabel(focusIncident)}
+                  />
                 </div>
 
                 <div className="grid gap-3">
@@ -2657,6 +2849,17 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     label="Coverage"
                     value={focusRouteLock.coverage}
                     valueClassName={coverageTextClassName(focusRouteLock.coverage)}
+                  />
+                  <InvestigationField
+                    label="Action readiness"
+                    value={getIncidentActionReadinessLabel(focusIncident)}
+                    valueClassName={
+                      getIncidentActionReadinessLabel(focusIncident) === "ACTION READY"
+                        ? "text-emerald-300"
+                        : getIncidentActionReadinessLabel(focusIncident) === "NEEDS CONTEXT"
+                          ? "text-amber-300"
+                          : "text-zinc-300"
+                    }
                   />
                   <InvestigationField
                     label="CTA principal"
@@ -2952,6 +3155,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                         label={getSignalConfidenceLabel(focusIncident)}
                       />
                     ) : null}
+                    <DashboardStatusBadge
+                      kind={getActionReadinessBadgeKind(
+                        getIncidentActionReadinessLabel(focusIncident),
+                      )}
+                      label={getIncidentActionReadinessLabel(focusIncident)}
+                    />
                   </div>
 
                   <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -3128,6 +3337,46 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 </div>
               </div>
 
+              <div className="mt-4 rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className={metaLabelClassName()}>Action Readiness</div>
+                    <div className="mt-2 text-sm leading-6 text-zinc-400">
+                      Lecture complémentaire : indique si les incidents visibles sont actionnables maintenant.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  <div className="rounded-[18px] border border-emerald-400/15 bg-emerald-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-emerald-300">
+                      {actionReadinessStats.ready}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Ready
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-amber-400/15 bg-amber-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-amber-300">
+                      {actionReadinessStats.needsContext}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Context
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-zinc-300">
+                      {actionReadinessStats.watchOnly}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Watch
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <InvestigationField
                   label="Executive posture"
@@ -3178,6 +3427,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       : "—"
                   }
                 />
+
+                <InvestigationField
+                  label="Action readiness"
+                  value={`${actionReadinessStats.ready} ready · ${actionReadinessStats.needsContext} context · ${actionReadinessStats.watchOnly} watch`}
+                />
               </div>
             </SectionCard>
           </div>
@@ -3203,6 +3457,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       kind={getIncidentSlaBadgeKind(focusIncident)}
                       label={`SLA ${getSlaDisplayLabel(focusIncident)}`}
                     />
+                    <DashboardStatusBadge
+                      kind={getActionReadinessBadgeKind(
+                        getIncidentActionReadinessLabel(focusIncident),
+                      )}
+                      label={getIncidentActionReadinessLabel(focusIncident)}
+                    />
                     {focusPrimaryControlAction ? (
                       <DashboardStatusBadge kind="success" label="CONTROL READY" />
                     ) : (
@@ -3225,6 +3485,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       label="Coverage"
                       value={focusRouteLock.coverage}
                       valueClassName={coverageTextClassName(focusRouteLock.coverage)}
+                    />
+                    <InvestigationField
+                      label="Action readiness"
+                      value={`${actionReadinessStats.ready} ready · ${actionReadinessStats.needsContext} context · ${actionReadinessStats.watchOnly} watch`}
+                      valueClassName="text-emerald-300"
                     />
                     <InvestigationField
                       label="Control note"
