@@ -67,6 +67,13 @@ type NextMoveLabel =
   | "REVIEW RESOLUTION"
   | "WATCH";
 
+type OperatorSummaryBadgeLabel =
+  | "OPERATOR READY"
+  | "ACTION FOCUS"
+  | "CONTEXT NEEDED"
+  | "ESCALATION FOCUS"
+  | "QUIET SURFACE";
+
 type ControlAction = {
   key: "flow" | "command" | "event";
   label: string;
@@ -575,9 +582,7 @@ function getRootEventId(incident: IncidentItem): string {
 }
 
 function getSourceRecordId(incident: IncidentItem): string {
-  return toTextOrEmpty(
-    (incident as Record<string, unknown>).source_record_id,
-  );
+  return toTextOrEmpty((incident as Record<string, unknown>).source_record_id);
 }
 
 function getCategory(incident: IncidentItem): string {
@@ -618,9 +623,7 @@ function getDecisionReasonDisplay(incident: IncidentItem): string {
 
 function getNextActionDisplay(incident: IncidentItem): string {
   const action = getNextAction(incident).trim();
-  return action
-    ? normalizeDisplayText(action)
-    : "NO NEXT ACTION";
+  return action ? normalizeDisplayText(action) : "NO NEXT ACTION";
 }
 
 function getIncidentDisplayTitle(incident: IncidentItem): string {
@@ -700,8 +703,9 @@ function isIncidentSlaBreached(incident: IncidentItem): boolean {
 function isRecentResolvedIncident(incident: IncidentItem): boolean {
   if (!isIncidentResolved(incident)) return false;
 
-  const timestamp =
-    new Date(getResolvedAt(incident) || getUpdatedAt(incident) || 0).getTime();
+  const timestamp = new Date(
+    getResolvedAt(incident) || getUpdatedAt(incident) || 0,
+  ).getTime();
 
   if (!Number.isFinite(timestamp) || timestamp <= 0) return false;
 
@@ -754,7 +758,9 @@ function getIncidentFocusPriority(incident: IncidentItem): number {
 }
 
 function getIncidentHasPartialControlSignal(incident: IncidentItem): boolean {
-  return isSignalGapIncident(incident) || getIncidentLinkCoverageCount(incident) === 0;
+  return (
+    isSignalGapIncident(incident) || getIncidentLinkCoverageCount(incident) === 0
+  );
 }
 
 function getIncidentPrimaryRouteKey(args: {
@@ -830,9 +836,7 @@ function getIncidentPrimaryRouteKey(args: {
   return "detail";
 }
 
-function getRouteShortLabel(
-  key: InvestigationPrimaryAction["key"],
-): string {
+function getRouteShortLabel(key: InvestigationPrimaryAction["key"]): string {
   if (key === "command") return "Command";
   if (key === "flow") return "Flow";
   if (key === "event") return "Event";
@@ -857,9 +861,7 @@ function getRoutePriorityLabel(
   return "Detail-first";
 }
 
-function getRouteActionLabel(
-  key: InvestigationPrimaryAction["key"],
-): string {
+function getRouteActionLabel(key: InvestigationPrimaryAction["key"]): string {
   if (key === "command") return "Ouvrir la command prioritaire";
   if (key === "flow") return "Ouvrir le flow prioritaire";
   if (key === "event") return "Ouvrir l’event prioritaire";
@@ -1108,9 +1110,7 @@ function getIncidentSeverityBadgeKind(
   return "unknown";
 }
 
-function getIncidentSlaBadgeKind(
-  incident: IncidentItem,
-): DashboardStatusKind {
+function getIncidentSlaBadgeKind(incident: IncidentItem): DashboardStatusKind {
   const resolvedLike =
     Boolean(incident.resolved_at) ||
     getIncidentStatusNormalized(incident) === "resolved";
@@ -1133,9 +1133,7 @@ function getIncidentSlaBadgeKind(
   return "unknown";
 }
 
-function getDecisionBadgeKind(
-  incident: IncidentItem,
-): DashboardStatusKind {
+function getDecisionBadgeKind(incident: IncidentItem): DashboardStatusKind {
   const decision = getDecisionStatus(incident).toLowerCase();
 
   if (["escalate", "escalated"].includes(decision)) return "incident";
@@ -1177,10 +1175,7 @@ function getIncidentHref(
   });
 }
 
-function getFlowHref(
-  incident: IncidentItem,
-  activeWorkspaceId?: string,
-): string {
+function getFlowHref(incident: IncidentItem, activeWorkspaceId?: string): string {
   const flowTarget = getBestFlowTargetFromIncident(incident);
   return flowTarget
     ? appendWorkspaceIdToHref(
@@ -1372,9 +1367,7 @@ function getSignalGapReasons(incident: IncidentItem): string[] {
   return reasons;
 }
 
-function getSignalConfidenceLabel(
-  incident: IncidentItem,
-): SignalConfidenceLabel {
+function getSignalConfidenceLabel(incident: IncidentItem): SignalConfidenceLabel {
   const reasons = getSignalGapReasons(incident);
 
   if (reasons.length === 0) return "SIGNAL READY";
@@ -1677,7 +1670,6 @@ function getNextMoveStats(
 } {
   return incidents.reduce(
     (acc, incident) => {
-      const detailHref = getIncidentHref(incident, activeWorkspaceId);
       const commandHref = getCommandHref(incident, activeWorkspaceId);
       const flowHref = getFlowHref(incident, activeWorkspaceId);
       const eventHref = getEventHref(incident, activeWorkspaceId);
@@ -1707,6 +1699,132 @@ function getNextMoveStats(
       watch: 0,
     },
   );
+}
+
+function getPluralLabel(
+  count: number,
+  singular: string,
+  plural: string,
+): string {
+  return `${count} ${count > 1 ? plural : singular}`;
+}
+
+function getOperatorSummaryText(args: {
+  visibleCount: number;
+  activeCount: number;
+  escalatedCount: number;
+  resolvedCount: number;
+  actionReadinessStats: {
+    ready: number;
+    needsContext: number;
+    watchOnly: number;
+  };
+  nextMoveStats: {
+    command: number;
+    flow: number;
+    event: number;
+    detail: number;
+    review: number;
+    watch: number;
+  };
+}): string {
+  const {
+    visibleCount,
+    activeCount,
+    escalatedCount,
+    resolvedCount,
+    actionReadinessStats,
+    nextMoveStats,
+  } = args;
+
+  if (visibleCount === 0) {
+    return "Aucun incident visible sur ce scope.";
+  }
+
+  if (escalatedCount > 0) {
+    return `${getPluralLabel(
+      visibleCount,
+      "incident visible",
+      "incidents visibles",
+    )} · ${getPluralLabel(
+      escalatedCount,
+      "escaladé",
+      "escaladés",
+    )} · ${getPluralLabel(
+      actionReadinessStats.ready,
+      "actionnable",
+      "actionnables",
+    )} · ${nextMoveStats.command} à ouvrir côté Command`;
+  }
+
+  if (actionReadinessStats.needsContext > 0) {
+    return `${getPluralLabel(
+      visibleCount,
+      "incident visible",
+      "incidents visibles",
+    )} · ${getPluralLabel(
+      actionReadinessStats.ready,
+      "actionnable",
+      "actionnables",
+    )} · ${Math.max(
+      nextMoveStats.detail,
+      actionReadinessStats.needsContext,
+    )} à compléter côté Detail`;
+  }
+
+  if (activeCount > 0) {
+    return `${getPluralLabel(
+      visibleCount,
+      "incident visible",
+      "incidents visibles",
+    )} · ${getPluralLabel(activeCount, "actif", "actifs")} · ${getPluralLabel(
+      actionReadinessStats.ready,
+      "actionnable",
+      "actionnables",
+    )} · ${nextMoveStats.command} à ouvrir côté Command`;
+  }
+
+  return `${getPluralLabel(
+    visibleCount,
+    "incident visible",
+    "incidents visibles",
+  )} · ${getPluralLabel(resolvedCount, "résolu", "résolus")} · pilotage stable`;
+}
+
+function getOperatorSummaryTone(args: {
+  escalatedCount: number;
+  activeCount: number;
+  needsContext: number;
+  visibleCount: number;
+}): SignalTone {
+  if (args.visibleCount === 0) return "default";
+  if (args.escalatedCount > 0) return "warning";
+  if (args.needsContext > 0) return "warning";
+  if (args.activeCount > 0) return "info";
+  return "success";
+}
+
+function getOperatorSummaryBadgeLabel(args: {
+  escalatedCount: number;
+  activeCount: number;
+  needsContext: number;
+  visibleCount: number;
+}): OperatorSummaryBadgeLabel {
+  if (args.visibleCount === 0) return "QUIET SURFACE";
+  if (args.escalatedCount > 0) return "ESCALATION FOCUS";
+  if (args.needsContext > 0) return "CONTEXT NEEDED";
+  if (args.activeCount > 0) return "ACTION FOCUS";
+  return "OPERATOR READY";
+}
+
+function getOperatorSummaryBadgeKind(
+  label: OperatorSummaryBadgeLabel,
+): DashboardStatusKind {
+  if (label === "OPERATOR READY") return "success";
+  if (label === "ACTION FOCUS") return "running";
+  if (label === "CONTEXT NEEDED") return "retry";
+  if (label === "ESCALATION FOCUS") return "retry";
+  return "unknown";
 }
 
 function getMostRecentIncident(items: IncidentItem[]): IncidentItem | null {
@@ -2002,7 +2120,11 @@ function ModuleExtensionCard({
 
       <div className="mt-5">
         {disabled ? (
-          <span className={actionLinkClassName("soft") + " opacity-60 pointer-events-none"}>
+          <span
+            className={
+              actionLinkClassName("soft") + " opacity-60 pointer-events-none"
+            }
+          >
             {ctaLabel}
           </span>
         ) : (
@@ -2381,23 +2503,16 @@ function IncidentListCard({
               value={getReasonDisplay(incident)}
               breakAll
             />
-            <InvestigationField
-              label="Suggested action"
-              value={suggestedAction}
-            />
+            <InvestigationField label="Suggested action" value={suggestedAction} />
             <InvestigationField
               label="Decision"
               value={decisionStatus}
-              valueClassName={getDecisionStatus(incident) ? "text-purple-300" : "text-zinc-400"}
+              valueClassName={
+                getDecisionStatus(incident) ? "text-purple-300" : "text-zinc-400"
+              }
             />
-            <InvestigationField
-              label="Decision reason"
-              value={decisionReason}
-            />
-            <InvestigationField
-              label="Next action"
-              value={nextAction}
-            />
+            <InvestigationField label="Decision reason" value={decisionReason} />
+            <InvestigationField label="Next action" value={nextAction} />
           </div>
         </div>
 
@@ -2445,10 +2560,7 @@ function IncidentListCard({
                     : "text-sky-300"
               }
             />
-            <InvestigationField
-              label="Control note"
-              value={routeLock.controlNote}
-            />
+            <InvestigationField label="Control note" value={routeLock.controlNote} />
           </div>
         </div>
 
@@ -2492,8 +2604,16 @@ function IncidentListCard({
             breakAll
           />
 
-          <MetaItem label="Root event" value={toText(rootEventId, "No root event")} breakAll />
-          <MetaItem label="Run record" value={toText(runRecord, "No run record")} breakAll />
+          <MetaItem
+            label="Root event"
+            value={toText(rootEventId, "No root event")}
+            breakAll
+          />
+          <MetaItem
+            label="Run record"
+            value={toText(runRecord, "No run record")}
+            breakAll
+          />
 
           <MetaItem
             label="Command"
@@ -2531,7 +2651,11 @@ function IncidentListCard({
 
           <MetaItem
             label="Resolved"
-            value={formatDate(getResolvedAt(incident)) === "—" ? "Not resolved yet" : formatDate(getResolvedAt(incident))}
+            value={
+              formatDate(getResolvedAt(incident)) === "—"
+                ? "Not resolved yet"
+                : formatDate(getResolvedAt(incident))
+            }
           />
 
           <div className="md:col-span-2 xl:col-span-3 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
@@ -2707,7 +2831,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
   const escalatedOrBreachedActiveIncidents = activeIncidents.filter(
     (item) =>
-      getIncidentStatusNormalized(item) === "escalated" || getSlaLabel(item) === "BREACHED",
+      getIncidentStatusNormalized(item) === "escalated" ||
+      getSlaLabel(item) === "BREACHED",
   );
 
   const signalGapIncidents = visibleIncidents.filter((item) =>
@@ -2722,6 +2847,29 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const signalQualityStats = getSignalQualityStats(visibleIncidents);
   const actionReadinessStats = getActionReadinessStats(visibleIncidents);
   const nextMoveStats = getNextMoveStats(visibleIncidents, activeWorkspaceId);
+
+  const operatorSummaryText = getOperatorSummaryText({
+    visibleCount: visibleIncidents.length,
+    activeCount: activeIncidents.length,
+    escalatedCount: escalatedIncidents.length,
+    resolvedCount: resolvedIncidents.length,
+    actionReadinessStats,
+    nextMoveStats,
+  });
+
+  const operatorSummaryTone = getOperatorSummaryTone({
+    escalatedCount: escalatedIncidents.length,
+    activeCount: activeIncidents.length,
+    needsContext: actionReadinessStats.needsContext,
+    visibleCount: visibleIncidents.length,
+  });
+
+  const operatorSummaryBadgeLabel = getOperatorSummaryBadgeLabel({
+    escalatedCount: escalatedIncidents.length,
+    activeCount: activeIncidents.length,
+    needsContext: actionReadinessStats.needsContext,
+    visibleCount: visibleIncidents.length,
+  });
 
   const mostRecentIncident = getMostRecentIncident(visibleIncidents);
 
@@ -2742,8 +2890,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const commandsHref = appendWorkspaceIdToHref("/commands", activeWorkspaceId);
   const allIncidentsHref = appendWorkspaceIdToHref("/incidents", activeWorkspaceId);
 
-  const focusIncident =
-    sortVisibleIncidentsForFocus(visibleIncidents)[0] || null;
+  const focusIncident = sortVisibleIncidentsForFocus(visibleIncidents)[0] || null;
 
   const focusIncidentDetailHref = focusIncident
     ? getIncidentHref(focusIncident, activeWorkspaceId)
@@ -2792,8 +2939,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     ? getInvestigationFocusLabel(focusIncident)
     : "Aucun incident focus";
 
-  const focusPrimaryInvestigationAction =
-    focusRouteLock?.primaryAction || null;
+  const focusPrimaryInvestigationAction = focusRouteLock?.primaryAction || null;
 
   const controlRoute =
     focusRouteLock?.primaryRoute ||
@@ -2858,7 +3004,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     {
       key: "control",
       title: "Control Layer",
-      state: focusPrimaryControlAction ? "available" : visibleIncidents.length > 0 ? "partial" : "unavailable",
+      state: focusPrimaryControlAction
+        ? "available"
+        : visibleIncidents.length > 0
+          ? "partial"
+          : "unavailable",
       summary: focusPrimaryControlAction
         ? `Voie principale : ${controlRoute}.`
         : "Aucune action prioritaire globale déterminée.",
@@ -3022,6 +3172,33 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   {quickRead}
                 </div>
               </div>
+
+              <div
+                className={`${metaBoxClassName()} ${signalRingClassName(
+                  operatorSummaryTone,
+                )}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`h-2 w-2 rounded-full ${signalDotClassName(
+                      operatorSummaryTone,
+                    )}`}
+                    aria-hidden="true"
+                  />
+                  <div className={metaLabelClassName()}>Operator summary</div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <DashboardStatusBadge
+                    kind={getOperatorSummaryBadgeKind(operatorSummaryBadgeLabel)}
+                    label={operatorSummaryBadgeLabel}
+                  />
+                </div>
+
+                <div className="mt-3 text-sm leading-6 text-white/70">
+                  {operatorSummaryText}
+                </div>
+              </div>
             </div>
           </SidePanelCard>
 
@@ -3090,9 +3267,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     label="Action readiness"
                     value={getIncidentActionReadinessLabel(focusIncident)}
                     valueClassName={
-                      getIncidentActionReadinessLabel(focusIncident) === "ACTION READY"
+                      getIncidentActionReadinessLabel(focusIncident) ===
+                      "ACTION READY"
                         ? "text-emerald-300"
-                        : getIncidentActionReadinessLabel(focusIncident) === "NEEDS CONTEXT"
+                        : getIncidentActionReadinessLabel(focusIncident) ===
+                            "NEEDS CONTEXT"
                           ? "text-amber-300"
                           : "text-zinc-300"
                     }
@@ -3236,9 +3415,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   </span>
                 ) : null}
                 {commandId ? (
-                  <span className={chipClassName()}>
-                    command_id: {commandId}
-                  </span>
+                  <span className={chipClassName()}>command_id: {commandId}</span>
                 ) : null}
               </div>
 
@@ -3250,6 +3427,49 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 <Link href={allIncidentsHref} className={actionLinkClassName("primary")}>
                   Voir tous les incidents
                 </Link>
+              </div>
+            </div>
+          </SectionCard>
+        </div>
+      ) : null}
+
+      {!fetchFailed ? (
+        <div id="incident-list-operator-summary">
+          <SectionCard
+            title="Operator Summary"
+            description="Synthèse opérateur de la surface Incidents en une phrase, sans modifier les compteurs validés."
+            action={
+              <DashboardStatusBadge
+                kind={getOperatorSummaryBadgeKind(operatorSummaryBadgeLabel)}
+                label={operatorSummaryBadgeLabel}
+              />
+            }
+          >
+            <div
+              className={`${metaBoxClassName()} ${signalRingClassName(
+                operatorSummaryTone,
+              )}`}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${signalDotClassName(
+                    operatorSummaryTone,
+                  )}`}
+                  aria-hidden="true"
+                />
+                <div className={metaLabelClassName()}>Situation globale</div>
+              </div>
+
+              <div
+                className={`mt-3 text-base font-medium leading-7 ${toneTextClassName(
+                  operatorSummaryTone,
+                )}`}
+              >
+                {operatorSummaryText}
+              </div>
+
+              <div className="mt-2 text-xs leading-5 text-zinc-500">
+                Lecture complémentaire. Les compteurs validés restent inchangés.
               </div>
             </div>
           </SectionCard>
@@ -3342,7 +3562,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   <div className="mt-2 text-zinc-100">
                     {formatDate(
                       latestOpenIncident
-                        ? getUpdatedAt(latestOpenIncident) || getOpenedAt(latestOpenIncident)
+                        ? getUpdatedAt(latestOpenIncident) ||
+                            getOpenedAt(latestOpenIncident)
                         : undefined,
                     )}
                   </div>
@@ -3586,7 +3807,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   <div>
                     <div className={metaLabelClassName()}>Signal Quality Polish</div>
                     <div className="mt-2 text-sm leading-6 text-zinc-400">
-                      Lecture complémentaire uniquement. Les compteurs validés restent inchangés.
+                      Lecture complémentaire uniquement. Les compteurs validés
+                      restent inchangés.
                     </div>
                   </div>
                 </div>
@@ -3626,7 +3848,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   <div>
                     <div className={metaLabelClassName()}>Action Readiness</div>
                     <div className="mt-2 text-sm leading-6 text-zinc-400">
-                      Lecture complémentaire : indique si les incidents visibles sont actionnables maintenant.
+                      Lecture complémentaire : indique si les incidents visibles sont
+                      actionnables maintenant.
                     </div>
                   </div>
                 </div>
@@ -3666,7 +3889,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   <div>
                     <div className={metaLabelClassName()}>Next Moves</div>
                     <div className="mt-2 text-sm leading-6 text-zinc-400">
-                      Lecture complémentaire : indique la meilleure surface à ouvrir maintenant.
+                      Lecture complémentaire : indique la meilleure surface à ouvrir
+                      maintenant.
                     </div>
                   </div>
                 </div>
@@ -3787,6 +4011,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 <InvestigationField
                   label="Next move"
                   value={`${nextMoveStats.command} command · ${nextMoveStats.flow} flow · ${nextMoveStats.detail} detail · ${nextMoveStats.watch} watch`}
+                />
+
+                <InvestigationField
+                  label="Operator summary"
+                  value={operatorSummaryText}
+                  valueClassName={toneTextClassName(operatorSummaryTone)}
                 />
               </div>
             </SectionCard>
