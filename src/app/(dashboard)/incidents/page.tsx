@@ -2729,6 +2729,19 @@ function IncidentListCard({
                     : "text-sky-300"
               }
             />
+            <InvestigationField
+              label="Triage priority"
+              value={triagePriorityLabel}
+              valueClassName={
+                triagePriorityLabel === "DO NOW"
+                  ? "text-rose-300"
+                  : triagePriorityLabel === "DO NEXT"
+                    ? "text-sky-300"
+                    : triagePriorityLabel === "NEEDS CONTEXT"
+                      ? "text-amber-300"
+                      : "text-zinc-300"
+            }
+          />
             <InvestigationField label="Control note" value={routeLock.controlNote} />
           </div>
         </div>
