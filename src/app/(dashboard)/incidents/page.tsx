@@ -67,6 +67,12 @@ type NextMoveLabel =
   | "REVIEW RESOLUTION"
   | "WATCH";
 
+type TriagePriorityLabel =
+  | "DO NOW"
+  | "DO NEXT"
+  | "NEEDS CONTEXT"
+  | "WATCH";
+
 type OperatorSummaryBadgeLabel =
   | "OPERATOR READY"
   | "ACTION FOCUS"
