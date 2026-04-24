@@ -59,6 +59,14 @@ type ActionReadinessLabel =
   | "NEEDS CONTEXT"
   | "WATCH ONLY";
 
+type NextMoveLabel =
+  | "OPEN COMMAND"
+  | "OPEN FLOW"
+  | "OPEN EVENT"
+  | "OPEN DETAIL"
+  | "REVIEW RESOLUTION"
+  | "WATCH";
+
 type ControlAction = {
   key: "flow" | "command" | "event";
   label: string;
@@ -1558,6 +1566,149 @@ function getActionReadinessStats(incidents: IncidentItem[]): {
   );
 }
 
+function getIncidentNextMoveLabel(args: {
+  incident: IncidentItem;
+  commandHref: string;
+  flowHref: string;
+  eventHref: string;
+}): NextMoveLabel {
+  const { incident, commandHref, flowHref, eventHref } = args;
+  const readiness = getIncidentActionReadinessLabel(incident);
+
+  if (readiness === "ACTION READY" && commandHref) return "OPEN COMMAND";
+  if (readiness === "ACTION READY" && flowHref) return "OPEN FLOW";
+  if (readiness === "ACTION READY" && eventHref) return "OPEN EVENT";
+
+  if (readiness === "NEEDS CONTEXT") return "OPEN DETAIL";
+
+  if (readiness === "WATCH ONLY" && isIncidentResolved(incident)) {
+    return "REVIEW RESOLUTION";
+  }
+
+  return "WATCH";
+}
+
+function getIncidentNextMoveReason(label: NextMoveLabel): string {
+  if (label === "OPEN COMMAND") {
+    return "La command liée est la meilleure surface pour agir.";
+  }
+
+  if (label === "OPEN FLOW") {
+    return "Le flow lié est la meilleure surface pour comprendre et agir.";
+  }
+
+  if (label === "OPEN EVENT") {
+    return "L’event lié est la meilleure surface source à vérifier.";
+  }
+
+  if (label === "OPEN DETAIL") {
+    return "Le contexte est incomplet : ouvrir le détail incident avant action.";
+  }
+
+  if (label === "REVIEW RESOLUTION") {
+    return "Incident résolu : vérifier la clôture et l’état final.";
+  }
+
+  return "Aucune action directe prioritaire détectée.";
+}
+
+function getIncidentNextMoveHref(args: {
+  label: NextMoveLabel;
+  detailHref: string;
+  commandHref: string;
+  flowHref: string;
+  eventHref: string;
+}): string {
+  const { label, detailHref, commandHref, flowHref, eventHref } = args;
+
+  if (label === "OPEN COMMAND") return commandHref || detailHref;
+  if (label === "OPEN FLOW") return flowHref || detailHref;
+  if (label === "OPEN EVENT") return eventHref || detailHref;
+  if (label === "OPEN DETAIL") return detailHref;
+  if (label === "REVIEW RESOLUTION") return detailHref;
+
+  return detailHref;
+}
+
+function getNextMoveClassName(label: NextMoveLabel): string {
+  if (label === "OPEN COMMAND") {
+    return "border-emerald-400/25 bg-emerald-400/10 text-emerald-200";
+  }
+
+  if (label === "OPEN FLOW") {
+    return "border-sky-400/25 bg-sky-400/10 text-sky-200";
+  }
+
+  if (label === "OPEN EVENT") {
+    return "border-cyan-400/25 bg-cyan-400/10 text-cyan-200";
+  }
+
+  if (label === "OPEN DETAIL") {
+    return "border-amber-400/25 bg-amber-400/10 text-amber-200";
+  }
+
+  if (label === "REVIEW RESOLUTION") {
+    return "border-emerald-400/20 bg-emerald-400/5 text-emerald-300";
+  }
+
+  return "border-zinc-400/20 bg-white/[0.04] text-zinc-300";
+}
+
+function getNextMoveBadgeKind(label: NextMoveLabel): DashboardStatusKind {
+  if (label === "OPEN COMMAND") return "success";
+  if (label === "OPEN FLOW") return "queued";
+  if (label === "OPEN EVENT") return "queued";
+  if (label === "OPEN DETAIL") return "retry";
+  if (label === "REVIEW RESOLUTION") return "success";
+
+  return "unknown";
+}
+
+function getNextMoveStats(
+  incidents: IncidentItem[],
+  activeWorkspaceId?: string,
+): {
+  command: number;
+  flow: number;
+  event: number;
+  detail: number;
+  review: number;
+  watch: number;
+} {
+  return incidents.reduce(
+    (acc, incident) => {
+      const detailHref = getIncidentHref(incident, activeWorkspaceId);
+      const commandHref = getCommandHref(incident, activeWorkspaceId);
+      const flowHref = getFlowHref(incident, activeWorkspaceId);
+      const eventHref = getEventHref(incident, activeWorkspaceId);
+
+      const label = getIncidentNextMoveLabel({
+        incident,
+        commandHref,
+        flowHref,
+        eventHref,
+      });
+
+      if (label === "OPEN COMMAND") acc.command += 1;
+      if (label === "OPEN FLOW") acc.flow += 1;
+      if (label === "OPEN EVENT") acc.event += 1;
+      if (label === "OPEN DETAIL") acc.detail += 1;
+      if (label === "REVIEW RESOLUTION") acc.review += 1;
+      if (label === "WATCH") acc.watch += 1;
+
+      return acc;
+    },
+    {
+      command: 0,
+      flow: 0,
+      event: 0,
+      detail: 0,
+      review: 0,
+      watch: 0,
+    },
+  );
+}
+
 function getMostRecentIncident(items: IncidentItem[]): IncidentItem | null {
   if (items.length === 0) return null;
 
@@ -1991,6 +2142,21 @@ function IncidentListCard({
   const actionReadinessLabel = getIncidentActionReadinessLabel(incident);
   const actionReadinessReason = getIncidentActionReadinessReason(incident);
 
+  const nextMoveLabel = getIncidentNextMoveLabel({
+    incident,
+    commandHref,
+    flowHref,
+    eventHref,
+  });
+  const nextMoveReason = getIncidentNextMoveReason(nextMoveLabel);
+  const nextMoveHref = getIncidentNextMoveHref({
+    label: nextMoveLabel,
+    detailHref,
+    commandHref,
+    flowHref,
+    eventHref,
+  });
+
   const linkedActions: ControlAction[] = [
     flowHref
       ? {
@@ -2099,6 +2265,11 @@ function IncidentListCard({
                 label={actionReadinessLabel}
               />
 
+              <DashboardStatusBadge
+                kind={getNextMoveBadgeKind(nextMoveLabel)}
+                label={nextMoveLabel}
+              />
+
               {getDecisionStatus(incident) ? (
                 <DashboardStatusBadge
                   kind={getDecisionBadgeKind(incident)}
@@ -2168,6 +2339,32 @@ function IncidentListCard({
                 {actionReadinessReason}
               </div>
             </div>
+
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className={metaLabelClassName()}>Next move</div>
+                <span
+                  className={[
+                    "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
+                    getNextMoveClassName(nextMoveLabel),
+                  ].join(" ")}
+                >
+                  {nextMoveLabel}
+                </span>
+              </div>
+
+              <div className="mt-3 text-xs leading-5 text-zinc-400">
+                {nextMoveReason}
+              </div>
+
+              {nextMoveHref ? (
+                <div className="mt-4">
+                  <Link href={nextMoveHref} className={actionLinkClassName("soft")}>
+                    Ouvrir maintenant
+                  </Link>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -2235,6 +2432,17 @@ function IncidentListCard({
                   : actionReadinessLabel === "NEEDS CONTEXT"
                     ? "text-amber-300"
                     : "text-zinc-300"
+              }
+            />
+            <InvestigationField
+              label="Next move"
+              value={nextMoveLabel}
+              valueClassName={
+                nextMoveLabel === "OPEN COMMAND"
+                  ? "text-emerald-300"
+                  : nextMoveLabel === "OPEN DETAIL"
+                    ? "text-amber-300"
+                    : "text-sky-300"
               }
             />
             <InvestigationField
@@ -2513,6 +2721,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
   const signalQualityStats = getSignalQualityStats(visibleIncidents);
   const actionReadinessStats = getActionReadinessStats(visibleIncidents);
+  const nextMoveStats = getNextMoveStats(visibleIncidents, activeWorkspaceId);
 
   const mostRecentIncident = getMostRecentIncident(visibleIncidents);
 
@@ -2549,6 +2758,26 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     ? getEventHref(focusIncident, activeWorkspaceId)
     : "";
 
+  const focusNextMoveLabel = focusIncident
+    ? getIncidentNextMoveLabel({
+        incident: focusIncident,
+        commandHref: focusIncidentCommandHref,
+        flowHref: focusIncidentFlowHref,
+        eventHref: focusIncidentEventHref,
+      })
+    : null;
+
+  const focusNextMoveHref =
+    focusIncident && focusNextMoveLabel
+      ? getIncidentNextMoveHref({
+          label: focusNextMoveLabel,
+          detailHref: focusIncidentDetailHref,
+          commandHref: focusIncidentCommandHref,
+          flowHref: focusIncidentFlowHref,
+          eventHref: focusIncidentEventHref,
+        })
+      : "";
+
   const focusRouteLock = focusIncident
     ? getIncidentRouteLock({
         incident: focusIncident,
@@ -2583,6 +2812,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     focusIncidentFlowHref,
     focusIncidentCommandHref,
     focusIncidentEventHref,
+    focusNextMoveHref,
   ]);
 
   const focusPrimaryControlAction = getControlPrimaryAction({
@@ -2832,6 +3062,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     )}
                     label={getIncidentActionReadinessLabel(focusIncident)}
                   />
+                  {focusNextMoveLabel ? (
+                    <DashboardStatusBadge
+                      kind={getNextMoveBadgeKind(focusNextMoveLabel)}
+                      label={focusNextMoveLabel}
+                    />
+                  ) : null}
                 </div>
 
                 <div className="grid gap-3">
@@ -2861,6 +3097,19 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                           : "text-zinc-300"
                     }
                   />
+                  {focusNextMoveLabel ? (
+                    <InvestigationField
+                      label="Next move"
+                      value={focusNextMoveLabel}
+                      valueClassName={
+                        focusNextMoveLabel === "OPEN COMMAND"
+                          ? "text-emerald-300"
+                          : focusNextMoveLabel === "OPEN DETAIL"
+                            ? "text-amber-300"
+                            : "text-sky-300"
+                      }
+                    />
+                  ) : null}
                   <InvestigationField
                     label="CTA principal"
                     value={focusRouteLock.primaryAction.label}
@@ -2885,6 +3134,15 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   </div>
                 </div>
 
+                {focusNextMoveLabel ? (
+                  <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                    <div className={metaLabelClassName()}>Next move note</div>
+                    <div className="mt-2 text-sm leading-6 text-zinc-300">
+                      {getIncidentNextMoveReason(focusNextMoveLabel)}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
                   <div className={metaLabelClassName()}>Control note</div>
                   <div className="mt-2 text-sm leading-6 text-zinc-300">
@@ -2899,6 +3157,16 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   >
                     {focusRouteLock.primaryAction.label}
                   </Link>
+
+                  {focusNextMoveHref &&
+                  focusNextMoveHref !== focusRouteLock.primaryAction.href ? (
+                    <Link
+                      href={focusNextMoveHref}
+                      className={actionLinkClassName("soft")}
+                    >
+                      Ouvrir Next Move
+                    </Link>
+                  ) : null}
 
                   {focusRouteLock.primaryAction.key !== "detail" &&
                   focusIncidentDetailHref ? (
@@ -3161,6 +3429,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       )}
                       label={getIncidentActionReadinessLabel(focusIncident)}
                     />
+                    {focusNextMoveLabel ? (
+                      <DashboardStatusBadge
+                        kind={getNextMoveBadgeKind(focusNextMoveLabel)}
+                        label={focusNextMoveLabel}
+                      />
+                    ) : null}
                   </div>
 
                   <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -3200,6 +3474,16 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     >
                       {focusRouteLock.primaryAction.label}
                     </Link>
+
+                    {focusNextMoveHref &&
+                    focusNextMoveHref !== focusRouteLock.primaryAction.href ? (
+                      <Link
+                        href={focusNextMoveHref}
+                        className={actionLinkClassName("soft")}
+                      >
+                        Ouvrir Next Move
+                      </Link>
+                    ) : null}
 
                     {focusRouteLock.primaryAction.key !== "detail" &&
                     focusIncidentDetailHref ? (
@@ -3377,6 +3661,73 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 </div>
               </div>
 
+              <div className="mt-4 rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className={metaLabelClassName()}>Next Moves</div>
+                    <div className="mt-2 text-sm leading-6 text-zinc-400">
+                      Lecture complémentaire : indique la meilleure surface à ouvrir maintenant.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                  <div className="rounded-[18px] border border-emerald-400/15 bg-emerald-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-emerald-300">
+                      {nextMoveStats.command}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Command
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-sky-400/15 bg-sky-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-sky-300">
+                      {nextMoveStats.flow}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Flow
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-cyan-400/15 bg-cyan-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-cyan-300">
+                      {nextMoveStats.event}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Event
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-amber-400/15 bg-amber-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-amber-300">
+                      {nextMoveStats.detail}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Detail
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-emerald-400/10 bg-emerald-400/[0.03] px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-emerald-200">
+                      {nextMoveStats.review}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Review
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-zinc-300">
+                      {nextMoveStats.watch}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Watch
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <InvestigationField
                   label="Executive posture"
@@ -3432,6 +3783,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   label="Action readiness"
                   value={`${actionReadinessStats.ready} ready · ${actionReadinessStats.needsContext} context · ${actionReadinessStats.watchOnly} watch`}
                 />
+
+                <InvestigationField
+                  label="Next move"
+                  value={`${nextMoveStats.command} command · ${nextMoveStats.flow} flow · ${nextMoveStats.detail} detail · ${nextMoveStats.watch} watch`}
+                />
               </div>
             </SectionCard>
           </div>
@@ -3463,6 +3819,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       )}
                       label={getIncidentActionReadinessLabel(focusIncident)}
                     />
+                    {focusNextMoveLabel ? (
+                      <DashboardStatusBadge
+                        kind={getNextMoveBadgeKind(focusNextMoveLabel)}
+                        label={focusNextMoveLabel}
+                      />
+                    ) : null}
                     {focusPrimaryControlAction ? (
                       <DashboardStatusBadge kind="success" label="CONTROL READY" />
                     ) : (
@@ -3492,6 +3854,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       valueClassName="text-emerald-300"
                     />
                     <InvestigationField
+                      label="Next move"
+                      value={`${nextMoveStats.command} command · ${nextMoveStats.flow} flow · ${nextMoveStats.detail} detail · ${nextMoveStats.watch} watch`}
+                      valueClassName="text-sky-300"
+                    />
+                    <InvestigationField
                       label="Control note"
                       value={focusRouteLock.controlNote}
                     />
@@ -3504,6 +3871,16 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     >
                       {focusRouteLock.primaryAction.label}
                     </Link>
+
+                    {focusNextMoveHref &&
+                    focusNextMoveHref !== focusRouteLock.primaryAction.href ? (
+                      <Link
+                        href={focusNextMoveHref}
+                        className={actionLinkClassName("soft")}
+                      >
+                        Ouvrir Next Move
+                      </Link>
+                    ) : null}
 
                     <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
                       {controlReturnLabel}
