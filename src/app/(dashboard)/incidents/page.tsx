@@ -2086,6 +2086,36 @@ function incidentMatchesOperatorQueueFilter(args: {
   return bucket === getOperatorQueueFilterLabel(filter);
 }
 
+function getOperatorQueueFilterHelpText(filter: OperatorQueueFilter): string {
+  if (filter === "now") {
+    return "File immédiate : traiter le premier incident disponible, puis revenir à la file.";
+  }
+
+  if (filter === "next") {
+    return "File suivante : incidents actionnables après les urgences immédiates.";
+  }
+
+  if (filter === "context") {
+    return "File contexte : compléter les informations avant action.";
+  }
+
+  if (filter === "watch") {
+    return "File surveillance : garder la visibilité sans action immédiate.";
+  }
+
+  return "Toutes les files restent visibles.";
+}
+
+function getQueueFocusedFirstIncidentHref(args: {
+  incidents: IncidentItem[];
+  activeWorkspaceId?: string;
+}): string {
+  const firstIncident = args.incidents[0];
+  if (!firstIncident) return "";
+
+  return getOperatorQueueItemHref(firstIncident, args.activeWorkspaceId);
+}
+
 function getPluralLabel(
   count: number,
   singular: string,
@@ -3536,6 +3566,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   ];
 
   const allQueuesHref = queueFocusLinks[0]?.href || allIncidentsHref;
+
+  const queueFocusedFirstIncidentHref = getQueueFocusedFirstIncidentHref({
+    incidents: queueFocusedIncidents,
+    activeWorkspaceId,
+  });
 
   const focusIncident = sortVisibleIncidentsForFocus(visibleIncidents)[0] || null;
 
@@ -5132,14 +5167,79 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   />
                 )
               ) : (
-                <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
-                  {queueFocusedIncidents.map((incident) => (
-                    <IncidentListCard
-                      key={incident.id}
-                      incident={incident}
-                      activeWorkspaceId={activeWorkspaceId}
-                    />
-                  ))}
+                <div className="space-y-5">
+                  {hasActiveQueueFilter ? (
+                    <div
+                      className={`${metaBoxClassName()} ${signalRingClassName(
+                        operatorQueueFilter === "now"
+                          ? "danger"
+                          : operatorQueueFilter === "next"
+                            ? "info"
+                            : operatorQueueFilter === "context"
+                              ? "warning"
+                              : "default",
+                      )}`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className={metaLabelClassName()}>Queue Action</div>
+                          <div className="mt-2 text-lg font-semibold tracking-tight text-white">
+                            {activeQueueFilterLabel}
+                          </div>
+                        </div>
+
+                        <DashboardStatusBadge
+                          kind={
+                            operatorQueueFilter === "now"
+                              ? "failed"
+                              : operatorQueueFilter === "next"
+                                ? "running"
+                                : operatorQueueFilter === "context"
+                                  ? "retry"
+                                  : "unknown"
+                          }
+                          label={activeQueueFilterLabel}
+                        />
+                      </div>
+
+                      <div className="mt-4 text-sm leading-6 text-zinc-300">
+                        {getPluralLabel(
+                          queueFocusedIncidents.length,
+                          "incident dans cette file",
+                          "incidents dans cette file",
+                        )}
+                      </div>
+
+                      <div className="mt-2 text-sm leading-6 text-zinc-400">
+                        {getOperatorQueueFilterHelpText(operatorQueueFilter)}
+                      </div>
+
+                      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                        {queueFocusedFirstIncidentHref ? (
+                          <Link
+                            href={queueFocusedFirstIncidentHref}
+                            className={actionLinkClassName("primary")}
+                          >
+                            Ouvrir le premier incident
+                          </Link>
+                        ) : null}
+
+                        <Link href={allQueuesHref} className={actionLinkClassName("soft")}>
+                          Retour All queues
+                        </Link>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
+                    {queueFocusedIncidents.map((incident) => (
+                      <IncidentListCard
+                        key={incident.id}
+                        incident={incident}
+                        activeWorkspaceId={activeWorkspaceId}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
             </SectionBlock>
