@@ -3445,6 +3445,22 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       label={focusNextMoveLabel}
                     />
                   ) : null}
+                  
+                  {focusTriagePriorityLabel ? (
+                    <InvestigationField
+                      label="Triage priority"
+                      value={focusTriagePriorityLabel}
+                      valueClassName={
+                        focusTriagePriorityLabel === "DO NOW"
+                          ? "text-rose-300"
+                          : focusTriagePriorityLabel === "DO NEXT"
+                            ? "text-sky-300"
+                            : focusTriagePriorityLabel === "NEEDS CONTEXT"
+                              ? "text-amber-300"
+                              : "text-zinc-300"
+                      }
+                    />
+                  ) : null}
                 </div>
 
                 <div className="grid gap-3">
