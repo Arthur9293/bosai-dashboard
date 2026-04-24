@@ -2116,6 +2116,23 @@ function getQueueFocusedFirstIncidentHref(args: {
   return getOperatorQueueItemHref(firstIncident, args.activeWorkspaceId);
 }
 
+function getOperatorQueueProgressLabel(filter: OperatorQueueFilter): string {
+  if (filter === "now") return "File prioritaire active";
+  if (filter === "next") return "File suivante active";
+  if (filter === "context") return "File contexte active";
+  if (filter === "watch") return "File surveillance active";
+
+  return "Toutes les files visibles";
+}
+
+function getOperatorQueueRemainingLabel(count: number): string {
+  const remainingCount = Math.max(count - 1, 0);
+
+  return `${remainingCount} ${
+    remainingCount > 1 ? "incidents" : "incident"
+  } après celui-ci`;
+}
+
 function getPluralLabel(
   count: number,
   singular: string,
@@ -5212,6 +5229,39 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
                       <div className="mt-2 text-sm leading-6 text-zinc-400">
                         {getOperatorQueueFilterHelpText(operatorQueueFilter)}
+                      </div>
+
+                      <div className="mt-5 rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-4">
+                        <div className={metaLabelClassName()}>Operator Progress</div>
+
+                        <div className="mt-3 grid gap-3 md:grid-cols-3">
+                          <div className="rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                              Position
+                            </div>
+                            <div className="mt-2 text-sm font-medium text-zinc-100">
+                              Premier incident prêt
+                            </div>
+                          </div>
+
+                          <div className="rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                              Reste à traiter
+                            </div>
+                            <div className="mt-2 text-sm font-medium text-zinc-100">
+                              {getOperatorQueueRemainingLabel(queueFocusedIncidents.length)}
+                            </div>
+                          </div>
+
+                          <div className="rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                              File active
+                            </div>
+                            <div className="mt-2 text-sm font-medium text-zinc-100">
+                              {getOperatorQueueProgressLabel(operatorQueueFilter)}
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="mt-5 grid gap-3 sm:grid-cols-2">
