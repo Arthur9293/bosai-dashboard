@@ -1707,6 +1707,155 @@ function getNextMoveStats(
   );
 }
 
+function getIncidentTriagePriorityLabel(args: {
+  incident: IncidentItem;
+  nextMoveLabel: NextMoveLabel;
+  actionReadinessLabel: ActionReadinessLabel;
+}): TriagePriorityLabel {
+  const { incident, nextMoveLabel, actionReadinessLabel } = args;
+
+  const status = getIncidentStatusNormalized(incident);
+  const severity = getIncidentSeverityNormalized(incident);
+  const slaLabel = getSlaLabel(incident).trim().toLowerCase();
+  const signalConfidence = getSignalConfidenceLabel(incident);
+
+  if (
+    status === "resolved" ||
+    actionReadinessLabel === "WATCH ONLY" ||
+    nextMoveLabel === "WATCH" ||
+    nextMoveLabel === "REVIEW RESOLUTION"
+  ) {
+    return "WATCH";
+  }
+
+  if (
+    actionReadinessLabel === "NEEDS CONTEXT" ||
+    nextMoveLabel === "OPEN DETAIL" ||
+    signalConfidence === "LOW SIGNAL" ||
+    getIncidentLinkCoverageCount(incident) === 0
+  ) {
+    return "NEEDS CONTEXT";
+  }
+
+  if (status === "escalated") {
+    return actionReadinessLabel === "ACTION READY" ? "DO NOW" : "NEEDS CONTEXT";
+  }
+
+  if (slaLabel === "breached") {
+    return actionReadinessLabel === "ACTION READY" ? "DO NOW" : "NEEDS CONTEXT";
+  }
+
+  if (severity === "critical" || severity === "high") {
+    return actionReadinessLabel === "ACTION READY" ? "DO NOW" : "NEEDS CONTEXT";
+  }
+
+  if (slaLabel === "warning") {
+    return actionReadinessLabel === "ACTION READY" ? "DO NEXT" : "NEEDS CONTEXT";
+  }
+
+  if (status === "open" && actionReadinessLabel === "ACTION READY") {
+    return "DO NEXT";
+  }
+
+  if (
+    actionReadinessLabel === "ACTION READY" &&
+    (nextMoveLabel === "OPEN COMMAND" ||
+      nextMoveLabel === "OPEN FLOW" ||
+      nextMoveLabel === "OPEN EVENT")
+  ) {
+    return "DO NEXT";
+  }
+
+  return "WATCH";
+}
+
+function getIncidentTriagePriorityReason(label: TriagePriorityLabel): string {
+  if (label === "DO NOW") {
+    return "Incident prioritaire : traiter immédiatement depuis la meilleure surface disponible.";
+  }
+
+  if (label === "DO NEXT") {
+    return "Incident actionnable : traiter après les urgences immédiates.";
+  }
+
+  if (label === "NEEDS CONTEXT") {
+    return "Incident à compléter avant action.";
+  }
+
+  return "Incident visible mais sans action immédiate.";
+}
+
+function getTriagePriorityClassName(label: TriagePriorityLabel): string {
+  if (label === "DO NOW") {
+    return "border-rose-400/25 bg-rose-400/10 text-rose-200";
+  }
+
+  if (label === "DO NEXT") {
+    return "border-sky-400/25 bg-sky-400/10 text-sky-200";
+  }
+
+  if (label === "NEEDS CONTEXT") {
+    return "border-amber-400/25 bg-amber-400/10 text-amber-200";
+  }
+
+  return "border-zinc-400/20 bg-white/[0.04] text-zinc-300";
+}
+
+function getTriagePriorityBadgeKind(
+  label: TriagePriorityLabel,
+): DashboardStatusKind {
+  if (label === "DO NOW") return "failed";
+  if (label === "DO NEXT") return "running";
+  if (label === "NEEDS CONTEXT") return "retry";
+  return "unknown";
+}
+
+function getTriagePriorityStats(
+  incidents: IncidentItem[],
+  activeWorkspaceId?: string,
+): {
+  doNow: number;
+  doNext: number;
+  needsContext: number;
+  watch: number;
+} {
+  return incidents.reduce(
+    (acc, incident) => {
+      const commandHref = getCommandHref(incident, activeWorkspaceId);
+      const flowHref = getFlowHref(incident, activeWorkspaceId);
+      const eventHref = getEventHref(incident, activeWorkspaceId);
+
+      const nextMoveLabel = getIncidentNextMoveLabel({
+        incident,
+        commandHref,
+        flowHref,
+        eventHref,
+      });
+
+      const actionReadinessLabel = getIncidentActionReadinessLabel(incident);
+
+      const label = getIncidentTriagePriorityLabel({
+        incident,
+        nextMoveLabel,
+        actionReadinessLabel,
+      });
+
+      if (label === "DO NOW") acc.doNow += 1;
+      if (label === "DO NEXT") acc.doNext += 1;
+      if (label === "NEEDS CONTEXT") acc.needsContext += 1;
+      if (label === "WATCH") acc.watch += 1;
+
+      return acc;
+    },
+    {
+      doNow: 0,
+      doNext: 0,
+      needsContext: 0,
+      watch: 0,
+    },
+  );
+}
+
 function getPluralLabel(
   count: number,
   singular: string,
