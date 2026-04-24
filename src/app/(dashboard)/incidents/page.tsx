@@ -2434,6 +2434,15 @@ function IncidentListCard({
     eventHref,
   });
 
+  const triagePriorityLabel = getIncidentTriagePriorityLabel({
+    incident,
+    nextMoveLabel,
+    actionReadinessLabel,
+  });
+
+  const triagePriorityReason =
+    getIncidentTriagePriorityReason(triagePriorityLabel);
+
   const linkedActions: ControlAction[] = [
     flowHref
       ? {
