@@ -3696,6 +3696,13 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
               <div className="mt-2 text-xs leading-5 text-zinc-500">
                 Lecture complémentaire. Les compteurs validés restent inchangés.
               </div>
+
+              <div className="mt-3 text-xs leading-5 text-zinc-400">
+                Priorité triage : {triagePriorityStats.doNow} maintenant ·{" "}
+                {triagePriorityStats.doNext} ensuite ·{" "}
+                {triagePriorityStats.needsContext} contexte ·{" "}
+                {triagePriorityStats.watch} watch
+              </div>
             </div>
           </SectionCard>
         </div>
