@@ -701,57 +701,65 @@ function getIncidentPrimaryRouteKey(args: {
   const status = getIncidentStatusNormalized(incident);
   const severity = getIncidentSeverityNormalized(incident);
 
-  const hasNoPrimaryRoute = !flowHref && !commandHref && !eventHref;
+  const explicitFlowId = getFlowId(incident).trim();
 
-  if (hasNoPrimaryRoute) {
+  const hasExplicitFlowRoute = Boolean(explicitFlowId && flowHref);
+  const hasCommandRoute = Boolean(commandHref);
+  const hasEventRoute = Boolean(eventHref);
+
+  if (!hasExplicitFlowRoute && !hasCommandRoute && !hasEventRoute) {
     return "detail";
   }
 
   if (status === "escalated" && severity === "critical") {
-    if (commandHref) return "command";
-    if (flowHref) return "flow";
-    if (eventHref) return "event";
+    if (hasCommandRoute) return "command";
+    if (hasExplicitFlowRoute) return "flow";
+    if (hasEventRoute) return "event";
     return "detail";
   }
 
   if (status === "escalated") {
-    if (commandHref) return "command";
-    if (flowHref) return "flow";
-    if (eventHref) return "event";
+    if (hasCommandRoute) return "command";
+    if (hasExplicitFlowRoute) return "flow";
+    if (hasEventRoute) return "event";
     return "detail";
   }
 
   if (status === "open" && severity === "critical") {
-    if (commandHref) return "command";
-    if (flowHref) return "flow";
-    if (eventHref) return "event";
+    if (hasCommandRoute) return "command";
+    if (hasExplicitFlowRoute) return "flow";
+    if (hasEventRoute) return "event";
     return "detail";
   }
 
   if (status === "open" && severity === "high") {
-    if (flowHref) return "flow";
-    if (commandHref) return "command";
-    if (eventHref) return "event";
+    if (hasExplicitFlowRoute) return "flow";
+    if (hasCommandRoute) return "command";
+    if (hasEventRoute) return "event";
     return "detail";
   }
 
   if (status === "open" && isIncidentSlaBreached(incident)) {
-    if (commandHref) return "command";
-    if (flowHref) return "flow";
-    if (eventHref) return "event";
+    if (hasCommandRoute) return "command";
+    if (hasExplicitFlowRoute) return "flow";
+    if (hasEventRoute) return "event";
     return "detail";
   }
 
   if (status === "open") {
-    if (flowHref) return "flow";
-    if (commandHref) return "command";
-    if (eventHref) return "event";
+    if (hasExplicitFlowRoute) return "flow";
+    if (hasCommandRoute) return "command";
+    if (hasEventRoute) return "event";
     return "detail";
   }
 
-  if (eventHref && !flowHref && !commandHref) {
+  if (hasEventRoute && !hasExplicitFlowRoute && !hasCommandRoute) {
     return "event";
   }
+
+  if (hasExplicitFlowRoute) return "flow";
+  if (hasCommandRoute) return "command";
+  if (hasEventRoute) return "event";
 
   return "detail";
 }
