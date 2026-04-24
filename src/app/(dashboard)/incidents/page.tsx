@@ -49,6 +49,11 @@ type FlexibleIncidentsResponse = {
 
 type SignalTone = "default" | "info" | "success" | "warning" | "danger";
 
+type SignalConfidenceLabel =
+  | "SIGNAL READY"
+  | "PARTIAL SIGNAL"
+  | "LOW SIGNAL";
+
 type ControlAction = {
   key: "flow" | "command" | "event";
   label: string;
@@ -1259,8 +1264,149 @@ function isSignalGapIncident(incident: IncidentItem): boolean {
   return missingSignals >= 2;
 }
 
+function isMissingSignalValue(value: string): boolean {
+  const clean = value.trim().toLowerCase();
+
+  return (
+    !clean ||
+    clean === "—" ||
+    clean === "-" ||
+    clean === "unknown" ||
+    clean === "unclassified" ||
+    clean === "undefined" ||
+    clean === "null" ||
+    clean === "n/a" ||
+    clean === "na" ||
+    clean === "no reason signal" ||
+    clean === "no decision yet" ||
+    clean === "no decision reason" ||
+    clean === "no next action" ||
+    clean === "uncategorized" ||
+    clean === "unscoped"
+  );
+}
+
+function titleLooksWeakForSignal(value: string): boolean {
+  const clean = value.trim().toLowerCase();
+
+  return (
+    titleLooksGeneric(value) ||
+    clean === "incident détecté" ||
+    clean === "incident detecte" ||
+    clean === "new incident" ||
+    clean === "unknown incident" ||
+    clean === "unclassified incident" ||
+    clean === "sans titre"
+  );
+}
+
+function getSignalGapReasons(incident: IncidentItem): string[] {
+  const reasons: string[] = [];
+
+  const rawTitle = getIncidentTitle(incident);
+  const rawSeverity = getIncidentSeverityRaw(incident);
+  const normalizedSeverity = getIncidentSeverityNormalized(incident);
+  const workspaceId = getIncidentWorkspaceId(incident);
+  const category = getCategory(incident);
+  const reason = getReason(incident);
+  const rawStatus = getIncidentStatusRaw(incident).trim().toLowerCase();
+  const slaStatus = (incident.sla_status || "").trim().toLowerCase();
+
+  const rawStatusIsMissingOrUnknown =
+    !rawStatus ||
+    rawStatus === "unknown" ||
+    rawStatus === "—" ||
+    rawStatus === "-" ||
+    rawStatus === "n/a" ||
+    rawStatus === "null" ||
+    rawStatus === "undefined";
+
+  if (titleLooksWeakForSignal(rawTitle)) {
+    reasons.push("Titre générique ou manquant");
+  }
+
+  if (
+    normalizedSeverity === "unknown" ||
+    isMissingSignalValue(rawSeverity) ||
+    getIncidentSeverityDisplayLabel(incident) === "UNCLASSIFIED"
+  ) {
+    reasons.push("Sévérité inconnue");
+  }
+
+  if (isMissingSignalValue(workspaceId)) {
+    reasons.push("Workspace absent");
+  }
+
+  if (isMissingSignalValue(category)) {
+    reasons.push("Catégorie absente");
+  }
+
+  if (isMissingSignalValue(reason)) {
+    reasons.push("Raison absente");
+  }
+
+  if (getIncidentLinkCoverageCount(incident) === 0) {
+    reasons.push("Aucun lien flow / command / event / run");
+  }
+
+  if (
+    rawStatusIsMissingOrUnknown &&
+    ["open", "warning", "breached"].includes(slaStatus)
+  ) {
+    reasons.push("Statut reconstruit depuis le SLA");
+  }
+
+  return reasons;
+}
+
+function getSignalConfidenceLabel(
+  incident: IncidentItem,
+): SignalConfidenceLabel {
+  const reasons = getSignalGapReasons(incident);
+
+  if (reasons.length === 0) return "SIGNAL READY";
+  if (reasons.length >= 4) return "LOW SIGNAL";
+
+  return "PARTIAL SIGNAL";
+}
+
+function getSignalConfidenceClassName(label: SignalConfidenceLabel): string {
+  if (label === "SIGNAL READY") {
+    return "border-emerald-400/25 bg-emerald-400/10 text-emerald-200";
+  }
+
+  if (label === "LOW SIGNAL") {
+    return "border-amber-400/25 bg-amber-400/10 text-amber-200";
+  }
+
+  return "border-sky-400/25 bg-sky-400/10 text-sky-200";
+}
+
+function getSignalQualityStats(incidents: IncidentItem[]): {
+  ready: number;
+  partial: number;
+  low: number;
+} {
+  return incidents.reduce(
+    (acc, incident) => {
+      const label = getSignalConfidenceLabel(incident);
+
+      if (label === "SIGNAL READY") acc.ready += 1;
+      if (label === "PARTIAL SIGNAL") acc.partial += 1;
+      if (label === "LOW SIGNAL") acc.low += 1;
+
+      return acc;
+    },
+    {
+      ready: 0,
+      partial: 0,
+      low: 0,
+    },
+  );
+}
+
 function getSignalTruthLabel(incident: IncidentItem): string {
-  return isSignalGapIncident(incident) ? "PARTIAL SIGNAL" : "SIGNAL READY";
+  return getSignalConfidenceLabel(incident);
 }
 
 function getMostRecentIncident(items: IncidentItem[]): IncidentItem | null {
@@ -1688,7 +1834,11 @@ function IncidentListCard({
   const commandHref = getCommandHref(incident, activeWorkspaceId);
   const eventHref = getEventHref(incident, activeWorkspaceId);
   const detailHref = getIncidentHref(incident, activeWorkspaceId);
-  const hasSignalGap = isSignalGapIncident(incident);
+  const signalGapReasons = getSignalGapReasons(incident);
+  const signalConfidenceLabel = getSignalConfidenceLabel(incident);
+  const visibleSignalGapReasons = signalGapReasons.slice(0, 3);
+  const remainingSignalGapCount = Math.max(signalGapReasons.length - 3, 0);
+  const hasSignalGap = signalConfidenceLabel !== "SIGNAL READY";
 
   const linkedActions: ControlAction[] = [
     flowHref
@@ -1798,6 +1948,50 @@ function IncidentListCard({
                   kind={getDecisionBadgeKind(incident)}
                   label={`DECISION ${decisionStatus}`}
                 />
+              ) : null}
+            </div>
+
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={[
+                    "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
+                    getSignalConfidenceClassName(signalConfidenceLabel),
+                  ].join(" ")}
+                >
+                  {signalConfidenceLabel}
+                </span>
+
+                {signalGapReasons.length > 0 ? (
+                  <span className="text-[11px] text-zinc-500">
+                    {signalGapReasons.length} signal
+                    {signalGapReasons.length > 1 ? "s" : ""} à compléter
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-emerald-300/80">
+                    Signal exploitable
+                  </span>
+                )}
+              </div>
+
+              {visibleSignalGapReasons.length > 0 ? (
+                <ul className="mt-3 space-y-1 text-[11px] leading-5 text-zinc-400">
+                  {visibleSignalGapReasons.map((reason) => (
+                    <li key={reason} className="flex gap-2">
+                      <span
+                        className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-zinc-500"
+                        aria-hidden="true"
+                      />
+                      <span>{reason}</span>
+                    </li>
+                  ))}
+
+                  {remainingSignalGapCount > 0 ? (
+                    <li className="pl-3 text-zinc-500">
+                      +{remainingSignalGapCount} autres signaux manquants
+                    </li>
+                  ) : null}
+                </ul>
               ) : null}
             </div>
           </div>
@@ -2132,6 +2326,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     visibleIncidents.length - signalGapIncidents.length,
   );
 
+  const signalQualityStats = getSignalQualityStats(visibleIncidents);
+
   const mostRecentIncident = getMostRecentIncident(visibleIncidents);
 
   const executivePosture = getExecutivePosture({
@@ -2438,8 +2634,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     kind={getIncidentSlaBadgeKind(focusIncident)}
                     label={`SLA ${getSlaDisplayLabel(focusIncident)}`}
                   />
-                  {isSignalGapIncident(focusIncident) ? (
-                    <DashboardStatusBadge kind="unknown" label="PARTIAL SIGNAL" />
+                  {getSignalConfidenceLabel(focusIncident) !== "SIGNAL READY" ? (
+                    <DashboardStatusBadge
+                      kind="unknown"
+                      label={getSignalConfidenceLabel(focusIncident)}
+                    />
                   ) : null}
                 </div>
 
@@ -2747,8 +2946,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       kind={getIncidentSlaBadgeKind(focusIncident)}
                       label={`SLA ${getSlaDisplayLabel(focusIncident)}`}
                     />
-                    {isSignalGapIncident(focusIncident) ? (
-                      <DashboardStatusBadge kind="unknown" label="PARTIAL SIGNAL" />
+                    {getSignalConfidenceLabel(focusIncident) !== "SIGNAL READY" ? (
+                      <DashboardStatusBadge
+                        kind="unknown"
+                        label={getSignalConfidenceLabel(focusIncident)}
+                      />
                     ) : null}
                   </div>
 
@@ -2884,6 +3086,46 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   toneClass="text-amber-300"
                   panelTone={signalGapIncidents.length > 0 ? "warning" : "default"}
                 />
+              </div>
+
+              <div className="mt-4 rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className={metaLabelClassName()}>Signal Quality Polish</div>
+                    <div className="mt-2 text-sm leading-6 text-zinc-400">
+                      Lecture complémentaire uniquement. Les compteurs validés restent inchangés.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  <div className="rounded-[18px] border border-emerald-400/15 bg-emerald-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-emerald-300">
+                      {signalQualityStats.ready}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Ready
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-sky-400/15 bg-sky-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-sky-300">
+                      {signalQualityStats.partial}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Partial
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-amber-400/15 bg-amber-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-amber-300">
+                      {signalQualityStats.low}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Low
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
