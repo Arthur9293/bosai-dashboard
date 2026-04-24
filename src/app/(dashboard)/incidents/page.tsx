@@ -389,9 +389,7 @@ function extractIncidentItems(payload: unknown): IncidentItem[] {
 }
 
 function getIncidentTitle(incident: IncidentItem): string {
-  return (
-    incident.title || incident.name || incident.error_id || "Untitled incident"
-  );
+  return incident.title || incident.name || incident.error_id || "Untitled incident";
 }
 
 function getIncidentStatusRaw(incident: IncidentItem): string {
@@ -478,18 +476,6 @@ function getIncidentSeverityNormalized(incident: IncidentItem): string {
   if (["low", "faible"].includes(raw)) return "low";
 
   return raw;
-}
-
-function getIncidentSeverityLabel(incident: IncidentItem): string {
-  const normalized = getIncidentSeverityNormalized(incident);
-
-  if (normalized === "critical") return "CRITICAL";
-  if (normalized === "high") return "HIGH";
-  if (normalized === "medium") return "MEDIUM";
-  if (normalized === "low") return "LOW";
-
-  const raw = getIncidentSeverityRaw(incident);
-  return raw ? raw.toUpperCase() : "UNKNOWN";
 }
 
 function getIncidentSeverityDisplayLabel(incident: IncidentItem): string {
@@ -690,10 +676,6 @@ function isIncidentEscalated(incident: IncidentItem): boolean {
   return getIncidentStatusNormalized(incident) === "escalated";
 }
 
-function isIncidentOpen(incident: IncidentItem): boolean {
-  return getIncidentStatusNormalized(incident) === "open";
-}
-
 function isIncidentCritical(incident: IncidentItem): boolean {
   return getIncidentSeverityNormalized(incident) === "critical";
 }
@@ -842,13 +824,6 @@ function getIncidentPrimaryRouteKey(args: {
   return "detail";
 }
 
-function getRouteShortLabel(key: InvestigationPrimaryAction["key"]): string {
-  if (key === "command") return "Command";
-  if (key === "flow") return "Flow";
-  if (key === "event") return "Event";
-  return "Detail";
-}
-
 function getPrimarySurfaceLabel(
   key: InvestigationPrimaryAction["key"],
 ): PrimarySurface {
@@ -881,14 +856,8 @@ function getIncidentRouteCoverageLabel(args: {
   const { incident, key } = args;
   const count = getIncidentLinkCoverageCount(incident);
 
-  if (key === "detail") {
-    return "Couverture partielle";
-  }
-
-  if (key === "event") {
-    return count >= 2 ? "Couverture reliée" : "Lecture locale";
-  }
-
+  if (key === "detail") return "Couverture partielle";
+  if (key === "event") return count >= 2 ? "Couverture reliée" : "Lecture locale";
   if (key === "command" || key === "flow") {
     return count >= 3 ? "Couverture enrichie" : "Couverture reliée";
   }
@@ -1335,9 +1304,7 @@ function getSignalGapReasons(incident: IncidentItem): string[] {
     rawStatus === "null" ||
     rawStatus === "undefined";
 
-  if (titleLooksWeakForSignal(rawTitle)) {
-    reasons.push("Titre générique ou manquant");
-  }
+  if (titleLooksWeakForSignal(rawTitle)) reasons.push("Titre générique ou manquant");
 
   if (
     normalizedSeverity === "unknown" ||
@@ -1347,17 +1314,9 @@ function getSignalGapReasons(incident: IncidentItem): string[] {
     reasons.push("Sévérité inconnue");
   }
 
-  if (isMissingSignalValue(workspaceId)) {
-    reasons.push("Workspace absent");
-  }
-
-  if (isMissingSignalValue(category)) {
-    reasons.push("Catégorie absente");
-  }
-
-  if (isMissingSignalValue(reason)) {
-    reasons.push("Raison absente");
-  }
+  if (isMissingSignalValue(workspaceId)) reasons.push("Workspace absent");
+  if (isMissingSignalValue(category)) reasons.push("Catégorie absente");
+  if (isMissingSignalValue(reason)) reasons.push("Raison absente");
 
   if (getIncidentLinkCoverageCount(incident) === 0) {
     reasons.push("Aucun lien flow / command / event / run");
@@ -1409,11 +1368,7 @@ function getSignalQualityStats(incidents: IncidentItem[]): {
 
       return acc;
     },
-    {
-      ready: 0,
-      partial: 0,
-      low: 0,
-    },
+    { ready: 0, partial: 0, low: 0 },
   );
 }
 
@@ -1452,29 +1407,16 @@ function getIncidentActionReadinessLabel(
   const hasSurface = hasIncidentActionSurface(incident);
   const hasContext = hasIncidentActionContext(incident);
 
-  if (status === "resolved") {
-    return "WATCH ONLY";
-  }
-
-  if (status === "escalated") {
-    return hasSurface ? "ACTION READY" : "NEEDS CONTEXT";
-  }
-
+  if (status === "resolved") return "WATCH ONLY";
+  if (status === "escalated") return hasSurface ? "ACTION READY" : "NEEDS CONTEXT";
   if (slaLabel === "breached" || slaLabel === "warning") {
     return hasContext ? "ACTION READY" : "NEEDS CONTEXT";
   }
-
   if (severity === "critical" || severity === "high") {
     return hasContext ? "ACTION READY" : "NEEDS CONTEXT";
   }
-
-  if (signalConfidence === "LOW SIGNAL") {
-    return "NEEDS CONTEXT";
-  }
-
-  if (status === "open") {
-    return hasContext ? "ACTION READY" : "NEEDS CONTEXT";
-  }
+  if (signalConfidence === "LOW SIGNAL") return "NEEDS CONTEXT";
+  if (status === "open") return hasContext ? "ACTION READY" : "NEEDS CONTEXT";
 
   return "WATCH ONLY";
 }
@@ -1487,9 +1429,7 @@ function getIncidentActionReadinessReason(incident: IncidentItem): string {
   const hasSurface = hasIncidentActionSurface(incident);
   const hasContext = hasIncidentActionContext(incident);
 
-  if (status === "resolved") {
-    return "Incident résolu : surveillance uniquement.";
-  }
+  if (status === "resolved") return "Incident résolu : surveillance uniquement.";
 
   if (status === "escalated") {
     return hasSurface
@@ -1557,11 +1497,7 @@ function getActionReadinessStats(incidents: IncidentItem[]): {
 
       return acc;
     },
-    {
-      ready: 0,
-      needsContext: 0,
-      watchOnly: 0,
-    },
+    { ready: 0, needsContext: 0, watchOnly: 0 },
   );
 }
 
@@ -1577,9 +1513,7 @@ function getIncidentNextMoveLabel(args: {
   if (readiness === "ACTION READY" && commandHref) return "OPEN COMMAND";
   if (readiness === "ACTION READY" && flowHref) return "OPEN FLOW";
   if (readiness === "ACTION READY" && eventHref) return "OPEN EVENT";
-
   if (readiness === "NEEDS CONTEXT") return "OPEN DETAIL";
-
   if (readiness === "WATCH ONLY" && isIncidentResolved(incident)) {
     return "REVIEW RESOLUTION";
   }
@@ -1696,14 +1630,7 @@ function getNextMoveStats(
 
       return acc;
     },
-    {
-      command: 0,
-      flow: 0,
-      event: 0,
-      detail: 0,
-      review: 0,
-      watch: 0,
-    },
+    { command: 0, flow: 0, event: 0, detail: 0, review: 0, watch: 0 },
   );
 }
 
@@ -1847,12 +1774,7 @@ function getTriagePriorityStats(
 
       return acc;
     },
-    {
-      doNow: 0,
-      doNext: 0,
-      needsContext: 0,
-      watch: 0,
-    },
+    { doNow: 0, doNext: 0, needsContext: 0, watch: 0 },
   );
 }
 
@@ -1892,9 +1814,7 @@ function getOperatorSummaryText(args: {
     nextMoveStats,
   } = args;
 
-  if (visibleCount === 0) {
-    return "Aucun incident visible sur ce scope.";
-  }
+  if (visibleCount === 0) return "Aucun incident visible sur ce scope.";
 
   if (escalatedCount > 0) {
     return `${getPluralLabel(
@@ -2073,19 +1993,6 @@ function getIncidentLinkCoverageCount(incident: IncidentItem): number {
   ].filter(Boolean).length;
 }
 
-function getInvestigationCoverageLabel(incident: IncidentItem): CoverageLabel {
-  if (getIncidentHasPartialControlSignal(incident)) {
-    return "Couverture partielle";
-  }
-
-  const count = getIncidentLinkCoverageCount(incident);
-
-  if (count >= 4) return "Couverture enrichie";
-  if (count >= 2) return "Couverture reliée";
-  if (count >= 1) return "Couverture partielle";
-  return "Lecture locale";
-}
-
 function getInvestigationFocusLabel(incident: IncidentItem): string {
   const nextAction = getNextAction(incident).trim();
   if (nextAction) return nextAction;
@@ -2097,16 +2004,6 @@ function getInvestigationFocusLabel(incident: IncidentItem): string {
   if (reason && reason !== "—") return normalizeDisplayText(reason);
 
   return getSuggestedAction(incident);
-}
-
-function getInvestigationRouteLabel(args: {
-  incident: IncidentItem;
-  flowHref: string;
-  commandHref: string;
-  eventHref: string;
-}): string {
-  const routeKey = getIncidentPrimaryRouteKey(args);
-  return getRoutePriorityLabel(routeKey);
 }
 
 function getInvestigationPrimaryAction(args: {
@@ -2125,34 +2022,18 @@ function getInvestigationPrimaryAction(args: {
   });
 
   if (routeKey === "command" && commandHref) {
-    return {
-      key: "command",
-      label: getRouteActionLabel("command"),
-      href: commandHref,
-    };
+    return { key: "command", label: getRouteActionLabel("command"), href: commandHref };
   }
 
   if (routeKey === "flow" && flowHref) {
-    return {
-      key: "flow",
-      label: getRouteActionLabel("flow"),
-      href: flowHref,
-    };
+    return { key: "flow", label: getRouteActionLabel("flow"), href: flowHref };
   }
 
   if (routeKey === "event" && eventHref) {
-    return {
-      key: "event",
-      label: getRouteActionLabel("event"),
-      href: eventHref,
-    };
+    return { key: "event", label: getRouteActionLabel("event"), href: eventHref };
   }
 
-  return {
-    key: "detail",
-    label: getRouteActionLabel("detail"),
-    href: detailHref,
-  };
+  return { key: "detail", label: getRouteActionLabel("detail"), href: detailHref };
 }
 
 function getIncidentRouteLock(args: {
@@ -2266,11 +2147,6 @@ function ModuleExtensionCard({
         <DashboardStatusBadge
           kind={getModuleStateBadgeKind(state)}
           label={getModuleStateLabel(state)}
-        />
-
-        <DashboardStatusBadge
-          kind={getTriagePriorityBadgeKind(triagePriorityLabel)}
-          label={triagePriorityLabel}
         />
       </div>
 
@@ -2444,7 +2320,6 @@ function IncidentListCard({
     nextMoveLabel,
     actionReadinessLabel,
   });
-
   const triagePriorityReason =
     getIncidentTriagePriorityReason(triagePriorityLabel);
 
@@ -2561,6 +2436,11 @@ function IncidentListCard({
                 label={nextMoveLabel}
               />
 
+              <DashboardStatusBadge
+                kind={getTriagePriorityBadgeKind(triagePriorityLabel)}
+                label={triagePriorityLabel}
+              />
+
               {getDecisionStatus(incident) ? (
                 <DashboardStatusBadge
                   kind={getDecisionBadgeKind(incident)}
@@ -2656,6 +2536,24 @@ function IncidentListCard({
                 </div>
               ) : null}
             </div>
+
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className={metaLabelClassName()}>Triage priority</div>
+                <span
+                  className={[
+                    "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
+                    getTriagePriorityClassName(triagePriorityLabel),
+                  ].join(" ")}
+                >
+                  {triagePriorityLabel}
+                </span>
+              </div>
+
+              <div className="mt-3 text-xs leading-5 text-zinc-400">
+                {triagePriorityReason}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2740,8 +2638,8 @@ function IncidentListCard({
                     : triagePriorityLabel === "NEEDS CONTEXT"
                       ? "text-amber-300"
                       : "text-zinc-300"
-            }
-          />
+              }
+            />
             <InvestigationField label="Control note" value={routeLock.controlNote} />
           </div>
         </div>
@@ -3029,10 +2927,9 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const signalQualityStats = getSignalQualityStats(visibleIncidents);
   const actionReadinessStats = getActionReadinessStats(visibleIncidents);
   const nextMoveStats = getNextMoveStats(visibleIncidents, activeWorkspaceId);
-
   const triagePriorityStats = getTriagePriorityStats(
-  visibleIncidents,
-  activeWorkspaceId,
+    visibleIncidents,
+    activeWorkspaceId,
   );
 
   const operatorSummaryText = getOperatorSummaryText({
@@ -3122,7 +3019,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
           incident: focusIncident,
           nextMoveLabel: focusNextMoveLabel,
           actionReadinessLabel: focusActionReadinessLabel,
-         })
+        })
       : null;
 
   const focusRouteLock = focusIncident
@@ -3445,20 +3342,10 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       label={focusNextMoveLabel}
                     />
                   ) : null}
-                  
                   {focusTriagePriorityLabel ? (
-                    <InvestigationField
-                      label="Triage priority"
-                      value={focusTriagePriorityLabel}
-                      valueClassName={
-                        focusTriagePriorityLabel === "DO NOW"
-                          ? "text-rose-300"
-                          : focusTriagePriorityLabel === "DO NEXT"
-                            ? "text-sky-300"
-                            : focusTriagePriorityLabel === "NEEDS CONTEXT"
-                              ? "text-amber-300"
-                              : "text-zinc-300"
-                      }
+                    <DashboardStatusBadge
+                      kind={getTriagePriorityBadgeKind(focusTriagePriorityLabel)}
+                      label={focusTriagePriorityLabel}
                     />
                   ) : null}
                 </div>
@@ -3502,6 +3389,21 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                           : focusNextMoveLabel === "OPEN DETAIL"
                             ? "text-amber-300"
                             : "text-sky-300"
+                      }
+                    />
+                  ) : null}
+                  {focusTriagePriorityLabel ? (
+                    <InvestigationField
+                      label="Triage priority"
+                      value={focusTriagePriorityLabel}
+                      valueClassName={
+                        focusTriagePriorityLabel === "DO NOW"
+                          ? "text-rose-300"
+                          : focusTriagePriorityLabel === "DO NEXT"
+                            ? "text-sky-300"
+                            : focusTriagePriorityLabel === "NEEDS CONTEXT"
+                              ? "text-amber-300"
+                              : "text-zinc-300"
                       }
                     />
                   ) : null}
@@ -3888,6 +3790,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                         label={focusNextMoveLabel}
                       />
                     ) : null}
+                    {focusTriagePriorityLabel ? (
+                      <DashboardStatusBadge
+                        kind={getTriagePriorityBadgeKind(focusTriagePriorityLabel)}
+                        label={focusTriagePriorityLabel}
+                      />
+                    ) : null}
                   </div>
 
                   <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -4035,14 +3943,9 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
               </div>
 
               <div className="mt-4 rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className={metaLabelClassName()}>Signal Quality Polish</div>
-                    <div className="mt-2 text-sm leading-6 text-zinc-400">
-                      Lecture complémentaire uniquement. Les compteurs validés
-                      restent inchangés.
-                    </div>
-                  </div>
+                <div className={metaLabelClassName()}>Signal Quality Polish</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-400">
+                  Lecture complémentaire uniquement. Les compteurs validés restent inchangés.
                 </div>
 
                 <div className="mt-4 grid grid-cols-3 gap-3">
@@ -4076,14 +3979,9 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
               </div>
 
               <div className="mt-4 rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className={metaLabelClassName()}>Action Readiness</div>
-                    <div className="mt-2 text-sm leading-6 text-zinc-400">
-                      Lecture complémentaire : indique si les incidents visibles sont
-                      actionnables maintenant.
-                    </div>
-                  </div>
+                <div className={metaLabelClassName()}>Action Readiness</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-400">
+                  Lecture complémentaire : indique si les incidents visibles sont actionnables maintenant.
                 </div>
 
                 <div className="mt-4 grid grid-cols-3 gap-3">
@@ -4117,14 +4015,9 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
               </div>
 
               <div className="mt-4 rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className={metaLabelClassName()}>Next Moves</div>
-                    <div className="mt-2 text-sm leading-6 text-zinc-400">
-                      Lecture complémentaire : indique la meilleure surface à ouvrir
-                      maintenant.
-                    </div>
-                  </div>
+                <div className={metaLabelClassName()}>Next Moves</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-400">
+                  Lecture complémentaire : indique la meilleure surface à ouvrir maintenant.
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
@@ -4176,6 +4069,51 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   <div className="rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3">
                     <div className="text-2xl font-semibold tracking-tight text-zinc-300">
                       {nextMoveStats.watch}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Watch
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+                <div className={metaLabelClassName()}>Triage Priority</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-400">
+                  Lecture complémentaire : indique l’ordre opérationnel de traitement.
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                  <div className="rounded-[18px] border border-rose-400/15 bg-rose-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-rose-300">
+                      {triagePriorityStats.doNow}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Now
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-sky-400/15 bg-sky-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-sky-300">
+                      {triagePriorityStats.doNext}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Next
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-amber-400/15 bg-amber-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-amber-300">
+                      {triagePriorityStats.needsContext}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Context
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-zinc-300">
+                      {triagePriorityStats.watch}
                     </div>
                     <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                       Watch
@@ -4246,6 +4184,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 />
 
                 <InvestigationField
+                  label="Triage priority"
+                  value={`${triagePriorityStats.doNow} now · ${triagePriorityStats.doNext} next · ${triagePriorityStats.needsContext} context · ${triagePriorityStats.watch} watch`}
+                />
+
+                <InvestigationField
                   label="Operator summary"
                   value={operatorSummaryText}
                   valueClassName={toneTextClassName(operatorSummaryTone)}
@@ -4287,6 +4230,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                         label={focusNextMoveLabel}
                       />
                     ) : null}
+                    {focusTriagePriorityLabel ? (
+                      <DashboardStatusBadge
+                        kind={getTriagePriorityBadgeKind(focusTriagePriorityLabel)}
+                        label={focusTriagePriorityLabel}
+                      />
+                    ) : null}
                     {focusPrimaryControlAction ? (
                       <DashboardStatusBadge kind="success" label="CONTROL READY" />
                     ) : (
@@ -4319,6 +4268,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       label="Next move"
                       value={`${nextMoveStats.command} command · ${nextMoveStats.flow} flow · ${nextMoveStats.detail} detail · ${nextMoveStats.watch} watch`}
                       valueClassName="text-sky-300"
+                    />
+                    <InvestigationField
+                      label="Triage priority"
+                      value={`${triagePriorityStats.doNow} now · ${triagePriorityStats.doNext} next · ${triagePriorityStats.needsContext} context · ${triagePriorityStats.watch} watch`}
+                      valueClassName="text-rose-300"
                     />
                     <InvestigationField
                       label="Control note"
