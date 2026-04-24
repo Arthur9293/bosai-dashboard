@@ -1,10 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
-import {
-  fetchIncidents,
-  type IncidentItem,
-} from "@/lib/api";
+import { fetchIncidents, type IncidentItem } from "@/lib/api";
 import {
   ControlPlaneShell,
   SectionCard,
@@ -31,6 +28,7 @@ type SearchParams = {
   source_event_id?: string | string[];
   command_id?: string | string[];
   from?: string | string[];
+  queue?: string | string[];
   workspace_id?: string | string[];
   workspaceId?: string | string[];
 };
@@ -78,6 +76,8 @@ type OperatorQueueBucket =
   | "NEXT QUEUE"
   | "CONTEXT QUEUE"
   | "WATCH QUEUE";
+
+type OperatorQueueFilter = "all" | "now" | "next" | "context" | "watch";
 
 const OPERATOR_QUEUE_BUCKET_ORDER: OperatorQueueBucket[] = [
   "NOW QUEUE",
@@ -621,9 +621,7 @@ function getDecisionStatusDisplay(incident: IncidentItem): string {
 
 function getDecisionReasonDisplay(incident: IncidentItem): string {
   const reason = getDecisionReason(incident).trim();
-  return reason
-    ? normalizeDisplayText(reason)
-    : "NO DECISION REASON";
+  return reason ? normalizeDisplayText(reason) : "NO DECISION REASON";
 }
 
 function getNextActionDisplay(incident: IncidentItem): string {
@@ -1979,6 +1977,115 @@ function getOperatorQueueBucketLimitLabel(
   return remainingCount > 0 ? `+${remainingCount} autres` : "";
 }
 
+function getOperatorQueueFilterFromSearchParam(
+  value?: string | string[],
+): OperatorQueueFilter {
+  const raw = firstParam(value).trim().toLowerCase();
+
+  if (raw === "now") return "now";
+  if (raw === "next") return "next";
+  if (raw === "context") return "context";
+  if (raw === "watch") return "watch";
+
+  return "all";
+}
+
+function getOperatorQueueFilterLabel(filter: OperatorQueueFilter): string {
+  if (filter === "now") return "NOW QUEUE";
+  if (filter === "next") return "NEXT QUEUE";
+  if (filter === "context") return "CONTEXT QUEUE";
+  if (filter === "watch") return "WATCH QUEUE";
+
+  return "ALL QUEUES";
+}
+
+function getOperatorQueueFilterFromBucket(
+  bucket: OperatorQueueBucket,
+): OperatorQueueFilter {
+  if (bucket === "NOW QUEUE") return "now";
+  if (bucket === "NEXT QUEUE") return "next";
+  if (bucket === "CONTEXT QUEUE") return "context";
+
+  return "watch";
+}
+
+function getOperatorQueueBucketFocusCtaLabel(bucket: OperatorQueueBucket): string {
+  if (bucket === "NOW QUEUE") return "Focus Now";
+  if (bucket === "NEXT QUEUE") return "Focus Next";
+  if (bucket === "CONTEXT QUEUE") return "Focus Context";
+
+  return "Focus Watch";
+}
+
+function getOperatorQueueFilterHref(args: {
+  filter: OperatorQueueFilter;
+  activeWorkspaceId?: string;
+  flowId?: string;
+  rootEventId?: string;
+  sourceRecordId?: string;
+  commandId?: string;
+}): string {
+  return buildHref("/incidents", {
+    workspace_id: args.activeWorkspaceId || undefined,
+    flow_id: args.flowId || undefined,
+    root_event_id: args.rootEventId || undefined,
+    source_record_id: args.sourceRecordId || undefined,
+    command_id: args.commandId || undefined,
+    queue: args.filter,
+  });
+}
+
+function queueFocusLinkClassName(active: boolean): string {
+  return [
+    "inline-flex items-center justify-center rounded-full border px-3.5 py-2 text-xs font-medium transition",
+    active
+      ? "border-emerald-400/30 bg-emerald-400/12 text-emerald-200"
+      : "border-white/10 bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08] hover:text-white",
+  ].join(" ");
+}
+
+function incidentMatchesOperatorQueueFilter(args: {
+  incident: IncidentItem;
+  filter: OperatorQueueFilter;
+  activeWorkspaceId?: string;
+}): boolean {
+  const { incident, filter, activeWorkspaceId } = args;
+
+  if (
+    activeWorkspaceId &&
+    !workspaceMatchesOrUnscoped(getIncidentWorkspaceId(incident), activeWorkspaceId)
+  ) {
+    return false;
+  }
+
+  if (filter === "all") return true;
+
+  const commandHref = getCommandHref(incident, activeWorkspaceId);
+  const flowHref = getFlowHref(incident, activeWorkspaceId);
+  const eventHref = getEventHref(incident, activeWorkspaceId);
+
+  const nextMoveLabel = getIncidentNextMoveLabel({
+    incident,
+    commandHref,
+    flowHref,
+    eventHref,
+  });
+
+  const actionReadinessLabel = getIncidentActionReadinessLabel(incident);
+
+  const triagePriorityLabel = getIncidentTriagePriorityLabel({
+    incident,
+    nextMoveLabel,
+    actionReadinessLabel,
+  });
+
+  const bucket = getIncidentOperatorQueueBucket({
+    triagePriorityLabel,
+  });
+
+  return bucket === getOperatorQueueFilterLabel(filter);
+}
+
 function getPluralLabel(
   count: number,
   singular: string,
@@ -2223,7 +2330,11 @@ function getInvestigationPrimaryAction(args: {
   });
 
   if (routeKey === "command" && commandHref) {
-    return { key: "command", label: getRouteActionLabel("command"), href: commandHref };
+    return {
+      key: "command",
+      label: getRouteActionLabel("command"),
+      href: commandHref,
+    };
   }
 
   if (routeKey === "flow" && flowHref) {
@@ -2474,10 +2585,12 @@ function OperatorQueueBucketCard({
   bucket,
   incidents,
   activeWorkspaceId,
+  focusHref,
 }: {
   bucket: OperatorQueueBucket;
   incidents: IncidentItem[];
   activeWorkspaceId?: string;
+  focusHref: string;
 }) {
   const bucketItems = getOperatorQueueBucketItems({
     incidents,
@@ -2506,6 +2619,12 @@ function OperatorQueueBucketCard({
       </div>
 
       <div className="mt-4 text-sm leading-6 text-zinc-300">{bucketReason}</div>
+
+      <div className="mt-4">
+        <Link href={focusHref} className={actionLinkClassName("soft")}>
+          {getOperatorQueueBucketFocusCtaLabel(bucket)}
+        </Link>
+      </div>
 
       {visibleItems.length > 0 ? (
         <div className="mt-5 space-y-3">
@@ -2629,8 +2748,7 @@ function IncidentListCard({
   const operatorQueueBucket = getIncidentOperatorQueueBucket({
     triagePriorityLabel,
   });
-  const operatorQueueReason =
-    getOperatorQueueBucketReason(operatorQueueBucket);
+  const operatorQueueReason = getOperatorQueueBucketReason(operatorQueueBucket);
 
   const linkedActions: ControlAction[] = [
     flowHref
@@ -3184,6 +3302,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const commandId = firstParam(resolvedSearchParams.command_id).trim();
   const from = firstParam(resolvedSearchParams.from).trim();
 
+  const operatorQueueFilter = getOperatorQueueFilterFromSearchParam(
+    resolvedSearchParams.queue,
+  );
+  const hasActiveQueueFilter = operatorQueueFilter !== "all";
+  const activeQueueFilterLabel = getOperatorQueueFilterLabel(operatorQueueFilter);
+
   let incidentsUnfiltered: IncidentItem[] = [];
   let fetchFailed = false;
 
@@ -3237,6 +3361,18 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     ...openIncidents,
     ...escalatedIncidents,
   ]);
+
+  const queueFocusedIncidents = hasActiveQueueFilter
+    ? sortVisibleIncidentsForFocus(
+        visibleIncidents.filter((incident) =>
+          incidentMatchesOperatorQueueFilter({
+            incident,
+            filter: operatorQueueFilter,
+            activeWorkspaceId,
+          }),
+        ),
+      )
+    : activeIncidents;
 
   const sortedResolvedIncidents = sortResolvedIncidents(resolvedIncidents);
 
@@ -3325,6 +3461,81 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
   const commandsHref = appendWorkspaceIdToHref("/commands", activeWorkspaceId);
   const allIncidentsHref = appendWorkspaceIdToHref("/incidents", activeWorkspaceId);
+
+  const queueFocusLinks: {
+    filter: OperatorQueueFilter;
+    label: string;
+    count: number;
+    href: string;
+  }[] = [
+    {
+      filter: "all",
+      label: "All",
+      count: visibleIncidents.length,
+      href: getOperatorQueueFilterHref({
+        filter: "all",
+        activeWorkspaceId,
+        flowId,
+        rootEventId,
+        sourceRecordId,
+        commandId,
+      }),
+    },
+    {
+      filter: "now",
+      label: "Now",
+      count: operatorQueueStats.now,
+      href: getOperatorQueueFilterHref({
+        filter: "now",
+        activeWorkspaceId,
+        flowId,
+        rootEventId,
+        sourceRecordId,
+        commandId,
+      }),
+    },
+    {
+      filter: "next",
+      label: "Next",
+      count: operatorQueueStats.next,
+      href: getOperatorQueueFilterHref({
+        filter: "next",
+        activeWorkspaceId,
+        flowId,
+        rootEventId,
+        sourceRecordId,
+        commandId,
+      }),
+    },
+    {
+      filter: "context",
+      label: "Context",
+      count: operatorQueueStats.context,
+      href: getOperatorQueueFilterHref({
+        filter: "context",
+        activeWorkspaceId,
+        flowId,
+        rootEventId,
+        sourceRecordId,
+        commandId,
+      }),
+    },
+    {
+      filter: "watch",
+      label: "Watch",
+      count: operatorQueueStats.watch,
+      href: getOperatorQueueFilterHref({
+        filter: "watch",
+        activeWorkspaceId,
+        flowId,
+        rootEventId,
+        sourceRecordId,
+        commandId,
+      }),
+    },
+  ];
+
+  const allQueuesHref = queueFocusLinks[0]?.href || allIncidentsHref;
 
   const focusIncident = sortVisibleIncidentsForFocus(visibleIncidents)[0] || null;
 
@@ -4011,6 +4222,33 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 <div className="mt-2 text-sm font-medium leading-6 text-zinc-200">
                   Now {operatorQueueStats.now} · Next {operatorQueueStats.next} · Context{" "}
                   {operatorQueueStats.context} · Watch {operatorQueueStats.watch}
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3">
+                <div className={metaLabelClassName()}>Queue Focus</div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {queueFocusLinks.map((item) => (
+                    <Link
+                      key={item.filter}
+                      href={item.href}
+                      className={queueFocusLinkClassName(
+                        operatorQueueFilter === item.filter,
+                      )}
+                      aria-current={
+                        operatorQueueFilter === item.filter ? "page" : undefined
+                      }
+                    >
+                      {item.label} {item.count}
+                    </Link>
+                  ))}
+                </div>
+
+                <div className="mt-3 text-xs leading-5 text-zinc-500">
+                  {hasActiveQueueFilter
+                    ? `Focus actif : ${activeQueueFilterLabel}. Needs Attention affiche uniquement cette file.`
+                    : "Toutes les files restent visibles. Les sections globales ne sont pas modifiées."}
                 </div>
               </div>
             </div>
@@ -4839,6 +5077,14 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     bucket={bucket}
                     incidents={visibleIncidents}
                     activeWorkspaceId={activeWorkspaceId}
+                    focusHref={getOperatorQueueFilterHref({
+                      filter: getOperatorQueueFilterFromBucket(bucket),
+                      activeWorkspaceId,
+                      flowId,
+                      rootEventId,
+                      sourceRecordId,
+                      commandId,
+                    })}
                   />
                 ))}
               </div>
@@ -4847,20 +5093,47 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
           <div id="incident-list-needs-attention">
             <SectionBlock
-              title="Needs Attention"
-              description="Incidents à surveiller en priorité : ouverts, escaladés, critiques ou encore non résolus."
-              count={activeIncidents.length}
+              title={
+                hasActiveQueueFilter
+                  ? `Needs Attention — Queue Focus: ${activeQueueFilterLabel}`
+                  : "Needs Attention"
+              }
+              description={
+                hasActiveQueueFilter
+                  ? `Affiche uniquement les incidents ${activeQueueFilterLabel} sur le scope actuel. Les compteurs globaux restent inchangés.`
+                  : "Incidents à surveiller en priorité : ouverts, escaladés, critiques ou encore non résolus."
+              }
+              count={queueFocusedIncidents.length}
               countTone="warning"
               tone="attention"
             >
-              {activeIncidents.length === 0 ? (
-                <EmptyStatePanel
-                  title="Aucun incident actif"
-                  description="Aucun incident ouvert ou escaladé n’est visible pour le moment."
-                />
+              {queueFocusedIncidents.length === 0 ? (
+                hasActiveQueueFilter ? (
+                  <div className="space-y-4">
+                    <EmptyStatePanel
+                      title="Aucun incident dans cette file"
+                      description="La file sélectionnée ne contient aucun incident visible sur le scope actuel."
+                    />
+
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <Link href={allQueuesHref} className={actionLinkClassName("primary")}>
+                        All queues
+                      </Link>
+
+                      <Link href={allIncidentsHref} className={actionLinkClassName("soft")}>
+                        Voir tous les incidents
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <EmptyStatePanel
+                    title="Aucun incident actif"
+                    description="Aucun incident ouvert ou escaladé n’est visible pour le moment."
+                  />
+                )
               ) : (
                 <div className="grid gap-5 xl:grid-cols-2 xl:gap-5">
-                  {activeIncidents.map((incident) => (
+                  {queueFocusedIncidents.map((incident) => (
                     <IncidentListCard
                       key={incident.id}
                       incident={incident}
