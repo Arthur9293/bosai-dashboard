@@ -376,14 +376,24 @@ function getIncidentWorkspaceId(incident: IncidentItem): string {
 }
 
 function getIncidentStatusNormalized(incident: IncidentItem): string {
-  const raw = getIncidentStatusRaw(incident).toLowerCase();
+  const raw = getIncidentStatusRaw(incident).trim().toLowerCase();
   const sla = (incident.sla_status || "").trim().toLowerCase();
   const hasResolvedAt = Boolean(incident.resolved_at);
 
   if (hasResolvedAt) return "resolved";
 
-  if (!raw) {
-    if (sla === "breached") return "open";
+  const rawIsMissingOrUnknown =
+    !raw ||
+    raw === "unknown" ||
+    raw === "—" ||
+    raw === "-" ||
+    raw === "n/a" ||
+    raw === "null" ||
+    raw === "undefined";
+
+  if (rawIsMissingOrUnknown) {
+    if (["open", "warning", "breached"].includes(sla)) return "open";
+    if (["resolved", "closed", "done"].includes(sla)) return "resolved";
     return "open";
   }
 
@@ -396,6 +406,14 @@ function getIncidentStatusNormalized(incident: IncidentItem): string {
   }
 
   if (["resolved", "closed", "done", "résolu", "resolve"].includes(raw)) {
+    return "resolved";
+  }
+
+  if (["open", "warning", "breached"].includes(sla)) {
+    return "open";
+  }
+
+  if (["resolved", "closed", "done"].includes(sla)) {
     return "resolved";
   }
 
