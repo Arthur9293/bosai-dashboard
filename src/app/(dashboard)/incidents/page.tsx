@@ -83,6 +83,34 @@ type FocusPriorityBucket =
   | "resolved-recent"
   | "resolved";
 
+type PrimaryRoute =
+  | "Detail-first"
+  | "Flow-first"
+  | "Command-first"
+  | "Event-first";
+
+type PrimarySurface =
+  | "Incident detail"
+  | "Flow"
+  | "Command"
+  | "Event";
+
+type CoverageLabel =
+  | "Couverture partielle"
+  | "Couverture reliée"
+  | "Couverture enrichie"
+  | "Lecture locale";
+
+type IncidentRouteLock = {
+  key: InvestigationPrimaryAction["key"];
+  primaryRoute: PrimaryRoute;
+  primarySurface: PrimarySurface;
+  coverage: CoverageLabel;
+  controlNote: string;
+  primaryAction: InvestigationPrimaryAction;
+  tone: SignalTone;
+};
+
 function cardClassName(): string {
   return "rounded-[28px] border border-white/10 bg-white/[0.04] p-5 md:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
@@ -143,6 +171,13 @@ function toneTextClassName(tone: SignalTone): string {
   if (tone === "success") return "text-emerald-300";
   if (tone === "info") return "text-sky-300";
   return "text-zinc-200";
+}
+
+function coverageTextClassName(coverage: string): string {
+  if (coverage === "Couverture enrichie") return "text-emerald-300";
+  if (coverage === "Couverture reliée") return "text-sky-300";
+  if (coverage === "Couverture partielle") return "text-amber-300";
+  return "text-zinc-300";
 }
 
 function compactTechnicalId(value: string, max = 34): string {
@@ -666,7 +701,9 @@ function getIncidentPrimaryRouteKey(args: {
   const status = getIncidentStatusNormalized(incident);
   const severity = getIncidentSeverityNormalized(incident);
 
-  if (getIncidentHasPartialControlSignal(incident)) {
+  const hasNoPrimaryRoute = !flowHref && !commandHref && !eventHref;
+
+  if (hasNoPrimaryRoute) {
     return "detail";
   }
 
@@ -712,6 +749,10 @@ function getIncidentPrimaryRouteKey(args: {
     return "detail";
   }
 
+  if (eventHref && !flowHref && !commandHref) {
+    return "event";
+  }
+
   return "detail";
 }
 
@@ -726,14 +767,16 @@ function getRouteShortLabel(
 
 function getPrimarySurfaceLabel(
   key: InvestigationPrimaryAction["key"],
-): string {
-  if (key === "detail") return "Incident detail";
-  return getRouteShortLabel(key);
+): PrimarySurface {
+  if (key === "command") return "Command";
+  if (key === "flow") return "Flow";
+  if (key === "event") return "Event";
+  return "Incident detail";
 }
 
 function getRoutePriorityLabel(
   key: InvestigationPrimaryAction["key"],
-): string {
+): PrimaryRoute {
   if (key === "command") return "Command-first";
   if (key === "flow") return "Flow-first";
   if (key === "event") return "Event-first";
@@ -749,29 +792,51 @@ function getRouteActionLabel(
   return "Ouvrir le détail prioritaire";
 }
 
+function getIncidentRouteCoverageLabel(args: {
+  incident: IncidentItem;
+  key: InvestigationPrimaryAction["key"];
+}): CoverageLabel {
+  const { incident, key } = args;
+  const count = getIncidentLinkCoverageCount(incident);
+
+  if (key === "detail") {
+    return "Couverture partielle";
+  }
+
+  if (key === "event") {
+    return count >= 2 ? "Couverture reliée" : "Lecture locale";
+  }
+
+  if (key === "command" || key === "flow") {
+    return count >= 3 ? "Couverture enrichie" : "Couverture reliée";
+  }
+
+  return "Lecture locale";
+}
+
 function getIncidentRouteNote(args: {
   incident: IncidentItem;
   key: InvestigationPrimaryAction["key"];
 }): string {
   const { incident, key } = args;
 
-  if (getIncidentHasPartialControlSignal(incident)) {
-    return "Signal partiel : le détail reste prioritaire malgré une couverture incomplète.";
-  }
-
   if (key === "command") {
-    return "La command liée devient la voie de pilotage principale pour cet incident.";
+    return "Command-first : la command prioritaire concentre le pilotage de résolution.";
   }
 
   if (key === "flow") {
-    return "Le flow lié devient la voie de pilotage principale pour cet incident.";
+    return "Flow-first : le flow prioritaire concentre la lecture métier et la chaîne causale principale.";
   }
 
   if (key === "event") {
-    return "L’event lié devient la voie de pilotage principale pour cet incident.";
+    return "Event-first : l’event prioritaire concentre la lecture du signal source exploitable.";
   }
 
-  return "Le détail incident reste la voie de pilotage principale pour cet incident.";
+  if (getIncidentHasPartialControlSignal(incident)) {
+    return "Detail-first : signal partiel, le détail incident reste la surface prioritaire de lecture.";
+  }
+
+  return "Detail-first : le détail incident reste la surface prioritaire de lecture.";
 }
 
 function getActivePriority(incident: IncidentItem): number {
@@ -1233,7 +1298,7 @@ function getIncidentLinkCoverageCount(incident: IncidentItem): number {
   ].filter(Boolean).length;
 }
 
-function getInvestigationCoverageLabel(incident: IncidentItem): string {
+function getInvestigationCoverageLabel(incident: IncidentItem): CoverageLabel {
   if (getIncidentHasPartialControlSignal(incident)) {
     return "Couverture partielle";
   }
@@ -1315,6 +1380,48 @@ function getInvestigationPrimaryAction(args: {
   };
 }
 
+function getIncidentRouteLock(args: {
+  incident: IncidentItem;
+  detailHref: string;
+  flowHref: string;
+  commandHref: string;
+  eventHref: string;
+}): IncidentRouteLock {
+  const { incident, detailHref, flowHref, commandHref, eventHref } = args;
+
+  const routeKey = getIncidentPrimaryRouteKey({
+    incident,
+    flowHref,
+    commandHref,
+    eventHref,
+  });
+
+  const primaryAction = getInvestigationPrimaryAction({
+    incident,
+    detailHref,
+    flowHref,
+    commandHref,
+    eventHref,
+  });
+
+  const tone: SignalTone =
+    routeKey === "detail" && getIncidentHasPartialControlSignal(incident)
+      ? "warning"
+      : routeKey !== "detail"
+        ? "info"
+        : "default";
+
+  return {
+    key: routeKey,
+    primaryRoute: getRoutePriorityLabel(routeKey),
+    primarySurface: getPrimarySurfaceLabel(routeKey),
+    coverage: getIncidentRouteCoverageLabel({ incident, key: routeKey }),
+    controlNote: getIncidentRouteNote({ incident, key: routeKey }),
+    primaryAction,
+    tone,
+  };
+}
+
 function countDistinctSurfaces(values: string[]): number {
   return Array.from(
     new Set(values.map((value) => value.trim()).filter(Boolean)),
@@ -1324,7 +1431,7 @@ function countDistinctSurfaces(values: string[]): number {
 function getControlRouteLabel(args: {
   hasFilters: boolean;
   primaryAction: InvestigationPrimaryAction | null;
-}): string {
+}): PrimaryRoute {
   return getRoutePriorityLabel(args.primaryAction?.key || "detail");
 }
 
@@ -1554,17 +1661,7 @@ function IncidentListCard({
       : null,
   ].filter(Boolean) as ControlAction[];
 
-  const cardPrimaryRouteKey = getIncidentPrimaryRouteKey({
-    incident,
-    flowHref,
-    commandHref,
-    eventHref,
-  });
-
-  const cardPrimaryRouteLabel = getRoutePriorityLabel(cardPrimaryRouteKey);
-  const cardCoverageLabel = getInvestigationCoverageLabel(incident);
-
-  const cardPrimaryControlAction = getInvestigationPrimaryAction({
+  const routeLock = getIncidentRouteLock({
     incident,
     detailHref,
     flowHref,
@@ -1572,24 +1669,8 @@ function IncidentListCard({
     eventHref,
   });
 
-  const primarySurfaceLabel =
-    cardPrimaryRouteKey === "detail"
-      ? "Incident detail"
-      : getRouteShortLabel(cardPrimaryRouteKey);
-
-  const controlNote = getIncidentRouteNote({
-    incident,
-    key: cardPrimaryRouteKey,
-  });
-
-  const controlTone: SignalTone = hasSignalGap
-    ? "warning"
-    : cardPrimaryRouteKey !== "detail"
-      ? "info"
-      : "default";
-
   const secondaryLinkedActions = linkedActions.filter(
-    (action) => action.key !== cardPrimaryControlAction.key,
+    (action) => action.key !== routeLock.primaryAction.key,
   );
 
   return (
@@ -1708,30 +1789,22 @@ function IncidentListCard({
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <InvestigationField
               label="Primary route"
-              value={cardPrimaryRouteLabel}
-              valueClassName={toneTextClassName(controlTone)}
+              value={routeLock.primaryRoute}
+              valueClassName={toneTextClassName(routeLock.tone)}
             />
             <InvestigationField
               label="Primary surface"
-              value={primarySurfaceLabel}
-              valueClassName={toneTextClassName(controlTone)}
+              value={routeLock.primarySurface}
+              valueClassName={toneTextClassName(routeLock.tone)}
             />
             <InvestigationField
               label="Coverage"
-              value={cardCoverageLabel}
-              valueClassName={
-                cardCoverageLabel === "Couverture enrichie"
-                  ? "text-emerald-300"
-                  : cardCoverageLabel === "Couverture reliée"
-                    ? "text-sky-300"
-                    : cardCoverageLabel === "Couverture partielle"
-                      ? "text-amber-300"
-                      : "text-zinc-300"
-              }
+              value={routeLock.coverage}
+              valueClassName={coverageTextClassName(routeLock.coverage)}
             />
             <InvestigationField
               label="Control note"
-              value={controlNote}
+              value={routeLock.controlNote}
             />
           </div>
         </div>
@@ -1826,13 +1899,13 @@ function IncidentListCard({
 
         <div className="mt-auto flex flex-col gap-2.5 pt-1">
           <Link
-            href={cardPrimaryControlAction.href}
+            href={routeLock.primaryAction.href}
             className={actionLinkClassName("primary")}
           >
-            {cardPrimaryControlAction.label}
+            {routeLock.primaryAction.label}
           </Link>
 
-          {cardPrimaryControlAction.key !== "detail" ? (
+          {routeLock.primaryAction.key !== "detail" ? (
             <Link href={detailHref} className={actionLinkClassName("soft")}>
               Ouvrir le détail
             </Link>
@@ -2038,28 +2111,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     ? getEventHref(focusIncident, activeWorkspaceId)
     : "";
 
-  const focusPrimaryRouteKey = focusIncident
-    ? getIncidentPrimaryRouteKey({
-        incident: focusIncident,
-        flowHref: focusIncidentFlowHref,
-        commandHref: focusIncidentCommandHref,
-        eventHref: focusIncidentEventHref,
-      })
-    : "detail";
-
-  const focusPrimaryRouteLabel = getRoutePriorityLabel(focusPrimaryRouteKey);
-  const focusPrimarySurfaceLabel = getPrimarySurfaceLabel(focusPrimaryRouteKey);
-
-  const focusInvestigationCoverage = focusIncident
-    ? getInvestigationCoverageLabel(focusIncident)
-    : "Aucune couverture";
-
-  const focusInvestigationFocus = focusIncident
-    ? getInvestigationFocusLabel(focusIncident)
-    : "Aucun incident focus";
-
-  const focusPrimaryInvestigationAction = focusIncident
-    ? getInvestigationPrimaryAction({
+  const focusRouteLock = focusIncident
+    ? getIncidentRouteLock({
         incident: focusIncident,
         detailHref: focusIncidentDetailHref,
         flowHref: focusIncidentFlowHref,
@@ -2068,17 +2121,29 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
       })
     : null;
 
-  const focusControlNote = focusIncident
-    ? getIncidentRouteNote({
-        incident: focusIncident,
-        key: focusPrimaryRouteKey,
-      })
-    : "Aucune logique de pilotage disponible.";
+  const focusPrimaryRouteLabel = focusRouteLock?.primaryRoute || "Detail-first";
+  const focusPrimarySurfaceLabel =
+    focusRouteLock?.primarySurface || "Incident detail";
 
-  const controlRoute = getControlRouteLabel({
-    hasFilters,
-    primaryAction: focusPrimaryInvestigationAction,
-  });
+  const focusInvestigationCoverage =
+    focusRouteLock?.coverage || "Aucune couverture";
+
+  const focusInvestigationFocus = focusIncident
+    ? getInvestigationFocusLabel(focusIncident)
+    : "Aucun incident focus";
+
+  const focusPrimaryInvestigationAction =
+    focusRouteLock?.primaryAction || null;
+
+  const focusControlNote =
+    focusRouteLock?.controlNote || "Aucune logique de pilotage disponible.";
+
+  const controlRoute =
+    focusRouteLock?.primaryRoute ||
+    getControlRouteLabel({
+      hasFilters,
+      primaryAction: focusPrimaryInvestigationAction,
+    });
 
   const controlReturnLabel = getControlReturnLabel(hasFilters);
 
@@ -2303,7 +2368,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
           </SidePanelCard>
 
           <SidePanelCard title="Incident actif">
-            {focusIncident ? (
+            {focusIncident && focusRouteLock ? (
               <div className="space-y-4">
                 <div>
                   <div className="text-xs uppercase tracking-[0.18em] text-white/35">
@@ -2335,30 +2400,22 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 <div className="grid gap-3">
                   <InvestigationField
                     label="Primary route"
-                    value={focusPrimaryRouteLabel}
-                    valueClassName="text-sky-300"
+                    value={focusRouteLock.primaryRoute}
+                    valueClassName={toneTextClassName(focusRouteLock.tone)}
                   />
                   <InvestigationField
                     label="Primary surface"
-                    value={focusPrimarySurfaceLabel}
-                    valueClassName="text-sky-300"
+                    value={focusRouteLock.primarySurface}
+                    valueClassName={toneTextClassName(focusRouteLock.tone)}
                   />
                   <InvestigationField
                     label="Coverage"
-                    value={focusInvestigationCoverage}
-                    valueClassName={
-                      focusInvestigationCoverage === "Couverture enrichie"
-                        ? "text-emerald-300"
-                        : focusInvestigationCoverage === "Couverture reliée"
-                          ? "text-sky-300"
-                          : focusInvestigationCoverage === "Couverture partielle"
-                            ? "text-amber-300"
-                            : "text-zinc-300"
-                    }
+                    value={focusRouteLock.coverage}
+                    valueClassName={coverageTextClassName(focusRouteLock.coverage)}
                   />
                   <InvestigationField
-                    label="Primary action"
-                    value={focusPrimaryInvestigationAction?.label || "Ouvrir le détail prioritaire"}
+                    label="CTA principal"
+                    value={focusRouteLock.primaryAction.label}
                     valueClassName="text-emerald-300"
                   />
                 </div>
@@ -2383,21 +2440,19 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
                   <div className={metaLabelClassName()}>Control note</div>
                   <div className="mt-2 text-sm leading-6 text-zinc-300">
-                    {focusControlNote}
+                    {focusRouteLock.controlNote}
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  {focusPrimaryInvestigationAction ? (
-                    <Link
-                      href={focusPrimaryInvestigationAction.href}
-                      className={actionLinkClassName("primary")}
-                    >
-                      {focusPrimaryInvestigationAction.label}
-                    </Link>
-                  ) : null}
+                  <Link
+                    href={focusRouteLock.primaryAction.href}
+                    className={actionLinkClassName("primary")}
+                  >
+                    {focusRouteLock.primaryAction.label}
+                  </Link>
 
-                  {focusPrimaryInvestigationAction?.key !== "detail" &&
+                  {focusRouteLock.primaryAction.key !== "detail" &&
                   focusIncidentDetailHref ? (
                     <Link
                       href={focusIncidentDetailHref}
@@ -2407,7 +2462,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     </Link>
                   ) : null}
 
-                  {focusPrimaryInvestigationAction?.key !== "flow" &&
+                  {focusRouteLock.primaryAction.key !== "flow" &&
                   focusIncidentFlowHref ? (
                     <Link
                       href={focusIncidentFlowHref}
@@ -2417,7 +2472,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     </Link>
                   ) : null}
 
-                  {focusPrimaryInvestigationAction?.key !== "command" &&
+                  {focusRouteLock.primaryAction.key !== "command" &&
                   focusIncidentCommandHref ? (
                     <Link
                       href={focusIncidentCommandHref}
@@ -2427,7 +2482,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     </Link>
                   ) : null}
 
-                  {focusPrimaryInvestigationAction?.key !== "event" &&
+                  {focusRouteLock.primaryAction.key !== "event" &&
                   focusIncidentEventHref ? (
                     <Link
                       href={focusIncidentEventHref}
@@ -2602,7 +2657,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 />
               }
             >
-              {focusIncident ? (
+              {focusIncident && focusRouteLock ? (
                 <>
                   <div className="flex flex-wrap gap-2">
                     <DashboardStatusBadge
@@ -2630,26 +2685,18 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     />
                     <InvestigationField
                       label="Primary surface"
-                      value={focusPrimarySurfaceLabel}
-                      valueClassName="text-sky-300"
+                      value={focusRouteLock.primarySurface}
+                      valueClassName={toneTextClassName(focusRouteLock.tone)}
                     />
                     <InvestigationField
                       label="Primary route"
-                      value={focusPrimaryRouteLabel}
-                      valueClassName="text-violet-300"
+                      value={focusRouteLock.primaryRoute}
+                      valueClassName={toneTextClassName(focusRouteLock.tone)}
                     />
                     <InvestigationField
                       label="Coverage"
-                      value={focusInvestigationCoverage}
-                      valueClassName={
-                        focusInvestigationCoverage === "Couverture enrichie"
-                          ? "text-emerald-300"
-                          : focusInvestigationCoverage === "Couverture reliée"
-                            ? "text-sky-300"
-                            : focusInvestigationCoverage === "Couverture partielle"
-                              ? "text-amber-300"
-                              : "text-zinc-300"
-                      }
+                      value={focusRouteLock.coverage}
+                      valueClassName={coverageTextClassName(focusRouteLock.coverage)}
                     />
                   </div>
 
@@ -2661,16 +2708,14 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   </div>
 
                   <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    {focusPrimaryInvestigationAction ? (
-                      <Link
-                        href={focusPrimaryInvestigationAction.href}
-                        className={actionLinkClassName("primary")}
-                      >
-                        {focusPrimaryInvestigationAction.label}
-                      </Link>
-                    ) : null}
+                    <Link
+                      href={focusRouteLock.primaryAction.href}
+                      className={actionLinkClassName("primary")}
+                    >
+                      {focusRouteLock.primaryAction.label}
+                    </Link>
 
-                    {focusPrimaryInvestigationAction?.key !== "detail" &&
+                    {focusRouteLock.primaryAction.key !== "detail" &&
                     focusIncidentDetailHref ? (
                       <Link
                         href={focusIncidentDetailHref}
@@ -2680,7 +2725,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       </Link>
                     ) : null}
 
-                    {focusPrimaryInvestigationAction?.key !== "flow" &&
+                    {focusRouteLock.primaryAction.key !== "flow" &&
                     focusIncidentFlowHref ? (
                       <Link
                         href={focusIncidentFlowHref}
@@ -2690,7 +2735,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       </Link>
                     ) : null}
 
-                    {focusPrimaryInvestigationAction?.key !== "command" &&
+                    {focusRouteLock.primaryAction.key !== "command" &&
                     focusIncidentCommandHref ? (
                       <Link
                         href={focusIncidentCommandHref}
@@ -2700,7 +2745,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       </Link>
                     ) : null}
 
-                    {focusPrimaryInvestigationAction?.key !== "event" &&
+                    {focusRouteLock.primaryAction.key !== "event" &&
                     focusIncidentEventHref ? (
                       <Link
                         href={focusIncidentEventHref}
@@ -2826,7 +2871,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
               description="Couche de pilotage global pour décider comment agir maintenant sur la surface Incidents, sans quitter le cadre cockpit validé."
               action={<SectionCountPill value={controlSurfaceCount} tone="info" />}
             >
-              {focusIncident ? (
+              {focusIncident && focusRouteLock ? (
                 <>
                   <div className="flex flex-wrap gap-2">
                     <DashboardStatusBadge
@@ -2835,7 +2880,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     />
                     <DashboardStatusBadge
                       kind="queued"
-                      label={controlRoute.toUpperCase()}
+                      label={focusRouteLock.primaryRoute.toUpperCase()}
                     />
                     <DashboardStatusBadge
                       kind={getIncidentSlaBadgeKind(focusIncident)}
@@ -2851,42 +2896,32 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <InvestigationField
                       label="Primary route"
-                      value={focusPrimaryRouteLabel}
-                      valueClassName="text-sky-300"
+                      value={focusRouteLock.primaryRoute}
+                      valueClassName={toneTextClassName(focusRouteLock.tone)}
                     />
                     <InvestigationField
                       label="Primary surface"
-                      value={focusPrimarySurfaceLabel}
-                      valueClassName="text-sky-300"
+                      value={focusRouteLock.primarySurface}
+                      valueClassName={toneTextClassName(focusRouteLock.tone)}
                     />
                     <InvestigationField
                       label="Coverage"
-                      value={focusInvestigationCoverage}
-                      valueClassName={
-                        focusInvestigationCoverage === "Couverture enrichie"
-                          ? "text-emerald-300"
-                          : focusInvestigationCoverage === "Couverture reliée"
-                            ? "text-sky-300"
-                            : focusInvestigationCoverage === "Couverture partielle"
-                              ? "text-amber-300"
-                              : "text-zinc-300"
-                      }
+                      value={focusRouteLock.coverage}
+                      valueClassName={coverageTextClassName(focusRouteLock.coverage)}
                     />
                     <InvestigationField
                       label="Control note"
-                      value={focusControlNote}
+                      value={focusRouteLock.controlNote}
                     />
                   </div>
 
                   <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-                    {focusPrimaryControlAction ? (
-                      <Link
-                        href={focusPrimaryControlAction.href}
-                        className={actionLinkClassName("primary")}
-                      >
-                        {focusPrimaryControlAction.label}
-                      </Link>
-                    ) : null}
+                    <Link
+                      href={focusRouteLock.primaryAction.href}
+                      className={actionLinkClassName("primary")}
+                    >
+                      {focusRouteLock.primaryAction.label}
+                    </Link>
 
                     <Link href={backToFlowsHref} className={actionLinkClassName("soft")}>
                       {controlReturnLabel}
@@ -2901,7 +2936,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     </Link>
 
                     {focusIncidentDetailHref &&
-                    focusPrimaryControlAction?.href !== focusIncidentDetailHref ? (
+                    focusRouteLock.primaryAction.href !== focusIncidentDetailHref ? (
                       <Link
                         href={focusIncidentDetailHref}
                         className={actionLinkClassName("danger")}
