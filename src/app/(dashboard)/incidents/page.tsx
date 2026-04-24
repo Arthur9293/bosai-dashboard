@@ -73,6 +73,12 @@ type TriagePriorityLabel =
   | "NEEDS CONTEXT"
   | "WATCH";
 
+type OperatorQueueBucket =
+  | "NOW QUEUE"
+  | "NEXT QUEUE"
+  | "CONTEXT QUEUE"
+  | "WATCH QUEUE";
+
 type OperatorSummaryBadgeLabel =
   | "OPERATOR READY"
   | "ACTION FOCUS"
@@ -1778,6 +1784,119 @@ function getTriagePriorityStats(
   );
 }
 
+function getIncidentOperatorQueueBucket(args: {
+  triagePriorityLabel: TriagePriorityLabel;
+}): OperatorQueueBucket {
+  if (args.triagePriorityLabel === "DO NOW") return "NOW QUEUE";
+  if (args.triagePriorityLabel === "DO NEXT") return "NEXT QUEUE";
+  if (args.triagePriorityLabel === "NEEDS CONTEXT") return "CONTEXT QUEUE";
+
+  return "WATCH QUEUE";
+}
+
+function getOperatorQueueBucketReason(bucket: OperatorQueueBucket): string {
+  if (bucket === "NOW QUEUE") {
+    return "File immédiate : incidents à traiter maintenant.";
+  }
+
+  if (bucket === "NEXT QUEUE") {
+    return "File suivante : incidents actionnables après les urgences.";
+  }
+
+  if (bucket === "CONTEXT QUEUE") {
+    return "File contexte : incidents à compléter avant action.";
+  }
+
+  return "File surveillance : incidents visibles sans action immédiate.";
+}
+
+function getOperatorQueueBucketClassName(bucket: OperatorQueueBucket): string {
+  if (bucket === "NOW QUEUE") {
+    return "border-rose-400/25 bg-rose-400/10 text-rose-200";
+  }
+
+  if (bucket === "NEXT QUEUE") {
+    return "border-sky-400/25 bg-sky-400/10 text-sky-200";
+  }
+
+  if (bucket === "CONTEXT QUEUE") {
+    return "border-amber-400/25 bg-amber-400/10 text-amber-200";
+  }
+
+  return "border-zinc-400/20 bg-white/[0.04] text-zinc-300";
+}
+
+function getOperatorQueueBucketBadgeKind(
+  bucket: OperatorQueueBucket,
+): DashboardStatusKind {
+  if (bucket === "NOW QUEUE") return "failed";
+  if (bucket === "NEXT QUEUE") return "running";
+  if (bucket === "CONTEXT QUEUE") return "retry";
+
+  return "unknown";
+}
+
+function getOperatorQueueStats(
+  incidents: IncidentItem[],
+  activeWorkspaceId?: string,
+): {
+  now: number;
+  next: number;
+  context: number;
+  watch: number;
+} {
+  return incidents.reduce(
+    (acc, incident) => {
+      if (
+        activeWorkspaceId &&
+        !workspaceMatchesOrUnscoped(getIncidentWorkspaceId(incident), activeWorkspaceId)
+      ) {
+        return acc;
+      }
+
+      const commandHref = getCommandHref(incident, activeWorkspaceId);
+      const flowHref = getFlowHref(incident, activeWorkspaceId);
+      const eventHref = getEventHref(incident, activeWorkspaceId);
+
+      const nextMoveLabel = getIncidentNextMoveLabel({
+        incident,
+        commandHref,
+        flowHref,
+        eventHref,
+      });
+
+      const actionReadinessLabel = getIncidentActionReadinessLabel(incident);
+
+      const triagePriorityLabel = getIncidentTriagePriorityLabel({
+        incident,
+        nextMoveLabel,
+        actionReadinessLabel,
+      });
+
+      const bucket = getIncidentOperatorQueueBucket({ triagePriorityLabel });
+
+      if (bucket === "NOW QUEUE") acc.now += 1;
+      if (bucket === "NEXT QUEUE") acc.next += 1;
+      if (bucket === "CONTEXT QUEUE") acc.context += 1;
+      if (bucket === "WATCH QUEUE") acc.watch += 1;
+
+      return acc;
+    },
+    { now: 0, next: 0, context: 0, watch: 0 },
+  );
+}
+
+function getOperatorQueueSummaryText(args: {
+  queueStats: {
+    now: number;
+    next: number;
+    context: number;
+    watch: number;
+  };
+}): string {
+  return `${args.queueStats.now} now · ${args.queueStats.next} next · ${args.queueStats.context} context · ${args.queueStats.watch} watch`;
+}
+
 function getPluralLabel(
   count: number,
   singular: string,
@@ -2323,6 +2442,12 @@ function IncidentListCard({
   const triagePriorityReason =
     getIncidentTriagePriorityReason(triagePriorityLabel);
 
+  const operatorQueueBucket = getIncidentOperatorQueueBucket({
+    triagePriorityLabel,
+  });
+  const operatorQueueReason =
+    getOperatorQueueBucketReason(operatorQueueBucket);
+
   const linkedActions: ControlAction[] = [
     flowHref
       ? {
@@ -2441,6 +2566,11 @@ function IncidentListCard({
                 label={triagePriorityLabel}
               />
 
+              <DashboardStatusBadge
+                kind={getOperatorQueueBucketBadgeKind(operatorQueueBucket)}
+                label={operatorQueueBucket}
+              />
+
               {getDecisionStatus(incident) ? (
                 <DashboardStatusBadge
                   kind={getDecisionBadgeKind(incident)}
@@ -2554,6 +2684,24 @@ function IncidentListCard({
                 {triagePriorityReason}
               </div>
             </div>
+
+            <div className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className={metaLabelClassName()}>Operator queue</div>
+                <span
+                  className={[
+                    "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
+                    getOperatorQueueBucketClassName(operatorQueueBucket),
+                  ].join(" ")}
+                >
+                  {operatorQueueBucket}
+                </span>
+              </div>
+
+              <div className="mt-3 text-xs leading-5 text-zinc-400">
+                {operatorQueueReason}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2636,6 +2784,19 @@ function IncidentListCard({
                   : triagePriorityLabel === "DO NEXT"
                     ? "text-sky-300"
                     : triagePriorityLabel === "NEEDS CONTEXT"
+                      ? "text-amber-300"
+                      : "text-zinc-300"
+              }
+            />
+            <InvestigationField
+              label="Operator queue"
+              value={operatorQueueBucket}
+              valueClassName={
+                operatorQueueBucket === "NOW QUEUE"
+                  ? "text-rose-300"
+                  : operatorQueueBucket === "NEXT QUEUE"
+                    ? "text-sky-300"
+                    : operatorQueueBucket === "CONTEXT QUEUE"
                       ? "text-amber-300"
                       : "text-zinc-300"
               }
@@ -2931,6 +3092,13 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     visibleIncidents,
     activeWorkspaceId,
   );
+  const operatorQueueStats = getOperatorQueueStats(
+    visibleIncidents,
+    activeWorkspaceId,
+  );
+  const operatorQueueSummaryText = getOperatorQueueSummaryText({
+    queueStats: operatorQueueStats,
+  });
 
   const operatorSummaryText = getOperatorSummaryText({
     visibleCount: visibleIncidents.length,
@@ -3021,6 +3189,16 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
           actionReadinessLabel: focusActionReadinessLabel,
         })
       : null;
+
+  const focusOperatorQueueBucket = focusTriagePriorityLabel
+    ? getIncidentOperatorQueueBucket({
+        triagePriorityLabel: focusTriagePriorityLabel,
+      })
+    : null;
+
+  const focusOperatorQueueReason = focusOperatorQueueBucket
+    ? getOperatorQueueBucketReason(focusOperatorQueueBucket)
+    : "";
 
   const focusRouteLock = focusIncident
     ? getIncidentRouteLock({
@@ -3295,6 +3473,14 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 <div className="mt-3 text-sm leading-6 text-white/70">
                   {operatorSummaryText}
                 </div>
+
+                <div className="mt-3 rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3">
+                  <div className={metaLabelClassName()}>Operator queue</div>
+                  <div className="mt-2 text-sm font-medium leading-6 text-zinc-200">
+                    Now {operatorQueueStats.now} · Next {operatorQueueStats.next} · Context{" "}
+                    {operatorQueueStats.context} · Watch {operatorQueueStats.watch}
+                  </div>
+                </div>
               </div>
             </div>
           </SidePanelCard>
@@ -3346,6 +3532,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     <DashboardStatusBadge
                       kind={getTriagePriorityBadgeKind(focusTriagePriorityLabel)}
                       label={focusTriagePriorityLabel}
+                    />
+                  ) : null}
+                  {focusOperatorQueueBucket ? (
+                    <DashboardStatusBadge
+                      kind={getOperatorQueueBucketBadgeKind(focusOperatorQueueBucket)}
+                      label={focusOperatorQueueBucket}
                     />
                   ) : null}
                 </div>
@@ -3407,6 +3599,21 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       }
                     />
                   ) : null}
+                  {focusOperatorQueueBucket ? (
+                    <InvestigationField
+                      label="Operator queue"
+                      value={focusOperatorQueueBucket}
+                      valueClassName={
+                        focusOperatorQueueBucket === "NOW QUEUE"
+                          ? "text-rose-300"
+                          : focusOperatorQueueBucket === "NEXT QUEUE"
+                            ? "text-sky-300"
+                            : focusOperatorQueueBucket === "CONTEXT QUEUE"
+                              ? "text-amber-300"
+                              : "text-zinc-300"
+                      }
+                    />
+                  ) : null}
                   <InvestigationField
                     label="CTA principal"
                     value={focusRouteLock.primaryAction.label}
@@ -3445,6 +3652,15 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     <div className={metaLabelClassName()}>Triage priority note</div>
                     <div className="mt-2 text-sm leading-6 text-zinc-300">
                       {getIncidentTriagePriorityReason(focusTriagePriorityLabel)}
+                    </div>
+                  </div>
+                ) : null}
+
+                {focusOperatorQueueBucket ? (
+                  <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                    <div className={metaLabelClassName()}>Operator queue note</div>
+                    <div className="mt-2 text-sm leading-6 text-zinc-300">
+                      {focusOperatorQueueReason}
                     </div>
                   </div>
                 ) : null}
@@ -3604,6 +3820,14 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 {triagePriorityStats.doNext} ensuite ·{" "}
                 {triagePriorityStats.needsContext} contexte ·{" "}
                 {triagePriorityStats.watch} watch
+              </div>
+
+              <div className="mt-3 rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3">
+                <div className={metaLabelClassName()}>Operator Queue</div>
+                <div className="mt-2 text-sm font-medium leading-6 text-zinc-200">
+                  Now {operatorQueueStats.now} · Next {operatorQueueStats.next} · Context{" "}
+                  {operatorQueueStats.context} · Watch {operatorQueueStats.watch}
+                </div>
               </div>
             </div>
           </SectionCard>
@@ -3794,6 +4018,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       <DashboardStatusBadge
                         kind={getTriagePriorityBadgeKind(focusTriagePriorityLabel)}
                         label={focusTriagePriorityLabel}
+                      />
+                    ) : null}
+                    {focusOperatorQueueBucket ? (
+                      <DashboardStatusBadge
+                        kind={getOperatorQueueBucketBadgeKind(focusOperatorQueueBucket)}
+                        label={focusOperatorQueueBucket}
                       />
                     ) : null}
                   </div>
@@ -4122,6 +4352,51 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 </div>
               </div>
 
+              <div className="mt-4 rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+                <div className={metaLabelClassName()}>Operator Queue</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-400">
+                  Lecture complémentaire : file de travail immédiate dérivée de Triage Priority.
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                  <div className="rounded-[18px] border border-rose-400/15 bg-rose-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-rose-300">
+                      {operatorQueueStats.now}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Now
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-sky-400/15 bg-sky-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-sky-300">
+                      {operatorQueueStats.next}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Next
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-amber-400/15 bg-amber-400/5 px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-amber-300">
+                      {operatorQueueStats.context}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Context
+                    </div>
+                  </div>
+
+                  <div className="rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3">
+                    <div className="text-2xl font-semibold tracking-tight text-zinc-300">
+                      {operatorQueueStats.watch}
+                    </div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                      Watch
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <InvestigationField
                   label="Executive posture"
@@ -4189,6 +4464,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 />
 
                 <InvestigationField
+                  label="Operator queue"
+                  value={operatorQueueSummaryText}
+                />
+
+                <InvestigationField
                   label="Operator summary"
                   value={operatorSummaryText}
                   valueClassName={toneTextClassName(operatorSummaryTone)}
@@ -4236,6 +4516,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                         label={focusTriagePriorityLabel}
                       />
                     ) : null}
+                    {focusOperatorQueueBucket ? (
+                      <DashboardStatusBadge
+                        kind={getOperatorQueueBucketBadgeKind(focusOperatorQueueBucket)}
+                        label={focusOperatorQueueBucket}
+                      />
+                    ) : null}
                     {focusPrimaryControlAction ? (
                       <DashboardStatusBadge kind="success" label="CONTROL READY" />
                     ) : (
@@ -4273,6 +4559,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       label="Triage priority"
                       value={`${triagePriorityStats.doNow} now · ${triagePriorityStats.doNext} next · ${triagePriorityStats.needsContext} context · ${triagePriorityStats.watch} watch`}
                       valueClassName="text-rose-300"
+                    />
+                    <InvestigationField
+                      label="Operator queue"
+                      value={operatorQueueSummaryText}
+                      valueClassName="text-zinc-200"
                     />
                     <InvestigationField
                       label="Control note"
