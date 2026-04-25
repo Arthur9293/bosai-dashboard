@@ -2414,6 +2414,25 @@ function getQueueDecisionConfidenceSummary(
   return "Décision à surveiller : le signal reste insuffisant ou non actionnable.";
 }
 
+
+function getQueueFinalActionLabel(
+  confidence: QueueDecisionConfidence,
+): string {
+  if (confidence === "HIGH CONFIDENCE") return "Action validée";
+  if (confidence === "MEDIUM CONFIDENCE") return "Action prudente";
+
+  return "Action à surveiller";
+}
+
+function getQueueFinalPrimaryAction(
+  confidence: QueueDecisionConfidence,
+): string {
+  if (confidence === "HIGH CONFIDENCE") return "Exécuter maintenant";
+  if (confidence === "MEDIUM CONFIDENCE") return "Ouvrir et vérifier";
+
+  return "Surveiller avant action";
+}
+
 function getPluralLabel(
   count: number,
   singular: string,
@@ -6064,6 +6083,66 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                                   className={actionLinkClassName("primary")}
                                 >
                                   Ouvrir avec cette décision
+                                </Link>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-5 rounded-[18px] border border-emerald-400/15 bg-emerald-400/[0.04] px-4 py-4">
+                            <div className={metaLabelClassName()}>
+                              Queue Final Action Bar
+                            </div>
+
+                            <div className="mt-3 text-lg font-semibold tracking-tight text-white">
+                              {getQueueFinalActionLabel(
+                                getQueueDecisionConfidence({
+                                  level: queueRiskLevel,
+                                  nextMoveLabel:
+                                    queueFocusedFirstIncidentNextMoveLabel,
+                                  firstIncident: queueFocusedFirstIncident,
+                                }),
+                              )}
+                            </div>
+
+                            <div className="mt-4 rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                                Résumé décision
+                              </div>
+                              <div className="mt-2 text-sm font-medium leading-6 text-zinc-100">
+                                {getQueueOperatorDecisionLabel(queueRiskLevel)} ·{" "}
+                                {getQueueDecisionConfidence({
+                                  level: queueRiskLevel,
+                                  nextMoveLabel:
+                                    queueFocusedFirstIncidentNextMoveLabel,
+                                  firstIncident: queueFocusedFirstIncident,
+                                })}{" "}
+                                · {queueFocusedFirstIncidentNextMoveLabel}
+                              </div>
+                            </div>
+
+                            <div className="mt-4 rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                                Action principale
+                              </div>
+                              <div className="mt-2 text-sm font-medium text-zinc-100">
+                                {getQueueFinalPrimaryAction(
+                                  getQueueDecisionConfidence({
+                                    level: queueRiskLevel,
+                                    nextMoveLabel:
+                                      queueFocusedFirstIncidentNextMoveLabel,
+                                    firstIncident: queueFocusedFirstIncident,
+                                  }),
+                                )}
+                              </div>
+                            </div>
+
+                            {queueFocusedFirstIncidentHref ? (
+                              <div className="mt-4">
+                                <Link
+                                  href={queueFocusedFirstIncidentHref}
+                                  className={actionLinkClassName("primary")}
+                                >
+                                  Lancer l’action principale
                                 </Link>
                               </div>
                             ) : null}
