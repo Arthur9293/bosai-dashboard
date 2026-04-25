@@ -6356,30 +6356,31 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                               {/* V2.31-visible-footer */}
                           <div className="mt-6 rounded-[24px] border border-sky-400/15 bg-gradient-to-br from-sky-400/[0.08] via-white/[0.035] to-emerald-400/[0.06] px-4 py-5 shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
                             {/* V2.33-final-visual-balance */}
-                            <div className="mb-4 h-px w-full bg-gradient-to-r from-transparent via-emerald-400/30 to-transparent" />
+                            {/* V2.34-mobile-compact-pass */}
+                            <div className="mb-3 h-px w-full bg-gradient-to-r from-transparent via-emerald-400/30 to-transparent sm:mb-4" />
                             <div className={metaLabelClassName()}>
                               Queue Operator Summary Footer
                             </div>
 
-                            <div className="mt-3 max-w-[34rem] text-xl font-semibold leading-tight tracking-tight text-white">
+                            <div className="mt-2 max-w-[34rem] text-lg font-semibold leading-tight tracking-tight text-white sm:mt-3 sm:text-xl">
                               Synthèse opérateur de la file active
                             </div>
 
-                            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                              <div className="rounded-[18px] border border-white/10 bg-black/25 px-4 py-4">
+                            <div className="mt-4 grid gap-3 sm:mt-5 sm:grid-cols-2 sm:gap-4">
+                              <div className="rounded-[16px] border border-white/10 bg-black/25 px-3 py-3 sm:rounded-[18px] sm:px-4 sm:py-4">
                                 <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                                   File active
                                 </div>
-                                <div className="mt-2 text-sm font-medium text-zinc-100">
+                                <div className="mt-1.5 text-sm font-medium text-zinc-100 sm:mt-2">
                                   {getOperatorQueuePositionLabel(queueFilter)}
                                 </div>
                               </div>
 
-                              <div className="rounded-[18px] border border-white/10 bg-black/25 px-4 py-4">
+                              <div className="rounded-[16px] border border-white/10 bg-black/25 px-3 py-3 sm:rounded-[18px] sm:px-4 sm:py-4">
                                 <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                                   Route suivante
                                 </div>
-                                <div className="mt-2 text-sm font-medium leading-6 text-zinc-100">
+                                <div className="mt-2 text-sm font-medium leading-6 text-zinc-100 sm:leading-6">
                                   {getQueueNextStepRouteLabel(
                                     getQueueCompletionState({
                                       count: queueFocusedIncidents.length,
@@ -6390,11 +6391,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                               </div>
                             </div>
 
-                            <div className="mt-5 rounded-[18px] border border-emerald-400/15 bg-emerald-400/[0.045] px-4 py-4">
+                            <div className="mt-3 rounded-[16px] border border-emerald-400/15 bg-emerald-400/[0.045] px-3 py-3 sm:rounded-[18px] sm:px-4 sm:py-4">
                               <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                                 Signaux synthèse
                               </div>
-                              <div className="mt-2 text-sm font-medium leading-6 text-zinc-100">
+                              <div className="mt-2 text-sm font-medium leading-6 text-zinc-100 sm:leading-6">
                                 {queueRiskLevel} ·{" "}
                                 {getQueueDecisionConfidence({
                                   level: queueRiskLevel,
@@ -6406,11 +6407,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                               </div>
                             </div>
 
-                            <div className="mt-4 rounded-[18px] border border-white/10 bg-black/25 px-4 py-4">
+                            <div className="mt-3 rounded-[16px] border border-white/10 bg-black/25 px-3 py-3 sm:rounded-[18px] sm:px-4 sm:py-4">
                               <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                                 Action immédiate
                               </div>
-                              <div className="mt-2 text-sm font-medium text-zinc-100">
+                              <div className="mt-1.5 text-sm font-medium text-zinc-100 sm:mt-2">
                                 {getQueueNextStepPrimaryCta(
                                   getQueueCompletionState({
                                     count: queueFocusedIncidents.length,
@@ -6420,11 +6421,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                               </div>
                             </div>
 
-                            <div className="mt-4 rounded-[18px] border border-sky-400/10 bg-sky-400/[0.035] px-4 py-4">
+                            <div className="mt-3 rounded-[16px] border border-sky-400/10 bg-sky-400/[0.035] px-3 py-3 sm:rounded-[18px] sm:px-4 sm:py-4">
                               <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                                 Action consolidée
                               </div>
-                              <div className="mt-2 text-sm font-medium leading-6 text-zinc-100">
+                              <div className="mt-2 text-sm font-medium leading-6 text-zinc-100 sm:leading-6">
                                 L’action principale reste disponible dans le routeur opérateur.
                               </div>
                             </div>
