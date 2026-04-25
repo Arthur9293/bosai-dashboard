@@ -2473,6 +2473,47 @@ function getQueueCompletionCtaLabel(
   return "Vérifier puis clôturer la file";
 }
 
+
+function getQueueNextStepRouteLabel(
+  state: QueueCompletionState,
+): string {
+  if (state === "ACTIVE QUEUE") return "Route : continuer la file active";
+  if (state === "LAST INCIDENT") return "Route : traiter puis revenir All queues";
+
+  return "Route : vérifier puis revenir All queues";
+}
+
+function getQueueNextStepRouteSummary(
+  state: QueueCompletionState,
+): string {
+  if (state === "ACTIVE QUEUE") {
+    return "Traite le premier incident, puis reviens à cette file pour poursuivre les incidents restants.";
+  }
+
+  if (state === "LAST INCIDENT") {
+    return "Traite le dernier incident actif, puis retourne aux files globales.";
+  }
+
+  return "Vérifie le dernier incident en surveillance, puis retourne aux files globales.";
+}
+
+function getQueueNextStepPrimaryCta(
+  state: QueueCompletionState,
+): string {
+  if (state === "ACTIVE QUEUE") return "Ouvrir puis continuer la file";
+  if (state === "LAST INCIDENT") return "Ouvrir puis revenir All queues";
+
+  return "Vérifier puis revenir All queues";
+}
+
+function getQueueNextStepSecondaryCta(
+  state: QueueCompletionState,
+): string {
+  if (state === "ACTIVE QUEUE") return "Retour file active";
+
+  return "Retour All queues";
+}
+
 function getPluralLabel(
   count: number,
   singular: string,
@@ -3689,11 +3730,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const commandId = firstParam(resolvedSearchParams.command_id).trim();
   const from = firstParam(resolvedSearchParams.from).trim();
 
-  const operatorQueueFilter = getOperatorQueueFilterFromSearchParam(
+  const queueFilter = getOperatorQueueFilterFromSearchParam(
     resolvedSearchParams.queue,
   );
-  const hasActiveQueueFilter = operatorQueueFilter !== "all";
-  const activeQueueFilterLabel = getOperatorQueueFilterLabel(operatorQueueFilter);
+  const hasActiveQueueFilter = queueFilter !== "all";
+  const queueFilterLabel = getOperatorQueueFilterLabel(queueFilter);
 
   let incidentsUnfiltered: IncidentItem[] = [];
   let fetchFailed = false;
@@ -3754,7 +3795,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
         visibleIncidents.filter((incident) =>
           incidentMatchesOperatorQueueFilter({
             incident,
-            filter: operatorQueueFilter,
+            filter: queueFilter,
             activeWorkspaceId,
           }),
         ),
@@ -3965,9 +4006,9 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
       : "";
 
   const operatorQueuePreviousFilter =
-    getOperatorQueuePreviousFilter(operatorQueueFilter);
+    getOperatorQueuePreviousFilter(queueFilter);
   const operatorQueueNextFilter =
-    getOperatorQueueNextFilter(operatorQueueFilter);
+    getOperatorQueueNextFilter(queueFilter);
 
   const operatorQueuePreviousHref = getOperatorQueueFilterHref({
     filter: operatorQueuePreviousFilter,
@@ -4684,10 +4725,10 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       key={item.filter}
                       href={item.href}
                       className={queueFocusLinkClassName(
-                        operatorQueueFilter === item.filter,
+                        queueFilter === item.filter,
                       )}
                       aria-current={
-                        operatorQueueFilter === item.filter ? "page" : undefined
+                        queueFilter === item.filter ? "page" : undefined
                       }
                     >
                       {item.label} {item.count}
@@ -4697,7 +4738,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
                 <div className="mt-3 text-xs leading-5 text-zinc-500">
                   {hasActiveQueueFilter
-                    ? `Focus actif : ${activeQueueFilterLabel}. Needs Attention affiche uniquement cette file.`
+                    ? `Focus actif : ${queueFilterLabel}. Needs Attention affiche uniquement cette file.`
                     : "Toutes les files restent visibles. Les sections globales ne sont pas modifiées."}
                 </div>
               </div>
@@ -5545,12 +5586,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
             <SectionBlock
               title={
                 hasActiveQueueFilter
-                  ? `Needs Attention — Queue Focus: ${activeQueueFilterLabel}`
+                  ? `Needs Attention — Queue Focus: ${queueFilterLabel}`
                   : "Needs Attention"
               }
               description={
                 hasActiveQueueFilter
-                  ? `Affiche uniquement les incidents ${activeQueueFilterLabel} sur le scope actuel. Les compteurs globaux restent inchangés.`
+                  ? `Affiche uniquement les incidents ${queueFilterLabel} sur le scope actuel. Les compteurs globaux restent inchangés.`
                   : "Incidents à surveiller en priorité : ouverts, escaladés, critiques ou encore non résolus."
               }
               count={queueFocusedIncidents.length}
@@ -5586,11 +5627,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   {hasActiveQueueFilter ? (
                     <div
                       className={`${metaBoxClassName()} ${signalRingClassName(
-                        operatorQueueFilter === "now"
+                        queueFilter === "now"
                           ? "danger"
-                          : operatorQueueFilter === "next"
+                          : queueFilter === "next"
                             ? "info"
-                            : operatorQueueFilter === "context"
+                            : queueFilter === "context"
                               ? "warning"
                               : "default",
                       )}`}
@@ -5599,21 +5640,21 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                         <div>
                           <div className={metaLabelClassName()}>Queue Action</div>
                           <div className="mt-2 text-lg font-semibold tracking-tight text-white">
-                            {activeQueueFilterLabel}
+                            {queueFilterLabel}
                           </div>
                         </div>
 
                         <DashboardStatusBadge
                           kind={
-                            operatorQueueFilter === "now"
+                            queueFilter === "now"
                               ? "failed"
-                              : operatorQueueFilter === "next"
+                              : queueFilter === "next"
                                 ? "running"
-                                : operatorQueueFilter === "context"
+                                : queueFilter === "context"
                                   ? "retry"
                                   : "unknown"
                           }
-                          label={activeQueueFilterLabel}
+                          label={queueFilterLabel}
                         />
                       </div>
 
@@ -5626,7 +5667,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       </div>
 
                       <div className="mt-2 text-sm leading-6 text-zinc-400">
-                        {getOperatorQueueFilterHelpText(operatorQueueFilter)}
+                        {getOperatorQueueFilterHelpText(queueFilter)}
                       </div>
 
                       <div className="mt-5 rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-4">
@@ -5656,7 +5697,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                               File active
                             </div>
                             <div className="mt-2 text-sm font-medium text-zinc-100">
-                              {getOperatorQueueProgressLabel(operatorQueueFilter)}
+                              {getOperatorQueueProgressLabel(queueFilter)}
                             </div>
                           </div>
                         </div>
@@ -5671,7 +5712,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                               Position cycle
                             </div>
                             <div className="mt-2 text-sm font-medium text-zinc-100">
-                              {getOperatorQueuePositionLabel(operatorQueueFilter)}
+                              {getOperatorQueuePositionLabel(queueFilter)}
                             </div>
                           </div>
 
@@ -5989,7 +6030,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                                   Surface de retour
                                 </div>
                                 <div className="mt-2 text-sm font-medium text-zinc-100">
-                                  {activeQueueFilterLabel}
+                                  {queueFilterLabel}
                                 </div>
                               </div>
                             </div>
@@ -5997,7 +6038,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                             <div className="mt-4">
                               <Link
                                 href={getOperatorQueueFilterHref({
-                                  filter: operatorQueueFilter,
+                                  filter: queueFilter,
                                   activeWorkspaceId,
                                   flowId,
                                   rootEventId,
@@ -6260,6 +6301,105 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                                 </Link>
                               </div>
                             ) : null}
+                          </div>
+
+                          <div className="mt-5 rounded-[18px] border border-sky-400/15 bg-sky-400/[0.04] px-4 py-4">
+                            <div className={metaLabelClassName()}>
+                              Queue Next Step Router
+                            </div>
+
+                            <div className="mt-3 text-lg font-semibold tracking-tight text-white">
+                              {getQueueNextStepRouteLabel(
+                                getQueueCompletionState({
+                                  count: queueFocusedIncidents.length,
+                                  level: queueRiskLevel,
+                                }),
+                              )}
+                            </div>
+
+                            <div className="mt-3 text-sm leading-6 text-zinc-300">
+                              {getQueueNextStepRouteSummary(
+                                getQueueCompletionState({
+                                  count: queueFocusedIncidents.length,
+                                  level: queueRiskLevel,
+                                }),
+                              )}
+                            </div>
+
+                            <div className="mt-4 rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                                Surface immédiate
+                              </div>
+                              <div className="mt-2">
+                                <DashboardStatusBadge
+                                  kind="success"
+                                  label={queueFocusedFirstIncidentNextMoveLabel}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mt-4 rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                                Retour conseillé
+                              </div>
+                              <div className="mt-2 text-sm font-medium text-zinc-100">
+                                {getQueueCompletionState({
+                                  count: queueFocusedIncidents.length,
+                                  level: queueRiskLevel,
+                                }) === "ACTIVE QUEUE"
+                                  ? getOperatorQueuePositionLabel(queueFilter)
+                                  : "All queues"}
+                              </div>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                              {queueFocusedFirstIncidentHref ? (
+                                <Link
+                                  href={queueFocusedFirstIncidentHref}
+                                  className={actionLinkClassName("primary")}
+                                >
+                                  {getQueueNextStepPrimaryCta(
+                                    getQueueCompletionState({
+                                      count: queueFocusedIncidents.length,
+                                      level: queueRiskLevel,
+                                    }),
+                                  )}
+                                </Link>
+                              ) : null}
+
+                              <Link
+                                href={
+                                  getQueueCompletionState({
+                                    count: queueFocusedIncidents.length,
+                                    level: queueRiskLevel,
+                                  }) === "ACTIVE QUEUE"
+                                    ? getOperatorQueueFilterHref({
+                                      filter: queueFilter,
+                                      activeWorkspaceId,
+                                      flowId,
+                                      rootEventId,
+                                      sourceRecordId,
+                                      commandId,
+                                    })
+                                    : getOperatorQueueFilterHref({
+                                      filter: "all",
+                                      activeWorkspaceId,
+                                      flowId,
+                                      rootEventId,
+                                      sourceRecordId,
+                                      commandId,
+                                    })
+                                }
+                                className={actionLinkClassName("default")}
+                              >
+                                {getQueueNextStepSecondaryCta(
+                                  getQueueCompletionState({
+                                    count: queueFocusedIncidents.length,
+                                    level: queueRiskLevel,
+                                  }),
+                                )}
+                              </Link>
+                            </div>
                           </div>
                         </>
                       ) : null}
