@@ -6354,17 +6354,19 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
                             <div className="mt-4 grid gap-3 sm:grid-cols-2">
                               {/* V2.31-visible-footer */}
-                          <div className="mt-5 rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-4">
+                          <div className="mt-6 rounded-[24px] border border-sky-400/15 bg-gradient-to-br from-sky-400/[0.08] via-white/[0.035] to-emerald-400/[0.06] px-4 py-5 shadow-[0_0_0_1px_rgba(255,255,255,0.025)]">
+                            {/* V2.33-final-visual-balance */}
+                            <div className="mb-4 h-px w-full bg-gradient-to-r from-transparent via-emerald-400/30 to-transparent" />
                             <div className={metaLabelClassName()}>
                               Queue Operator Summary Footer
                             </div>
 
-                            <div className="mt-3 text-lg font-semibold tracking-tight text-white">
+                            <div className="mt-3 max-w-[34rem] text-xl font-semibold leading-tight tracking-tight text-white">
                               Synthèse opérateur de la file active
                             </div>
 
-                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                              <div className="rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                              <div className="rounded-[18px] border border-white/10 bg-black/25 px-4 py-4">
                                 <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                                   File active
                                 </div>
@@ -6373,7 +6375,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                                 </div>
                               </div>
 
-                              <div className="rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                              <div className="rounded-[18px] border border-white/10 bg-black/25 px-4 py-4">
                                 <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                                   Route suivante
                                 </div>
@@ -6388,7 +6390,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                               </div>
                             </div>
 
-                            <div className="mt-4 rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                            <div className="mt-5 rounded-[18px] border border-emerald-400/15 bg-emerald-400/[0.045] px-4 py-4">
                               <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                                 Signaux synthèse
                               </div>
@@ -6404,7 +6406,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                               </div>
                             </div>
 
-                            <div className="mt-4 rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                            <div className="mt-4 rounded-[18px] border border-white/10 bg-black/25 px-4 py-4">
                               <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                                 Action immédiate
                               </div>
@@ -6418,7 +6420,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                               </div>
                             </div>
 
-                            <div className="mt-4 rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                            <div className="mt-4 rounded-[18px] border border-sky-400/10 bg-sky-400/[0.035] px-4 py-4">
                               <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                                 Action consolidée
                               </div>
