@@ -21,6 +21,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// {/* V2.35-operator-summary-mobile-polish */}
+
 type SearchParams = {
   flow_id?: string | string[];
   root_event_id?: string | string[];
@@ -4708,7 +4710,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 {triagePriorityStats.watch} watch
               </div>
 
-              <div className="mt-3 rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3">
+              <div className="mt-3 rounded-[18px] border border-white/10 bg-white/[0.03] px-3 sm:px-4 py-3">
                 <div className={metaLabelClassName()}>Operator Queue</div>
                 <div className="mt-2 text-sm font-medium leading-6 text-zinc-200">
                   Now {operatorQueueStats.now} · Next {operatorQueueStats.next} · Context{" "}
