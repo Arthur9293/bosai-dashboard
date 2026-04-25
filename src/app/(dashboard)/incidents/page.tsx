@@ -3622,6 +3622,35 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     activeWorkspaceId,
   });
 
+
+  const queueFocusedFirstIncident = queueFocusedIncidents[0] || null;
+
+  const queueFocusedFirstIncidentCommandHref = queueFocusedFirstIncident
+    ? getCommandHref(queueFocusedFirstIncident, activeWorkspaceId)
+    : "";
+
+  const queueFocusedFirstIncidentFlowHref = queueFocusedFirstIncident
+    ? getFlowHref(queueFocusedFirstIncident, activeWorkspaceId)
+    : "";
+
+  const queueFocusedFirstIncidentEventHref = queueFocusedFirstIncident
+    ? getEventHref(queueFocusedFirstIncident, activeWorkspaceId)
+    : "";
+
+  const queueFocusedFirstIncidentNextMoveLabel = queueFocusedFirstIncident
+    ? getIncidentNextMoveLabel({
+        incident: queueFocusedFirstIncident,
+        commandHref: queueFocusedFirstIncidentCommandHref,
+        flowHref: queueFocusedFirstIncidentFlowHref,
+        eventHref: queueFocusedFirstIncidentEventHref,
+      })
+    : null;
+
+  const queueFocusedFirstIncidentNextMoveReason =
+    queueFocusedFirstIncidentNextMoveLabel
+      ? getIncidentNextMoveReason(queueFocusedFirstIncidentNextMoveLabel)
+      : "";
+
   const operatorQueuePreviousFilter =
     getOperatorQueuePreviousFilter(operatorQueueFilter);
   const operatorQueueNextFilter =
@@ -5363,6 +5392,66 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                           </Link>
                         </div>
                       </div>
+
+                      {queueFocusedFirstIncident &&
+                      queueFocusedFirstIncidentNextMoveLabel ? (
+                        <div className="mt-5 rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-4">
+                          <div className={metaLabelClassName()}>
+                            First Incident Brief
+                          </div>
+
+                          <div className="mt-3 rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                              Incident
+                            </div>
+                            <div className="mt-2 text-sm font-medium leading-6 text-zinc-100">
+                              {getIncidentDisplayTitle(queueFocusedFirstIncident)}
+                            </div>
+                            <div className="mt-2 text-xs leading-5 text-zinc-500">
+                              {getIncidentStatusLabel(queueFocusedFirstIncident)} ·{" "}
+                              {getIncidentSeverityDisplayLabel(
+                                queueFocusedFirstIncident,
+                              )} · {getWorkspaceDisplay(queueFocusedFirstIncident)}
+                            </div>
+                          </div>
+
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            <div className="rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                                Next surface
+                              </div>
+                              <div className="mt-2">
+                                <DashboardStatusBadge
+                                  kind={getNextMoveBadgeKind(
+                                    queueFocusedFirstIncidentNextMoveLabel,
+                                  )}
+                                  label={queueFocusedFirstIncidentNextMoveLabel}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                                Pourquoi l’ouvrir
+                              </div>
+                              <div className="mt-2 text-sm leading-6 text-zinc-300">
+                                {queueFocusedFirstIncidentNextMoveReason}
+                              </div>
+                            </div>
+                          </div>
+
+                          {queueFocusedFirstIncidentHref ? (
+                            <div className="mt-4">
+                              <Link
+                                href={queueFocusedFirstIncidentHref}
+                                className={actionLinkClassName("soft")}
+                              >
+                                Ouvrir ce premier incident
+                              </Link>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
 
                       <div className="mt-5 grid gap-3 sm:grid-cols-2">
                         {queueFocusedFirstIncidentHref ? (
