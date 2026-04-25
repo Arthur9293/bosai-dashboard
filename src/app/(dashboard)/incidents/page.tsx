@@ -6418,16 +6418,14 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                               </div>
                             </div>
 
-                            {queueFocusedFirstIncidentHref ? (
-                              <div className="mt-4">
-                                <Link
-                                  href={queueFocusedFirstIncidentHref}
-                                  className={actionLinkClassName("primary")}
-                                >
-                                  Lancer depuis la synthèse
-                                </Link>
+                            <div className="mt-4 rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                                Action consolidée
                               </div>
-                            ) : null}
+                              <div className="mt-2 text-sm font-medium leading-6 text-zinc-100">
+                                L’action principale reste disponible dans le routeur opérateur.
+                              </div>
+                            </div>
                           </div>
 
                           {queueFocusedFirstIncidentHref ? (
@@ -6482,14 +6480,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       ) : null}
 
                       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                        {queueFocusedFirstIncidentHref ? (
-                          <Link
-                            href={queueFocusedFirstIncidentHref}
-                            className={actionLinkClassName("primary")}
-                          >
-                            Ouvrir le premier incident
-                          </Link>
-                        ) : null}
+                        {/* V2.32-dedup-polish: CTA final doublon supprimé. Action conservée dans Queue Next Step Router. */}
 
                         <Link href={allQueuesHref} className={actionLinkClassName("soft")}>
                           Retour All queues
