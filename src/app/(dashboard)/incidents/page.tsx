@@ -2133,6 +2133,39 @@ function getOperatorQueueRemainingLabel(count: number): string {
   } après celui-ci`;
 }
 
+function getOperatorQueuePreviousFilter(
+  filter: OperatorQueueFilter,
+): OperatorQueueFilter {
+  if (filter === "now") return "watch";
+  if (filter === "next") return "now";
+  if (filter === "context") return "next";
+  if (filter === "watch") return "context";
+
+  return "all";
+}
+
+function getOperatorQueueNextFilter(
+  filter: OperatorQueueFilter,
+): OperatorQueueFilter {
+  if (filter === "now") return "next";
+  if (filter === "next") return "context";
+  if (filter === "context") return "watch";
+  if (filter === "watch") return "now";
+
+  return "all";
+}
+
+function getOperatorQueuePositionLabel(
+  filter: OperatorQueueFilter,
+): string {
+  if (filter === "now") return "File 1 / 4";
+  if (filter === "next") return "File 2 / 4";
+  if (filter === "context") return "File 3 / 4";
+  if (filter === "watch") return "File 4 / 4";
+
+  return "Toutes les files";
+}
+
 function getPluralLabel(
   count: number,
   singular: string,
@@ -3587,6 +3620,29 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const queueFocusedFirstIncidentHref = getQueueFocusedFirstIncidentHref({
     incidents: queueFocusedIncidents,
     activeWorkspaceId,
+  });
+
+  const operatorQueuePreviousFilter =
+    getOperatorQueuePreviousFilter(operatorQueueFilter);
+  const operatorQueueNextFilter =
+    getOperatorQueueNextFilter(operatorQueueFilter);
+
+  const operatorQueuePreviousHref = getOperatorQueueFilterHref({
+    filter: operatorQueuePreviousFilter,
+    activeWorkspaceId,
+    flowId,
+    rootEventId,
+    sourceRecordId,
+    commandId,
+  });
+
+  const operatorQueueNextHref = getOperatorQueueFilterHref({
+    filter: operatorQueueNextFilter,
+    activeWorkspaceId,
+    flowId,
+    rootEventId,
+    sourceRecordId,
+    commandId,
   });
 
   const focusIncident = sortVisibleIncidentsForFocus(visibleIncidents)[0] || null;
@@ -5261,6 +5317,50 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                               {getOperatorQueueProgressLabel(operatorQueueFilter)}
                             </div>
                           </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-4">
+                        <div className={metaLabelClassName()}>Queue Navigation</div>
+
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          <div className="rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                              Position cycle
+                            </div>
+                            <div className="mt-2 text-sm font-medium text-zinc-100">
+                              {getOperatorQueuePositionLabel(operatorQueueFilter)}
+                            </div>
+                          </div>
+
+                          <div className="rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                              Navigation locale
+                            </div>
+                            <div className="mt-2 text-sm font-medium text-zinc-100">
+                              Changer de file sans remonter.
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                          <Link
+                            href={operatorQueuePreviousHref}
+                            className={actionLinkClassName("soft")}
+                          >
+                            File précédente
+                          </Link>
+
+                          <Link
+                            href={operatorQueueNextHref}
+                            className={actionLinkClassName("soft")}
+                          >
+                            File suivante
+                          </Link>
+
+                          <Link href={allQueuesHref} className={actionLinkClassName("soft")}>
+                            All queues
+                          </Link>
                         </div>
                       </div>
 
