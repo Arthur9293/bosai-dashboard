@@ -2275,6 +2275,42 @@ function getQueueRecommendedActionReason(level: QueueRiskLevel): string {
   return "Cette file ne montre pas de risque immédiat. Garde-la en surveillance.";
 }
 
+function getQueueExecutionChecklist(level: QueueRiskLevel): string[] {
+  if (level === "HIGH RISK") {
+    return [
+      "1. Ouvrir le premier incident",
+      "2. Traiter la surface recommandée",
+      "3. Vérifier la réduction du risque",
+    ];
+  }
+
+  if (level === "MEDIUM RISK") {
+    return [
+      "1. Ouvrir le premier incident",
+      "2. Compléter le contexte manquant",
+      "3. Revenir à la file après vérification",
+    ];
+  }
+
+  return [
+    "1. Garder la file en surveillance",
+    "2. Vérifier le premier incident si nécessaire",
+    "3. Revenir aux files globales",
+  ];
+}
+
+function getQueueExecutionNote(level: QueueRiskLevel): string {
+  if (level === "HIGH RISK") {
+    return "Exécution prioritaire : réduire le risque avant de passer à la file suivante.";
+  }
+
+  if (level === "MEDIUM RISK") {
+    return "Exécution contextuelle : clarifier avant d’agir.";
+  }
+
+  return "Exécution légère : surveillance sans action immédiate.";
+}
+
 function getPluralLabel(
   count: number,
   singular: string,
@@ -5725,6 +5761,40 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                           </div>
                         );
                       })()}
+
+                      <div className="mt-5 rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-4">
+                        <div className={metaLabelClassName()}>
+                          Queue Execution Checklist
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                          {getQueueExecutionChecklist(queueRiskLevel).map(
+                            (step) => (
+                              <div
+                                key={step}
+                                className="flex gap-3 rounded-[16px] border border-white/10 bg-black/20 px-4 py-3"
+                              >
+                                <span
+                                  className="mt-[7px] h-2 w-2 shrink-0 rounded-full bg-emerald-300"
+                                  aria-hidden="true"
+                                />
+                                <span className="text-sm font-medium leading-6 text-zinc-100">
+                                  {step}
+                                </span>
+                              </div>
+                            ),
+                          )}
+                        </div>
+
+                        <div className="mt-4 rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
+                          <div className={metaLabelClassName()}>
+                            Note d’exécution
+                          </div>
+                          <div className="mt-2 text-sm leading-6 text-zinc-300">
+                            {getQueueExecutionNote(queueRiskLevel)}
+                          </div>
+                        </div>
+                      </div>
 
                       <div className="mt-5 grid gap-3 sm:grid-cols-2">
                         {queueFocusedFirstIncidentHref ? (
