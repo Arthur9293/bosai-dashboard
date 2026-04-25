@@ -2166,6 +2166,90 @@ function getOperatorQueuePositionLabel(
   return "Toutes les files";
 }
 
+
+type QueueRiskLevel = "HIGH RISK" | "MEDIUM RISK" | "LOW RISK";
+
+function getQueueRiskStats(
+  incidents: IncidentItem[],
+): {
+  escalated: number;
+  highCritical: number;
+  slaRisk: number;
+  needsContext: number;
+} {
+  return incidents.reduce(
+    (acc, incident) => {
+      const status = getIncidentStatusNormalized(incident);
+      const severity = getIncidentSeverityNormalized(incident);
+      const slaLabel = getSlaLabel(incident).trim().toUpperCase();
+      const actionReadinessLabel = getIncidentActionReadinessLabel(incident);
+
+      if (status === "escalated") acc.escalated += 1;
+
+      if (severity === "high" || severity === "critical") {
+        acc.highCritical += 1;
+      }
+
+      if (slaLabel === "BREACHED" || slaLabel === "WARNING") {
+        acc.slaRisk += 1;
+      }
+
+      if (actionReadinessLabel === "NEEDS CONTEXT") {
+        acc.needsContext += 1;
+      }
+
+      return acc;
+    },
+    {
+      escalated: 0,
+      highCritical: 0,
+      slaRisk: 0,
+      needsContext: 0,
+    },
+  );
+}
+
+function getQueueRiskLevel(
+  incidents: IncidentItem[],
+  activeWorkspaceId?: string,
+): QueueRiskLevel {
+  const scopedIncidents = activeWorkspaceId
+    ? incidents.filter((incident) =>
+        workspaceMatchesOrUnscoped(
+          getIncidentWorkspaceId(incident),
+          activeWorkspaceId,
+        ),
+      )
+    : incidents;
+
+  const stats = getQueueRiskStats(scopedIncidents);
+
+  const hasCritical = scopedIncidents.some(
+    (incident) => getIncidentSeverityNormalized(incident) === "critical",
+  );
+
+  const hasBreachedSla = scopedIncidents.some(
+    (incident) => getSlaLabel(incident).trim().toUpperCase() === "BREACHED",
+  );
+
+  if (stats.escalated > 0 || hasCritical || hasBreachedSla) {
+    return "HIGH RISK";
+  }
+
+  if (stats.highCritical > 0 || stats.slaRisk > 0 || stats.needsContext > 0) {
+    return "MEDIUM RISK";
+  }
+
+  return "LOW RISK";
+}
+
+function getQueueRiskSummary(level: QueueRiskLevel): string {
+  if (level === "HIGH RISK") return "Risque fort détecté dans cette file.";
+  if (level === "MEDIUM RISK") return "Risque moyen détecté dans cette file.";
+
+  return "Risque faible sur cette file.";
+}
+
 function getPluralLabel(
   count: number,
   singular: string,
@@ -3621,6 +3705,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
     incidents: queueFocusedIncidents,
     activeWorkspaceId,
   });
+
+  const queueRiskStats = getQueueRiskStats(queueFocusedIncidents);
+  const queueRiskLevel = getQueueRiskLevel(
+    queueFocusedIncidents,
+    activeWorkspaceId,
+  );
 
 
   const queueFocusedFirstIncident = queueFocusedIncidents[0] || null;
@@ -5452,6 +5542,57 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                           ) : null}
                         </div>
                       ) : null}
+
+
+                      <div
+                        className={`${metaBoxClassName()} mt-5 ${signalRingClassName(
+                          queueRiskLevel === "HIGH RISK"
+                            ? "danger"
+                            : queueRiskLevel === "MEDIUM RISK"
+                              ? "warning"
+                              : "success",
+                        )}`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className={metaLabelClassName()}>
+                              Queue Risk Signal
+                            </div>
+
+                            <div className="mt-2 text-base font-semibold tracking-tight text-white">
+                              {queueRiskLevel}
+                            </div>
+                          </div>
+
+                          <DashboardStatusBadge
+                            kind={
+                              queueRiskLevel === "HIGH RISK"
+                                ? "failed"
+                                : queueRiskLevel === "MEDIUM RISK"
+                                  ? "retry"
+                                  : "success"
+                            }
+                            label={queueRiskLevel}
+                          />
+                        </div>
+
+                        <div className="mt-3 text-sm leading-6 text-zinc-300">
+                          {getQueueRiskSummary(queueRiskLevel)}
+                        </div>
+
+                        <div className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3.5">
+                          <div className={metaLabelClassName()}>
+                            Compteurs locaux
+                          </div>
+
+                          <div className="mt-2 text-sm font-medium leading-6 text-zinc-100">
+                            {queueRiskStats.escalated} escalated ·{" "}
+                            {queueRiskStats.highCritical} high/critical ·{" "}
+                            {queueRiskStats.slaRisk} SLA risk ·{" "}
+                            {queueRiskStats.needsContext} context
+                          </div>
+                        </div>
+                      </div>
 
                       <div className="mt-5 grid gap-3 sm:grid-cols-2">
                         {queueFocusedFirstIncidentHref ? (
