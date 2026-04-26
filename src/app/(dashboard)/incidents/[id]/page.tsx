@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
+import { IncidentHandshakePreviewLink } from "@/components/dashboard/IncidentHandshakePreviewLink";
 import {
   fetchIncidents,
   type IncidentItem,
@@ -3558,7 +3559,7 @@ export default async function IncidentDetailPage({
         },
       ]}
       actions={
-        <>
+        <>\n      {/* Incident Detail V4.9-handshake-preview-link */}\n      <IncidentHandshakePreviewLink />\n
           <Link href={incidentsHref} className={actionLinkClassName("soft")}>
             Retour aux incidents
           </Link>
