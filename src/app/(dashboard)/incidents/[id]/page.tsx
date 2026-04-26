@@ -3559,7 +3559,10 @@ export default async function IncidentDetailPage({
         },
       ]}
       actions={
-        <>\n      {/* Incident Detail V4.9-handshake-preview-link */}\n      <IncidentHandshakePreviewLink />\n
+        <>
+      {/* Incident Detail V4.9-handshake-preview-link */}
+      <IncidentHandshakePreviewLink />
+
           <Link href={incidentsHref} className={actionLinkClassName("soft")}>
             Retour aux incidents
           </Link>
