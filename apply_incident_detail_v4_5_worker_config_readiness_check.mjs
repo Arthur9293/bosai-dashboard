@@ -1,4 +1,36 @@
-import { NextRequest, NextResponse } from "next/server";
+import fs from "node:fs";
+
+const routePath = "src/app/api/incidents/[id]/dry-run/route.ts";
+
+const markerV41 = "Incident Detail V4.1-server-route-skeleton";
+const markerV42 = "Incident Detail V4.2-server-route-validation-layer";
+const markerV43 = "Incident Detail V4.3-validated-server-payload-builder";
+const markerV44 = "Incident Detail V4.4-worker-request-envelope-preview";
+const markerV45 = "Incident Detail V4.5-worker-config-readiness-check";
+
+if (!fs.existsSync(routePath)) {
+  console.error("Route introuvable:", routePath);
+  process.exit(1);
+}
+
+const existing = fs.readFileSync(routePath, "utf8");
+
+if (existing.includes(markerV45)) {
+  console.log("V4.5 déjà présent. Aucune modification.");
+  process.exit(0);
+}
+
+if (
+  !existing.includes(markerV41) ||
+  !existing.includes(markerV42) ||
+  !existing.includes(markerV43) ||
+  !existing.includes(markerV44)
+) {
+  console.error("Markers V4.1 / V4.2 / V4.3 / V4.4 introuvables. Patch arrêté.");
+  process.exit(1);
+}
+
+const routeSource = `import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -162,11 +194,11 @@ function buildValidatedPayload(input: {
 }
 
 /**
- * Incident Detail V4.1-server-route-skeleton
- * Incident Detail V4.2-server-route-validation-layer
- * Incident Detail V4.3-validated-server-payload-builder
- * Incident Detail V4.4-worker-request-envelope-preview
- * Incident Detail V4.5-worker-config-readiness-check
+ * ${markerV41}
+ * ${markerV42}
+ * ${markerV43}
+ * ${markerV44}
+ * ${markerV45}
  *
  * V4.5 checks worker configuration readiness only.
  *
@@ -361,3 +393,10 @@ export async function POST(
     200
   );
 }
+`;
+
+fs.writeFileSync(routePath, routeSource, "utf8");
+
+console.log("V4.5 worker config readiness check appliqué avec succès.");
+console.log("Fichier modifié :", routePath);
+console.log("Aucun appel worker, aucun POST /run worker, aucune mutation, aucun secret exposé.");
