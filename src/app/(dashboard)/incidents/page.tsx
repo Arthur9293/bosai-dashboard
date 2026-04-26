@@ -21,6 +21,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// {/* V2.40-incident-stream-alignment-repair */}
+
 // {/* V2.39-desktop-small-screen-responsive-reflow */}
 
 // {/* V2.38-incident-card-layout-repair */}
@@ -6503,6 +6505,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                             <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
                               {/* V2.38-layout-repair-anchor */}
 {/* V2.39-reflow-anchor */}
+{/* V2.40-stream-alignment-anchor */}
 Incident Stream
                             </div>
                             <div className="mt-2 text-sm leading-6 text-zinc-300">
@@ -6513,7 +6516,7 @@ Incident Stream
                     </div>
                   ) : null}
 
-                  <div className="grid gap-3.5 md:p-4 xl:p-5 2xl:grid-cols-2 xl:gap-3.5 md:p-4 xl:p-5">
+                  <div className="grid gap-3.5 md:p-4 xl:p-5 2xl:grid-cols-1 min-[1800px]:grid-cols-2 xl:gap-3.5 md:p-4 xl:p-5">
                     {queueFocusedIncidents.map((incident) => (
                       <IncidentListCard
                         key={incident.id}
@@ -6541,7 +6544,7 @@ Incident Stream
                   description="Aucun incident résolu n’est visible sur cette vue pour le moment."
                 />
               ) : (
-                <div className="grid gap-3.5 md:p-4 xl:p-5 2xl:grid-cols-2 xl:gap-3.5 md:p-4 xl:p-5">
+                <div className="grid gap-3.5 md:p-4 xl:p-5 2xl:grid-cols-1 min-[1800px]:grid-cols-2 xl:gap-3.5 md:p-4 xl:p-5">
                   {sortedResolvedIncidents.map((incident) => (
                     <IncidentListCard
                       key={incident.id}
