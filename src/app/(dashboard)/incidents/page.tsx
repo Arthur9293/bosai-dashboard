@@ -21,6 +21,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// {/* V2.43-active-incident-mobile-mirror-resolved-layout */}
+
 // {/* V2.42-mobile-incident-width-clamp */}
 
 // {/* V2.41-mobile-incident-card-overflow-repair */}
@@ -6512,6 +6514,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 {/* V2.40-stream-alignment-anchor */}
 {/* V2.41-mobile-overflow-anchor */}
 {/* V2.42-mobile-width-clamp-anchor */}
+{/* V2.43-active-mobile-mirror-anchor */}
 Incident Stream
                             </div>
                             <div className="mt-2 text-sm leading-6 text-zinc-300">
@@ -6522,7 +6525,7 @@ Incident Stream
                     </div>
                   ) : null}
 
-                  <div className="grid gap-3.5 md:p-4 xl:p-3.5 sm:p-5 2xl:grid-cols-1 min-[1800px]:grid-cols-2 xl:gap-3.5 min-w-0 max-w-full w-full overflow-hidden">
+                  <div className="grid gap-3.5 md:p-4 xl:p-3.5 sm:p-4 sm:p-5 2xl:grid-cols-1 min-[1800px]:grid-cols-1 min-[1800px]:grid-cols-2 xl:gap-3.5 min-w-0 max-w-full w-full box-border grid-cols-1">
                     {queueFocusedIncidents.map((incident) => (
                       <IncidentListCard
                         key={incident.id}
