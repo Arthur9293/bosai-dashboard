@@ -3,40 +3,51 @@ import fs from "node:fs";
 const filePath = "src/app/(dashboard)/incidents/[id]/page.tsx";
 
 const marker = "Incident Detail V3.4-minimal-safe-run-draft-anchor";
-const insertBeforeMarker = "Incident Detail V3.1-execution-path-polish";
 
 let source = fs.readFileSync(filePath, "utf8");
 
 if (source.includes(marker)) {
-  console.log("V3.4 minimal déjà présent. Aucune modification.");
+  console.log("V3.4 minimal déjà présent dans page.tsx. Aucune modification.");
   process.exit(0);
 }
 
-const requiredMarkers = [
+const required = [
   "Incident Detail V3.0-operator-action-console",
   "Incident Detail V3.1-execution-path-polish",
   "Incident Detail V3.2-execution-preview",
   "Incident Detail V3.3-safe-execution-intent",
 ];
 
-for (const requiredMarker of requiredMarkers) {
-  if (!source.includes(requiredMarker)) {
-    console.error(`${requiredMarker} introuvable. Patch arrêté.`);
+for (const item of required) {
+  if (!source.includes(item)) {
+    console.error(`${item} introuvable. Patch arrêté.`);
     process.exit(1);
   }
 }
 
-const markerIndex = source.indexOf(insertBeforeMarker);
+const anchorText = "Linked Execution Path";
+const anchorIndex = source.indexOf(anchorText);
 
-if (markerIndex === -1) {
-  console.error("Point d’insertion V3.1 introuvable.");
+if (anchorIndex === -1) {
+  console.error("Texte Linked Execution Path introuvable.");
   process.exit(1);
 }
 
-const insertIndex = source.lastIndexOf("\n        <div", markerIndex);
+// On cherche un début de bloc JSX juste avant le titre visible.
+// Version robuste : accepte div, section ou article, avec n'importe quelle indentation.
+const beforeAnchor = source.slice(0, anchorIndex);
+const blockStartMatches = [...beforeAnchor.matchAll(/\n\s*<(div|section|article)\b[^>]*>/g)];
 
-if (insertIndex === -1) {
-  console.error("Début du bloc Linked Execution Path introuvable.");
+if (blockStartMatches.length === 0) {
+  console.error("Aucun début de bloc JSX trouvé avant Linked Execution Path.");
+  process.exit(1);
+}
+
+const lastMatch = blockStartMatches[blockStartMatches.length - 1];
+const insertIndex = lastMatch.index;
+
+if (typeof insertIndex !== "number" || insertIndex < 0) {
+  console.error("Index d’insertion invalide.");
   process.exit(1);
 }
 
@@ -144,6 +155,6 @@ source = source.slice(0, insertIndex) + block + source.slice(insertIndex);
 
 fs.writeFileSync(filePath, source, "utf8");
 
-console.log("Incident Detail V3.4 minimal appliqué.");
-console.log("Bloc statique uniquement : aucune variable, aucun map, aucun CTA, aucun POST /run.");
-console.log("V3.0 / V3.1 / V3.2 / V3.3 préservés.");
+console.log("V3.4 minimal injecté dans page.tsx.");
+console.log("Injection placée juste avant Linked Execution Path.");
+console.log("Aucune logique métier, aucun endpoint, aucun worker, aucune mutation modifiés.");
