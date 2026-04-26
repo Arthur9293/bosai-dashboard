@@ -21,6 +21,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// {/* V2.38-incident-card-layout-repair */}
+
 // {/* V2.37-global-visual-harmonization */}
 
 // {/* V2.35-operator-summary-mobile-polish */}
@@ -160,7 +162,7 @@ type IncidentRouteLock = {
 };
 
 function cardClassName(): string {
-  return "rounded-[22px] sm:rounded-[28px] border border-white/10 bg-white/[0.04] p-3.5 sm:p-5 md:p-4 sm:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[22px] sm:rounded-[28px] border border-white/10 bg-white/[0.04] p-3.5 md:p-4 xl:p-5 md:p-4 md:p-5 xl:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function actionLinkClassName(
@@ -194,7 +196,7 @@ function metaBoxClassName(): string {
 }
 
 function statCardClassName(): string {
-  return "rounded-[20px] sm:rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-3.5 sm:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  return "rounded-[20px] sm:rounded-[24px] border border-white/10 bg-white/[0.04] p-4 md:p-3.5 md:p-4 xl:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
 }
 
 function signalRingClassName(tone: SignalTone): string {
@@ -3223,13 +3225,13 @@ function IncidentListCard({
 
   return (
     <article className={cardClassName()}>
-      <div className="flex h-full flex-col gap-3.5 sm:p-5">
+      <div className="flex h-full flex-col gap-3.5 md:p-4 xl:p-5">
         <div className="space-y-4 border-b border-white/10 pb-4">
           <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">
             BOSAI Incident
           </div>
 
-          <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-2 xl:grid-cols-4">
             <SignalMetaPill
               label="Status signal"
               value={statusLabel}
@@ -3255,7 +3257,7 @@ function IncidentListCard({
           <div className="space-y-3">
             <Link
               href={detailHref}
-              className="block break-words text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
+              className="block break-words [overflow-wrap:anywhere] text-xl font-semibold tracking-tight text-white underline decoration-white/15 underline-offset-4 transition hover:text-zinc-200"
             >
               {title}
             </Link>
@@ -3445,7 +3447,7 @@ function IncidentListCard({
             <div className={metaLabelClassName()}>Investigation Layer</div>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
             <InvestigationField label="Category" value={getCategoryDisplay(incident)} />
             <InvestigationField
               label="Reason"
@@ -3471,7 +3473,7 @@ function IncidentListCard({
             <div className={metaLabelClassName()}>Control Layer</div>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-2 xl:grid-cols-4">
             <InvestigationField
               label="Primary route"
               value={routeLock.primaryRoute}
@@ -3539,7 +3541,7 @@ function IncidentListCard({
           </div>
         </div>
 
-        <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 text-sm text-zinc-300 md:grid-cols-2 xl:grid-cols-2 xl:grid-cols-4">
           <div className={metaBoxClassName()}>
             <div className={metaLabelClassName()}>Opened</div>
             <div className="mt-2 text-zinc-100">{formatDate(getOpenedAt(incident))}</div>
@@ -3561,7 +3563,7 @@ function IncidentListCard({
           </div>
         </div>
 
-        <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 text-sm text-zinc-400 md:grid-cols-2 xl:grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
           <MetaItem
             label="Flow"
             value={
@@ -4831,7 +4833,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 />
               </div>
 
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-2 xl:grid-cols-4">
                 <div className={metaBoxClassName()}>
                   <div className={metaLabelClassName()}>Latest open</div>
                   <div className="mt-2 text-zinc-100">
@@ -4945,7 +4947,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     ) : null}
                   </div>
 
-                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-2 xl:grid-cols-4">
                     <InvestigationField
                       label="Incident focus"
                       value={getIncidentDisplayTitle(focusIncident)}
@@ -4975,7 +4977,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     </div>
                   </div>
 
-                  <div className="mt-3.5 sm:mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="mt-3.5 sm:mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-2 xl:grid-cols-4">
                     <Link
                       href={focusRouteLock.primaryAction.href}
                       className={actionLinkClassName("primary")}
@@ -5058,7 +5060,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 />
               }
             >
-              <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-2 xl:grid-cols-4">
                 <IncidentMiniStat
                   label="Active backlog"
                   value={activeIncidents.length}
@@ -5095,7 +5097,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   Lecture complémentaire uniquement. Les compteurs validés restent inchangés.
                 </div>
 
-                <div className="mt-4 grid grid-cols-3 gap-3">
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                   <div className="rounded-[18px] border border-emerald-400/15 bg-emerald-400/5 px-4 py-3">
                     <div className="text-2xl font-semibold tracking-tight text-emerald-300">
                       {signalQualityStats.ready}
@@ -5131,7 +5133,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   Lecture complémentaire : indique si les incidents visibles sont actionnables maintenant.
                 </div>
 
-                <div className="mt-4 grid grid-cols-3 gap-3">
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                   <div className="rounded-[18px] border border-emerald-400/15 bg-emerald-400/5 px-4 py-3">
                     <div className="text-2xl font-semibold tracking-tight text-emerald-300">
                       {actionReadinessStats.ready}
@@ -5167,7 +5169,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   Lecture complémentaire : indique la meilleure surface à ouvrir maintenant.
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 xl:grid-cols-6">
                   <div className="rounded-[18px] border border-emerald-400/15 bg-emerald-400/5 px-4 py-3">
                     <div className="text-2xl font-semibold tracking-tight text-emerald-300">
                       {nextMoveStats.command}
@@ -5230,7 +5232,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   Lecture complémentaire : indique l’ordre opérationnel de traitement.
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-[18px] border border-rose-400/15 bg-rose-400/5 px-4 py-3">
                     <div className="text-2xl font-semibold tracking-tight text-rose-300">
                       {triagePriorityStats.doNow}
@@ -5275,7 +5277,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   Lecture complémentaire : file de travail immédiate dérivée de Triage Priority.
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-[18px] border border-rose-400/15 bg-rose-400/5 px-4 py-3">
                     <div className="text-2xl font-semibold tracking-tight text-rose-300">
                       {operatorQueueStats.now}
@@ -5314,7 +5316,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
                 <InvestigationField
                   label="Executive posture"
                   value={executivePosture.label}
@@ -5446,7 +5448,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     )}
                   </div>
 
-                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-2 xl:grid-cols-4">
                     <InvestigationField
                       label="Primary route"
                       value={focusRouteLock.primaryRoute}
@@ -5677,7 +5679,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       <div className="mt-3.5 sm:mt-5 rounded-[18px] border border-white/10 bg-gradient-to-br from-white/[0.045] via-white/[0.025] to-sky-400/[0.025] px-4 py-4">
                         <div className={metaLabelClassName()}>Operator Progress</div>
 
-                        <div className="mt-3 grid gap-3 md:grid-cols-3">
+                        <div className="mt-3 grid gap-3 md:grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
                           <div className="rounded-[16px] border border-white/10 bg-black/20 px-4 py-3">
                             <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
                               Position
@@ -5730,7 +5732,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                           </div>
                         </div>
 
-                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div className="mt-4 grid gap-3 sm:grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
                           <Link
                             href={operatorQueuePreviousHref}
                             className={actionLinkClassName("soft")}
@@ -6497,7 +6499,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                           {/* V2.37-incidents-transition */}
                           <div className="my-6 rounded-[22px] border border-white/10 bg-gradient-to-br from-white/[0.045] via-sky-400/[0.035] to-transparent px-4 py-4 sm:my-8 sm:rounded-[26px] sm:px-5">
                             <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
-                              Incident Stream
+                              {/* V2.38-layout-repair-anchor */}
+Incident Stream
                             </div>
                             <div className="mt-2 text-sm leading-6 text-zinc-300">
                               Liste opérationnelle alignée avec la file active et les signaux de triage.
@@ -6507,7 +6510,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     </div>
                   ) : null}
 
-                  <div className="grid gap-3.5 sm:p-5 xl:grid-cols-2 xl:gap-3.5 sm:p-5">
+                  <div className="grid gap-3.5 md:p-4 xl:p-5 xl:grid-cols-2 xl:gap-3.5 md:p-4 xl:p-5">
                     {queueFocusedIncidents.map((incident) => (
                       <IncidentListCard
                         key={incident.id}
@@ -6535,7 +6538,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                   description="Aucun incident résolu n’est visible sur cette vue pour le moment."
                 />
               ) : (
-                <div className="grid gap-3.5 sm:p-5 xl:grid-cols-2 xl:gap-3.5 sm:p-5">
+                <div className="grid gap-3.5 md:p-4 xl:p-5 xl:grid-cols-2 xl:gap-3.5 md:p-4 xl:p-5">
                   {sortedResolvedIncidents.map((incident) => (
                     <IncidentListCard
                       key={incident.id}
