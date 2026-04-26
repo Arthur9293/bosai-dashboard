@@ -21,6 +21,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// {/* V2.42-mobile-incident-width-clamp */}
+
 // {/* V2.41-mobile-incident-card-overflow-repair */}
 
 // {/* V2.40-incident-stream-alignment-repair */}
@@ -6509,6 +6511,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 {/* V2.39-reflow-anchor */}
 {/* V2.40-stream-alignment-anchor */}
 {/* V2.41-mobile-overflow-anchor */}
+{/* V2.42-mobile-width-clamp-anchor */}
 Incident Stream
                             </div>
                             <div className="mt-2 text-sm leading-6 text-zinc-300">
@@ -6519,7 +6522,7 @@ Incident Stream
                     </div>
                   ) : null}
 
-                  <div className="grid gap-3.5 md:p-4 xl:p-4 sm:p-5 2xl:grid-cols-1 min-[1800px]:grid-cols-2 xl:gap-3.5 min-w-0 max-w-full max-w-full w-full max-w-full overflow-hidden">
+                  <div className="grid gap-3.5 md:p-4 xl:p-3.5 sm:p-5 2xl:grid-cols-1 min-[1800px]:grid-cols-2 xl:gap-3.5 min-w-0 max-w-full w-full overflow-hidden">
                     {queueFocusedIncidents.map((incident) => (
                       <IncidentListCard
                         key={incident.id}
@@ -6547,7 +6550,7 @@ Incident Stream
                   description="Aucun incident résolu n’est visible sur cette vue pour le moment."
                 />
               ) : (
-                <div className="grid gap-3.5 md:p-4 xl:p-4 sm:p-5 2xl:grid-cols-1 min-[1800px]:grid-cols-2 xl:gap-3.5 min-w-0 max-w-full max-w-full w-full max-w-full overflow-hidden">
+                <div className="grid gap-3.5 md:p-4 xl:p-3.5 sm:p-5 2xl:grid-cols-1 min-[1800px]:grid-cols-2 xl:gap-3.5 min-w-0 max-w-full w-full overflow-hidden">
                   {sortedResolvedIncidents.map((incident) => (
                     <IncidentListCard
                       key={incident.id}
