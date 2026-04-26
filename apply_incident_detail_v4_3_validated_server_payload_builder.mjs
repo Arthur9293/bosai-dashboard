@@ -1,4 +1,29 @@
-import { NextRequest, NextResponse } from "next/server";
+import fs from "node:fs";
+
+const routePath = "src/app/api/incidents/[id]/dry-run/route.ts";
+
+const markerV41 = "Incident Detail V4.1-server-route-skeleton";
+const markerV42 = "Incident Detail V4.2-server-route-validation-layer";
+const markerV43 = "Incident Detail V4.3-validated-server-payload-builder";
+
+if (!fs.existsSync(routePath)) {
+  console.error(`Route introuvable : ${routePath}`);
+  process.exit(1);
+}
+
+const existing = fs.readFileSync(routePath, "utf8");
+
+if (existing.includes(markerV43)) {
+  console.log("V4.3 déjà présent. Aucune modification.");
+  process.exit(0);
+}
+
+if (!existing.includes(markerV41) || !existing.includes(markerV42)) {
+  console.error("Markers V4.1 / V4.2 introuvables. Patch arrêté pour préserver la baseline.");
+  process.exit(1);
+}
+
+const routeSource = `import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,7 +57,7 @@ function safeIdentifier(value: unknown): string | null {
     return null;
   }
 
-  if (!/^[a-zA-Z0-9_.:\-]+$/.test(raw)) {
+  if (!/^[a-zA-Z0-9_.:\\-]+$/.test(raw)) {
     return null;
   }
 
@@ -126,9 +151,9 @@ function buildValidatedPayload(input: {
 }
 
 /**
- * Incident Detail V4.1-server-route-skeleton
- * Incident Detail V4.2-server-route-validation-layer
- * Incident Detail V4.3-validated-server-payload-builder
+ * ${markerV41}
+ * ${markerV42}
+ * ${markerV43}
  *
  * V4.3 builds a validated server-side payload only.
  *
@@ -342,3 +367,10 @@ export async function POST(
     200
   );
 }
+`;
+
+fs.writeFileSync(routePath, routeSource, "utf8");
+
+console.log("V4.3 validated server payload builder appliqué avec succès.");
+console.log(`Fichier modifié : ${routePath}`);
+console.log("Aucun appel worker, aucun POST /run worker, aucune mutation.");
