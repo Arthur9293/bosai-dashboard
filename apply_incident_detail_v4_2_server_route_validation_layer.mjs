@@ -1,4 +1,27 @@
-import { NextRequest, NextResponse } from "next/server";
+import fs from "node:fs";
+
+const routePath = "src/app/api/incidents/[id]/dry-run/route.ts";
+const markerV41 = "Incident Detail V4.1-server-route-skeleton";
+const markerV42 = "Incident Detail V4.2-server-route-validation-layer";
+
+if (!fs.existsSync(routePath)) {
+  console.error(`Route introuvable : ${routePath}`);
+  process.exit(1);
+}
+
+const existing = fs.readFileSync(routePath, "utf8");
+
+if (existing.includes(markerV42)) {
+  console.log("V4.2 déjà présent. Aucune modification.");
+  process.exit(0);
+}
+
+if (!existing.includes(markerV41)) {
+  console.error("Marker V4.1 introuvable. Patch arrêté pour préserver la baseline.");
+  process.exit(1);
+}
+
+const routeSource = `import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,8 +62,8 @@ function jsonResponse(payload: JsonRecord, status = 200) {
 }
 
 /**
- * Incident Detail V4.1-server-route-skeleton
- * Incident Detail V4.2-server-route-validation-layer
+ * ${markerV41}
+ * ${markerV42}
  *
  * V4.2 adds server-side validation only.
  *
@@ -203,3 +226,10 @@ export async function POST(
     200
   );
 }
+`;
+
+fs.writeFileSync(routePath, routeSource, "utf8");
+
+console.log("V4.2 validation layer appliquée avec succès.");
+console.log(`Fichier modifié : ${routePath}`);
+console.log("Aucun appel worker, aucun POST /run worker, aucune mutation.");
