@@ -170,9 +170,9 @@ async function findAirtableRecordByIdempotency(input: {
   )}'`;
 
   const url = new URL(
-    `https://api.airtable.com/v0/${encodeURIComponent(input.baseId)}/${encodeURIComponent(
-      input.table
-    )}`
+    `https://api.airtable.com/v0/${encodeURIComponent(
+      input.baseId
+    )}/${encodeURIComponent(input.table)}`
   );
 
   url.searchParams.set("maxRecords", "1");
@@ -417,27 +417,89 @@ export default async function GatedAuditedOperatorApprovalPersistencePage(
   const approved = Boolean(approvalRecordId);
   const intentFound = Boolean(intentRecordId);
 
+  const persistedIntentSnapshot = intentRecordId
+    ? {
+        record_id: intentRecordId,
+        idempotency_key: safeString(intentFields?.Idempotency_Key),
+        intent_id: safeString(intentFields?.Intent_ID),
+        persistence_id: safeString(intentFields?.Persistence_ID),
+        workspace_id: safeString(intentFields?.Workspace_ID),
+        incident_id: safeString(intentFields?.Incident_ID),
+        status: safeString(intentFields?.Status),
+        target_capability: safeString(intentFields?.Target_Capability),
+        target_mode: safeString(intentFields?.Target_Mode),
+        proposed_action: safeString(intentFields?.Proposed_Action),
+        operator_confirmation: safeString(intentFields?.Operator_Confirmation),
+        persistence_allowed: safeBoolean(intentFields?.Persistence_Allowed),
+        real_run: safeString(intentFields?.Real_Run),
+        secret_exposure: "SERVER_SIDE_ONLY_REDACTED",
+        source_layer: safeString(intentFields?.Source_Layer),
+      }
+    : null;
+
+  const persistedApprovalSnapshot = approvalRecordId
+    ? {
+        record_id: approvalRecordId,
+        approval_id: safeString(approvalFields?.Approval_ID),
+        idempotency_key: safeString(approvalFields?.Idempotency_Key),
+        intent_id: safeString(approvalFields?.Intent_ID),
+        persistence_id: safeString(approvalFields?.Persistence_ID),
+        workspace_id: safeString(approvalFields?.Workspace_ID),
+        incident_id: safeString(approvalFields?.Incident_ID),
+        approval_status: safeString(approvalFields?.Approval_Status),
+        operator_identity: safeString(approvalFields?.Operator_Identity),
+        operator_decision: safeString(approvalFields?.Operator_Decision),
+        target_capability: safeString(approvalFields?.Target_Capability),
+        target_mode: safeString(approvalFields?.Target_Mode),
+        approved_for_command_draft: safeBoolean(
+          approvalFields?.Approved_For_Command_Draft
+        ),
+        command_creation_allowed: safeBoolean(
+          approvalFields?.Command_Creation_Allowed
+        ),
+        run_creation_allowed: safeBoolean(approvalFields?.Run_Creation_Allowed),
+        worker_call_allowed: safeBoolean(approvalFields?.Worker_Call_Allowed),
+        real_run: safeString(approvalFields?.Real_Run),
+        secret_exposure: "SERVER_SIDE_ONLY_REDACTED",
+        source_layer: safeString(approvalFields?.Source_Layer),
+      }
+    : null;
+
   const payload = {
+    ok: true,
     version: VERSION,
     status,
     mode: "GATED_AUDITED_OPERATOR_APPROVAL_PERSISTENCE_PAGE_READ_ONLY",
     incident_id: incidentId,
     workspace_id: workspaceId,
+    dry_run: true,
     feature_gate_env: approvalGate.feature_gate_env,
     feature_gate_enabled: approvalGate.feature_gate_enabled,
+    feature_gate_state: approvalGate.feature_gate_state,
+    feature_gate_value: approvalGate.raw_value,
+
     intent_id: intentId,
     persistence_id: persistenceId,
     intent_idempotency_key: intentIdempotencyKey,
+
     approval_id: approvalId,
     approval_idempotency_key: approvalIdempotencyKey,
     intent_record_id: intentRecordId,
     approval_record_id: approvalRecordId,
+
+    approval_status: approved ? "APPROVAL_PERSISTED" : "NOT_PERSISTED",
     approval_persistence: approved ? "PERSISTED" : "DISABLED",
+    dashboard_airtable_mutation: approved
+      ? "AUDITED_OPERATOR_APPROVAL_CREATED"
+      : "DISABLED",
+
     command_creation: "DISABLED",
     run_creation: "DISABLED",
     worker_call: "DISABLED_FROM_THIS_SURFACE",
+    post_run: "DISABLED_FROM_THIS_SURFACE",
     real_run: "FORBIDDEN",
     secret_exposure: "DISABLED",
+
     airtable_read: {
       base_id: baseId ? "CONFIGURED" : "MISSING",
       operator_intents_table: intentsTable,
@@ -448,36 +510,39 @@ export default async function GatedAuditedOperatorApprovalPersistencePage(
       approval_http_status: approvalHttpStatus,
       error: readError,
     },
-    persisted_intent_snapshot: intentRecordId
-      ? {
-          record_id: intentRecordId,
-          status: safeString(intentFields?.Status),
-          target_capability: safeString(intentFields?.Target_Capability),
-          target_mode: safeString(intentFields?.Target_Mode),
-          real_run: safeString(intentFields?.Real_Run),
-          secret_exposure: "SERVER_SIDE_ONLY_REDACTED",
-        }
-      : null,
-    persisted_approval_snapshot: approvalRecordId
-      ? {
-          record_id: approvalRecordId,
-          approval_status: safeString(approvalFields?.Approval_Status),
-          operator_identity: safeString(approvalFields?.Operator_Identity),
-          operator_decision: safeString(approvalFields?.Operator_Decision),
-          target_capability: safeString(approvalFields?.Target_Capability),
-          target_mode: safeString(approvalFields?.Target_Mode),
-          approved_for_command_draft: safeBoolean(
-            approvalFields?.Approved_For_Command_Draft
-          ),
-          command_creation_allowed: safeBoolean(
-            approvalFields?.Command_Creation_Allowed
-          ),
-          run_creation_allowed: safeBoolean(approvalFields?.Run_Creation_Allowed),
-          worker_call_allowed: safeBoolean(approvalFields?.Worker_Call_Allowed),
-          real_run: safeString(approvalFields?.Real_Run),
-          secret_exposure: "SERVER_SIDE_ONLY_REDACTED",
-        }
-      : null,
+
+    persisted_intent_snapshot: persistedIntentSnapshot,
+    persisted_approval_snapshot: persistedApprovalSnapshot,
+
+    approval_gate: {
+      intent_found: intentFound,
+      existing_approval_found: approved,
+      feature_gate_enabled: approvalGate.feature_gate_enabled,
+      required_confirmation_token: REQUIRED_CONFIRMATION_TOKEN,
+      write_allowed_from_page: false,
+      post_confirmation_required: true,
+      command_creation_allowed_now: false,
+      run_creation_allowed_now: false,
+      worker_call_allowed_now: false,
+      next_transition: "BLOCKED_UNTIL_COMMAND_DRAFT_LAYER",
+    },
+
+    guardrails: {
+      page_read_only: true,
+      client_fetch: "DISABLED",
+      worker_call: "DISABLED_FROM_THIS_SURFACE",
+      post_run: "DISABLED_FROM_THIS_SURFACE",
+      real_run: "FORBIDDEN",
+      dry_run_only: true,
+      incident_mutation: "DISABLED",
+      command_mutation: "DISABLED",
+      run_mutation: "DISABLED",
+      command_creation: "DISABLED",
+      run_creation: "DISABLED",
+      secret_exposure: "DISABLED",
+      approval_persistence_gated: true,
+    },
+
     next_step:
       "V5.12 may introduce an operator-approved command draft preview, still without command creation or worker execution.",
   };
@@ -498,7 +563,11 @@ export default async function GatedAuditedOperatorApprovalPersistencePage(
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-8 text-white sm:px-6 lg:px-8">
-      <Card tone={approved ? "green" : approvalGate.feature_gate_enabled ? "amber" : "red"}>
+      <Card
+        tone={
+          approved ? "green" : approvalGate.feature_gate_enabled ? "amber" : "red"
+        }
+      >
         <Eyebrow>Gated Audited Operator Approval Persistence</Eyebrow>
 
         <h1 className="max-w-4xl text-5xl font-black leading-[0.95] tracking-[-0.06em] sm:text-7xl">
@@ -512,7 +581,16 @@ export default async function GatedAuditedOperatorApprovalPersistencePage(
         </p>
 
         <div className="mt-8 flex flex-wrap gap-3">
-          <Badge tone={approved ? "green" : approvalGate.feature_gate_enabled ? "amber" : "red"}>
+          <Badge tone="neutral">{VERSION}</Badge>
+          <Badge
+            tone={
+              approved
+                ? "green"
+                : approvalGate.feature_gate_enabled
+                  ? "amber"
+                  : "red"
+            }
+          >
             {status}
           </Badge>
           <Badge tone="cyan">PAGE READ ONLY</Badge>
@@ -557,7 +635,11 @@ export default async function GatedAuditedOperatorApprovalPersistencePage(
         <Eyebrow>Intent Under Approval</Eyebrow>
 
         <div className="grid gap-4">
-          <DataTile label="Intent Found" value={intentFound ? "YES" : "NO"} tone={intentFound ? "green" : "amber"} />
+          <DataTile
+            label="Intent Found"
+            value={intentFound ? "YES" : "NO"}
+            tone={intentFound ? "green" : "amber"}
+          />
           <DataTile label="Intent Record ID" value={intentRecordId ?? "NOT_FOUND"} tone="cyan" />
           <DataTile label="Intent ID" value={intentId} tone="cyan" />
           <DataTile label="Persistence ID" value={persistenceId} tone="cyan" />
@@ -571,8 +653,16 @@ export default async function GatedAuditedOperatorApprovalPersistencePage(
         <div className="grid gap-4">
           <DataTile label="Approval ID" value={approvalId} tone="cyan" />
           <DataTile label="Approval Idempotency Key" value={approvalIdempotencyKey} tone="cyan" />
-          <DataTile label="Approval Record ID" value={approvalRecordId ?? "NOT_PERSISTED"} tone={approved ? "green" : "amber"} />
-          <DataTile label="Approval Persistence" value={approved ? "PERSISTED" : "DISABLED"} tone={approved ? "green" : "red"} />
+          <DataTile
+            label="Approval Record ID"
+            value={approvalRecordId ?? "NOT_PERSISTED"}
+            tone={approved ? "green" : "amber"}
+          />
+          <DataTile
+            label="Approval Persistence"
+            value={approved ? "PERSISTED" : "DISABLED"}
+            tone={approved ? "green" : "red"}
+          />
           <DataTile label="Operator Identity Required" value="YES" tone="amber" />
           <DataTile label="Command Creation Allowed" value="NO" tone="red" />
           <DataTile label="Run Creation Allowed" value="NO" tone="red" />
