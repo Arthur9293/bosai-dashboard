@@ -26,12 +26,20 @@ type AirtableReadResult = {
   error: string | null;
 };
 
-const VERSION = "Incident Detail V5.26.1";
+const VERSION = "Incident Detail V5.26.2";
 const SOURCE =
-  "dashboard_incident_detail_v5_26_1_run_draft_audit_json_compatibility_reader";
+  "dashboard_incident_detail_v5_26_2_loose_raw_input_json_fallback_reader";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
 const READER_VERSION =
-  "V5.26.1_RUN_DRAFT_AUDIT_JSON_COMPATIBILITY_READER";
+  "V5.26.2_LOOSE_RAW_INPUT_JSON_FALLBACK_READER";
+
+const INPUT_JSON_FIELD_CANDIDATES = [
+  "Input_JSON",
+  "input_json",
+  "Input JSON",
+  "InputJSON",
+  "inputJson",
+];
 
 function jsonResponse(payload: JsonRecord, status = 200) {
   return NextResponse.json(payload, {
@@ -121,6 +129,72 @@ function asRecord(value: unknown): JsonRecord {
 function normalizeStatusToken(value: unknown): string {
   if (typeof value !== "string") return "";
   return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeLooseRawText(value: string): string {
+  return value
+    .replace(/\uFEFF/g, "")
+    .replace(/[\u200B-\u200D\u2060]/g, "")
+    .replace(/[“”„‟]/g, '"')
+    .replace(/[‘’‚‛]/g, "'")
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, "\\")
+    .trim();
+}
+
+function extractLikelyJsonBody(value: string): string {
+  const text = normalizeLooseRawText(value);
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return text.slice(firstBrace, lastBrace + 1);
+  }
+
+  return text;
+}
+
+function parseFlexibleJsonRecord(value: unknown): JsonRecord | null {
+  if (isJsonRecord(value)) return value;
+
+  if (typeof value !== "string") return null;
+
+  const raw = value.trim();
+
+  if (!raw) return null;
+
+  const candidates = [
+    raw,
+    normalizeLooseRawText(raw),
+    extractLikelyJsonBody(raw),
+    raw.replace(/^"+|"+$/g, ""),
+    raw.replace(/^"+|"+$/g, "").replace(/\\"/g, '"').replace(/\\\\/g, "\\"),
+    extractLikelyJsonBody(
+      raw.replace(/^"+|"+$/g, "").replace(/\\"/g, '"').replace(/\\\\/g, "\\")
+    ),
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = safeParseJson(candidate);
+
+    if (isJsonRecord(parsed)) {
+      return parsed;
+    }
+
+    if (typeof parsed === "string") {
+      const secondParse = safeParseJson(parsed);
+
+      if (isJsonRecord(secondParse)) {
+        return secondParse;
+      }
+    }
+  }
+
+  return null;
 }
 
 function readPath(record: unknown, path: string): unknown {
@@ -230,12 +304,9 @@ function pickRecord(record: unknown, paths: string[]): JsonRecord | null {
   if (isJsonRecord(value)) return value;
 
   if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      if (isJsonRecord(parsed)) return parsed;
-    } catch {
-      return null;
-    }
+    const parsed = parseFlexibleJsonRecord(value);
+
+    if (parsed) return parsed;
   }
 
   return null;
@@ -276,10 +347,6 @@ function nestedValue(record: JsonRecord, path: string[]): unknown {
   }
 
   return current;
-}
-
-function nestedRecord(record: JsonRecord, path: string[]): JsonRecord {
-  return asRecord(nestedValue(record, path));
 }
 
 function nestedString(record: JsonRecord, path: string[], fallback = ""): string {
@@ -341,41 +408,45 @@ function sanitizeObject(value: unknown, depth = 0): unknown {
   return value;
 }
 
-function parseFlexibleJsonRecord(value: unknown): JsonRecord | null {
-  if (isJsonRecord(value)) return value;
+function getRawInputJsonText(fields: JsonRecord): {
+  rawText: string;
+  inputJsonFieldUsed: string | null;
+  inputJsonRawPresent: boolean;
+} {
+  for (const fieldName of INPUT_JSON_FIELD_CANDIDATES) {
+    const rawValue = fields[fieldName];
 
-  if (typeof value !== "string") return null;
+    if (rawValue === undefined || rawValue === null || rawValue === "") {
+      continue;
+    }
 
-  const raw = value.trim();
+    if (typeof rawValue === "string") {
+      return {
+        rawText: rawValue,
+        inputJsonFieldUsed: fieldName,
+        inputJsonRawPresent: true,
+      };
+    }
 
-  if (!raw) return null;
-
-  const firstParse = safeParseJson(raw);
-
-  if (isJsonRecord(firstParse)) {
-    return firstParse;
-  }
-
-  if (typeof firstParse === "string") {
-    const secondParse = safeParseJson(firstParse);
-
-    if (isJsonRecord(secondParse)) {
-      return secondParse;
+    if (
+      typeof rawValue === "number" ||
+      typeof rawValue === "boolean" ||
+      isJsonRecord(rawValue) ||
+      Array.isArray(rawValue)
+    ) {
+      return {
+        rawText: JSON.stringify(rawValue),
+        inputJsonFieldUsed: fieldName,
+        inputJsonRawPresent: true,
+      };
     }
   }
 
-  const unescapedCandidate = raw
-    .replace(/^"+|"+$/g, "")
-    .replace(/\\"/g, '"')
-    .replace(/\\\\/g, "\\");
-
-  const fallbackParse = safeParseJson(unescapedCandidate);
-
-  if (isJsonRecord(fallbackParse)) {
-    return fallbackParse;
-  }
-
-  return null;
+  return {
+    rawText: "",
+    inputJsonFieldUsed: null,
+    inputJsonRawPresent: false,
+  };
 }
 
 function readFlexibleInputJson(fields: JsonRecord):
@@ -394,15 +465,7 @@ function readFlexibleInputJson(fields: JsonRecord):
       inputJsonRawPresent: boolean;
       inputJsonParseFailed: boolean;
     } {
-  const candidates = [
-    "Input_JSON",
-    "input_json",
-    "Input JSON",
-    "InputJSON",
-    "inputJson",
-  ];
-
-  for (const fieldName of candidates) {
+  for (const fieldName of INPUT_JSON_FIELD_CANDIDATES) {
     const rawValue = fields[fieldName];
 
     if (rawValue === undefined || rawValue === null || rawValue === "") {
@@ -439,6 +502,274 @@ function readFlexibleInputJson(fields: JsonRecord):
     inputJsonRawPresent: false,
     inputJsonParseFailed: false,
   };
+}
+
+function extractRawString(rawText: string, keys: string[]): string {
+  const text = normalizeLooseRawText(rawText);
+
+  for (const key of keys) {
+    const escapedKey = escapeRegex(key);
+
+    const quotedRegex = new RegExp(
+      `["']${escapedKey}["']\\s*:\\s*["']([^"']*)["']`,
+      "i"
+    );
+    const quotedMatch = text.match(quotedRegex);
+
+    if (quotedMatch?.[1]) {
+      return quotedMatch[1].trim();
+    }
+
+    const looseRegex = new RegExp(
+      `${escapedKey}\\s*[:=]\\s*["']?([^"',}\\]\\s]+)`,
+      "i"
+    );
+    const looseMatch = text.match(looseRegex);
+
+    if (looseMatch?.[1]) {
+      return looseMatch[1].trim();
+    }
+  }
+
+  return "";
+}
+
+function extractRawBoolean(
+  rawText: string,
+  keys: string[],
+  fallback = false
+): boolean {
+  const text = normalizeLooseRawText(rawText);
+
+  for (const key of keys) {
+    const escapedKey = escapeRegex(key);
+    const regex = new RegExp(
+      `["']?${escapedKey}["']?\\s*:\\s*["']?(true|false|1|0|yes|no|on|off)["']?`,
+      "i"
+    );
+    const match = text.match(regex);
+
+    if (match?.[1]) {
+      const normalized = match[1].toLowerCase();
+
+      if (["true", "1", "yes", "on"].includes(normalized)) return true;
+      if (["false", "0", "no", "off"].includes(normalized)) return false;
+    }
+  }
+
+  return fallback;
+}
+
+function extractRawNumber(
+  rawText: string,
+  keys: string[],
+  fallback = 0
+): number {
+  const text = normalizeLooseRawText(rawText);
+
+  for (const key of keys) {
+    const escapedKey = escapeRegex(key);
+    const regex = new RegExp(
+      `["']?${escapedKey}["']?\\s*:\\s*["']?(-?\\d+(?:\\.\\d+)?)["']?`,
+      "i"
+    );
+    const match = text.match(regex);
+
+    if (match?.[1]) {
+      const parsed = Number(match[1]);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+
+  return fallback;
+}
+
+function extractRawStringArray(rawText: string, keys: string[]): string[] {
+  const text = normalizeLooseRawText(rawText);
+
+  for (const key of keys) {
+    const escapedKey = escapeRegex(key);
+    const arrayRegex = new RegExp(
+      `["']?${escapedKey}["']?\\s*:\\s*\$begin:math:display$\(\[\^\\$end:math:display$]*)\\]`,
+      "i"
+    );
+    const arrayMatch = text.match(arrayRegex);
+
+    if (arrayMatch?.[1]) {
+      const values = [...arrayMatch[1].matchAll(/["']([^"']+)["']/g)]
+        .map((match) => match[1]?.trim())
+        .filter((item): item is string => Boolean(item));
+
+      if (values.length > 0) return values;
+    }
+
+    const singleValue = extractRawString(text, [key]);
+
+    if (singleValue) {
+      return [singleValue];
+    }
+  }
+
+  return [];
+}
+
+function extractBalancedObjectFrom(rawText: string, startIndex: number): string {
+  const text = normalizeLooseRawText(rawText);
+
+  let depth = 0;
+  let inString = false;
+  let quote = "";
+  let escaped = false;
+  let objectStart = -1;
+
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (objectStart === -1) {
+      if (char === "{") {
+        objectStart = index;
+        depth = 1;
+      }
+
+      continue;
+    }
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (inString) {
+      if (char === quote) {
+        inString = false;
+        quote = "";
+      }
+
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      inString = true;
+      quote = char;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+
+      if (depth === 0) {
+        return text.slice(objectStart, index + 1);
+      }
+    }
+  }
+
+  return "";
+}
+
+function extractRawRecord(rawText: string, keys: string[]): JsonRecord | null {
+  const text = normalizeLooseRawText(rawText);
+
+  for (const key of keys) {
+    const escapedKey = escapeRegex(key);
+    const keyRegex = new RegExp(`["']?${escapedKey}["']?\\s*:`, "i");
+    const keyMatch = keyRegex.exec(text);
+
+    if (!keyMatch) continue;
+
+    const objectText = extractBalancedObjectFrom(text, keyMatch.index + keyMatch[0].length);
+
+    if (!objectText) continue;
+
+    const parsed = parseFlexibleJsonRecord(objectText);
+
+    if (parsed) return parsed;
+  }
+
+  return null;
+}
+
+function buildLooseAuditFromRawText(rawText: string): JsonRecord {
+  const repaired = parseFlexibleJsonRecord(rawText);
+
+  if (repaired) return repaired;
+
+  const audit: JsonRecord = {};
+
+  const postRunStatus = extractRawString(rawText, [
+    "post_run_status",
+    "postrunstatus",
+    "postRunStatus",
+  ]);
+
+  const workerCallStatus = extractRawString(rawText, [
+    "worker_call_status",
+    "workercallstatus",
+    "workerCallStatus",
+  ]);
+
+  const runExecutionStatus = extractRawString(rawText, [
+    "run_execution_status",
+    "runexecutionstatus",
+    "runExecutionStatus",
+  ]);
+
+  const workerResponseSanitized = extractRawRecord(rawText, [
+    "worker_response_sanitized",
+    "workerresponsesanitized",
+    "workerResponseSanitized",
+  ]);
+
+  const commandsRecordIds = extractRawStringArray(rawText, [
+    "commands_record_ids",
+    "commandsrecordids",
+    "commandsRecordIds",
+  ]);
+
+  const errorsCount = extractRawNumber(rawText, [
+    "errors_count",
+    "errorscount",
+    "errorsCount",
+  ]);
+
+  const airtableRecordId = extractRawString(rawText, [
+    "airtable_record_id",
+    "airtablerecordid",
+    "airtableRecordId",
+  ]);
+
+  const runId = extractRawString(rawText, ["run_id", "runid", "runId"]);
+
+  const commandOrchestrator = extractRawString(rawText, [
+    "command_orchestrator",
+    "commandorchestrator",
+    "commandOrchestrator",
+    "capability",
+  ]);
+
+  const dryRun = extractRawBoolean(rawText, ["dry_run", "dryrun", "dryRun"], true);
+
+  if (postRunStatus) audit.postrunstatus = postRunStatus;
+  if (workerCallStatus) audit.workercallstatus = workerCallStatus;
+  if (runExecutionStatus) audit.runexecutionstatus = runExecutionStatus;
+  if (workerResponseSanitized) audit.workerresponsesanitized = workerResponseSanitized;
+  if (commandsRecordIds.length > 0) audit.commandsrecordids = commandsRecordIds;
+  audit.errorscount = errorsCount;
+  if (airtableRecordId) audit.airtablerecordid = airtableRecordId;
+  if (runId) audit.runid = runId;
+  if (commandOrchestrator) audit.commandorchestrator = commandOrchestrator;
+  audit.dryrun = dryRun;
+
+  return audit;
 }
 
 function detectAuditKeyFormat(audit: JsonRecord): {
@@ -704,7 +1035,37 @@ export async function GET(request: Request, context: RouteContext) {
   const runFields = runRead.record?.fields ?? {};
 
   const parsedInputJson = readFlexibleInputJson(runFields);
-  const runInputJson = parsedInputJson.ok ? parsedInputJson.value : {};
+  const rawInputJson = getRawInputJsonText(runFields);
+
+  let runInputJson: JsonRecord = {};
+  let rawFallbackUsed = false;
+  let parserMode:
+    | "strict_json"
+    | "loose_raw_text_fallback"
+    | "unavailable" = "unavailable";
+
+  if (parsedInputJson.ok) {
+    runInputJson = parsedInputJson.value;
+    parserMode = "strict_json";
+  } else if (
+    parsedInputJson.code === "RUN_DRAFT_AUDIT_JSON_PARSE_FAILED" &&
+    rawInputJson.inputJsonRawPresent &&
+    rawInputJson.rawText
+  ) {
+    const looseAudit = buildLooseAuditFromRawText(rawInputJson.rawText);
+    const looseNormalizedAudit = normalizeRunDraftAudit(looseAudit);
+
+    if (
+      looseNormalizedAudit.postRunDryRunWasSent &&
+      looseNormalizedAudit.workerDryRunCallWasSent &&
+      looseNormalizedAudit.runExecutionWasDryRunOnly
+    ) {
+      runInputJson = looseAudit;
+      rawFallbackUsed = true;
+      parserMode = "loose_raw_text_fallback";
+    }
+  }
+
   const auditKeyFormat = detectAuditKeyFormat(runInputJson);
   const normalizedAudit = normalizeRunDraftAudit(runInputJson);
 
@@ -718,7 +1079,8 @@ export async function GET(request: Request, context: RouteContext) {
     approvalRead.record &&
     commandRead.record &&
     runRead.record &&
-    !parsedInputJson.ok
+    !parsedInputJson.ok &&
+    !rawFallbackUsed
   ) {
     return jsonResponse({
       ok: false,
@@ -736,9 +1098,13 @@ export async function GET(request: Request, context: RouteContext) {
       run_record_id: runRead.record.id,
       run_idempotency_key: ids.runIdempotencyKey,
       diagnostic: {
-        input_json_raw_present: parsedInputJson.inputJsonRawPresent,
+        input_json_raw_present:
+          rawInputJson.inputJsonRawPresent || parsedInputJson.inputJsonRawPresent,
         input_json_parse_failed: parsedInputJson.inputJsonParseFailed,
-        input_json_field_used: parsedInputJson.inputJsonFieldUsed,
+        input_json_field_used:
+          rawInputJson.inputJsonFieldUsed || parsedInputJson.inputJsonFieldUsed,
+        parser_mode: parserMode,
+        raw_fallback_used: rawFallbackUsed,
         no_post_run: true,
         no_worker_call: true,
         no_airtable_mutation: true,
@@ -760,10 +1126,10 @@ export async function GET(request: Request, context: RouteContext) {
       },
       error:
         parsedInputJson.code === "RUN_DRAFT_AUDIT_JSON_PARSE_FAILED"
-          ? "Run Draft Input_JSON is present but could not be parsed as a JSON object."
+          ? "Run Draft Input_JSON is present but could not be parsed, and loose raw fallback could not confirm the three critical statuses."
           : "Run Draft Input_JSON was not found on the Run Draft record.",
       next_step:
-        "Fix or inspect the Run Draft Input_JSON field. This route remains read-only and does not call the worker.",
+        "Inspect Input_JSON raw text. This route remains read-only and does not call the worker.",
     });
   }
 
@@ -1018,7 +1384,10 @@ export async function GET(request: Request, context: RouteContext) {
       workspaceId
     ),
     commands_record_ids: commandsRecordIds,
-    usage_ledger_record_id: stringField(usageLedgerWrite, ["record_id", "recordid"]),
+    usage_ledger_record_id: stringField(usageLedgerWrite, [
+      "record_id",
+      "recordid",
+    ]),
   };
 
   const reviewCheck = {
@@ -1070,7 +1439,7 @@ export async function GET(request: Request, context: RouteContext) {
     status = "COMMAND_NOT_FOUND";
   } else if (!runRead.record) {
     status = "RUN_DRAFT_NOT_FOUND";
-  } else if (!parsedInputJson.ok) {
+  } else if (!parsedInputJson.ok && !rawFallbackUsed) {
     status = parsedInputJson.code;
   } else if (
     !normalizedAudit.postRunDryRunWasSent ||
@@ -1142,11 +1511,20 @@ export async function GET(request: Request, context: RouteContext) {
     current_command_status_select: commandStatusSelect || null,
 
     audit_json_compatibility: {
-      input_json_field_used: parsedInputJson.ok
-        ? parsedInputJson.inputJsonFieldUsed
-        : parsedInputJson.inputJsonFieldUsed,
-      input_json_raw_present: parsedInputJson.inputJsonRawPresent,
-      input_json_parse_failed: parsedInputJson.inputJsonParseFailed,
+      input_json_field_used:
+        rawInputJson.inputJsonFieldUsed ||
+        (parsedInputJson.ok
+          ? parsedInputJson.inputJsonFieldUsed
+          : parsedInputJson.inputJsonFieldUsed),
+      input_json_raw_present:
+        rawInputJson.inputJsonRawPresent ||
+        (parsedInputJson.ok
+          ? parsedInputJson.inputJsonRawPresent
+          : parsedInputJson.inputJsonRawPresent),
+      input_json_parse_failed: parsedInputJson.ok
+        ? false
+        : parsedInputJson.inputJsonParseFailed,
+      parser_mode: parserMode,
       key_format_detected: auditKeyFormat.keyFormatDetected,
       accepted_snake_case_keys: auditKeyFormat.acceptedSnakeCaseKeys,
       accepted_compact_keys: auditKeyFormat.acceptedCompactKeys,
@@ -1157,6 +1535,7 @@ export async function GET(request: Request, context: RouteContext) {
       worker_dry_run_call_was_sent: normalizedAudit.workerDryRunCallWasSent,
       run_execution_was_dry_run_only:
         normalizedAudit.runExecutionWasDryRunOnly,
+      raw_fallback_used: rawFallbackUsed,
     },
 
     post_run_from_this_surface: "DISABLED",
