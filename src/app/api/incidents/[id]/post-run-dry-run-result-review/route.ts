@@ -26,12 +26,12 @@ type AirtableReadResult = {
   error: string | null;
 };
 
-const VERSION = "Incident Detail V5.26.3";
+const VERSION = "Incident Detail V5.27";
 const SOURCE =
-  "dashboard_incident_detail_v5_26_3_worker_airtable_run_record_read_fallback";
+  "dashboard_incident_detail_v5_27_unsupported_command_diagnosis";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
 const READER_VERSION =
-  "V5.26.3_WORKER_AIRTABLE_RUN_RECORD_READ_FALLBACK";
+  "V5.27_UNSUPPORTED_COMMAND_DIAGNOSIS";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
@@ -126,7 +126,11 @@ function airtableUrl(baseId: string, tableName: string): string {
   )}/${encodeURIComponent(tableName)}`;
 }
 
-function airtableRecordUrl(baseId: string, tableName: string, recordId: string): string {
+function airtableRecordUrl(
+  baseId: string,
+  tableName: string,
+  recordId: string
+): string {
   return `${airtableUrl(baseId, tableName)}/${encodeURIComponent(recordId)}`;
 }
 
@@ -1220,6 +1224,161 @@ function buildWorkerResponseFallbackFromRecord(args: {
   };
 }
 
+function buildUnsupportedCommandDiagnosis(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  commandFields: JsonRecord;
+  commandStatus: string;
+  commandStatusSelect: string;
+  workerDryRunResult: {
+    scanned: number;
+    executed: number;
+    unsupported: number;
+    errors_count: number;
+    capability: string;
+    commands_record_ids: string[];
+  };
+}) {
+  const capabilityRequested = stringField(
+    args.commandFields,
+    ["Capability", "capability"],
+    args.workerDryRunResult.capability || "unknown"
+  );
+
+  const targetMode = stringField(args.commandFields, [
+    "Target_Mode",
+    "target_mode",
+    "targetMode",
+  ]);
+
+  const dryRun = booleanField(args.commandFields, ["Dry_Run", "dry_run", "dryRun"], true);
+
+  const workerCallAllowed = booleanField(
+    args.commandFields,
+    ["Worker_Call_Allowed", "worker_call_allowed", "workerCallAllowed"],
+    false
+  );
+
+  const runCreationAllowed = booleanField(
+    args.commandFields,
+    ["Run_Creation_Allowed", "run_creation_allowed", "runCreationAllowed"],
+    false
+  );
+
+  const normalizedCapability = normalizeStatusToken(capabilityRequested);
+  const normalizedCommandStatus = normalizeStatusToken(args.commandStatus);
+  const normalizedCommandStatusSelect = normalizeStatusToken(args.commandStatusSelect);
+  const normalizedTargetMode = normalizeStatusToken(targetMode);
+
+  const unsupportedConfirmed =
+    args.workerDryRunResult.unsupported >= 1 &&
+    args.workerDryRunResult.executed === 0 &&
+    args.workerDryRunResult.errors_count === 0;
+
+  const currentQueueNotExecutable =
+    normalizedCapability === "COMMANDORCHESTRATOR" &&
+    normalizedCommandStatus === "QUEUED" &&
+    normalizedCommandStatusSelect === "UNSUPPORTED" &&
+    unsupportedConfirmed;
+
+  const dryRunOnlyNotExecutable =
+    normalizedTargetMode === "DRYRUNONLY" &&
+    dryRun === true &&
+    workerCallAllowed === false &&
+    runCreationAllowed === false;
+
+  let unsupportedCategory:
+    | "CAPABILITY_NOT_EXECUTABLE_FROM_CURRENT_QUEUE"
+    | "CAPABILITY_ALLOWLIST_OR_ROUTER_MISMATCH"
+    | "COMMAND_STATUS_UNSUPPORTED"
+    | "DRY_RUN_ONLY_NOT_EXECUTABLE"
+    | "COMMAND_PAYLOAD_INCOMPLETE"
+    | "UNKNOWN_UNSUPPORTED_REASON" = "UNKNOWN_UNSUPPORTED_REASON";
+
+  if (currentQueueNotExecutable) {
+    unsupportedCategory = "COMMAND_STATUS_UNSUPPORTED";
+  } else if (dryRunOnlyNotExecutable) {
+    unsupportedCategory = "DRY_RUN_ONLY_NOT_EXECUTABLE";
+  } else if (
+    capabilityRequested &&
+    args.workerDryRunResult.executed === 0 &&
+    args.workerDryRunResult.unsupported >= 1 &&
+    args.workerDryRunResult.errors_count === 0
+  ) {
+    unsupportedCategory = "CAPABILITY_ALLOWLIST_OR_ROUTER_MISMATCH";
+  } else if (!capabilityRequested || normalizedCapability === "UNKNOWN") {
+    unsupportedCategory = "COMMAND_PAYLOAD_INCOMPLETE";
+  }
+
+  const probableReason =
+    unsupportedCategory === "COMMAND_STATUS_UNSUPPORTED"
+      ? "The worker scanned the command but treated it as unsupported because the command record is currently marked Unsupported or the execution router does not consider this queued command executable."
+      : unsupportedCategory === "DRY_RUN_ONLY_NOT_EXECUTABLE"
+        ? "The command is intentionally configured as dry_run_only with worker_call_allowed=false and run_creation_allowed=false, so it is not eligible for real execution in the current gated chain."
+        : unsupportedCategory === "CAPABILITY_ALLOWLIST_OR_ROUTER_MISMATCH"
+          ? "The requested capability exists on the command, but the worker returned unsupported with zero execution and zero errors. This suggests a capability allowlist, router, or execution-path mismatch."
+          : unsupportedCategory === "COMMAND_PAYLOAD_INCOMPLETE"
+            ? "The command payload does not expose enough executable capability information for the worker router to promote it safely."
+            : "The worker classified the command as unsupported, but the available persisted evidence is not sufficient to assign a more specific reason.";
+
+  const safetyInterpretation = dryRunOnlyNotExecutable
+    ? "This is expected in the current gated dry-run chain. The command was reviewed without real execution rights."
+    : "The dry-run proved transport, auth, workspace routing, and persisted worker evidence. Real execution remains blocked until the unsupported classification is explained and cleared.";
+
+  const realExecutionBlocker =
+    unsupportedConfirmed ||
+    dryRunOnlyNotExecutable ||
+    normalizedCommandStatusSelect === "UNSUPPORTED";
+
+  const requiredBeforeRealRun = [
+    "verify worker capability allowlist",
+    "verify command router supports command_orchestrator",
+    "verify command payload schema",
+    "verify target_mode can be promoted safely",
+    "verify operator approval for non-dry-run execution",
+    "add rollback/cancel path before real execution",
+  ];
+
+  const recommendedNextAction =
+    unsupportedCategory === "COMMAND_STATUS_UNSUPPORTED"
+      ? "Inspect the Command router and the Status_select=Unsupported transition for command_orchestrator. Confirm whether command_orchestrator is intended to execute from the current queue or should spawn/route to a lower-level executable capability."
+      : unsupportedCategory === "DRY_RUN_ONLY_NOT_EXECUTABLE"
+        ? "Keep this command gated. Define the explicit promotion path from dry_run_only to a real executable mode before any non-dry-run execution."
+        : unsupportedCategory === "CAPABILITY_ALLOWLIST_OR_ROUTER_MISMATCH"
+          ? "Compare the command capability against the worker executable capability allowlist and router mapping. Add a read-only route-level diagnostic before changing the worker."
+          : "Inspect the command fields and Input_JSON payload to identify the missing executable schema elements.";
+
+  return {
+    available: true,
+    diagnosis_version: "V5.27_UNSUPPORTED_COMMAND_DIAGNOSIS",
+    command_record_id: args.commandRecordId,
+    command_id: args.commandId,
+    capability_requested: capabilityRequested,
+    command_status: args.commandStatus,
+    command_status_select: args.commandStatusSelect,
+    target_mode: targetMode || null,
+    dry_run: dryRun,
+    worker_call_allowed: workerCallAllowed,
+    run_creation_allowed: runCreationAllowed,
+    worker_result_scanned_count: args.workerDryRunResult.scanned,
+    worker_result_unsupported_count: args.workerDryRunResult.unsupported,
+    worker_result_executed_count: args.workerDryRunResult.executed,
+    worker_result_errors_count: args.workerDryRunResult.errors_count,
+    worker_command_record_seen: args.commandRecordId
+      ? args.workerDryRunResult.commands_record_ids.includes(args.commandRecordId)
+      : false,
+    unsupported_confirmed: unsupportedConfirmed,
+    unsupported_category: unsupportedCategory,
+    probable_reason: probableReason,
+    safety_interpretation: safetyInterpretation,
+    real_execution_blocker: realExecutionBlocker,
+    recommended_next_action: recommendedNextAction,
+    required_before_real_run: requiredBeforeRealRun,
+    guardrail_interpretation:
+      "V5.27 is diagnostic only. It does not execute the command, does not call the worker, does not mutate Airtable, and does not promote dry-run to real-run.",
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
@@ -1698,6 +1857,15 @@ export async function GET(request: Request, context: RouteContext) {
     ]),
   };
 
+  const unsupportedCommandDiagnosis = buildUnsupportedCommandDiagnosis({
+    commandRecordId,
+    commandId: ids.commandDraftId,
+    commandFields,
+    commandStatus,
+    commandStatusSelect,
+    workerDryRunResult,
+  });
+
   const reviewCheck = {
     intent_found: Boolean(intentRead.record),
     approval_found: Boolean(approvalRead.record),
@@ -1848,6 +2016,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     worker_run_record_fallback: workerRunRecordFallback,
 
+    unsupported_command_diagnosis: unsupportedCommandDiagnosis,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -1901,9 +2071,9 @@ export async function GET(request: Request, context: RouteContext) {
 
     interpretation: {
       summary:
-        "This surface reviews the persisted V5.25.1 dry-run evidence only. If Input_JSON does not contain worker_response_sanitized, V5.26.3 reads the existing worker Airtable run record in GET/read-only mode.",
+        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 adds a read-only diagnosis explaining why the scanned command was classified as unsupported.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, and persisted worker evidence are reviewed without executing a new run.",
+        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, and unsupported classification are now reviewed without executing a new run.",
       unsupported_is_blocking_for_real_execution: true,
       unsupported_fix_required_before_real_execution: true,
     },
@@ -1923,6 +2093,8 @@ export async function GET(request: Request, context: RouteContext) {
     future_requirements: [
       "Review why command_orchestrator returned unsupported for the queued command",
       "Verify the command capability and worker allowlist before any real execution",
+      "Verify the command router supports command_orchestrator from this queue",
+      "Verify the command payload schema before promotion",
       "Keep real execution behind a separate feature gate",
       "Keep POST /run server-side only",
       "Keep worker secret server-side only",
@@ -1948,8 +2120,8 @@ export async function GET(request: Request, context: RouteContext) {
     error:
       status === "POST_RUN_DRY_RUN_RESULT_REVIEW_READY"
         ? null
-        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, and read sections.",
+        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, and read sections.",
     next_step:
-      "V5.27 may introduce Unsupported Command Diagnosis, still without real execution.",
+      "Next safe step: inspect worker router / allowlist mapping for command_orchestrator before any real execution.",
   });
 }
