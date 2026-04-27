@@ -33,8 +33,9 @@ type AirtableWriteResult = {
   error: string | null;
 };
 
-const VERSION = "Incident Detail V5.25";
-const SOURCE = "dashboard_incident_detail_v5_25_gated_post_run_persistence";
+const VERSION = "Incident Detail V5.25.1";
+const SOURCE =
+  "dashboard_incident_detail_v5_25_1_strict_worker_runrequest_body_alignment";
 const MODE = "GATED_POST_RUN_PERSISTENCE";
 
 const OPERATOR_CONFIRMATION = "SEND_POST_RUN_DRY_RUN";
@@ -97,7 +98,8 @@ function getAirtableConfig() {
   return {
     baseId: getEnv("AIRTABLE_BASE_ID"),
     token,
-    operatorIntentsTable: getEnv("AIRTABLE_OPERATOR_INTENTS_TABLE") || "Operator_Intents",
+    operatorIntentsTable:
+      getEnv("AIRTABLE_OPERATOR_INTENTS_TABLE") || "Operator_Intents",
     operatorApprovalsTable:
       getEnv("AIRTABLE_OPERATOR_APPROVALS_TABLE") || "Operator_Approvals",
     commandsTable: getEnv("AIRTABLE_COMMANDS_TABLE") || "Commands",
@@ -158,9 +160,9 @@ function escapeFormulaValue(value: string): string {
 }
 
 function airtableUrl(baseId: string, tableName: string): string {
-  return `https://api.airtable.com/v0/${encodeURIComponent(baseId)}/${encodeURIComponent(
-    tableName
-  )}`;
+  return `https://api.airtable.com/v0/${encodeURIComponent(
+    baseId
+  )}/${encodeURIComponent(tableName)}`;
 }
 
 function airtableHeaders(token: string) {
@@ -176,10 +178,13 @@ async function findRecordByIdempotencyKey(args: {
   tableName: string;
   idempotencyKey: string;
 }): Promise<AirtableReadResult> {
-  const formula = `{Idempotency_Key}='${escapeFormulaValue(args.idempotencyKey)}'`;
-  const url = `${airtableUrl(args.baseId, args.tableName)}?maxRecords=1&filterByFormula=${encodeURIComponent(
-    formula
-  )}`;
+  const formula = `{Idempotency_Key}='${escapeFormulaValue(
+    args.idempotencyKey
+  )}'`;
+  const url = `${airtableUrl(
+    args.baseId,
+    args.tableName
+  )}?maxRecords=1&filterByFormula=${encodeURIComponent(formula)}`;
 
   try {
     const response = await fetch(url, {
@@ -230,14 +235,17 @@ async function updateRecord(args: {
   fields: JsonRecord;
 }): Promise<AirtableWriteResult> {
   try {
-    const response = await fetch(`${airtableUrl(args.baseId, args.tableName)}/${args.recordId}`, {
-      method: "PATCH",
-      headers: airtableHeaders(args.token),
-      body: JSON.stringify({
-        fields: args.fields,
-      }),
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${airtableUrl(args.baseId, args.tableName)}/${args.recordId}`,
+      {
+        method: "PATCH",
+        headers: airtableHeaders(args.token),
+        body: JSON.stringify({
+          fields: args.fields,
+        }),
+        cache: "no-store",
+      }
+    );
 
     const text = await response.text();
 
@@ -297,13 +305,19 @@ function stringField(fields: JsonRecord, names: string[], fallback = ""): string
     const value = fields[name];
 
     if (typeof value === "string") return value;
-    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
   }
 
   return fallback;
 }
 
-function booleanField(fields: JsonRecord, names: string[], fallback = false): boolean {
+function booleanField(
+  fields: JsonRecord,
+  names: string[],
+  fallback = false
+): boolean {
   for (const name of names) {
     const value = fields[name];
 
@@ -322,26 +336,17 @@ function nestedString(record: JsonRecord, path: string[], fallback = ""): string
   let current: unknown = record;
 
   for (const part of path) {
-    if (!current || typeof current !== "object" || Array.isArray(current)) return fallback;
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return fallback;
+    }
+
     current = (current as JsonRecord)[part];
   }
 
   if (typeof current === "string") return current;
-  if (typeof current === "number" || typeof current === "boolean") return String(current);
-
-  return fallback;
-}
-
-function nestedBoolean(record: JsonRecord, path: string[], fallback = false): boolean {
-  let current: unknown = record;
-
-  for (const part of path) {
-    if (!current || typeof current !== "object" || Array.isArray(current)) return fallback;
-    current = (current as JsonRecord)[part];
+  if (typeof current === "number" || typeof current === "boolean") {
+    return String(current);
   }
-
-  if (typeof current === "boolean") return current;
-  if (typeof current === "string") return isEnabled(current);
 
   return fallback;
 }
@@ -412,6 +417,7 @@ function buildIds(workspaceId: string, incidentId: string) {
 
 function getWorkspaceId(request: Request): string {
   const url = new URL(request.url);
+
   return (
     url.searchParams.get("workspace_id") ||
     url.searchParams.get("workspaceId") ||
@@ -423,6 +429,10 @@ function buildWorkerUrl(workerBaseUrl: string): string {
   return `${workerBaseUrl.replace(/\/+$/, "")}/run`;
 }
 
+/**
+ * Dashboard audit payload.
+ * This payload is rich and must NOT be sent to the Worker /run endpoint.
+ */
 function buildWorkerPayload(args: {
   workspaceId: string;
   incidentId: string;
@@ -453,6 +463,17 @@ function buildWorkerPayload(args: {
       real_run_forbidden: true,
       secret_server_side_only: true,
     },
+  };
+}
+
+/**
+ * Strict Worker RunRequest body.
+ * This is the ONLY payload sent to Worker /run.
+ */
+function buildStrictWorkerRunRequestBody() {
+  return {
+    capability: "command_orchestrator",
+    dry_run: true,
   };
 }
 
@@ -499,6 +520,7 @@ function buildRunInputJson(args: {
       dry_run_only: true,
       real_run_forbidden: true,
       secret_server_side_only: true,
+      strict_worker_runrequest_body_alignment: true,
     },
     worker_response_sanitized: args.workerResponseSanitized ?? null,
   };
@@ -574,7 +596,6 @@ async function buildBasePayload(request: Request, incidentId: string) {
   const commandFields = commandRead.record?.fields ?? {};
   const runFields = runRead.record?.fields ?? {};
 
-  const commandInputJson = parseInputJson(commandFields);
   const runInputJson = parseInputJson(runFields);
 
   const commandStatus = stringField(commandFields, ["Status", "status"]);
@@ -584,13 +605,17 @@ async function buildBasePayload(request: Request, incidentId: string) {
   ]);
 
   const runStatus = stringField(runFields, ["Status", "status"]);
-  const runStatusSelect = stringField(runFields, ["Status_select", "status_select"]);
+  const runStatusSelect = stringField(runFields, [
+    "Status_select",
+    "status_select",
+  ]);
 
   const commandRecordId = commandRead.record_id ?? "";
   const runRecordId = runRead.record_id ?? "";
 
   const alreadyPostRunSent =
-    nestedString(runInputJson, ["post_run_status"]) === "POST_RUN_DRY_RUN_SENT" ||
+    nestedString(runInputJson, ["post_run_status"]) ===
+      "POST_RUN_DRY_RUN_SENT" ||
     nestedString(runInputJson, ["worker_call_status"]) === "DRY_RUN_CALL_SENT";
 
   const workerPayloadPreview = buildWorkerPayload({
@@ -630,25 +655,49 @@ async function buildBasePayload(request: Request, incidentId: string) {
         workspace_id: stringField(commandFields, ["Workspace_ID"], workspaceId),
         incident_id: stringField(commandFields, ["Incident_ID"], incidentId),
         intent_id: stringField(commandFields, ["Intent_ID"], ids.intentId),
-        intent_record_id: stringField(commandFields, ["Intent_Record_ID"], intentRead.record_id ?? ""),
+        intent_record_id: stringField(
+          commandFields,
+          ["Intent_Record_ID"],
+          intentRead.record_id ?? ""
+        ),
         approval_id: stringField(commandFields, ["Approval_ID"], ids.approvalId),
         approval_record_id: stringField(
           commandFields,
           ["Approval_Record_ID"],
           approvalRead.record_id ?? ""
         ),
-        capability: stringField(commandFields, ["Capability"], "command_orchestrator"),
+        capability: stringField(
+          commandFields,
+          ["Capability"],
+          "command_orchestrator"
+        ),
         status: commandStatus,
         status_select: commandStatusSelect,
         target_mode: stringField(commandFields, ["Target_Mode"], "dry_run_only"),
         dry_run: booleanField(commandFields, ["Dry_Run"], true),
-        operator_identity: stringField(commandFields, ["Operator_Identity"], "Arthur"),
+        operator_identity: stringField(
+          commandFields,
+          ["Operator_Identity"],
+          "Arthur"
+        ),
         queue_allowed: booleanField(commandFields, ["Queue_Allowed"], true),
-        run_creation_allowed: booleanField(commandFields, ["Run_Creation_Allowed"], false),
-        worker_call_allowed: booleanField(commandFields, ["Worker_Call_Allowed"], false),
+        run_creation_allowed: booleanField(
+          commandFields,
+          ["Run_Creation_Allowed"],
+          false
+        ),
+        worker_call_allowed: booleanField(
+          commandFields,
+          ["Worker_Call_Allowed"],
+          false
+        ),
         real_run: stringField(commandFields, ["Real_Run"], "Forbidden"),
         secret_exposure: "SERVER_SIDE_ONLY_REDACTED",
-        source_layer: stringField(commandFields, ["Source_Layer"], "Incident Detail V5.19"),
+        source_layer: stringField(
+          commandFields,
+          ["Source_Layer"],
+          "Incident Detail V5.19"
+        ),
       }
     : null;
 
@@ -660,9 +709,17 @@ async function buildBasePayload(request: Request, incidentId: string) {
         workspace_id: stringField(runFields, ["Workspace_ID"], workspaceId),
         incident_id: stringField(runFields, ["Incident_ID"], incidentId),
         command_id: stringField(runFields, ["Command_ID"], ids.commandDraftId),
-        command_record_id: stringField(runFields, ["Command_Record_ID"], commandRecordId),
+        command_record_id: stringField(
+          runFields,
+          ["Command_Record_ID"],
+          commandRecordId
+        ),
         intent_id: stringField(runFields, ["Intent_ID"], ids.intentId),
-        intent_record_id: stringField(runFields, ["Intent_Record_ID"], intentRead.record_id ?? ""),
+        intent_record_id: stringField(
+          runFields,
+          ["Intent_Record_ID"],
+          intentRead.record_id ?? ""
+        ),
         approval_id: stringField(runFields, ["Approval_ID"], ids.approvalId),
         approval_record_id: stringField(
           runFields,
@@ -681,10 +738,18 @@ async function buildBasePayload(request: Request, incidentId: string) {
         operator_identity: stringField(runFields, ["Operator_Identity"], "Arthur"),
         run_persistence: stringField(runFields, ["Run_Persistence"], "Draft"),
         post_run_allowed: booleanField(runFields, ["Post_Run_Allowed"], false),
-        worker_call_allowed: booleanField(runFields, ["Worker_Call_Allowed"], false),
+        worker_call_allowed: booleanField(
+          runFields,
+          ["Worker_Call_Allowed"],
+          false
+        ),
         real_run: stringField(runFields, ["Real_Run"], "Forbidden"),
         secret_exposure: "SERVER_SIDE_ONLY_REDACTED",
-        source_layer: stringField(runFields, ["Source_Layer"], "Incident Detail V5.22"),
+        source_layer: stringField(
+          runFields,
+          ["Source_Layer"],
+          "Incident Detail V5.22"
+        ),
       }
     : null;
 
@@ -775,6 +840,9 @@ async function buildBasePayload(request: Request, incidentId: string) {
 
     worker_target_preview: workerTargetPreview,
     post_run_payload_preview: workerPayloadPreview,
+    strict_worker_runrequest_body_preview: buildStrictWorkerRunRequestBody(),
+    strict_worker_runrequest_body_alignment: "STRICT_V5_2_1_COMPATIBLE",
+    strict_worker_runrequest_body_extra_fields_removed: true,
 
     post_run_readiness_check: {
       intent_found: Boolean(intentRead.record),
@@ -788,7 +856,8 @@ async function buildBasePayload(request: Request, incidentId: string) {
         nestedString(runInputJson, ["command_record_id"]) === commandRecordId,
       run_linked_to_intent:
         stringField(runFields, ["Intent_Record_ID"]) === intentRead.record_id ||
-        nestedString(runInputJson, ["metadata", "intent_record_id"]) === intentRead.record_id,
+        nestedString(runInputJson, ["metadata", "intent_record_id"]) ===
+          intentRead.record_id,
       run_linked_to_approval:
         stringField(runFields, ["Approval_Record_ID"]) === approvalRead.record_id ||
         nestedString(runInputJson, ["metadata", "approval_record_id"]) ===
@@ -951,7 +1020,7 @@ export async function POST(request: Request, context: RouteContext) {
         worker_call: "DISABLED",
         post_sent: false,
         run_execution: "DISABLED",
-        error: "dry_run must be true. Real run is forbidden in V5.25.",
+        error: "dry_run must be true. Real run is forbidden in V5.25.1.",
       }),
       400
     );
@@ -1072,33 +1141,75 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   if (!basePayload.intent_record_id) {
-    return jsonResponse(withoutInternal({ ...basePayload, status: "OPERATOR_INTENT_DRAFT_NOT_FOUND", method: "POST" }), 404);
+    return jsonResponse(
+      withoutInternal({
+        ...basePayload,
+        status: "OPERATOR_INTENT_DRAFT_NOT_FOUND",
+        method: "POST",
+      }),
+      404
+    );
   }
 
   if (!basePayload.approval_record_id) {
-    return jsonResponse(withoutInternal({ ...basePayload, status: "OPERATOR_APPROVAL_NOT_FOUND", method: "POST" }), 404);
+    return jsonResponse(
+      withoutInternal({
+        ...basePayload,
+        status: "OPERATOR_APPROVAL_NOT_FOUND",
+        method: "POST",
+      }),
+      404
+    );
   }
 
   if (!basePayload.command_record_id) {
-    return jsonResponse(withoutInternal({ ...basePayload, status: "COMMAND_NOT_FOUND", method: "POST" }), 404);
+    return jsonResponse(
+      withoutInternal({
+        ...basePayload,
+        status: "COMMAND_NOT_FOUND",
+        method: "POST",
+      }),
+      404
+    );
   }
 
   if (basePayload.current_command_status !== "Queued") {
-    return jsonResponse(withoutInternal({ ...basePayload, status: "COMMAND_STATUS_NOT_QUEUED", method: "POST" }), 409);
+    return jsonResponse(
+      withoutInternal({
+        ...basePayload,
+        status: "COMMAND_STATUS_NOT_QUEUED",
+        method: "POST",
+      }),
+      409
+    );
   }
 
   if (!basePayload.run_record_id) {
-    return jsonResponse(withoutInternal({ ...basePayload, status: "RUN_DRAFT_NOT_FOUND", method: "POST" }), 404);
+    return jsonResponse(
+      withoutInternal({
+        ...basePayload,
+        status: "RUN_DRAFT_NOT_FOUND",
+        method: "POST",
+      }),
+      404
+    );
   }
 
   if (basePayload.current_run_status !== "Draft") {
-    return jsonResponse(withoutInternal({ ...basePayload, status: "RUN_STATUS_NOT_DRAFT", method: "POST" }), 409);
+    return jsonResponse(
+      withoutInternal({
+        ...basePayload,
+        status: "RUN_STATUS_NOT_DRAFT",
+        method: "POST",
+      }),
+      409
+    );
   }
 
   const commandRecordId = String(basePayload.command_record_id);
   const runRecordId = String(basePayload.run_record_id);
 
-  const workerPayload = buildWorkerPayload({
+  const dashboardAuditPayload = buildWorkerPayload({
     workspaceId: String(basePayload.workspace_id),
     incidentId,
     commandRecordId,
@@ -1110,7 +1221,9 @@ export async function POST(request: Request, context: RouteContext) {
     operatorIdentity,
   });
 
-  if (workerPayload.dry_run !== true) {
+  const workerRunRequestBody = buildStrictWorkerRunRequestBody();
+
+  if (workerRunRequestBody.dry_run !== true) {
     return jsonResponse(
       withoutInternal({
         ...basePayload,
@@ -1120,7 +1233,7 @@ export async function POST(request: Request, context: RouteContext) {
         worker_call: "DISABLED",
         post_sent: false,
         run_execution: "DISABLED",
-        error: "Internal worker payload dry_run must be true.",
+        error: "Internal worker RunRequest dry_run must be true.",
       }),
       400
     );
@@ -1177,7 +1290,7 @@ export async function POST(request: Request, context: RouteContext) {
         "Content-Type": "application/json",
         "x-scheduler-secret": worker.selectedSecret,
       },
-      body: JSON.stringify(workerPayload),
+      body: JSON.stringify(workerRunRequestBody),
       cache: "no-store",
     });
 
@@ -1199,6 +1312,10 @@ export async function POST(request: Request, context: RouteContext) {
           worker_call: "DRY_RUN_CALL_FAILED",
           post_sent: true,
           run_execution: "DRY_RUN_ONLY",
+          worker_run_request_body: workerRunRequestBody,
+          worker_run_request_body_alignment: "STRICT_V5_2_1_COMPATIBLE",
+          worker_run_request_body_extra_fields_removed: true,
+          dashboard_audit_payload: dashboardAuditPayload,
           worker_response: {
             http_status: workerHttpStatus,
             sanitized: true,
@@ -1221,6 +1338,10 @@ export async function POST(request: Request, context: RouteContext) {
         worker_call: "DRY_RUN_CALL_FAILED",
         post_sent: true,
         run_execution: "DRY_RUN_ONLY",
+        worker_run_request_body: workerRunRequestBody,
+        worker_run_request_body_alignment: "STRICT_V5_2_1_COMPATIBLE",
+        worker_run_request_body_extra_fields_removed: true,
+        dashboard_audit_payload: dashboardAuditPayload,
         worker_response: {
           http_status: workerHttpStatus,
           sanitized: true,
@@ -1271,6 +1392,10 @@ export async function POST(request: Request, context: RouteContext) {
         worker_call: "DRY_RUN_CALL_SENT",
         post_sent: true,
         run_execution: "DRY_RUN_ONLY",
+        worker_run_request_body: workerRunRequestBody,
+        worker_run_request_body_alignment: "STRICT_V5_2_1_COMPATIBLE",
+        worker_run_request_body_extra_fields_removed: true,
+        dashboard_audit_payload: dashboardAuditPayload,
         worker_response: {
           http_status: workerHttpStatus,
           ok: true,
@@ -1296,10 +1421,10 @@ export async function POST(request: Request, context: RouteContext) {
       real_run: "FORBIDDEN",
       secret_exposure: "DISABLED",
       dashboard_airtable_mutation: "RUN_DRAFT_POST_RUN_AUDITED",
-      worker_payload_sent: {
-        ...workerPayload,
-        secret_exposure: "DISABLED",
-      },
+      worker_run_request_body: workerRunRequestBody,
+      worker_run_request_body_alignment: "STRICT_V5_2_1_COMPATIBLE",
+      worker_run_request_body_extra_fields_removed: true,
+      dashboard_audit_payload: dashboardAuditPayload,
       worker_response: {
         http_status: workerHttpStatus,
         ok: true,
