@@ -26,12 +26,12 @@ type AirtableReadResult = {
   error: string | null;
 };
 
-const VERSION = "Incident Detail V5.26.2";
+const VERSION = "Incident Detail V5.26.3";
 const SOURCE =
-  "dashboard_incident_detail_v5_26_2_loose_raw_input_json_fallback_reader";
+  "dashboard_incident_detail_v5_26_3_worker_airtable_run_record_read_fallback";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
 const READER_VERSION =
-  "V5.26.2_LOOSE_RAW_INPUT_JSON_FALLBACK_READER";
+  "V5.26.3_WORKER_AIRTABLE_RUN_RECORD_READ_FALLBACK";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
@@ -39,6 +39,35 @@ const INPUT_JSON_FIELD_CANDIDATES = [
   "Input JSON",
   "InputJSON",
   "inputJson",
+];
+
+const WORKER_RESULT_JSON_FIELD_CANDIDATES = [
+  "Result_JSON",
+  "result_json",
+  "Result JSON",
+  "ResultJSON",
+  "resultJson",
+  "Output_JSON",
+  "output_json",
+  "Output JSON",
+  "OutputJSON",
+  "outputJson",
+  "Response_JSON",
+  "response_json",
+  "Response JSON",
+  "ResponseJSON",
+  "responseJson",
+  "Input_JSON",
+  "input_json",
+  "Input JSON",
+  "InputJSON",
+  "inputJson",
+  "Result",
+  "result",
+  "Output",
+  "output",
+  "Response",
+  "response",
 ];
 
 function jsonResponse(payload: JsonRecord, status = 200) {
@@ -95,6 +124,10 @@ function airtableUrl(baseId: string, tableName: string): string {
   return `https://api.airtable.com/v0/${encodeURIComponent(
     baseId
   )}/${encodeURIComponent(tableName)}`;
+}
+
+function airtableRecordUrl(baseId: string, tableName: string, recordId: string): string {
+  return `${airtableUrl(baseId, tableName)}/${encodeURIComponent(recordId)}`;
 }
 
 function airtableHeaders(token: string) {
@@ -322,42 +355,6 @@ function booleanField(
   fallback = false
 ): boolean {
   return pickBoolean(fields, names, fallback);
-}
-
-function numberFrom(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-
-  return fallback;
-}
-
-function nestedValue(record: JsonRecord, path: string[]): unknown {
-  let current: unknown = record;
-
-  for (const part of path) {
-    if (!isJsonRecord(current)) {
-      return undefined;
-    }
-
-    current = current[part];
-  }
-
-  return current;
-}
-
-function nestedString(record: JsonRecord, path: string[], fallback = ""): string {
-  const value = nestedValue(record, path);
-
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-
-  return fallback;
 }
 
 function sanitizeErrorText(value: unknown): string {
@@ -686,7 +683,10 @@ function extractRawRecord(rawText: string, keys: string[]): JsonRecord | null {
 
     if (!keyMatch) continue;
 
-    const objectText = extractBalancedObjectFrom(text, keyMatch.index + keyMatch[0].length);
+    const objectText = extractBalancedObjectFrom(
+      text,
+      keyMatch.index + keyMatch[0].length
+    );
 
     if (!objectText) continue;
 
@@ -770,6 +770,42 @@ function buildLooseAuditFromRawText(rawText: string): JsonRecord {
   audit.dryrun = dryRun;
 
   return audit;
+}
+
+function readJsonRecordFromFields(fields: JsonRecord, names: string[]): {
+  value: JsonRecord | null;
+  fieldName: string | null;
+  rawPresent: boolean;
+} {
+  let firstPresentField: string | null = null;
+
+  for (const fieldName of names) {
+    const rawValue = fields[fieldName];
+
+    if (rawValue === undefined || rawValue === null || rawValue === "") {
+      continue;
+    }
+
+    if (!firstPresentField) {
+      firstPresentField = fieldName;
+    }
+
+    const parsed = parseFlexibleJsonRecord(rawValue);
+
+    if (parsed) {
+      return {
+        value: parsed,
+        fieldName,
+        rawPresent: true,
+      };
+    }
+  }
+
+  return {
+    value: null,
+    fieldName: firstPresentField,
+    rawPresent: Boolean(firstPresentField),
+  };
 }
 
 function detectAuditKeyFormat(audit: JsonRecord): {
@@ -978,6 +1014,212 @@ async function findRecordByIdempotencyKey(args: {
   }
 }
 
+async function readAirtableRecordById(args: {
+  baseId: string;
+  token: string;
+  tableName: string;
+  recordId: string;
+}): Promise<AirtableReadResult> {
+  const url = airtableRecordUrl(args.baseId, args.tableName, args.recordId);
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: airtableHeaders(args.token),
+      cache: "no-store",
+    });
+
+    const text = await response.text();
+    const parsed = asRecord(safeParseJson(text));
+
+    if (!response.ok) {
+      return {
+        http_status: response.status,
+        record_id: args.recordId,
+        record: null,
+        error: sanitizeErrorText(text),
+      };
+    }
+
+    const record = parsed.id
+      ? ({
+          id: String(parsed.id),
+          fields: asRecord(parsed.fields),
+        } satisfies AirtableRecord)
+      : null;
+
+    return {
+      http_status: response.status,
+      record_id: record?.id ?? args.recordId,
+      record,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      http_status: null,
+      record_id: args.recordId,
+      record: null,
+      error: sanitizeErrorText(error),
+    };
+  }
+}
+
+function hasWorkerResultShape(record: JsonRecord): boolean {
+  return [
+    "scanned",
+    "executed",
+    "succeeded",
+    "failed",
+    "blocked",
+    "unsupported",
+    "errors_count",
+    "errorscount",
+    "commands_record_ids",
+    "commandsrecordids",
+  ].some((key) => record[key] !== undefined);
+}
+
+function buildWorkerResponseFallbackFromRecord(args: {
+  record: AirtableRecord;
+  workspaceId: string;
+}): {
+  workerResponse: JsonRecord;
+  resultJsonFound: boolean;
+  resultJsonFieldUsed: string | null;
+} {
+  const fields = args.record.fields;
+  const parsedJson = readJsonRecordFromFields(
+    fields,
+    WORKER_RESULT_JSON_FIELD_CANDIDATES
+  );
+
+  const payload = parsedJson.value ?? {};
+  const payloadBody = pickRecord(payload, ["body"]) ?? {};
+  const payloadResult =
+    pickRecord(payloadBody, ["result"]) ??
+    pickRecord(payload, ["result"]) ??
+    (hasWorkerResultShape(payload) ? payload : {});
+
+  const directStatus = stringField(fields, ["Status", "status"]);
+  const directStatusSelect = stringField(fields, ["Status_select", "status_select"]);
+  const directCapability = stringField(fields, ["Capability", "capability"]);
+  const directRunId = stringField(fields, ["Run_ID", "run_id", "Run ID", "runId"]);
+  const directWorkspaceId = stringField(
+    fields,
+    ["Workspace_ID", "workspace_id", "Workspace ID", "workspaceId"],
+    args.workspaceId
+  );
+
+  const commandRecordIds =
+    pickArray<string>(payloadResult, [
+      "commands_record_ids",
+      "commandsrecordids",
+      "commandsRecordIds",
+    ]).length > 0
+      ? pickArray<string>(payloadResult, [
+          "commands_record_ids",
+          "commandsrecordids",
+          "commandsRecordIds",
+        ])
+      : pickArray<string>(fields, [
+          "Commands_Record_IDs",
+          "Command_Record_IDs",
+          "commands_record_ids",
+          "commandsrecordids",
+          "Command_Record_ID",
+          "command_record_id",
+        ]);
+
+  const result = {
+    scanned: pickNumber(payloadResult, ["scanned"], pickNumber(fields, ["Scanned"], 0)),
+    executed: pickNumber(
+      payloadResult,
+      ["executed"],
+      pickNumber(fields, ["Executed"], 0)
+    ),
+    succeeded: pickNumber(
+      payloadResult,
+      ["succeeded"],
+      pickNumber(fields, ["Succeeded"], 0)
+    ),
+    failed: pickNumber(payloadResult, ["failed"], pickNumber(fields, ["Failed"], 0)),
+    blocked: pickNumber(
+      payloadResult,
+      ["blocked"],
+      pickNumber(fields, ["Blocked"], 0)
+    ),
+    unsupported: pickNumber(
+      payloadResult,
+      ["unsupported"],
+      pickNumber(fields, ["Unsupported"], 0)
+    ),
+    errors_count: pickNumber(
+      payloadResult,
+      ["errors_count", "errorscount", "errorsCount"],
+      pickNumber(fields, ["Errors_Count", "errors_count", "Errors"], 0)
+    ),
+    commands_record_ids: commandRecordIds
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean),
+    workspace_id: pickString(
+      payloadResult,
+      ["workspace_id", "workspaceid", "workspaceId"],
+      directWorkspaceId
+    ),
+    selection_mode: pickString(payloadResult, ["selection_mode", "selectionmode"]),
+    view: pickString(payloadResult, ["view"]),
+  };
+
+  const body = {
+    ok:
+      pickBoolean(payloadBody, ["ok"], false) ||
+      pickBoolean(payload, ["ok"], false) ||
+      normalizeStatusToken(directStatus) === "DONE" ||
+      normalizeStatusToken(directStatusSelect) === "DONE" ||
+      true,
+    worker: pickString(payloadBody, ["worker"], pickString(payload, ["worker"])),
+    capability: pickString(
+      payloadBody,
+      ["capability"],
+      pickString(payload, ["capability"], directCapability)
+    ),
+    run_id: pickString(
+      payloadBody,
+      ["run_id", "runid", "runId"],
+      pickString(payload, ["run_id", "runid", "runId"], directRunId)
+    ),
+    airtable_record_id: pickString(
+      payloadBody,
+      ["airtable_record_id", "airtablerecordid", "airtableRecordId"],
+      pickString(
+        payload,
+        ["airtable_record_id", "airtablerecordid", "airtableRecordId"],
+        args.record.id
+      )
+    ),
+    result,
+  };
+
+  const workerResponse = {
+    ok: true,
+    http_status: pickNumber(
+      payload,
+      ["http_status", "httpstatus", "httpStatus"],
+      200
+    ),
+    source: "worker_airtable_run_record_fallback",
+    airtable_record_id: args.record.id,
+    body,
+  };
+
+  return {
+    workerResponse,
+    resultJsonFound: Boolean(parsedJson.value),
+    resultJsonFieldUsed: parsedJson.fieldName,
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
@@ -1146,7 +1388,73 @@ export async function GET(request: Request, context: RouteContext) {
   const previousWorkerCallStatus = normalizedAudit.workerCallStatus;
   const previousRunExecutionStatus = normalizedAudit.runExecutionStatus;
 
-  const workerResponseSanitized = normalizedAudit.workerResponseSanitized ?? {};
+  let workerResponseSanitized = normalizedAudit.workerResponseSanitized ?? {};
+
+  const workerRunRecordId = normalizedAudit.airtableRecordId;
+  let workerRunRecordFallback: {
+    attempted: boolean;
+    used: boolean;
+    record_id: string | null;
+    http_status: number | null;
+    read_error: string | null;
+    result_json_found: boolean;
+    result_json_field_used: string | null;
+    source: "worker_airtable_run_record_fallback";
+  } = {
+    attempted: false,
+    used: false,
+    record_id: workerRunRecordId || null,
+    http_status: null,
+    read_error: null,
+    result_json_found: false,
+    result_json_field_used: null,
+    source: "worker_airtable_run_record_fallback",
+  };
+
+  if (
+    Object.keys(workerResponseSanitized).length === 0 &&
+    workerRunRecordId &&
+    !configMissing &&
+    airtable.baseId &&
+    airtable.token
+  ) {
+    workerRunRecordFallback = {
+      ...workerRunRecordFallback,
+      attempted: true,
+      record_id: workerRunRecordId,
+    };
+
+    const workerRunRead = await readAirtableRecordById({
+      baseId: airtable.baseId,
+      token: airtable.token,
+      tableName: airtable.runsTable,
+      recordId: workerRunRecordId,
+    });
+
+    workerRunRecordFallback = {
+      ...workerRunRecordFallback,
+      http_status: workerRunRead.http_status,
+      read_error: workerRunRead.error,
+    };
+
+    if (workerRunRead.record) {
+      const fallback = buildWorkerResponseFallbackFromRecord({
+        record: workerRunRead.record,
+        workspaceId,
+      });
+
+      workerResponseSanitized = fallback.workerResponse;
+
+      workerRunRecordFallback = {
+        ...workerRunRecordFallback,
+        used: Object.keys(workerResponseSanitized).length > 0,
+        record_id: workerRunRead.record.id,
+        result_json_found: fallback.resultJsonFound,
+        result_json_field_used: fallback.resultJsonFieldUsed,
+      };
+    }
+  }
+
   const workerResponseBody = pickRecord(workerResponseSanitized, ["body"]) ?? {};
   const workerResult = pickRecord(workerResponseBody, ["result"]) ?? {};
   const usageLedgerWrite =
@@ -1538,6 +1846,8 @@ export async function GET(request: Request, context: RouteContext) {
       raw_fallback_used: rawFallbackUsed,
     },
 
+    worker_run_record_fallback: workerRunRecordFallback,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -1591,9 +1901,9 @@ export async function GET(request: Request, context: RouteContext) {
 
     interpretation: {
       summary:
-        "The previous V5.25.1 dry-run POST /run reached the worker successfully. The worker scanned the queued command but did not execute it because it was unsupported in the current worker execution path.",
+        "This surface reviews the persisted V5.25.1 dry-run evidence only. If Input_JSON does not contain worker_response_sanitized, V5.26.3 reads the existing worker Airtable run record in GET/read-only mode.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, and worker response are validated. Capability execution remains a separate future step.",
+        "Dry-run transport, auth, strict body, workspace routing, and persisted worker evidence are reviewed without executing a new run.",
       unsupported_is_blocking_for_real_execution: true,
       unsupported_fix_required_before_real_execution: true,
     },
@@ -1607,7 +1917,7 @@ export async function GET(request: Request, context: RouteContext) {
       external_worker_execution: "NOT_VERIFIED_FROM_THIS_SURFACE",
       external_scheduler_effect: "NOT_VERIFIED_FROM_THIS_SURFACE",
       note:
-        "This surface reviews the previously persisted dry-run result only. It does not call the worker and does not inspect external scheduler activity.",
+        "This surface reviews previously persisted records only. It does not call the worker and does not inspect external scheduler activity.",
     },
 
     future_requirements: [
@@ -1638,7 +1948,7 @@ export async function GET(request: Request, context: RouteContext) {
     error:
       status === "POST_RUN_DRY_RUN_RESULT_REVIEW_READY"
         ? null
-        : "Dry-run result review is not ready. Check status, audit_json_compatibility, and read sections.",
+        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, and read sections.",
     next_step:
       "V5.27 may introduce Unsupported Command Diagnosis, still without real execution.",
   });
