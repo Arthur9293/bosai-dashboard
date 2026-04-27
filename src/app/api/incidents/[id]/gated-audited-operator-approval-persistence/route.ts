@@ -30,6 +30,14 @@ type ApprovalPersistenceStatus =
   | "OPERATOR_APPROVAL_PERSISTENCE_FAILED"
   | "REAL_RUN_FORBIDDEN";
 
+type AirtableRecordResult = {
+  ok: boolean;
+  status: number;
+  recordId: string | null;
+  fields: Record<string, unknown> | null;
+  error: string | null;
+};
+
 const VERSION = "Incident Detail V5.11";
 const SOURCE =
   "dashboard_incident_detail_v5_11_gated_audited_operator_approval_persistence";
@@ -219,13 +227,7 @@ async function findAirtableRecordByIdempotency(input: {
   baseId: string;
   table: string;
   idempotencyKey: string;
-}): Promise<{
-  ok: boolean;
-  status: number;
-  recordId: string | null;
-  fields: Record<string, unknown> | null;
-  error: string | null;
-}> {
+}): Promise<AirtableRecordResult> {
   const formula = `{Idempotency_Key} = '${escapeAirtableFormulaValue(
     input.idempotencyKey
   )}'`;
@@ -292,13 +294,7 @@ async function createApprovalRecord(input: {
   baseId: string;
   table: string;
   fields: Record<string, unknown>;
-}): Promise<{
-  ok: boolean;
-  status: number;
-  recordId: string | null;
-  fields: Record<string, unknown> | null;
-  error: string | null;
-}> {
+}): Promise<AirtableRecordResult> {
   const url = `https://api.airtable.com/v0/${encodeURIComponent(
     input.baseId
   )}/${encodeURIComponent(input.table)}`;
@@ -623,7 +619,12 @@ async function buildReadState(input: {
   approvalsTable: string;
   workspaceId: string;
   incidentId: string;
-}) {
+}): Promise<{
+  ok: boolean;
+  reason: "intent_read_failed" | "approval_read_failed" | null;
+  intent: AirtableRecordResult;
+  approval: AirtableRecordResult;
+}> {
   const intentIdempotencyKey = buildIntentIdempotencyKey(
     input.workspaceId,
     input.incidentId
@@ -643,9 +644,15 @@ async function buildReadState(input: {
   if (!intent.ok) {
     return {
       ok: false,
-      reason: "intent_read_failed" as const,
+      reason: "intent_read_failed",
       intent,
-      approval: null,
+      approval: {
+        ok: false,
+        status: 0,
+        recordId: null,
+        fields: null,
+        error: "Approval read skipped because intent read failed.",
+      },
     };
   }
 
@@ -659,7 +666,7 @@ async function buildReadState(input: {
   if (!approval.ok) {
     return {
       ok: false,
-      reason: "approval_read_failed" as const,
+      reason: "approval_read_failed",
       intent,
       approval,
     };
@@ -736,11 +743,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
         intentReadHttpStatus: state.intent.status,
         intentRecordId: state.intent.recordId,
         intentFields: state.intent.fields,
-        approvalReadHttpStatus: state.approval?.status ?? null,
-        approvalRecordId: state.approval?.recordId ?? null,
-        approvalFields: state.approval?.fields ?? null,
+        approvalReadHttpStatus: state.approval.status,
+        approvalRecordId: state.approval.recordId,
+        approvalFields: state.approval.fields,
         approvalWriteHttpStatus: null,
-        error: state.intent.error ?? state.approval?.error ?? state.reason,
+        error: state.intent.error ?? state.approval.error ?? state.reason,
       }),
       {
         status: 200,
@@ -891,11 +898,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
         intentReadHttpStatus: state.intent.status,
         intentRecordId: state.intent.recordId,
         intentFields: state.intent.fields,
-        approvalReadHttpStatus: state.approval?.status ?? null,
-        approvalRecordId: state.approval?.recordId ?? null,
-        approvalFields: state.approval?.fields ?? null,
+        approvalReadHttpStatus: state.approval.status,
+        approvalRecordId: state.approval.recordId,
+        approvalFields: state.approval.fields,
         approvalWriteHttpStatus: null,
-        error: state.intent.error ?? state.approval?.error ?? state.reason,
+        error: state.intent.error ?? state.approval.error ?? state.reason,
       }),
       {
         status: 200,
