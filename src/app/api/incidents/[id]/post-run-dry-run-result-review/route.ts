@@ -186,24 +186,6 @@ function nestedString(record: JsonRecord, path: string[], fallback = ""): string
   return fallback;
 }
 
-function nestedBoolean(
-  record: JsonRecord,
-  path: string[],
-  fallback = false
-): boolean {
-  const value = nestedValue(record, path);
-
-  if (typeof value === "boolean") return value;
-
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (["true", "1", "yes", "on"].includes(normalized)) return true;
-    if (["false", "0", "no", "off"].includes(normalized)) return false;
-  }
-
-  return fallback;
-}
-
 function sanitizeErrorText(value: unknown): string {
   if (typeof value === "string") {
     return value
@@ -253,8 +235,73 @@ function sanitizeObject(value: unknown, depth = 0): unknown {
 }
 
 function parseInputJson(fields: JsonRecord): JsonRecord {
-  const raw = stringField(fields, ["Input_JSON", "input_json"]);
-  return asRecord(safeParseJson(raw));
+  const candidateNames = [
+    "Input_JSON",
+    "input_json",
+    "Input JSON",
+    "Input Json",
+    "input JSON",
+    "input Json",
+    "InputJSON",
+    "inputJSON",
+  ];
+
+  for (const name of candidateNames) {
+    const value = fields[name];
+
+    if (!value) continue;
+
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return asRecord(value);
+    }
+
+    if (
+      typeof value !== "string" &&
+      typeof value !== "number" &&
+      typeof value !== "boolean"
+    ) {
+      continue;
+    }
+
+    const raw = String(value).trim();
+
+    if (!raw) continue;
+
+    const firstParse = safeParseJson(raw);
+
+    if (firstParse && typeof firstParse === "object" && !Array.isArray(firstParse)) {
+      return firstParse as JsonRecord;
+    }
+
+    if (typeof firstParse === "string") {
+      const secondParse = safeParseJson(firstParse);
+
+      if (
+        secondParse &&
+        typeof secondParse === "object" &&
+        !Array.isArray(secondParse)
+      ) {
+        return secondParse as JsonRecord;
+      }
+    }
+
+    const unescapedCandidate = raw
+      .replace(/^"+|"+$/g, "")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
+
+    const fallbackParse = safeParseJson(unescapedCandidate);
+
+    if (
+      fallbackParse &&
+      typeof fallbackParse === "object" &&
+      !Array.isArray(fallbackParse)
+    ) {
+      return fallbackParse as JsonRecord;
+    }
+  }
+
+  return {};
 }
 
 function buildIds(workspaceId: string, incidentId: string) {
@@ -396,7 +443,6 @@ export async function GET(request: Request, context: RouteContext) {
   const commandFields = commandRead.record?.fields ?? {};
   const runFields = runRead.record?.fields ?? {};
 
-  const commandInputJson = parseInputJson(commandFields);
   const runInputJson = parseInputJson(runFields);
 
   const commandStatus = stringField(commandFields, ["Status", "status"]);
@@ -429,7 +475,6 @@ export async function GET(request: Request, context: RouteContext) {
     .filter(Boolean);
 
   const commandRecordId = commandRead.record_id ?? "";
-  const runRecordId = runRead.record_id ?? "";
 
   const workerHttpStatus = numberFrom(workerResponseSanitized.http_status, 0);
   const workerBodyOk = workerResponseBody.ok === true;
