@@ -11,15 +11,44 @@ type ControlledWorkerDryRunStatus =
   | "WORKER_DRY_RUN_CALL_FAILED"
   | "REAL_RUN_FORBIDDEN";
 
-type EnvProbe = {
-  key: string | null;
-  status: ConfigStatus;
-};
-
-const VERSION = "Incident Detail V5.2";
-const SOURCE = "dashboard_incident_detail_v5_2_controlled_worker_dry_run_call";
+const VERSION = "Incident Detail V5.2.1";
+const SOURCE = "dashboard_incident_detail_v5_2_1_controlled_worker_dry_run_call";
+const WORKER_INPUT_SOURCE = "dashboard_incident_detail_v5_2";
 const FEATURE_GATE_ENV = "BOSAI_DRY_RUN_WORKER_ADAPTER_ENABLED";
 const WORKER_TIMEOUT_MS = 8000;
+const WORKER_CAPABILITY = "command_orchestrator";
+
+type WorkerRunInput = {
+  workspace_id: string;
+  incident_id: string;
+  dry_run: true;
+  source: typeof WORKER_INPUT_SOURCE;
+  metadata: {
+    origin: "incident_detail_controlled_worker_dry_run_call";
+    real_run_forbidden: true;
+    dashboard_version: typeof VERSION;
+  };
+  command_id?: string;
+  run_id?: string;
+  flow_id?: string;
+  root_event_id?: string;
+};
+
+type WorkerRunRequestBody = {
+  capability: typeof WORKER_CAPABILITY;
+  idempotency_key: string;
+  input: WorkerRunInput;
+};
+
+type BuildControlledWorkerDryRunInput = {
+  incidentId: string;
+  workspaceId?: string | null;
+  requestedDryRun?: string | null;
+  commandId?: string | null;
+  runId?: string | null;
+  flowId?: string | null;
+  rootEventId?: string | null;
+};
 
 function normalizeText(value: string | null | undefined): string {
   return typeof value === "string" ? value.trim() : "";
@@ -33,6 +62,11 @@ function normalizeWorkspaceId(value: string | null | undefined): string {
 function normalizeIncidentId(value: string | null | undefined): string {
   const trimmed = normalizeText(value);
   return trimmed.length > 0 ? trimmed : "unknown";
+}
+
+function normalizeOptionalId(value: string | null | undefined): string | null {
+  const trimmed = normalizeText(value);
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function isDryRunFalseAttempt(value: string | null | undefined): boolean {
@@ -73,22 +107,6 @@ function resolveFeatureGate(): {
     feature_gate_enabled: false,
     feature_gate_state: "FEATURE_GATE_DISABLED",
     raw_value: "SERVER_SIDE_ONLY_NOT_EXPOSED",
-  };
-}
-
-function readEnvStatus(key: string): EnvProbe {
-  const value = process.env[key];
-
-  if (typeof value === "string" && value.trim().length > 0) {
-    return {
-      key,
-      status: "CONFIGURED",
-    };
-  }
-
-  return {
-    key,
-    status: "MISSING",
   };
 }
 
@@ -141,6 +159,21 @@ function readSchedulerSecret(): {
 function safeText(value: string, maxLength = 4000): string {
   if (value.length <= maxLength) return value;
   return `${value.slice(0, maxLength)}...[TRUNCATED]`;
+}
+
+function safeIdSegment(value: string): string {
+  return normalizeText(value)
+    .replace(/[^a-zA-Z0-9._:-]/g, "_")
+    .slice(0, 160);
+}
+
+function buildIdempotencyKey(input: {
+  incidentId: string;
+  workspaceId: string;
+}): string {
+  return `dashboard:v5.2:dryrun:${safeIdSegment(input.workspaceId)}:${safeIdSegment(
+    input.incidentId
+  )}`;
 }
 
 function isSensitiveKey(key: string): boolean {
@@ -219,23 +252,45 @@ function parseWorkerResponse(text: string): unknown {
 function buildWorkerBody(input: {
   incidentId: string;
   workspaceId: string;
-}) {
-  return {
-    capability: "command_orchestrator",
+  commandId?: string | null;
+  runId?: string | null;
+  flowId?: string | null;
+  rootEventId?: string | null;
+}): WorkerRunRequestBody {
+  const workerInput: WorkerRunInput = {
     workspace_id: input.workspaceId,
     incident_id: input.incidentId,
     dry_run: true,
-    source: "dashboard_incident_detail_v5_2",
+    source: WORKER_INPUT_SOURCE,
     metadata: {
       origin: "incident_detail_controlled_worker_dry_run_call",
       real_run_forbidden: true,
+      dashboard_version: VERSION,
     },
+  };
+
+  if (input.commandId) workerInput.command_id = input.commandId;
+  if (input.runId) workerInput.run_id = input.runId;
+  if (input.flowId) workerInput.flow_id = input.flowId;
+  if (input.rootEventId) workerInput.root_event_id = input.rootEventId;
+
+  return {
+    capability: WORKER_CAPABILITY,
+    idempotency_key: buildIdempotencyKey({
+      incidentId: input.incidentId,
+      workspaceId: input.workspaceId,
+    }),
+    input: workerInput,
   };
 }
 
 function buildWorkerRequestPreview(input: {
   incidentId: string;
   workspaceId: string;
+  commandId?: string | null;
+  runId?: string | null;
+  flowId?: string | null;
+  rootEventId?: string | null;
 }) {
   return {
     method: "POST",
@@ -273,6 +328,10 @@ function baseGuardrails() {
 function buildBasePayload(input: {
   incidentId: string;
   workspaceId: string;
+  commandId?: string | null;
+  runId?: string | null;
+  flowId?: string | null;
+  rootEventId?: string | null;
   requestedDryRunFalse: boolean;
   featureGate: ReturnType<typeof resolveFeatureGate>;
   workerBaseUrl: ReturnType<typeof readWorkerBaseUrl>;
@@ -289,6 +348,10 @@ function buildBasePayload(input: {
   const requestPreview = buildWorkerRequestPreview({
     incidentId: input.incidentId,
     workspaceId: input.workspaceId,
+    commandId: input.commandId,
+    runId: input.runId,
+    flowId: input.flowId,
+    rootEventId: input.rootEventId,
   });
 
   if (input.workerCall === "EXECUTED_DRY_RUN_ONLY") {
@@ -349,6 +412,9 @@ function buildBasePayload(input: {
       post_run: input.postRun,
       secret_exposure: "DISABLED",
       dashboard_airtable_mutation: "DISABLED",
+      idempotency_key: requestPreview.body.idempotency_key,
+      run_request_contract: "STRICT_TOP_LEVEL_CAPABILITY_IDEMPOTENCY_KEY_INPUT",
+      top_level_context_fields: "MOVED_TO_INPUT",
     },
 
     guardrails: {
@@ -358,31 +424,43 @@ function buildBasePayload(input: {
     },
 
     next_step:
-      "V5.3 may add an operator confirmation surface before allowing any broader controlled execution path.",
+      input.status === "WORKER_DRY_RUN_CALLED"
+        ? "V5.3 may add an operator confirmation surface before allowing any broader controlled execution path."
+        : "Resolve the remaining worker-side response or configuration issue before V5.3.",
   };
 }
 
-export async function buildControlledWorkerDryRunCall(input: {
-  incidentId: string;
-  workspaceId?: string | null;
-  requestedDryRun?: string | null;
-}) {
+export async function buildControlledWorkerDryRunCall(
+  input: BuildControlledWorkerDryRunInput
+) {
   const incidentId = normalizeIncidentId(input.incidentId);
   const workspaceId = normalizeWorkspaceId(input.workspaceId);
+  const commandId = normalizeOptionalId(input.commandId);
+  const runId = normalizeOptionalId(input.runId);
+  const flowId = normalizeOptionalId(input.flowId);
+  const rootEventId = normalizeOptionalId(input.rootEventId);
   const requestedDryRunFalse = isDryRunFalseAttempt(input.requestedDryRun);
 
   const featureGate = resolveFeatureGate();
   const workerBaseUrl = readWorkerBaseUrl();
   const schedulerSecret = readSchedulerSecret();
 
+  const common = {
+    incidentId,
+    workspaceId,
+    commandId,
+    runId,
+    flowId,
+    rootEventId,
+    requestedDryRunFalse,
+    featureGate,
+    workerBaseUrl,
+    schedulerSecret,
+  };
+
   if (requestedDryRunFalse) {
     return buildBasePayload({
-      incidentId,
-      workspaceId,
-      requestedDryRunFalse,
-      featureGate,
-      workerBaseUrl,
-      schedulerSecret,
+      ...common,
       status: "REAL_RUN_FORBIDDEN",
       ok: false,
       workerCall: "DISABLED",
@@ -396,12 +474,7 @@ export async function buildControlledWorkerDryRunCall(input: {
 
   if (!featureGate.feature_gate_enabled) {
     return buildBasePayload({
-      incidentId,
-      workspaceId,
-      requestedDryRunFalse,
-      featureGate,
-      workerBaseUrl,
-      schedulerSecret,
+      ...common,
       status: "WORKER_DRY_RUN_BLOCKED_BY_FEATURE_GATE",
       ok: true,
       workerCall: "DISABLED",
@@ -415,12 +488,7 @@ export async function buildControlledWorkerDryRunCall(input: {
 
   if (!workerBaseUrl.value || schedulerSecret.status !== "CONFIGURED" || !schedulerSecret.value) {
     return buildBasePayload({
-      incidentId,
-      workspaceId,
-      requestedDryRunFalse,
-      featureGate,
-      workerBaseUrl,
-      schedulerSecret,
+      ...common,
       status: "WORKER_DRY_RUN_CALL_FAILED",
       ok: false,
       workerCall: "DISABLED",
@@ -438,6 +506,15 @@ export async function buildControlledWorkerDryRunCall(input: {
   const timeout = setTimeout(() => controller.abort(), WORKER_TIMEOUT_MS);
 
   try {
+    const workerBody = buildWorkerBody({
+      incidentId,
+      workspaceId,
+      commandId,
+      runId,
+      flowId,
+      rootEventId,
+    });
+
     const response = await fetch(endpoint, {
       method: "POST",
       cache: "no-store",
@@ -446,7 +523,7 @@ export async function buildControlledWorkerDryRunCall(input: {
         "Content-Type": "application/json",
         "x-scheduler-secret": schedulerSecret.value,
       },
-      body: JSON.stringify(buildWorkerBody({ incidentId, workspaceId })),
+      body: JSON.stringify(workerBody),
     });
 
     const durationMs = Date.now() - startedAt;
@@ -455,12 +532,7 @@ export async function buildControlledWorkerDryRunCall(input: {
     const sanitizedResponse = sanitizePreviewValue(parsedResponse);
 
     return buildBasePayload({
-      incidentId,
-      workspaceId,
-      requestedDryRunFalse,
-      featureGate,
-      workerBaseUrl,
-      schedulerSecret,
+      ...common,
       status: response.ok
         ? "WORKER_DRY_RUN_CALLED"
         : "WORKER_DRY_RUN_CALL_FAILED",
@@ -478,12 +550,7 @@ export async function buildControlledWorkerDryRunCall(input: {
       error instanceof Error ? error.message : "Unknown worker dry run error.";
 
     return buildBasePayload({
-      incidentId,
-      workspaceId,
-      requestedDryRunFalse,
-      featureGate,
-      workerBaseUrl,
-      schedulerSecret,
+      ...common,
       status: "WORKER_DRY_RUN_CALL_FAILED",
       ok: false,
       workerCall: "EXECUTED_DRY_RUN_ONLY",
