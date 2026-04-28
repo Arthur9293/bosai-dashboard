@@ -6846,7 +6846,13 @@ function buildReviewDecisionPersistenceSchemaPreview(args: {
     fresh_approval_missing: freshApprovalMissing,
   };
 
-  const schemaPreviewChecks = [
+  const schemaPreviewChecks: Array<{
+    id: string;
+    label: string;
+    status: "pass" | "warning" | "fail";
+    blocking: boolean;
+    evidence: string;
+  }> = [
     {
       id: "draft_available",
       label: "Persistence draft is available",
