@@ -5279,6 +5279,18 @@ export async function GET(request: Request, context: RouteContext) {
     controlledMappingPlan,
   });
 
+  const humanReviewGate = buildHumanReviewGate({
+    commandRecordId,
+    commandId: ids.commandDraftId,
+    workspaceId,
+    approvalRecordId: approvalRead.record_id,
+    toolMappingProposalDraft,
+    controlledMappingPlan,
+    mappingPreflightChecklist,
+    toolcatalogRegistryReadiness,
+    executionMappingContractDraft,
+  });
+
   let status = "POST_RUN_DRY_RUN_RESULT_REVIEW_READY";
 
   if (configMissing) {
