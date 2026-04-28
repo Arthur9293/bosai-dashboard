@@ -26,11 +26,18 @@ type AirtableReadResult = {
   error: string | null;
 };
 
-const VERSION = "Incident Detail V5.28";
+type AirtableListResult = {
+  http_status: number | null;
+  records: AirtableRecord[];
+  error: string | null;
+  formula_used: string | null;
+};
+
+const VERSION = "Incident Detail V5.29";
 const SOURCE =
-  "dashboard_incident_detail_v5_28_router_allowlist_readiness_inspection";
+  "dashboard_incident_detail_v5_29_toolcatalog_registry_readiness_inspection";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
-const READER_VERSION = "V5.28_ROUTER_ALLOWLIST_READINESS_INSPECTION";
+const READER_VERSION = "V5.29_TOOLCATALOG_REGISTRY_READINESS_INSPECTION";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
@@ -100,6 +107,13 @@ function getAirtableConfig() {
       getEnv("AIRTABLE_SYSTEM_RUNS_TABLE") ||
       getEnv("AIRTABLE_RUNS_TABLE") ||
       "System_Runs",
+    toolCatalogTable:
+      getEnv("AIRTABLE_TOOLCATALOG_TABLE") ||
+      getEnv("AIRTABLE_TOOL_CATALOG_TABLE") ||
+      "ToolCatalog",
+    workspaceCapabilitiesTable:
+      getEnv("AIRTABLE_WORKSPACE_CAPABILITIES_TABLE") ||
+      "Workspace_Capabilities",
   };
 }
 
@@ -110,6 +124,8 @@ function airtableConfigPublic(config: ReturnType<typeof getAirtableConfig>) {
     operator_approvals_table: config.operatorApprovalsTable,
     commands_table: config.commandsTable,
     runs_table: config.runsTable,
+    toolcatalog_table: config.toolCatalogTable,
+    workspace_capabilities_table: config.workspaceCapabilitiesTable,
     token: config.token ? "CONFIGURED" : "MISSING",
     token_value: "SERVER_SIDE_ONLY_NOT_EXPOSED",
   };
@@ -286,11 +302,15 @@ function pickBoolean(
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
 
-    if (["true", "1", "yes", "y", "on"].includes(normalized)) {
+    if (["true", "1", "yes", "y", "on", "enabled", "active"].includes(normalized)) {
       return true;
     }
 
-    if (["false", "0", "no", "n", "off"].includes(normalized)) {
+    if (
+      ["false", "0", "no", "n", "off", "disabled", "inactive"].includes(
+        normalized
+      )
+    ) {
       return false;
     }
   }
@@ -298,6 +318,37 @@ function pickBoolean(
   if (typeof value === "number") return value !== 0;
 
   return fallback;
+}
+
+function pickOptionalBoolean(
+  record: unknown,
+  paths: string[]
+): boolean | null {
+  const value = pickUnknown(record, paths);
+
+  if (value === undefined || value === null || value === "") return null;
+
+  if (typeof value === "boolean") return value;
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+
+    if (["true", "1", "yes", "y", "on", "enabled", "active"].includes(normalized)) {
+      return true;
+    }
+
+    if (
+      ["false", "0", "no", "n", "off", "disabled", "inactive"].includes(
+        normalized
+      )
+    ) {
+      return false;
+    }
+  }
+
+  if (typeof value === "number") return value !== 0;
+
+  return null;
 }
 
 function pickNumber(
@@ -1017,6 +1068,89 @@ async function findRecordByIdempotencyKey(args: {
   }
 }
 
+async function readRecordsByFormula(args: {
+  baseId: string;
+  token: string;
+  tableName: string;
+  formula: string;
+  maxRecords?: number;
+}): Promise<AirtableListResult> {
+  const url = `${airtableUrl(args.baseId, args.tableName)}?maxRecords=${
+    args.maxRecords ?? 10
+  }&filterByFormula=${encodeURIComponent(args.formula)}`;
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: airtableHeaders(args.token),
+      cache: "no-store",
+    });
+
+    const text = await response.text();
+    const parsed = asRecord(safeParseJson(text));
+
+    if (!response.ok) {
+      return {
+        http_status: response.status,
+        records: [],
+        error: sanitizeErrorText(text),
+        formula_used: args.formula,
+      };
+    }
+
+    const records = Array.isArray(parsed.records)
+      ? (parsed.records as AirtableRecord[])
+      : [];
+
+    return {
+      http_status: response.status,
+      records,
+      error: null,
+      formula_used: args.formula,
+    };
+  } catch (error) {
+    return {
+      http_status: null,
+      records: [],
+      error: sanitizeErrorText(error),
+      formula_used: args.formula,
+    };
+  }
+}
+
+async function readFirstSuccessfulRegistryFormula(args: {
+  baseId: string;
+  token: string;
+  tableName: string;
+  formulas: string[];
+  maxRecords?: number;
+}): Promise<AirtableListResult> {
+  let lastResult: AirtableListResult = {
+    http_status: null,
+    records: [],
+    error: "No formula attempted",
+    formula_used: null,
+  };
+
+  for (const formula of args.formulas) {
+    const result = await readRecordsByFormula({
+      baseId: args.baseId,
+      token: args.token,
+      tableName: args.tableName,
+      formula,
+      maxRecords: args.maxRecords,
+    });
+
+    lastResult = result;
+
+    if (!result.error) {
+      return result;
+    }
+  }
+
+  return lastResult;
+}
+
 async function readAirtableRecordById(args: {
   baseId: string;
   token: string;
@@ -1612,6 +1746,302 @@ function buildRouterAllowlistReadiness(args: {
   };
 }
 
+async function maybeFindRegistryRecords(args: {
+  baseId: string;
+  token: string;
+  toolCatalogTable: string;
+  workspaceCapabilitiesTable: string;
+  workspaceId: string;
+  capability: string;
+}) {
+  const capability = escapeFormulaValue(args.capability);
+  const workspaceId = escapeFormulaValue(args.workspaceId);
+
+  const toolCatalogFormulas = [
+    `OR({Capability}='${capability}',{Capability_Key}='${capability}',{Tool_Key}='${capability}',{Name}='${capability}')`,
+    `{Capability}='${capability}'`,
+    `{Capability_Key}='${capability}'`,
+    `{Tool_Key}='${capability}'`,
+    `{Name}='${capability}'`,
+  ];
+
+  const workspaceCapabilityFormulas = [
+    `AND(OR({Workspace_ID}='${workspaceId}',{Workspace}='${workspaceId}'),OR({Capability}='${capability}',{Capability_Key}='${capability}'))`,
+    `AND({Workspace_ID}='${workspaceId}',{Capability}='${capability}')`,
+    `AND({Workspace_ID}='${workspaceId}',{Capability_Key}='${capability}')`,
+    `AND({Workspace}='${workspaceId}',{Capability}='${capability}')`,
+    `AND({Workspace}='${workspaceId}',{Capability_Key}='${capability}')`,
+    `{Capability}='${capability}'`,
+    `{Capability_Key}='${capability}'`,
+  ];
+
+  const [toolcatalog, workspaceCapabilities] = await Promise.all([
+    readFirstSuccessfulRegistryFormula({
+      baseId: args.baseId,
+      token: args.token,
+      tableName: args.toolCatalogTable,
+      formulas: toolCatalogFormulas,
+      maxRecords: 5,
+    }),
+    readFirstSuccessfulRegistryFormula({
+      baseId: args.baseId,
+      token: args.token,
+      tableName: args.workspaceCapabilitiesTable,
+      formulas: workspaceCapabilityFormulas,
+      maxRecords: 5,
+    }),
+  ]);
+
+  return {
+    toolcatalog,
+    workspaceCapabilities,
+  };
+}
+
+function buildToolCatalogRegistryReadiness(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  workspaceId: string;
+  commandFields: JsonRecord;
+  capabilityRequested: string;
+  routerAllowlistReadiness: {
+    real_run_allowed_by_readiness?: boolean;
+  };
+  toolCatalogTable: string;
+  workspaceCapabilitiesTable: string;
+  registryReads: {
+    toolcatalog: AirtableListResult;
+    workspaceCapabilities: AirtableListResult;
+  } | null;
+}) {
+  const toolKeyFromCommand = stringField(args.commandFields, [
+    "Tool_Key",
+    "tool_key",
+    "Tool Key",
+    "toolKey",
+    "Tool",
+    "tool",
+  ]);
+
+  const toolModeFromCommand = stringField(args.commandFields, [
+    "Tool_Mode",
+    "tool_mode",
+    "Tool Mode",
+    "toolMode",
+    "Mode",
+    "mode",
+  ]);
+
+  const normalizedCapability = normalizeStatusToken(args.capabilityRequested);
+  const isCommandOrchestrator = normalizedCapability === "COMMANDORCHESTRATOR";
+
+  const toolCatalogRecords = args.registryReads?.toolcatalog.records ?? [];
+  const workspaceCapabilityRecords =
+    args.registryReads?.workspaceCapabilities.records ?? [];
+
+  const toolCatalogReadError = args.registryReads?.toolcatalog.error ?? null;
+  const workspaceCapabilityReadError =
+    args.registryReads?.workspaceCapabilities.error ?? null;
+
+  const toolCatalogCapabilityKnown = toolCatalogRecords.length > 0;
+  const workspaceCapabilityKnown = workspaceCapabilityRecords.length > 0;
+
+  const firstToolCatalogFields = toolCatalogRecords[0]?.fields ?? {};
+  const firstWorkspaceCapabilityFields = workspaceCapabilityRecords[0]?.fields ?? {};
+
+  const executableHint = toolCatalogCapabilityKnown
+    ? pickOptionalBoolean(firstToolCatalogFields, [
+        "Executable",
+        "Is_Executable",
+        "is_executable",
+        "Can_Execute",
+        "can_execute",
+        "Execution_Allowed",
+        "execution_allowed",
+        "Enabled",
+        "enabled",
+        "Active",
+        "active",
+      ])
+    : null;
+
+  const routerHint = toolCatalogCapabilityKnown
+    ? pickOptionalBoolean(firstToolCatalogFields, [
+        "Router",
+        "Is_Router",
+        "is_router",
+        "Router_Only",
+        "router_only",
+        "Orchestrator",
+        "Is_Orchestrator",
+        "is_orchestrator",
+      ])
+    : null;
+
+  const workspaceCapabilityEnabledHint = workspaceCapabilityKnown
+    ? pickOptionalBoolean(firstWorkspaceCapabilityFields, [
+        "Enabled",
+        "enabled",
+        "Active",
+        "active",
+        "Allowed",
+        "allowed",
+        "Is_Enabled",
+        "is_enabled",
+        "Capability_Enabled",
+        "capability_enabled",
+      ])
+    : null;
+
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+
+  if (!toolKeyFromCommand || !toolModeFromCommand) {
+    blockers.push(
+      "Command has no Tool_Key / Tool_Mode. Registry mapping cannot be promoted to real execution."
+    );
+  }
+
+  if (toolCatalogReadError || !toolCatalogCapabilityKnown) {
+    blockers.push(
+      `ToolCatalog did not confirm capability ${args.capabilityRequested}.`
+    );
+  }
+
+  if (workspaceCapabilityReadError || !workspaceCapabilityKnown) {
+    blockers.push(
+      `Workspace_Capabilities did not confirm capability ${args.capabilityRequested} for workspace ${args.workspaceId}.`
+    );
+  }
+
+  if (isCommandOrchestrator) {
+    warnings.push(
+      "command_orchestrator may be an orchestration capability. It may need to spawn a lower-level executable capability rather than execute directly."
+    );
+  }
+
+  if (toolCatalogReadError) {
+    warnings.push(
+      "ToolCatalog read was attempted but returned an error. This may be caused by a missing table, missing fields in the formula, or unavailable registry configuration."
+    );
+  }
+
+  if (workspaceCapabilityReadError) {
+    warnings.push(
+      "Workspace_Capabilities read was attempted but returned an error. This may be caused by a missing table, missing fields in the formula, or unavailable registry configuration."
+    );
+  }
+
+  if (toolCatalogCapabilityKnown && executableHint !== true) {
+    warnings.push(
+      "ToolCatalog record exists, but executable readiness was not explicitly confirmed."
+    );
+  }
+
+  if (workspaceCapabilityKnown && workspaceCapabilityEnabledHint !== true) {
+    warnings.push(
+      "Workspace capability record exists, but workspace capability enabled state was not explicitly confirmed."
+    );
+  }
+
+  let registryReadinessScore = 100;
+
+  if (!toolKeyFromCommand) registryReadinessScore -= 35;
+  if (!toolModeFromCommand) registryReadinessScore -= 35;
+  if (!toolCatalogCapabilityKnown) registryReadinessScore -= 25;
+  if (!workspaceCapabilityKnown) registryReadinessScore -= 25;
+  if (isCommandOrchestrator) registryReadinessScore -= 20;
+  if (!args.routerAllowlistReadiness.real_run_allowed_by_readiness) {
+    registryReadinessScore -= 20;
+  }
+
+  registryReadinessScore = Math.max(0, registryReadinessScore);
+
+  let registryReadinessCategory:
+    | "REGISTRY_NOT_CONFIGURED_OR_UNREADABLE"
+    | "TOOLCATALOG_NOT_FOUND"
+    | "WORKSPACE_CAPABILITY_NOT_FOUND"
+    | "TOOL_MAPPING_MISSING_ON_COMMAND"
+    | "CAPABILITY_KNOWN_BUT_NOT_EXECUTION_READY"
+    | "REGISTRY_READY_FOR_REVIEW_ONLY"
+    | "UNKNOWN_REGISTRY_READINESS" = "UNKNOWN_REGISTRY_READINESS";
+
+  if (!toolKeyFromCommand || !toolModeFromCommand) {
+    registryReadinessCategory = "TOOL_MAPPING_MISSING_ON_COMMAND";
+  } else if (toolCatalogReadError && workspaceCapabilityReadError) {
+    registryReadinessCategory = "REGISTRY_NOT_CONFIGURED_OR_UNREADABLE";
+  } else if (!toolCatalogCapabilityKnown) {
+    registryReadinessCategory = "TOOLCATALOG_NOT_FOUND";
+  } else if (!workspaceCapabilityKnown) {
+    registryReadinessCategory = "WORKSPACE_CAPABILITY_NOT_FOUND";
+  } else if (
+    executableHint !== true ||
+    workspaceCapabilityEnabledHint !== true ||
+    isCommandOrchestrator ||
+    !args.routerAllowlistReadiness.real_run_allowed_by_readiness
+  ) {
+    registryReadinessCategory = "CAPABILITY_KNOWN_BUT_NOT_EXECUTION_READY";
+  } else {
+    registryReadinessCategory = "REGISTRY_READY_FOR_REVIEW_ONLY";
+  }
+
+  const registryReadyForRealRun = false;
+
+  const nextSafeAction =
+    registryReadinessCategory === "TOOL_MAPPING_MISSING_ON_COMMAND"
+      ? "Add or confirm Tool_Key / Tool_Mode on the Command model in a future controlled schema step before considering real execution."
+      : registryReadinessCategory === "TOOLCATALOG_NOT_FOUND"
+        ? "Create or confirm a ToolCatalog entry for command_orchestrator, then rerun this read-only inspection."
+        : registryReadinessCategory === "WORKSPACE_CAPABILITY_NOT_FOUND"
+          ? "Create or confirm a Workspace_Capabilities entry for this workspace and capability, then rerun this read-only inspection."
+          : registryReadinessCategory === "CAPABILITY_KNOWN_BUT_NOT_EXECUTION_READY"
+            ? "Inspect whether command_orchestrator should route/spawn a lower-level executable capability instead of executing directly."
+            : "Continue with read-only Worker router mapping inspection before any real execution.";
+
+  return {
+    available: true,
+    inspection_version: "V5.29_TOOLCATALOG_REGISTRY_READINESS_INSPECTION",
+    command_record_id: args.commandRecordId,
+    command_id: args.commandId,
+    workspace_id: args.workspaceId,
+    capability_requested: args.capabilityRequested,
+    tool_key_from_command: toolKeyFromCommand || null,
+    tool_mode_from_command: toolModeFromCommand || null,
+
+    toolcatalog: {
+      attempted: Boolean(args.registryReads),
+      table: args.toolCatalogTable,
+      records_found: toolCatalogRecords.length,
+      read_error: toolCatalogReadError,
+      matched_record_ids: toolCatalogRecords.map((record) => record.id),
+      formula_used: args.registryReads?.toolcatalog.formula_used ?? null,
+      capability_known: toolCatalogCapabilityKnown,
+      executable_hint: executableHint,
+      router_hint: routerHint,
+    },
+
+    workspace_capabilities: {
+      attempted: Boolean(args.registryReads),
+      table: args.workspaceCapabilitiesTable,
+      records_found: workspaceCapabilityRecords.length,
+      read_error: workspaceCapabilityReadError,
+      matched_record_ids: workspaceCapabilityRecords.map((record) => record.id),
+      formula_used: args.registryReads?.workspaceCapabilities.formula_used ?? null,
+      workspace_capability_known: workspaceCapabilityKnown,
+      workspace_capability_enabled_hint: workspaceCapabilityEnabledHint,
+    },
+
+    registry_readiness_category: registryReadinessCategory,
+    registry_readiness_score: registryReadinessScore,
+    registry_ready_for_real_run: registryReadyForRealRun,
+    blockers,
+    warnings,
+    next_safe_action: nextSafeAction,
+    guardrail_interpretation:
+      "V5.29 is registry inspection only. It reads Airtable registry tables in GET/read-only mode when available. It does not call the worker, mutate Airtable, or promote dry-run to real-run.",
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
@@ -2109,6 +2539,36 @@ export async function GET(request: Request, context: RouteContext) {
     workerDryRunResult,
   });
 
+  const registryReads =
+    !configMissing && airtable.baseId && airtable.token
+      ? await maybeFindRegistryRecords({
+          baseId: airtable.baseId,
+          token: airtable.token,
+          toolCatalogTable: airtable.toolCatalogTable,
+          workspaceCapabilitiesTable: airtable.workspaceCapabilitiesTable,
+          workspaceId,
+          capability:
+            stringField(commandFields, ["Capability", "capability"]) ||
+            workerDryRunResult.capability ||
+            "command_orchestrator",
+        })
+      : null;
+
+  const toolcatalogRegistryReadiness = buildToolCatalogRegistryReadiness({
+    commandRecordId,
+    commandId: ids.commandDraftId,
+    workspaceId,
+    commandFields,
+    capabilityRequested:
+      stringField(commandFields, ["Capability", "capability"]) ||
+      workerDryRunResult.capability ||
+      "command_orchestrator",
+    routerAllowlistReadiness,
+    toolCatalogTable: airtable.toolCatalogTable,
+    workspaceCapabilitiesTable: airtable.workspaceCapabilitiesTable,
+    registryReads,
+  });
+
   const reviewCheck = {
     intent_found: Boolean(intentRead.record),
     approval_found: Boolean(approvalRead.record),
@@ -2263,6 +2723,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     router_allowlist_readiness: routerAllowlistReadiness,
 
+    toolcatalog_registry_readiness: toolcatalogRegistryReadiness,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -2316,12 +2778,14 @@ export async function GET(request: Request, context: RouteContext) {
 
     interpretation: {
       summary:
-        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains why the scanned command was classified as unsupported. V5.28 adds router / allowlist readiness inspection without execution.",
+        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains why the scanned command was classified as unsupported. V5.28 adds router / allowlist readiness inspection. V5.29 adds ToolCatalog / registry readiness inspection without execution.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, and router readiness are now reviewed without executing a new run.",
+        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, and registry readiness are now reviewed without executing a new run.",
       unsupported_is_blocking_for_real_execution: true,
       router_allowlist_readiness_is_blocking_for_real_execution:
         !routerAllowlistReadiness.real_run_allowed_by_readiness,
+      registry_readiness_is_blocking_for_real_execution:
+        !toolcatalogRegistryReadiness.registry_ready_for_real_run,
       unsupported_fix_required_before_real_execution: true,
     },
 
@@ -2371,8 +2835,8 @@ export async function GET(request: Request, context: RouteContext) {
     error:
       status === "POST_RUN_DRY_RUN_RESULT_REVIEW_READY"
         ? null
-        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, and read sections.",
+        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, and read sections.",
     next_step:
-      "Next safe step: V5.29 ToolCatalog / Registry Readiness Inspection in GET/read-only mode before any real execution.",
+      "Next safe step: inspect Worker router mapping for command_orchestrator or define Tool_Key / Tool_Mode and registry entries before any real execution.",
   });
 }
