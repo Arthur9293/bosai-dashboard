@@ -33,11 +33,11 @@ type AirtableListResult = {
   formula_used: string | null;
 };
 
-const VERSION = "Incident Detail V5.30";
+const VERSION = "Incident Detail V5.31";
 const SOURCE =
-  "dashboard_incident_detail_v5_30_worker_router_mapping_inspection";
+  "dashboard_incident_detail_v5_31_target_capability_decision_matrix";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
-const READER_VERSION = "V5.30_WORKER_ROUTER_MAPPING_INSPECTION";
+const READER_VERSION = "V5.31_TARGET_CAPABILITY_DECISION_MATRIX";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
@@ -2324,6 +2324,424 @@ function buildWorkerRouterMappingInspection(args: {
   };
 }
 
+function buildSearchContextText(value: unknown): string {
+  try {
+    return JSON.stringify(sanitizeObject(value)).toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function countKeywordHits(text: string, keywords: string[]): number {
+  return keywords.reduce((count, keyword) => {
+    return text.includes(keyword.toLowerCase()) ? count + 1 : count;
+  }, 0);
+}
+
+function buildCandidateCapability(args: {
+  capability: string;
+  role: "executable" | "router" | "terminal" | "unknown";
+  contextText: string;
+  positiveKeywords: string[];
+  negativeReasonWhenNoSignal: string;
+  baseScore?: number;
+  globalRecommendedAllowed: boolean;
+  globalBlockers: string[];
+}) {
+  const hits = countKeywordHits(args.contextText, args.positiveKeywords);
+  const reasons: string[] = [];
+  const blockers: string[] = [...args.globalBlockers];
+
+  let score = args.baseScore ?? 0;
+
+  if (hits > 0) {
+    score += Math.min(60, hits * 15);
+    reasons.push(
+      `Found ${hits} contextual signal(s) for ${args.capability}.`
+    );
+  } else {
+    blockers.push(args.negativeReasonWhenNoSignal);
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  const confidence: "high" | "medium" | "low" | "unknown" =
+    hits >= 4
+      ? "medium"
+      : hits >= 2
+        ? "low"
+        : hits === 1
+          ? "low"
+          : "unknown";
+
+  const recommended =
+    args.globalRecommendedAllowed && score >= 70 && confidence !== "unknown";
+
+  return {
+    capability: args.capability,
+    role: args.role,
+    score,
+    confidence,
+    reasons,
+    blockers,
+    recommended,
+  };
+}
+
+function buildTargetCapabilityDecisionMatrix(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  workspaceId: string;
+  incidentId: string;
+  commandFields: JsonRecord;
+  runInputJson: JsonRecord;
+  commandStatus: string;
+  commandStatusSelect: string;
+  workerDryRunResult: {
+    scanned: number;
+    executed: number;
+    unsupported: number;
+    errors_count: number;
+    capability: string;
+    commands_record_ids: string[];
+  };
+  routerAllowlistReadiness: {
+    command_payload_present?: boolean;
+    real_run_allowed_by_readiness?: boolean;
+  };
+  toolcatalogRegistryReadiness: {
+    registry_ready_for_real_run?: boolean;
+    tool_key_from_command?: string | null;
+    tool_mode_from_command?: string | null;
+  };
+  workerRouterMappingInspection: {
+    capability_requested?: string;
+    capability_role?: "orchestrator" | "executable" | "unknown";
+    likely_target_capability?: string | null;
+    target_capability_confidence?: "high" | "medium" | "low" | "unknown";
+    router_mapping_ready_for_real_run?: boolean;
+  };
+}) {
+  const sourceCapability =
+    args.workerRouterMappingInspection.capability_requested ||
+    stringField(args.commandFields, ["Capability", "capability"]) ||
+    args.workerDryRunResult.capability ||
+    "command_orchestrator";
+
+  const sourceCapabilityRole =
+    args.workerRouterMappingInspection.capability_role || "unknown";
+
+  const toolKey = args.toolcatalogRegistryReadiness.tool_key_from_command || "";
+  const toolMode = args.toolcatalogRegistryReadiness.tool_mode_from_command || "";
+
+  const targetMode = stringField(args.commandFields, [
+    "Target_Mode",
+    "target_mode",
+    "targetMode",
+  ]);
+
+  const explicitTargetCapability =
+    args.workerRouterMappingInspection.likely_target_capability ||
+    stringField(args.commandFields, [
+      "Target_Capability",
+      "target_capability",
+      "targetCapability",
+      "Next_Capability",
+      "next_capability",
+      "nextCapability",
+      "Spawn_Capability",
+      "spawn_capability",
+      "spawnCapability",
+      "Child_Capability",
+      "child_capability",
+      "childCapability",
+      "Capability_Target",
+      "capability_target",
+      "capabilityTarget",
+    ]) ||
+    null;
+
+  const contextText = buildSearchContextText({
+    incident_id: args.incidentId,
+    workspace_id: args.workspaceId,
+    command_fields: args.commandFields,
+    run_input_json: args.runInputJson,
+    command_status: args.commandStatus,
+    command_status_select: args.commandStatusSelect,
+    target_mode: targetMode,
+    worker_dry_run_result: args.workerDryRunResult,
+  });
+
+  const missingDecisionInputs: string[] = [];
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+
+  const toolMappingMissing = !toolKey || !toolMode;
+  const registryReady =
+    args.toolcatalogRegistryReadiness.registry_ready_for_real_run === true;
+  const routerMappingReady =
+    args.workerRouterMappingInspection.router_mapping_ready_for_real_run === true;
+  const payloadPresent =
+    args.routerAllowlistReadiness.command_payload_present === true;
+  const unsupportedBlocked =
+    normalizeStatusToken(args.commandStatusSelect) === "UNSUPPORTED" ||
+    args.workerDryRunResult.unsupported >= 1;
+  const dryRunOnlyBlocked =
+    normalizeStatusToken(targetMode) === "DRYRUNONLY";
+
+  if (toolMappingMissing) {
+    missingDecisionInputs.push("Tool_Key / Tool_Mode are missing.");
+    blockers.push(
+      "Tool_Key / Tool_Mode are missing, so no target capability can be selected with high confidence."
+    );
+  }
+
+  if (!registryReady) {
+    missingDecisionInputs.push("Registry readiness is false.");
+    blockers.push(
+      "ToolCatalog / Workspace_Capabilities do not confirm a real-run-ready mapping."
+    );
+  }
+
+  if (!routerMappingReady) {
+    missingDecisionInputs.push("Worker router mapping readiness is false.");
+    blockers.push(
+      "Worker router mapping is not ready for real execution."
+    );
+  }
+
+  if (!explicitTargetCapability) {
+    missingDecisionInputs.push("No explicit target capability is present.");
+    blockers.push(
+      "No lower-level target capability is proven in the current Command fields."
+    );
+  }
+
+  if (!payloadPresent) {
+    missingDecisionInputs.push("Command payload is missing or unreadable.");
+    blockers.push(
+      "Payload schema cannot be used to infer a target capability."
+    );
+  } else {
+    warnings.push(
+      "Command payload exists, but V5.31 does not validate an executable schema."
+    );
+  }
+
+  if (unsupportedBlocked) {
+    blockers.push(
+      "Command is marked Unsupported or worker returned unsupported=1."
+    );
+  }
+
+  if (dryRunOnlyBlocked) {
+    blockers.push(
+      "Command target_mode is dry_run_only, so target selection cannot imply execution."
+    );
+  }
+
+  if (sourceCapabilityRole === "orchestrator") {
+    warnings.push(
+      "Source capability is an orchestrator. It should only select or route to a target capability after explicit mapping is proven."
+    );
+  }
+
+  const globalRecommendedAllowed =
+    !toolMappingMissing &&
+    registryReady &&
+    routerMappingReady &&
+    Boolean(explicitTargetCapability) &&
+    !unsupportedBlocked &&
+    !dryRunOnlyBlocked;
+
+  const globalCandidateBlockers = globalRecommendedAllowed
+    ? []
+    : [
+        "Global prerequisites are not satisfied, so this candidate cannot be recommended for real execution.",
+      ];
+
+  const candidateCapabilities = [
+    buildCandidateCapability({
+      capability: "http_exec",
+      role: "executable",
+      contextText,
+      positiveKeywords: ["url", "method", "endpoint", "http", "request", "webhook"],
+      negativeReasonWhenNoSignal:
+        "No HTTP URL, method, endpoint, request, or webhook signal is present.",
+      baseScore: 0,
+      globalRecommendedAllowed,
+      globalBlockers: globalCandidateBlockers,
+    }),
+    buildCandidateCapability({
+      capability: "incident_router",
+      role: "router",
+      contextText,
+      positiveKeywords: [
+        "incident_id",
+        "incident",
+        "severity",
+        "urgency",
+        "status incident",
+        "route incident",
+      ],
+      negativeReasonWhenNoSignal:
+        "No strong incident routing signal is present beyond the generic Incident Detail context.",
+      baseScore: args.incidentId ? 20 : 0,
+      globalRecommendedAllowed,
+      globalBlockers: globalCandidateBlockers,
+    }),
+    buildCandidateCapability({
+      capability: "internal_escalate",
+      role: "executable",
+      contextText,
+      positiveKeywords: [
+        "escalation",
+        "escalate",
+        "urgent",
+        "critical",
+        "manager",
+        "email alert",
+      ],
+      negativeReasonWhenNoSignal:
+        "No explicit escalation, urgent, critical, manager, or alert signal is present.",
+      baseScore: 0,
+      globalRecommendedAllowed,
+      globalBlockers: globalCandidateBlockers,
+    }),
+    buildCandidateCapability({
+      capability: "resolve_incident",
+      role: "terminal",
+      contextText,
+      positiveKeywords: ["resolve", "resolved", "resolution", "close incident"],
+      negativeReasonWhenNoSignal:
+        "No explicit resolved, resolution, or close incident signal is present.",
+      baseScore: 0,
+      globalRecommendedAllowed,
+      globalBlockers: globalCandidateBlockers,
+    }),
+    buildCandidateCapability({
+      capability: "smart_resolve",
+      role: "router",
+      contextText,
+      positiveKeywords: [
+        "smart_resolve",
+        "automatic resolution",
+        "low severity",
+        "final resolution",
+      ],
+      negativeReasonWhenNoSignal:
+        "No explicit smart_resolve, low severity, or final resolution signal is present.",
+      baseScore: 0,
+      globalRecommendedAllowed,
+      globalBlockers: globalCandidateBlockers,
+    }),
+    buildCandidateCapability({
+      capability: "complete_flow_incident",
+      role: "terminal",
+      contextText,
+      positiveKeywords: [
+        "complete_flow_incident",
+        "flow completed",
+        "incident flow done",
+      ],
+      negativeReasonWhenNoSignal:
+        "No explicit complete_flow_incident or incident flow completion signal is present.",
+      baseScore: 0,
+      globalRecommendedAllowed,
+      globalBlockers: globalCandidateBlockers,
+    }),
+    buildCandidateCapability({
+      capability: "complete_flow_demo",
+      role: "terminal",
+      contextText,
+      positiveKeywords: ["demo", "complete_flow_demo", "clean_test"],
+      negativeReasonWhenNoSignal:
+        "No explicit demo, complete_flow_demo, or clean_test signal is present.",
+      baseScore: 0,
+      globalRecommendedAllowed,
+      globalBlockers: [
+        ...globalCandidateBlockers,
+        "complete_flow_demo must not be recommended for a real ferrera-production incident unless demo context is explicit.",
+      ],
+    }),
+  ];
+
+  let selectedTargetCapability: string | null = null;
+  let selectedTargetConfidence: "high" | "medium" | "low" | "unknown" =
+    "unknown";
+
+  if (globalRecommendedAllowed) {
+    const recommendedCandidate = candidateCapabilities
+      .filter((candidate) => candidate.recommended)
+      .sort((left, right) => right.score - left.score)[0];
+
+    if (recommendedCandidate) {
+      selectedTargetCapability = recommendedCandidate.capability;
+      selectedTargetConfidence = recommendedCandidate.confidence;
+    }
+  }
+
+  let decisionCategory:
+    | "TARGET_CAPABILITY_NOT_PROVEN"
+    | "TOOL_MAPPING_REQUIRED_FIRST"
+    | "PAYLOAD_SCHEMA_REQUIRED_FIRST"
+    | "REGISTRY_REQUIRED_FIRST"
+    | "WORKER_ROUTER_CODE_INSPECTION_REQUIRED"
+    | "TARGET_CAPABILITY_READY_FOR_REVIEW_ONLY"
+    | "UNKNOWN_TARGET_DECISION" = "UNKNOWN_TARGET_DECISION";
+
+  if (toolMappingMissing) {
+    decisionCategory = "TOOL_MAPPING_REQUIRED_FIRST";
+  } else if (!payloadPresent) {
+    decisionCategory = "PAYLOAD_SCHEMA_REQUIRED_FIRST";
+  } else if (!registryReady) {
+    decisionCategory = "REGISTRY_REQUIRED_FIRST";
+  } else if (!routerMappingReady) {
+    decisionCategory = "WORKER_ROUTER_CODE_INSPECTION_REQUIRED";
+  } else if (!selectedTargetCapability) {
+    decisionCategory = "TARGET_CAPABILITY_NOT_PROVEN";
+  } else {
+    decisionCategory = "TARGET_CAPABILITY_READY_FOR_REVIEW_ONLY";
+  }
+
+  const decisionReady =
+    Boolean(selectedTargetCapability) &&
+    selectedTargetConfidence !== "unknown" &&
+    globalRecommendedAllowed;
+
+  return {
+    available: true,
+    inspection_version: "V5.31_TARGET_CAPABILITY_DECISION_MATRIX",
+    command_record_id: args.commandRecordId,
+    command_id: args.commandId,
+    workspace_id: args.workspaceId,
+    source_capability: sourceCapability,
+    source_capability_role: sourceCapabilityRole,
+    decision_ready: decisionReady,
+    selected_target_capability: decisionReady ? selectedTargetCapability : null,
+    selected_target_confidence: decisionReady
+      ? selectedTargetConfidence
+      : "unknown",
+    decision_category: decisionCategory,
+    candidate_capabilities: candidateCapabilities,
+    missing_decision_inputs: Array.from(new Set(missingDecisionInputs)),
+    blockers: Array.from(new Set(blockers)),
+    warnings: Array.from(new Set(warnings)),
+    next_safe_action:
+      decisionCategory === "TOOL_MAPPING_REQUIRED_FIRST"
+        ? "Define Tool_Key / Tool_Mode and explicit target capability mapping before selecting a lower-level capability."
+        : decisionCategory === "REGISTRY_REQUIRED_FIRST"
+          ? "Create or confirm ToolCatalog and Workspace_Capabilities entries before target capability selection."
+          : decisionCategory === "WORKER_ROUTER_CODE_INSPECTION_REQUIRED"
+            ? "Inspect Worker router code in a separate read-only engineering step before selecting a target capability."
+            : decisionCategory === "PAYLOAD_SCHEMA_REQUIRED_FIRST"
+              ? "Validate or expose Command payload schema before target capability selection."
+              : "Keep the decision read-only and require explicit mapping evidence before creating any target command.",
+    guardrail_interpretation:
+      "V5.31 is a decision matrix only. It does not create commands, call the worker, mutate Airtable, or promote dry-run to real-run.",
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
@@ -2863,6 +3281,21 @@ export async function GET(request: Request, context: RouteContext) {
     toolcatalogRegistryReadiness,
   });
 
+  const targetCapabilityDecisionMatrix = buildTargetCapabilityDecisionMatrix({
+    commandRecordId,
+    commandId: ids.commandDraftId,
+    workspaceId,
+    incidentId,
+    commandFields,
+    runInputJson,
+    commandStatus,
+    commandStatusSelect,
+    workerDryRunResult,
+    routerAllowlistReadiness,
+    toolcatalogRegistryReadiness,
+    workerRouterMappingInspection,
+  });
+
   const reviewCheck = {
     intent_found: Boolean(intentRead.record),
     approval_found: Boolean(approvalRead.record),
@@ -3021,6 +3454,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     worker_router_mapping_inspection: workerRouterMappingInspection,
 
+    target_capability_decision_matrix: targetCapabilityDecisionMatrix,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -3074,9 +3509,9 @@ export async function GET(request: Request, context: RouteContext) {
 
     interpretation: {
       summary:
-        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains why the scanned command was classified as unsupported. V5.28 adds router / allowlist readiness inspection. V5.29 adds ToolCatalog / registry readiness inspection. V5.30 adds Worker router mapping inspection without execution.",
+        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains why the scanned command was classified as unsupported. V5.28 adds router / allowlist readiness inspection. V5.29 adds ToolCatalog / registry readiness inspection. V5.30 adds Worker router mapping inspection. V5.31 adds a read-only target capability decision matrix.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, and logical worker router mapping are now reviewed without executing a new run.",
+        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, logical worker router mapping, and target capability decision constraints are now reviewed without executing a new run.",
       unsupported_is_blocking_for_real_execution: true,
       router_allowlist_readiness_is_blocking_for_real_execution:
         !routerAllowlistReadiness.real_run_allowed_by_readiness,
@@ -3084,6 +3519,8 @@ export async function GET(request: Request, context: RouteContext) {
         !toolcatalogRegistryReadiness.registry_ready_for_real_run,
       worker_router_mapping_is_blocking_for_real_execution:
         !workerRouterMappingInspection.router_mapping_ready_for_real_run,
+      target_capability_decision_is_blocking_for_real_execution:
+        !targetCapabilityDecisionMatrix.decision_ready,
       unsupported_fix_required_before_real_execution: true,
     },
 
@@ -3110,6 +3547,7 @@ export async function GET(request: Request, context: RouteContext) {
       "Inspect Workspace_Capabilities readiness in read-only mode",
       "Inspect whether command_orchestrator should execute directly or spawn a lower-level capability",
       "Confirm Tool_Key / Tool_Mode before real execution",
+      "Select a target capability only after explicit mapping evidence exists",
       "Keep real execution behind a separate feature gate",
       "Keep POST /run server-side only",
       "Keep worker secret server-side only",
@@ -3128,6 +3566,8 @@ export async function GET(request: Request, context: RouteContext) {
       post_run: "DISABLED_FROM_THIS_SURFACE",
       worker_call: "DISABLED_FROM_THIS_SURFACE",
       real_run: "FORBIDDEN",
+      command_creation: "DISABLED",
+      target_capability_creation: "DISABLED",
       secret_exposure: "DISABLED",
       review_only: true,
     },
@@ -3135,8 +3575,8 @@ export async function GET(request: Request, context: RouteContext) {
     error:
       status === "POST_RUN_DRY_RUN_RESULT_REVIEW_READY"
         ? null
-        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, and read sections.",
+        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, and read sections.",
     next_step:
-      "Next safe step: define Tool_Key / Tool_Mode and target capability mapping, or inspect Worker router code in a separate read-only engineering step before any real execution.",
+      "Next safe step: define Tool_Key / Tool_Mode, registry entries, and explicit target capability mapping before any target command creation or real execution.",
   });
 }
