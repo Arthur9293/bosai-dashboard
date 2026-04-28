@@ -6451,6 +6451,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     operator_decision_review_summary: operatorDecisionReviewSummary,
 
+    review_decision_persistence_draft: reviewDecisionPersistenceDraft,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -6506,8 +6508,7 @@ export async function GET(request: Request, context: RouteContext) {
       summary:
         "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft. V5.34 adds a controlled mapping plan. V5.35 adds a read-only mapping preflight checklist. V5.36 adds a human review gate. V5.37 adds a read-only operator decision draft. V5.38 adds an operator decision review summary.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, controlled mapping plan requirements, mapping preflight blockers, human review boundaries, operator decision draft options, and operator decision review summary are now reviewed without executing a new run.",
-      unsupported_is_blocking_for_real_execution: true,
+        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, controlled mapping plan requirements, mapping preflight blockers, human review boundaries, operator decision draft options, operator decision review summary, and review decision persistence draft are now reviewed without executing a new run.",
       router_allowlist_readiness_is_blocking_for_real_execution:
         !routerAllowlistReadiness.real_run_allowed_by_readiness,
       registry_readiness_is_blocking_for_real_execution:
@@ -6571,6 +6572,7 @@ export async function GET(request: Request, context: RouteContext) {
       "Keep worker secret server-side only",
       "Require explicit operator confirmation before any non-dry-run execution",
       "Do not enable real run while unsupported remains unresolved",
+      "Complete review decision persistence draft before any Operator_Approval creation",
     ],
 
     guardrails: {
@@ -6595,6 +6597,8 @@ export async function GET(request: Request, context: RouteContext) {
       registry_mutation: "DISABLED",
       secret_exposure: "DISABLED",
       review_only: true,
+      review_decision_persistence_mutation: "DISABLED",
+      operator_approval_creation: "DISABLED",
     },
 
     error:
@@ -6602,6 +6606,6 @@ export async function GET(request: Request, context: RouteContext) {
         ? null
         : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, execution_mapping_contract_draft, tool_mapping_proposal_draft, controlled_mapping_plan, mapping_preflight_checklist, human_review_gate, operator_decision_draft, operator_decision_review_summary, and read sections.",
     next_step:
-      "Next safe step: V5.39 Review Decision Persistence Draft, still read-only / no mutation, before any Operator_Approval creation.",
+      "Next safe step: V5.40 Review Decision Persistence Preflight, still read-only / no mutation, before any Operator_Approval creation.",
   });
 }
