@@ -33,11 +33,29 @@ type AirtableListResult = {
   formula_used: string | null;
 };
 
-const VERSION = "Incident Detail V5.34";
+type PreflightCheckStatus = "pass" | "warning" | "fail";
+
+type PreflightRequiredBefore =
+  | "mutation"
+  | "registry"
+  | "command_creation"
+  | "execution"
+  | "review";
+
+type PreflightCheckItem = {
+  id: string;
+  label: string;
+  status: PreflightCheckStatus;
+  blocking: boolean;
+  evidence: string;
+  required_before: PreflightRequiredBefore;
+};
+
+const VERSION = "Incident Detail V5.35";
 const SOURCE =
-  "dashboard_incident_detail_v5_34_controlled_mapping_plan";
+  "dashboard_incident_detail_v5_35_mapping_preflight_checklist";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
-const READER_VERSION = "V5.34_CONTROLLED_MAPPING_PLAN";
+const READER_VERSION = "V5.35_MAPPING_PREFLIGHT_CHECKLIST";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
@@ -3630,6 +3648,732 @@ function buildControlledMappingPlan(args: {
   };
 }
 
+function buildPreflightCheckItem(args: {
+  id: string;
+  label: string;
+  status: PreflightCheckStatus;
+  blocking: boolean;
+  evidence: string;
+  requiredBefore: PreflightRequiredBefore;
+}): PreflightCheckItem {
+  return {
+    id: args.id,
+    label: args.label,
+    status: args.status,
+    blocking: args.blocking,
+    evidence: args.evidence,
+    required_before: args.requiredBefore,
+  };
+}
+
+function summarizePreflightChecks(groups: PreflightCheckItem[][]) {
+  const checks = groups.flat();
+
+  return {
+    total_checks: checks.length,
+    passed_checks: checks.filter((check) => check.status === "pass").length,
+    warning_checks: checks.filter((check) => check.status === "warning").length,
+    failed_checks: checks.filter((check) => check.status === "fail").length,
+    blocking_checks: checks.filter((check) => check.blocking).length,
+  };
+}
+
+function buildMappingPreflightChecklist(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  workspaceId: string;
+  approvalFound: boolean;
+  commandFields: JsonRecord;
+  workerDryRunResult: {
+    http_status: number | null;
+    ok: boolean;
+    scanned: number;
+    unsupported: number;
+    errors_count: number;
+    commands_record_ids: string[];
+  };
+  reviewCheck: {
+    worker_response_exists?: boolean;
+    worker_scanned_at_least_one_command?: boolean;
+    worker_command_record_seen?: boolean;
+  };
+  routerAllowlistReadiness: {
+    command_payload_present?: boolean;
+    real_run_allowed_by_readiness?: boolean;
+  };
+  toolcatalogRegistryReadiness: {
+    registry_ready_for_real_run?: boolean;
+    tool_key_from_command?: string | null;
+    tool_mode_from_command?: string | null;
+    toolcatalog?: {
+      attempted?: boolean;
+      records_found?: number;
+      read_error?: string | null;
+    };
+    workspace_capabilities?: {
+      attempted?: boolean;
+      records_found?: number;
+      read_error?: string | null;
+    };
+  };
+  workerRouterMappingInspection: {
+    router_mapping_ready_for_real_run?: boolean;
+  };
+  targetCapabilityDecisionMatrix: {
+    decision_ready?: boolean;
+    selected_target_capability?: string | null;
+  };
+  executionMappingContractDraft: {
+    payload_contract?: {
+      payload_present?: boolean;
+      payload_schema_validated?: boolean;
+    };
+    promotion_contract?: {
+      current_mode?: string | null;
+      real_run_allowed?: boolean;
+    };
+  };
+  toolMappingProposalDraft: {
+    available?: boolean;
+    proposal?: {
+      proposed_tool_key?: string | null;
+      proposed_tool_mode?: "review_only" | "dry_run_only" | "router_only" | null;
+      proposed_target_capability?: string | null;
+      proposal_confidence?: "medium" | "low" | "unknown";
+      proposal_ready_to_apply?: boolean;
+      proposal_apply_allowed?: boolean;
+    };
+  };
+  controlledMappingPlan: {
+    available?: boolean;
+    plan_status?: string;
+    plan_ready_for_mutation?: boolean;
+    plan_ready_for_execution?: boolean;
+    proposed_mapping?: {
+      proposal_confidence?: "low" | "medium" | "unknown";
+      proposed_tool_key?: string | null;
+      proposed_tool_mode?: "review_only" | "dry_run_only" | "router_only" | null;
+      proposed_target_capability?: string | null;
+      apply_allowed_now?: boolean;
+    };
+    rollback_sequence?: string[];
+    preconditions_before_any_mutation?: string[];
+    preconditions_before_any_execution?: string[];
+  };
+}) {
+  const currentToolKey =
+    args.toolcatalogRegistryReadiness.tool_key_from_command ||
+    stringField(args.commandFields, [
+      "Tool_Key",
+      "tool_key",
+      "Tool Key",
+      "toolKey",
+      "Tool",
+      "tool",
+    ]) ||
+    null;
+
+  const currentToolMode =
+    args.toolcatalogRegistryReadiness.tool_mode_from_command ||
+    stringField(args.commandFields, [
+      "Tool_Mode",
+      "tool_mode",
+      "Tool Mode",
+      "toolMode",
+      "Mode",
+      "mode",
+    ]) ||
+    null;
+
+  const commandStatusSelect = stringField(args.commandFields, [
+    "Status_select",
+    "status_select",
+  ]);
+
+  const targetMode =
+    args.executionMappingContractDraft.promotion_contract?.current_mode ||
+    stringField(args.commandFields, ["Target_Mode", "target_mode", "targetMode"]);
+
+  const proposedToolKey =
+    args.controlledMappingPlan.proposed_mapping?.proposed_tool_key ||
+    args.toolMappingProposalDraft.proposal?.proposed_tool_key ||
+    null;
+
+  const proposedToolMode =
+    args.controlledMappingPlan.proposed_mapping?.proposed_tool_mode ||
+    args.toolMappingProposalDraft.proposal?.proposed_tool_mode ||
+    null;
+
+  const proposedTargetCapability =
+    args.controlledMappingPlan.proposed_mapping?.proposed_target_capability ||
+    args.toolMappingProposalDraft.proposal?.proposed_target_capability ||
+    null;
+
+  const proposalConfidence =
+    args.controlledMappingPlan.proposed_mapping?.proposal_confidence ||
+    args.toolMappingProposalDraft.proposal?.proposal_confidence ||
+    "unknown";
+
+  const proposalExists = args.toolMappingProposalDraft.available === true;
+  const controlledPlanExists = args.controlledMappingPlan.available === true;
+  const proposalConfidenceAcceptable =
+    proposalConfidence === "medium" || proposalConfidence === "high";
+
+  const toolCatalogAttempted =
+    args.toolcatalogRegistryReadiness.toolcatalog?.attempted === true;
+  const toolCatalogReadable =
+    toolCatalogAttempted &&
+    !args.toolcatalogRegistryReadiness.toolcatalog?.read_error;
+  const toolCatalogEntryExists =
+    (args.toolcatalogRegistryReadiness.toolcatalog?.records_found ?? 0) > 0;
+
+  const workspaceCapabilitiesAttempted =
+    args.toolcatalogRegistryReadiness.workspace_capabilities?.attempted === true;
+  const workspaceCapabilitiesReadable =
+    workspaceCapabilitiesAttempted &&
+    !args.toolcatalogRegistryReadiness.workspace_capabilities?.read_error;
+  const workspaceCapabilitiesEntryExists =
+    (args.toolcatalogRegistryReadiness.workspace_capabilities?.records_found ?? 0) >
+    0;
+
+  const registryReady =
+    args.toolcatalogRegistryReadiness.registry_ready_for_real_run === true;
+
+  const payloadPresent =
+    args.executionMappingContractDraft.payload_contract?.payload_present === true ||
+    args.routerAllowlistReadiness.command_payload_present === true;
+  const payloadSchemaValidated =
+    args.executionMappingContractDraft.payload_contract?.payload_schema_validated ===
+    true;
+
+  const currentModeIsDryRunOnly =
+    normalizeStatusToken(targetMode) === "DRYRUNONLY";
+
+  const realRunAllowed =
+    args.executionMappingContractDraft.promotion_contract?.real_run_allowed === true;
+
+  const promotionAllowedNow = realRunAllowed === true;
+  const rollbackSequenceListed =
+    Array.isArray(args.controlledMappingPlan.rollback_sequence) &&
+    args.controlledMappingPlan.rollback_sequence.length > 0;
+
+  const rollbackValidated = false;
+  const originalCommandPreserved = true;
+  const runDraftEvidencePreserved = true;
+  const workerRunEvidencePreserved =
+    args.reviewCheck.worker_response_exists === true &&
+    args.workerDryRunResult.http_status === 200;
+
+  const workerDryRunEvidenceExists =
+    args.reviewCheck.worker_response_exists === true &&
+    args.workerDryRunResult.ok === true;
+  const workerScannedCommand =
+    args.reviewCheck.worker_scanned_at_least_one_command === true &&
+    args.reviewCheck.worker_command_record_seen === true;
+  const workerReturnedUnsupported = args.workerDryRunResult.unsupported >= 1;
+  const commandIsUnsupported =
+    normalizeStatusToken(commandStatusSelect) === "UNSUPPORTED";
+
+  const routerMappingReady =
+    args.workerRouterMappingInspection.router_mapping_ready_for_real_run === true;
+  const targetCapabilitySelected =
+    args.targetCapabilityDecisionMatrix.decision_ready === true &&
+    Boolean(args.targetCapabilityDecisionMatrix.selected_target_capability);
+
+  const mappingMutationPreflight: PreflightCheckItem[] = [
+    buildPreflightCheckItem({
+      id: "mapping_proposal_exists",
+      label: "Mapping proposal exists",
+      status: proposalExists ? "pass" : "fail",
+      blocking: !proposalExists,
+      evidence: proposalExists
+        ? "tool_mapping_proposal_draft.available=true."
+        : "tool_mapping_proposal_draft is missing or unavailable.",
+      requiredBefore: "mutation",
+    }),
+    buildPreflightCheckItem({
+      id: "proposal_confidence_acceptable",
+      label: "Proposal confidence is acceptable",
+      status: proposalConfidenceAcceptable ? "pass" : "fail",
+      blocking: true,
+      evidence: `proposal_confidence=${proposalConfidence}. Medium or higher is required before mutation.`,
+      requiredBefore: "mutation",
+    }),
+    buildPreflightCheckItem({
+      id: "proposed_tool_key_exists",
+      label: "Proposed Tool_Key exists",
+      status: proposedToolKey ? "pass" : "fail",
+      blocking: !proposedToolKey,
+      evidence: proposedToolKey
+        ? `proposed_tool_key=${proposedToolKey}.`
+        : "No proposed_tool_key is available.",
+      requiredBefore: "mutation",
+    }),
+    buildPreflightCheckItem({
+      id: "proposed_tool_mode_exists",
+      label: "Proposed Tool_Mode exists",
+      status: proposedToolMode ? "pass" : "fail",
+      blocking: !proposedToolMode,
+      evidence: proposedToolMode
+        ? `proposed_tool_mode=${proposedToolMode}.`
+        : "No proposed_tool_mode is available.",
+      requiredBefore: "mutation",
+    }),
+    buildPreflightCheckItem({
+      id: "current_command_has_no_conflicting_tool_key",
+      label: "Current Command has no conflicting Tool_Key",
+      status: !currentToolKey && !currentToolMode ? "pass" : "warning",
+      blocking: false,
+      evidence:
+        !currentToolKey && !currentToolMode
+          ? "Current Command has no Tool_Key / Tool_Mode, so there is no conflicting mapping to overwrite."
+          : `Current mapping exists: Tool_Key=${currentToolKey}, Tool_Mode=${currentToolMode}.`,
+      requiredBefore: "mutation",
+    }),
+    buildPreflightCheckItem({
+      id: "current_command_mutation_not_allowed_from_this_route",
+      label: "Current Command mutation is not allowed from this route",
+      status: "pass",
+      blocking: false,
+      evidence: "This GET surface is read-only and does not mutate Airtable.",
+      requiredBefore: "mutation",
+    }),
+    buildPreflightCheckItem({
+      id: "controlled_mapping_plan_exists",
+      label: "Controlled mapping plan exists",
+      status: controlledPlanExists ? "pass" : "fail",
+      blocking: !controlledPlanExists,
+      evidence: controlledPlanExists
+        ? `controlled_mapping_plan.plan_status=${args.controlledMappingPlan.plan_status}.`
+        : "controlled_mapping_plan is missing.",
+      requiredBefore: "mutation",
+    }),
+    buildPreflightCheckItem({
+      id: "human_review_required",
+      label: "Human review required",
+      status: "warning",
+      blocking: true,
+      evidence:
+        "Human review is required because the proposed mapping is low confidence and not approved for mutation.",
+      requiredBefore: "review",
+    }),
+  ];
+
+  const registryPreflight: PreflightCheckItem[] = [
+    buildPreflightCheckItem({
+      id: "toolcatalog_table_readable",
+      label: "ToolCatalog table readable",
+      status: toolCatalogReadable ? "pass" : "fail",
+      blocking: !toolCatalogReadable,
+      evidence: toolCatalogReadable
+        ? "ToolCatalog read completed without error."
+        : `ToolCatalog read unavailable or failed: ${
+            args.toolcatalogRegistryReadiness.toolcatalog?.read_error || "not attempted"
+          }.`,
+      requiredBefore: "registry",
+    }),
+    buildPreflightCheckItem({
+      id: "toolcatalog_entry_exists_for_proposed_target",
+      label: "ToolCatalog entry exists for proposed target",
+      status: toolCatalogEntryExists ? "pass" : "fail",
+      blocking: true,
+      evidence: toolCatalogEntryExists
+        ? "ToolCatalog returned at least one matching record."
+        : `No confirmed ToolCatalog entry for proposed target ${
+            proposedTargetCapability || "unknown"
+          }.`,
+      requiredBefore: "registry",
+    }),
+    buildPreflightCheckItem({
+      id: "workspace_capabilities_table_readable",
+      label: "Workspace_Capabilities table readable",
+      status: workspaceCapabilitiesReadable ? "pass" : "fail",
+      blocking: !workspaceCapabilitiesReadable,
+      evidence: workspaceCapabilitiesReadable
+        ? "Workspace_Capabilities read completed without error."
+        : `Workspace_Capabilities read unavailable or failed: ${
+            args.toolcatalogRegistryReadiness.workspace_capabilities?.read_error ||
+            "not attempted"
+          }.`,
+      requiredBefore: "registry",
+    }),
+    buildPreflightCheckItem({
+      id: "workspace_capability_entry_exists",
+      label: "Workspace_Capabilities entry exists for workspace + proposed target",
+      status: workspaceCapabilitiesEntryExists ? "pass" : "fail",
+      blocking: true,
+      evidence: workspaceCapabilitiesEntryExists
+        ? "Workspace_Capabilities returned at least one matching record."
+        : `No confirmed Workspace_Capabilities entry for ${args.workspaceId} + ${
+            proposedTargetCapability || "unknown"
+          }.`,
+      requiredBefore: "registry",
+    }),
+    buildPreflightCheckItem({
+      id: "registry_ready_for_real_run",
+      label: "Registry ready for real-run",
+      status: registryReady ? "pass" : "fail",
+      blocking: true,
+      evidence: `registry_ready_for_real_run=${registryReady}.`,
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "registry_mutation_not_allowed_from_this_route",
+      label: "Registry mutation is not allowed from this route",
+      status: "pass",
+      blocking: false,
+      evidence:
+        "This route does not create or update ToolCatalog / Workspace_Capabilities records.",
+      requiredBefore: "registry",
+    }),
+  ];
+
+  const payloadSchemaPreflight: PreflightCheckItem[] = [
+    buildPreflightCheckItem({
+      id: "command_payload_present",
+      label: "Command payload present",
+      status: payloadPresent ? "pass" : "fail",
+      blocking: !payloadPresent,
+      evidence: `payload_present=${payloadPresent}.`,
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "payload_schema_exists",
+      label: "Payload schema exists",
+      status: "fail",
+      blocking: true,
+      evidence:
+        "No validated payload schema object is available from the current read-only diagnostics.",
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "payload_schema_validated",
+      label: "Payload schema validated",
+      status: payloadSchemaValidated ? "pass" : "fail",
+      blocking: true,
+      evidence: `payload_schema_validated=${payloadSchemaValidated}.`,
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "payload_can_be_mapped_to_target_capability",
+      label: "Payload can be mapped to proposed target capability",
+      status: "fail",
+      blocking: true,
+      evidence:
+        "Payload exists, but V5.35 does not validate that it matches incident_router schema.",
+      requiredBefore: "execution",
+    }),
+  ];
+
+  const promotionPolicyPreflight: PreflightCheckItem[] = [
+    buildPreflightCheckItem({
+      id: "current_mode_is_dry_run_only",
+      label: "Current mode is dry_run_only",
+      status: currentModeIsDryRunOnly ? "pass" : "warning",
+      blocking: false,
+      evidence: `current_mode=${targetMode || "unknown"}. dry_run_only remains a safety guardrail.`,
+      requiredBefore: "review",
+    }),
+    buildPreflightCheckItem({
+      id: "promotion_policy_exists",
+      label: "Promotion policy exists",
+      status: "fail",
+      blocking: true,
+      evidence:
+        "No explicit promotion policy from dry_run_only to executable is validated.",
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "promotion_allowed_now",
+      label: "Promotion allowed now",
+      status: promotionAllowedNow ? "pass" : "fail",
+      blocking: true,
+      evidence: `promotion_allowed_now=${promotionAllowedNow}.`,
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "real_run_remains_forbidden",
+      label: "Real-run remains forbidden",
+      status: !realRunAllowed ? "pass" : "fail",
+      blocking: realRunAllowed,
+      evidence: `real_run_allowed=${realRunAllowed}.`,
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "execution_separate_from_mapping",
+      label: "Execution must be separate from mapping",
+      status: "pass",
+      blocking: false,
+      evidence:
+        "Mapping mutation, registry preparation, command creation, and real execution must remain separate gated steps.",
+      requiredBefore: "execution",
+    }),
+  ];
+
+  const operatorApprovalPreflight: PreflightCheckItem[] = [
+    buildPreflightCheckItem({
+      id: "current_approval_exists",
+      label: "Current approval exists",
+      status: args.approvalFound ? "pass" : "fail",
+      blocking: !args.approvalFound,
+      evidence: args.approvalFound
+        ? "Operator approval record exists."
+        : "Operator approval record is missing.",
+      requiredBefore: "review",
+    }),
+    buildPreflightCheckItem({
+      id: "current_approval_scope_is_dry_run_only",
+      label: "Current approval scope is dry-run/draft only",
+      status: "pass",
+      blocking: false,
+      evidence:
+        "Current approval is treated as valid for draft/dry-run review only, not mutation or real-run.",
+      requiredBefore: "review",
+    }),
+    buildPreflightCheckItem({
+      id: "fresh_approval_required_for_mutation",
+      label: "Fresh approval required for mutation",
+      status: "fail",
+      blocking: true,
+      evidence:
+        "No fresh operator approval for Tool_Key / Tool_Mode mutation is present.",
+      requiredBefore: "mutation",
+    }),
+    buildPreflightCheckItem({
+      id: "fresh_approval_required_for_real_run",
+      label: "Fresh approval required for real-run",
+      status: "fail",
+      blocking: true,
+      evidence:
+        "No fresh operator approval for non-dry-run execution is present.",
+      requiredBefore: "execution",
+    }),
+  ];
+
+  const rollbackPreflight: PreflightCheckItem[] = [
+    buildPreflightCheckItem({
+      id: "rollback_path_defined",
+      label: "Rollback path defined",
+      status: rollbackSequenceListed ? "warning" : "fail",
+      blocking: true,
+      evidence: rollbackSequenceListed
+        ? "Rollback sequence is listed in V5.34 but not operationally validated."
+        : "Rollback sequence is missing.",
+      requiredBefore: "mutation",
+    }),
+    buildPreflightCheckItem({
+      id: "original_command_preserved",
+      label: "Original Command preserved",
+      status: originalCommandPreserved ? "pass" : "fail",
+      blocking: !originalCommandPreserved,
+      evidence:
+        "Current route is read-only, so original Command is preserved.",
+      requiredBefore: "mutation",
+    }),
+    buildPreflightCheckItem({
+      id: "run_draft_evidence_preserved",
+      label: "Run Draft evidence preserved",
+      status: runDraftEvidencePreserved ? "pass" : "fail",
+      blocking: !runDraftEvidencePreserved,
+      evidence:
+        "Current route reads Run Draft only and does not mutate it.",
+      requiredBefore: "mutation",
+    }),
+    buildPreflightCheckItem({
+      id: "worker_run_evidence_preserved",
+      label: "Worker run evidence preserved",
+      status: workerRunEvidencePreserved ? "pass" : "fail",
+      blocking: !workerRunEvidencePreserved,
+      evidence:
+        "Worker run evidence is read from persisted System_Runs record only.",
+      requiredBefore: "mutation",
+    }),
+    buildPreflightCheckItem({
+      id: "revert_tool_mapping_strategy_defined",
+      label: "Revert Tool_Key / Tool_Mode strategy defined",
+      status: rollbackValidated ? "pass" : "warning",
+      blocking: true,
+      evidence:
+        "Rollback strategy is described but not validated by an executable rollback procedure.",
+      requiredBefore: "mutation",
+    }),
+  ];
+
+  const executionPreflight: PreflightCheckItem[] = [
+    buildPreflightCheckItem({
+      id: "worker_dry_run_evidence_exists",
+      label: "Worker dry-run evidence exists",
+      status: workerDryRunEvidenceExists ? "pass" : "fail",
+      blocking: !workerDryRunEvidenceExists,
+      evidence: `worker_response_exists=${args.reviewCheck.worker_response_exists}, worker_ok=${args.workerDryRunResult.ok}.`,
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "worker_scanned_command",
+      label: "Worker scanned command",
+      status: workerScannedCommand ? "pass" : "fail",
+      blocking: !workerScannedCommand,
+      evidence: `scanned=${args.workerDryRunResult.scanned}, command_seen=${args.reviewCheck.worker_command_record_seen}.`,
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "worker_returned_unsupported",
+      label: "Worker returned unsupported",
+      status: workerReturnedUnsupported ? "fail" : "pass",
+      blocking: workerReturnedUnsupported,
+      evidence: `unsupported=${args.workerDryRunResult.unsupported}.`,
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "command_status_select_unsupported",
+      label: "Command Status_select is Unsupported",
+      status: commandIsUnsupported ? "fail" : "pass",
+      blocking: commandIsUnsupported,
+      evidence: `Status_select=${commandStatusSelect || "unknown"}.`,
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "router_mapping_ready_for_real_run",
+      label: "Router mapping ready for real-run",
+      status: routerMappingReady ? "pass" : "fail",
+      blocking: true,
+      evidence: `router_mapping_ready_for_real_run=${routerMappingReady}.`,
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "target_capability_selected",
+      label: "Target capability selected",
+      status: targetCapabilitySelected ? "pass" : "fail",
+      blocking: true,
+      evidence: `selected_target_capability=${
+        args.targetCapabilityDecisionMatrix.selected_target_capability || "null"
+      }.`,
+      requiredBefore: "command_creation",
+    }),
+    buildPreflightCheckItem({
+      id: "real_run_allowed",
+      label: "Real-run allowed",
+      status: realRunAllowed ? "pass" : "fail",
+      blocking: true,
+      evidence: `real_run_allowed=${realRunAllowed}.`,
+      requiredBefore: "execution",
+    }),
+    buildPreflightCheckItem({
+      id: "execution_forbidden_from_this_route",
+      label: "Execution is forbidden from this route",
+      status: "pass",
+      blocking: false,
+      evidence:
+        "This route is GET/read-only and cannot execute worker runs or create commands.",
+      requiredBefore: "execution",
+    }),
+  ];
+
+  const checklistSummary = summarizePreflightChecks([
+    mappingMutationPreflight,
+    registryPreflight,
+    payloadSchemaPreflight,
+    promotionPolicyPreflight,
+    operatorApprovalPreflight,
+    rollbackPreflight,
+    executionPreflight,
+  ]);
+
+  const blockers = Array.from(
+    new Set(
+      [
+        ...mappingMutationPreflight,
+        ...registryPreflight,
+        ...payloadSchemaPreflight,
+        ...promotionPolicyPreflight,
+        ...operatorApprovalPreflight,
+        ...rollbackPreflight,
+        ...executionPreflight,
+      ]
+        .filter((check) => check.blocking && check.status === "fail")
+        .map((check) => `${check.label}: ${check.evidence}`)
+    )
+  );
+
+  const warnings = Array.from(
+    new Set(
+      [
+        ...mappingMutationPreflight,
+        ...registryPreflight,
+        ...payloadSchemaPreflight,
+        ...promotionPolicyPreflight,
+        ...operatorApprovalPreflight,
+        ...rollbackPreflight,
+        ...executionPreflight,
+      ]
+        .filter((check) => check.status === "warning")
+        .map((check) => `${check.label}: ${check.evidence}`)
+    )
+  );
+
+  let preflightStatus:
+    | "PREFLIGHT_DRAFT_ONLY"
+    | "PREFLIGHT_BLOCKED_LOW_CONFIDENCE_MAPPING"
+    | "PREFLIGHT_BLOCKED_TOOL_MAPPING"
+    | "PREFLIGHT_BLOCKED_REGISTRY"
+    | "PREFLIGHT_BLOCKED_PAYLOAD_SCHEMA"
+    | "PREFLIGHT_BLOCKED_PROMOTION_POLICY"
+    | "PREFLIGHT_BLOCKED_OPERATOR_APPROVAL"
+    | "PREFLIGHT_BLOCKED_ROLLBACK"
+    | "PREFLIGHT_READY_FOR_HUMAN_REVIEW_ONLY"
+    | "UNKNOWN_PREFLIGHT_STATUS" = "UNKNOWN_PREFLIGHT_STATUS";
+
+  if (proposalConfidence === "low" || proposalConfidence === "unknown") {
+    preflightStatus = "PREFLIGHT_BLOCKED_LOW_CONFIDENCE_MAPPING";
+  } else if (!currentToolKey || !currentToolMode) {
+    preflightStatus = "PREFLIGHT_BLOCKED_TOOL_MAPPING";
+  } else if (!registryReady) {
+    preflightStatus = "PREFLIGHT_BLOCKED_REGISTRY";
+  } else if (!payloadSchemaValidated) {
+    preflightStatus = "PREFLIGHT_BLOCKED_PAYLOAD_SCHEMA";
+  } else if (!promotionAllowedNow) {
+    preflightStatus = "PREFLIGHT_BLOCKED_PROMOTION_POLICY";
+  } else if (!args.approvalFound) {
+    preflightStatus = "PREFLIGHT_BLOCKED_OPERATOR_APPROVAL";
+  } else if (!rollbackValidated) {
+    preflightStatus = "PREFLIGHT_BLOCKED_ROLLBACK";
+  } else {
+    preflightStatus = "PREFLIGHT_READY_FOR_HUMAN_REVIEW_ONLY";
+  }
+
+  return {
+    available: true,
+    checklist_version: "V5.35_MAPPING_PREFLIGHT_CHECKLIST",
+    command_record_id: args.commandRecordId,
+    command_id: args.commandId,
+    workspace_id: args.workspaceId,
+
+    preflight_status: preflightStatus,
+    preflight_ready_for_mapping_mutation: false,
+    preflight_ready_for_registry_mutation: false,
+    preflight_ready_for_command_creation: false,
+    preflight_ready_for_execution: false,
+    real_run_allowed: false,
+
+    checklist_summary: checklistSummary,
+
+    mapping_mutation_preflight: mappingMutationPreflight,
+    registry_preflight: registryPreflight,
+    payload_schema_preflight: payloadSchemaPreflight,
+    promotion_policy_preflight: promotionPolicyPreflight,
+    operator_approval_preflight: operatorApprovalPreflight,
+    rollback_preflight: rollbackPreflight,
+    execution_preflight: executionPreflight,
+
+    blockers,
+    warnings,
+    next_safe_action:
+      "Complete human review of the low-confidence mapping proposal, then validate registry entries, payload schema, promotion policy, fresh operator approval, and rollback before any separate controlled mutation endpoint is considered.",
+    guardrail_interpretation:
+      "V5.35 is a mapping preflight checklist only. It does not mutate Airtable, create commands, create registry records, call the worker, or promote dry-run to real-run.",
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
@@ -4252,6 +4996,23 @@ export async function GET(request: Request, context: RouteContext) {
     no_airtable_mutation_by_this_surface: true,
   };
 
+  const mappingPreflightChecklist = buildMappingPreflightChecklist({
+    commandRecordId,
+    commandId: ids.commandDraftId,
+    workspaceId,
+    approvalFound: Boolean(approvalRead.record),
+    commandFields,
+    workerDryRunResult,
+    reviewCheck,
+    routerAllowlistReadiness,
+    toolcatalogRegistryReadiness,
+    workerRouterMappingInspection,
+    targetCapabilityDecisionMatrix,
+    executionMappingContractDraft,
+    toolMappingProposalDraft,
+    controlledMappingPlan,
+  });
+
   let status = "POST_RUN_DRY_RUN_RESULT_REVIEW_READY";
 
   if (configMissing) {
@@ -4388,6 +5149,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     controlled_mapping_plan: controlledMappingPlan,
 
+    mapping_preflight_checklist: mappingPreflightChecklist,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -4441,9 +5204,9 @@ export async function GET(request: Request, context: RouteContext) {
 
     interpretation: {
       summary:
-        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft. V5.34 adds a controlled mapping plan.",
+        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft. V5.34 adds a controlled mapping plan. V5.35 adds a read-only mapping preflight checklist.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, and controlled mapping plan requirements are now reviewed without executing a new run.",
+        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, controlled mapping plan requirements, and mapping preflight blockers are now reviewed without executing a new run.",
       unsupported_is_blocking_for_real_execution: true,
       router_allowlist_readiness_is_blocking_for_real_execution:
         !routerAllowlistReadiness.real_run_allowed_by_readiness,
@@ -4461,6 +5224,14 @@ export async function GET(request: Request, context: RouteContext) {
         !controlledMappingPlan.plan_ready_for_execution,
       controlled_mapping_plan_is_blocking_for_mutation:
         !controlledMappingPlan.plan_ready_for_mutation,
+      mapping_preflight_is_blocking_for_mapping_mutation:
+        !mappingPreflightChecklist.preflight_ready_for_mapping_mutation,
+      mapping_preflight_is_blocking_for_registry_mutation:
+        !mappingPreflightChecklist.preflight_ready_for_registry_mutation,
+      mapping_preflight_is_blocking_for_command_creation:
+        !mappingPreflightChecklist.preflight_ready_for_command_creation,
+      mapping_preflight_is_blocking_for_execution:
+        !mappingPreflightChecklist.preflight_ready_for_execution,
       unsupported_fix_required_before_real_execution: true,
     },
 
@@ -4491,6 +5262,7 @@ export async function GET(request: Request, context: RouteContext) {
       "Define execution mapping contract before creating target commands",
       "Review tool mapping proposal before any mutation",
       "Review controlled mapping plan before any mutation",
+      "Complete mapping preflight checklist before any mutation",
       "Define dry_run_only to executable promotion policy",
       "Define rollback/cancel path before real execution",
       "Keep real execution behind a separate feature gate",
@@ -4515,8 +5287,10 @@ export async function GET(request: Request, context: RouteContext) {
       execution_mapping_contract_mutation: "DISABLED",
       tool_mapping_mutation: "DISABLED",
       controlled_mapping_plan_mutation: "DISABLED",
+      mapping_preflight_mutation: "DISABLED",
       toolcatalog_creation: "DISABLED",
       workspace_capabilities_creation: "DISABLED",
+      registry_mutation: "DISABLED",
       secret_exposure: "DISABLED",
       review_only: true,
     },
@@ -4524,8 +5298,8 @@ export async function GET(request: Request, context: RouteContext) {
     error:
       status === "POST_RUN_DRY_RUN_RESULT_REVIEW_READY"
         ? null
-        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, execution_mapping_contract_draft, tool_mapping_proposal_draft, controlled_mapping_plan, and read sections.",
+        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, execution_mapping_contract_draft, tool_mapping_proposal_draft, controlled_mapping_plan, mapping_preflight_checklist, and read sections.",
     next_step:
-      "Next safe step: V5.35 Mapping Preflight Checklist, still read-only, before any Tool_Key / Tool_Mode, registry, command, or execution mutation.",
+      "Next safe step: V5.36 Human Review Gate, still read-only, before any Tool_Key / Tool_Mode, registry, command, or execution mutation.",
   });
 }
