@@ -3816,7 +3816,8 @@ function buildMappingPreflightChecklist(args: {
 
   const proposalExists = args.toolMappingProposalDraft.available === true;
   const controlledPlanExists = args.controlledMappingPlan.available === true;
-  const proposalConfidenceAcceptable = proposalConfidence === "medium";
+  const proposalConfidenceAcceptable =
+    proposalConfidence === "medium" || proposalConfidence === "high";
   const toolCatalogAttempted =
     args.toolcatalogRegistryReadiness.toolcatalog?.attempted === true;
   const toolCatalogReadable =
