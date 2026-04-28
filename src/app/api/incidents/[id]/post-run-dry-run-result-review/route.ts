@@ -5598,6 +5598,22 @@ export async function GET(request: Request, context: RouteContext) {
     executionMappingContractDraft,
   });
 
+  const operatorDecisionDraft = buildOperatorDecisionDraft({
+    commandRecordId,
+    commandId: ids.commandDraftId,
+    workspaceId,
+    commandFields,
+    commandStatus,
+    commandStatusSelect,
+    humanReviewGate,
+    mappingPreflightChecklist,
+    toolMappingProposalDraft,
+    controlledMappingPlan,
+    toolcatalogRegistryReadiness,
+    executionMappingContractDraft,
+    unsupportedCommandDiagnosis,
+  });
+
   let status = "POST_RUN_DRY_RUN_RESULT_REVIEW_READY";
 
   if (configMissing) {
