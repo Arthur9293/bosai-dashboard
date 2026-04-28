@@ -5904,6 +5904,6 @@ export async function GET(request: Request, context: RouteContext) {
         ? null
         : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, execution_mapping_contract_draft, tool_mapping_proposal_draft, controlled_mapping_plan, mapping_preflight_checklist, and read sections.",
     next_step:
-      "Next safe step: V5.37 Operator Decision Draft, still read-only, before any Tool_Key / Tool_Mode, registry, command, approval, or execution mutation."
+      "Next safe step: V5.38 Operator Decision Review Summary, still read-only, before any Tool_Key / Tool_Mode, registry, command, approval, or execution mutation.",
   });
 }
