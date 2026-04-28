@@ -5429,6 +5429,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     mapping_preflight_checklist: mappingPreflightChecklist,
 
+    human_review_gate: humanReviewGate,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
