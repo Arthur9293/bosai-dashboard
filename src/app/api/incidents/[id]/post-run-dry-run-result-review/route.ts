@@ -8885,8 +8885,8 @@ export async function GET(request: Request, context: RouteContext) {
     review_decision_persistence_schema_preview:
       reviewDecisionPersistenceSchemaPreview,
 
-    review_decision_persistence_schema_preview:
-      reviewDecisionPersistenceSchemaPreview,
+    review_decision_persistence_payload_preview:
+      reviewDecisionPersistencePayloadPreview,
 
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
