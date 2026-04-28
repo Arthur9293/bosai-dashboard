@@ -33,11 +33,11 @@ type AirtableListResult = {
   formula_used: string | null;
 };
 
-const VERSION = "Incident Detail V5.31";
+const VERSION = "Incident Detail V5.32";
 const SOURCE =
-  "dashboard_incident_detail_v5_31_target_capability_decision_matrix";
+  "dashboard_incident_detail_v5_32_execution_mapping_contract_draft";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
-const READER_VERSION = "V5.31_TARGET_CAPABILITY_DECISION_MATRIX";
+const READER_VERSION = "V5.32_EXECUTION_MAPPING_CONTRACT_DRAFT";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
@@ -2742,6 +2742,253 @@ function buildTargetCapabilityDecisionMatrix(args: {
   };
 }
 
+function buildExecutionMappingContractDraft(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  workspaceId: string;
+  commandFields: JsonRecord;
+  commandStatus: string;
+  commandStatusSelect: string;
+  routerAllowlistReadiness: {
+    command_payload_present?: boolean;
+    tool_key?: string | null;
+    tool_mode?: string | null;
+  };
+  toolcatalogRegistryReadiness: {
+    registry_ready_for_real_run?: boolean;
+    tool_key_from_command?: string | null;
+    tool_mode_from_command?: string | null;
+  };
+  workerRouterMappingInspection: {
+    capability_requested?: string;
+    capability_role?: "orchestrator" | "executable" | "unknown";
+    direct_execution_expected?: boolean;
+    router_mapping_ready_for_real_run?: boolean;
+  };
+  targetCapabilityDecisionMatrix: {
+    decision_ready?: boolean;
+    selected_target_capability?: string | null;
+    selected_target_confidence?: "high" | "medium" | "low" | "unknown";
+  };
+}) {
+  const sourceCapability =
+    args.workerRouterMappingInspection.capability_requested ||
+    stringField(args.commandFields, ["Capability", "capability"]) ||
+    "command_orchestrator";
+
+  const sourceRole =
+    args.workerRouterMappingInspection.capability_role ||
+    (normalizeStatusToken(sourceCapability) === "COMMANDORCHESTRATOR"
+      ? "orchestrator"
+      : "unknown");
+
+  const targetMode = stringField(args.commandFields, [
+    "Target_Mode",
+    "target_mode",
+    "targetMode",
+  ]);
+
+  const dryRun = booleanField(
+    args.commandFields,
+    ["Dry_Run", "dry_run", "dryRun"],
+    true
+  );
+
+  const toolKeyCurrent =
+    args.toolcatalogRegistryReadiness.tool_key_from_command ||
+    args.routerAllowlistReadiness.tool_key ||
+    stringField(args.commandFields, [
+      "Tool_Key",
+      "tool_key",
+      "Tool Key",
+      "toolKey",
+      "Tool",
+      "tool",
+    ]) ||
+    null;
+
+  const toolModeCurrent =
+    args.toolcatalogRegistryReadiness.tool_mode_from_command ||
+    args.routerAllowlistReadiness.tool_mode ||
+    stringField(args.commandFields, [
+      "Tool_Mode",
+      "tool_mode",
+      "Tool Mode",
+      "toolMode",
+      "Mode",
+      "mode",
+    ]) ||
+    null;
+
+  const targetSelectionReady =
+    args.targetCapabilityDecisionMatrix.decision_ready === true;
+
+  const selectedTargetCapability = targetSelectionReady
+    ? args.targetCapabilityDecisionMatrix.selected_target_capability ?? null
+    : null;
+
+  const targetConfidence = targetSelectionReady
+    ? args.targetCapabilityDecisionMatrix.selected_target_confidence ?? "unknown"
+    : "unknown";
+
+  const payloadPresent = args.routerAllowlistReadiness.command_payload_present === true;
+  const payloadSchemaValidated = false;
+  const registryReadyForRealRun =
+    args.toolcatalogRegistryReadiness.registry_ready_for_real_run === true;
+  const toolMappingReady = Boolean(toolKeyCurrent && toolModeCurrent);
+  const promotionRequired =
+    normalizeStatusToken(targetMode) === "DRYRUNONLY" || dryRun === true;
+  const promotionReady = false;
+
+  const missingContractInputs: string[] = [];
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+
+  if (normalizeStatusToken(sourceCapability) === "COMMANDORCHESTRATOR") {
+    warnings.push(
+      "command_orchestrator should not be promoted to direct execution until router and target capability mapping are explicit."
+    );
+  }
+
+  if (!targetSelectionReady) {
+    missingContractInputs.push("Target capability is not selected.");
+    blockers.push("Target capability is not selected. Execution mapping cannot proceed.");
+  }
+
+  if (!toolMappingReady) {
+    missingContractInputs.push("Tool_Key / Tool_Mode are missing.");
+    blockers.push(
+      "Tool_Key / Tool_Mode are required before execution mapping can be considered complete."
+    );
+  }
+
+  if (!registryReadyForRealRun) {
+    missingContractInputs.push(
+      "ToolCatalog / Workspace_Capabilities registry is not ready for real run."
+    );
+    blockers.push(
+      "ToolCatalog / Workspace_Capabilities registry is not ready for real run."
+    );
+  }
+
+  if (!payloadPresent) {
+    missingContractInputs.push("Payload is missing or unreadable.");
+    blockers.push("Payload is missing or unreadable.");
+  } else {
+    warnings.push("Payload exists but schema has not been validated.");
+  }
+
+  if (!payloadSchemaValidated) {
+    missingContractInputs.push("Payload schema has not been validated.");
+  }
+
+  if (promotionRequired) {
+    missingContractInputs.push("Promotion policy from dry_run_only is missing.");
+    blockers.push(
+      "Command is still dry_run_only. A separate promotion policy is required before real execution."
+    );
+  }
+
+  let contractStatus:
+    | "CONTRACT_DRAFT_ONLY"
+    | "CONTRACT_BLOCKED_TOOL_MAPPING"
+    | "CONTRACT_BLOCKED_TARGET_CAPABILITY"
+    | "CONTRACT_BLOCKED_REGISTRY"
+    | "CONTRACT_BLOCKED_PAYLOAD_SCHEMA"
+    | "CONTRACT_BLOCKED_PROMOTION_POLICY"
+    | "CONTRACT_READY_FOR_REVIEW_ONLY"
+    | "UNKNOWN_CONTRACT_STATUS" = "UNKNOWN_CONTRACT_STATUS";
+
+  if (!toolMappingReady) {
+    contractStatus = "CONTRACT_BLOCKED_TOOL_MAPPING";
+  } else if (!targetSelectionReady) {
+    contractStatus = "CONTRACT_BLOCKED_TARGET_CAPABILITY";
+  } else if (!registryReadyForRealRun) {
+    contractStatus = "CONTRACT_BLOCKED_REGISTRY";
+  } else if (!payloadPresent || !payloadSchemaValidated) {
+    contractStatus = "CONTRACT_BLOCKED_PAYLOAD_SCHEMA";
+  } else if (promotionRequired || !promotionReady) {
+    contractStatus = "CONTRACT_BLOCKED_PROMOTION_POLICY";
+  } else {
+    contractStatus = "CONTRACT_READY_FOR_REVIEW_ONLY";
+  }
+
+  return {
+    available: true,
+    contract_version: "V5.32_EXECUTION_MAPPING_CONTRACT_DRAFT",
+    command_record_id: args.commandRecordId,
+    command_id: args.commandId,
+    workspace_id: args.workspaceId,
+
+    source: {
+      capability: sourceCapability,
+      role: sourceRole,
+      direct_execution_allowed: false,
+      current_status: args.commandStatus || null,
+      current_status_select: args.commandStatusSelect || null,
+      current_target_mode: targetMode || null,
+    },
+
+    target: {
+      selected_target_capability: selectedTargetCapability,
+      target_selection_ready: targetSelectionReady,
+      target_selection_source: "target_capability_decision_matrix",
+      target_confidence: targetConfidence,
+      target_required_before_execution: true,
+    },
+
+    tool_mapping: {
+      tool_key_required: true,
+      tool_key_current: toolKeyCurrent,
+      tool_mode_required: true,
+      tool_mode_current: toolModeCurrent,
+      tool_mapping_ready: toolMappingReady,
+    },
+
+    registry_contract: {
+      toolcatalog_entry_required: true,
+      workspace_capability_entry_required: true,
+      registry_ready: registryReadyForRealRun,
+      registry_ready_for_real_run: registryReadyForRealRun,
+    },
+
+    payload_contract: {
+      payload_present: payloadPresent,
+      payload_schema_validated: payloadSchemaValidated,
+      payload_schema_required: true,
+    },
+
+    promotion_contract: {
+      current_mode: targetMode || null,
+      promotion_required: promotionRequired,
+      promotion_ready: promotionReady,
+      operator_approval_required: true,
+      rollback_required: true,
+      real_run_allowed: false,
+    },
+
+    contract_status: contractStatus,
+    contract_ready_for_execution: false,
+    missing_contract_inputs: Array.from(new Set(missingContractInputs)),
+    blockers: Array.from(new Set(blockers)),
+    warnings: Array.from(new Set(warnings)),
+    next_safe_action:
+      contractStatus === "CONTRACT_BLOCKED_TOOL_MAPPING"
+        ? "Define Tool_Key / Tool_Mode before completing the execution mapping contract."
+        : contractStatus === "CONTRACT_BLOCKED_TARGET_CAPABILITY"
+          ? "Select and explicitly map a target capability before any target command creation."
+          : contractStatus === "CONTRACT_BLOCKED_REGISTRY"
+            ? "Create or confirm ToolCatalog and Workspace_Capabilities entries before promotion."
+            : contractStatus === "CONTRACT_BLOCKED_PAYLOAD_SCHEMA"
+              ? "Define and validate the executable payload schema before promotion."
+              : contractStatus === "CONTRACT_BLOCKED_PROMOTION_POLICY"
+                ? "Define the dry_run_only to executable promotion policy, operator approval, and rollback path."
+                : "Keep this contract in review-only mode until every execution prerequisite is explicitly satisfied.",
+    guardrail_interpretation:
+      "V5.32 is an execution mapping contract draft only. It does not create commands, call the worker, mutate Airtable, or promote dry-run to real-run.",
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
@@ -3296,6 +3543,19 @@ export async function GET(request: Request, context: RouteContext) {
     workerRouterMappingInspection,
   });
 
+  const executionMappingContractDraft = buildExecutionMappingContractDraft({
+    commandRecordId,
+    commandId: ids.commandDraftId,
+    workspaceId,
+    commandFields,
+    commandStatus,
+    commandStatusSelect,
+    routerAllowlistReadiness,
+    toolcatalogRegistryReadiness,
+    workerRouterMappingInspection,
+    targetCapabilityDecisionMatrix,
+  });
+
   const reviewCheck = {
     intent_found: Boolean(intentRead.record),
     approval_found: Boolean(approvalRead.record),
@@ -3456,6 +3716,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     target_capability_decision_matrix: targetCapabilityDecisionMatrix,
 
+    execution_mapping_contract_draft: executionMappingContractDraft,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -3509,9 +3771,9 @@ export async function GET(request: Request, context: RouteContext) {
 
     interpretation: {
       summary:
-        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains why the scanned command was classified as unsupported. V5.28 adds router / allowlist readiness inspection. V5.29 adds ToolCatalog / registry readiness inspection. V5.30 adds Worker router mapping inspection. V5.31 adds a read-only target capability decision matrix.",
+        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds a read-only execution mapping contract draft.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, logical worker router mapping, and target capability decision constraints are now reviewed without executing a new run.",
+        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, and execution mapping contract requirements are now reviewed without executing a new run.",
       unsupported_is_blocking_for_real_execution: true,
       router_allowlist_readiness_is_blocking_for_real_execution:
         !routerAllowlistReadiness.real_run_allowed_by_readiness,
@@ -3521,6 +3783,8 @@ export async function GET(request: Request, context: RouteContext) {
         !workerRouterMappingInspection.router_mapping_ready_for_real_run,
       target_capability_decision_is_blocking_for_real_execution:
         !targetCapabilityDecisionMatrix.decision_ready,
+      execution_mapping_contract_is_blocking_for_real_execution:
+        !executionMappingContractDraft.contract_ready_for_execution,
       unsupported_fix_required_before_real_execution: true,
     },
 
@@ -3548,11 +3812,13 @@ export async function GET(request: Request, context: RouteContext) {
       "Inspect whether command_orchestrator should execute directly or spawn a lower-level capability",
       "Confirm Tool_Key / Tool_Mode before real execution",
       "Select a target capability only after explicit mapping evidence exists",
+      "Define execution mapping contract before creating target commands",
+      "Define dry_run_only to executable promotion policy",
+      "Define rollback/cancel path before real execution",
       "Keep real execution behind a separate feature gate",
       "Keep POST /run server-side only",
       "Keep worker secret server-side only",
       "Require explicit operator confirmation before any non-dry-run execution",
-      "Add rollback or safe cancellation path before real execution",
       "Do not enable real run while unsupported remains unresolved",
     ],
 
@@ -3568,6 +3834,7 @@ export async function GET(request: Request, context: RouteContext) {
       real_run: "FORBIDDEN",
       command_creation: "DISABLED",
       target_capability_creation: "DISABLED",
+      execution_mapping_contract_mutation: "DISABLED",
       secret_exposure: "DISABLED",
       review_only: true,
     },
@@ -3575,8 +3842,8 @@ export async function GET(request: Request, context: RouteContext) {
     error:
       status === "POST_RUN_DRY_RUN_RESULT_REVIEW_READY"
         ? null
-        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, and read sections.",
+        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, execution_mapping_contract_draft, and read sections.",
     next_step:
-      "Next safe step: define Tool_Key / Tool_Mode, registry entries, and explicit target capability mapping before any target command creation or real execution.",
+      "Next safe step: define Tool_Key / Tool_Mode, target capability, registry entries, payload schema, and promotion policy before any target command creation or real execution.",
   });
 }
