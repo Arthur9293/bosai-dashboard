@@ -53,7 +53,7 @@ type PreflightCheckItem = {
 
 const VERSION = "Incident Detail V5.39";
 const SOURCE =
-  "dashboard_incident_detail_v5_39_operator_review_decision_persistence_draft";
+  "dashboard_incident_detail_v5_39_review_decision_persistence_draft";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
 const READER_VERSION = "V5.39_REVIEW_DECISION_PERSISTENCE_DRAFT";
 
