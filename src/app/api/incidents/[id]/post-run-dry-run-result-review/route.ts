@@ -3329,7 +3329,7 @@ function buildControlledMappingPlan(args: {
       proposed_tool_mode?: "review_only" | "dry_run_only" | "router_only" | null;
       proposed_target_capability?: string | null;
       proposed_target_role?: "router" | "executable" | "terminal" | "unknown";
-      proposal_confidence?: "medium" | "low" | "unknown";
+      proposal_confidence?: "high" | "medium" | "low" | "unknown";
       proposal_ready_to_apply?: boolean;
       proposal_apply_allowed?: boolean;
     };
