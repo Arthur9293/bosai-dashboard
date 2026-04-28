@@ -33,11 +33,11 @@ type AirtableListResult = {
   formula_used: string | null;
 };
 
-const VERSION = "Incident Detail V5.29";
+const VERSION = "Incident Detail V5.30";
 const SOURCE =
-  "dashboard_incident_detail_v5_29_toolcatalog_registry_readiness_inspection";
+  "dashboard_incident_detail_v5_30_worker_router_mapping_inspection";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
-const READER_VERSION = "V5.29_TOOLCATALOG_REGISTRY_READINESS_INSPECTION";
+const READER_VERSION = "V5.30_WORKER_ROUTER_MAPPING_INSPECTION";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
@@ -2042,6 +2042,288 @@ function buildToolCatalogRegistryReadiness(args: {
   };
 }
 
+function buildWorkerRouterMappingInspection(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  workspaceId: string;
+  commandFields: JsonRecord;
+  commandStatus: string;
+  commandStatusSelect: string;
+  workerDryRunResult: {
+    scanned: number;
+    executed: number;
+    unsupported: number;
+    errors_count: number;
+    capability: string;
+    commands_record_ids: string[];
+  };
+  routerAllowlistReadiness: {
+    command_payload_present?: boolean;
+    tool_key?: string | null;
+    tool_mode?: string | null;
+    real_run_allowed_by_readiness?: boolean;
+  };
+  toolcatalogRegistryReadiness: {
+    registry_ready_for_real_run?: boolean;
+    tool_key_from_command?: string | null;
+    tool_mode_from_command?: string | null;
+  };
+}) {
+  const capabilityRequested = stringField(
+    args.commandFields,
+    ["Capability", "capability"],
+    args.workerDryRunResult.capability || "unknown"
+  );
+
+  const normalizedCapability = normalizeStatusToken(capabilityRequested);
+  const capabilityRole:
+    | "orchestrator"
+    | "executable"
+    | "unknown" =
+    normalizedCapability === "COMMANDORCHESTRATOR"
+      ? "orchestrator"
+      : capabilityRequested && capabilityRequested !== "unknown"
+        ? "executable"
+        : "unknown";
+
+  const targetMode = stringField(args.commandFields, [
+    "Target_Mode",
+    "target_mode",
+    "targetMode",
+  ]);
+
+  const dryRun = booleanField(
+    args.commandFields,
+    ["Dry_Run", "dry_run", "dryRun"],
+    true
+  );
+
+  const workerCallAllowed = booleanField(
+    args.commandFields,
+    ["Worker_Call_Allowed", "worker_call_allowed", "workerCallAllowed"],
+    false
+  );
+
+  const runCreationAllowed = booleanField(
+    args.commandFields,
+    ["Run_Creation_Allowed", "run_creation_allowed", "runCreationAllowed"],
+    false
+  );
+
+  const toolKey =
+    args.toolcatalogRegistryReadiness.tool_key_from_command ||
+    args.routerAllowlistReadiness.tool_key ||
+    stringField(args.commandFields, [
+      "Tool_Key",
+      "tool_key",
+      "Tool Key",
+      "toolKey",
+      "Tool",
+      "tool",
+    ]);
+
+  const toolMode =
+    args.toolcatalogRegistryReadiness.tool_mode_from_command ||
+    args.routerAllowlistReadiness.tool_mode ||
+    stringField(args.commandFields, [
+      "Tool_Mode",
+      "tool_mode",
+      "Tool Mode",
+      "toolMode",
+      "Mode",
+      "mode",
+    ]);
+
+  const explicitTargetCapability = stringField(args.commandFields, [
+    "Target_Capability",
+    "target_capability",
+    "targetCapability",
+    "Next_Capability",
+    "next_capability",
+    "nextCapability",
+    "Spawn_Capability",
+    "spawn_capability",
+    "spawnCapability",
+    "Child_Capability",
+    "child_capability",
+    "childCapability",
+    "Capability_Target",
+    "capability_target",
+    "capabilityTarget",
+  ]);
+
+  const commandPayloadPresent =
+    args.routerAllowlistReadiness.command_payload_present === true;
+
+  const normalizedTargetMode = normalizeStatusToken(targetMode);
+  const normalizedStatusSelect = normalizeStatusToken(args.commandStatusSelect);
+
+  const isCommandOrchestrator = capabilityRole === "orchestrator";
+  const directExecutionExpected = false;
+  const spawnOrRouteExpected = isCommandOrchestrator;
+
+  const likelyTargetCapability = explicitTargetCapability || null;
+  const targetCapabilityConfidence:
+    | "high"
+    | "medium"
+    | "low"
+    | "unknown" =
+    explicitTargetCapability ? "medium" : "unknown";
+
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+
+  if (isCommandOrchestrator) {
+    warnings.push(
+      "command_orchestrator should likely route or spawn a lower-level executable capability instead of executing directly."
+    );
+  }
+
+  if (!toolKey || !toolMode) {
+    blockers.push(
+      "Tool_Key / Tool_Mode are missing, so the router cannot map this command to an executable tool."
+    );
+  }
+
+  if (args.toolcatalogRegistryReadiness.registry_ready_for_real_run === false) {
+    blockers.push(
+      "Registry readiness is false. Router mapping cannot be promoted to real execution."
+    );
+  }
+
+  if (
+    normalizedStatusSelect === "UNSUPPORTED" ||
+    args.workerDryRunResult.unsupported >= 1
+  ) {
+    blockers.push(
+      "Command is already marked Unsupported by the dry-run path. Router mapping must be reviewed before any promotion."
+    );
+  }
+
+  if (
+    normalizedTargetMode === "DRYRUNONLY" ||
+    dryRun === true ||
+    workerCallAllowed === false ||
+    runCreationAllowed === false
+  ) {
+    blockers.push(
+      "Command is gated as dry-run only and cannot be routed to real execution."
+    );
+  }
+
+  if (commandPayloadPresent) {
+    warnings.push(
+      "Command payload exists, but V5.30 does not validate the router schema."
+    );
+  } else {
+    blockers.push(
+      "Command payload is missing or unreadable; router schema cannot be inferred."
+    );
+  }
+
+  if (isCommandOrchestrator && !likelyTargetCapability) {
+    blockers.push(
+      "command_orchestrator has no proven target capability in the current Command fields."
+    );
+  }
+
+  let routerMappingScore = 100;
+
+  if (isCommandOrchestrator && !likelyTargetCapability) routerMappingScore -= 30;
+  if (!toolKey) routerMappingScore -= 25;
+  if (!toolMode) routerMappingScore -= 25;
+  if (normalizedStatusSelect === "UNSUPPORTED") routerMappingScore -= 25;
+  if (normalizedTargetMode === "DRYRUNONLY") routerMappingScore -= 20;
+  if (args.workerDryRunResult.unsupported >= 1) routerMappingScore -= 20;
+  if (args.toolcatalogRegistryReadiness.registry_ready_for_real_run === false) {
+    routerMappingScore -= 20;
+  }
+  if (commandPayloadPresent) {
+    routerMappingScore -= 15;
+  } else {
+    routerMappingScore -= 30;
+  }
+
+  routerMappingScore = Math.max(0, routerMappingScore);
+
+  let routerMappingCategory:
+    | "ORCHESTRATOR_NEEDS_TARGET_CAPABILITY"
+    | "MISSING_TARGET_CAPABILITY_MAPPING"
+    | "MISSING_TOOL_MAPPING"
+    | "UNSUPPORTED_STATUS_BLOCKS_ROUTING"
+    | "DRY_RUN_ONLY_BLOCKS_ROUTING"
+    | "PAYLOAD_NEEDS_SCHEMA_VALIDATION"
+    | "ROUTER_MAPPING_READY_FOR_REVIEW_ONLY"
+    | "UNKNOWN_ROUTER_MAPPING" = "UNKNOWN_ROUTER_MAPPING";
+
+  if (!toolKey || !toolMode) {
+    routerMappingCategory = "MISSING_TOOL_MAPPING";
+  } else if (normalizedStatusSelect === "UNSUPPORTED") {
+    routerMappingCategory = "UNSUPPORTED_STATUS_BLOCKS_ROUTING";
+  } else if (normalizedTargetMode === "DRYRUNONLY" || dryRun === true) {
+    routerMappingCategory = "DRY_RUN_ONLY_BLOCKS_ROUTING";
+  } else if (isCommandOrchestrator && !likelyTargetCapability) {
+    routerMappingCategory = "ORCHESTRATOR_NEEDS_TARGET_CAPABILITY";
+  } else if (!likelyTargetCapability && spawnOrRouteExpected) {
+    routerMappingCategory = "MISSING_TARGET_CAPABILITY_MAPPING";
+  } else if (!commandPayloadPresent) {
+    routerMappingCategory = "PAYLOAD_NEEDS_SCHEMA_VALIDATION";
+  } else {
+    routerMappingCategory = "ROUTER_MAPPING_READY_FOR_REVIEW_ONLY";
+  }
+
+  const routerMappingReadyForRealRun = false;
+
+  const nextSafeAction =
+    routerMappingCategory === "MISSING_TOOL_MAPPING"
+      ? "Define Tool_Key / Tool_Mode and registry entries in a controlled schema step, then rerun read-only readiness inspection."
+      : routerMappingCategory === "ORCHESTRATOR_NEEDS_TARGET_CAPABILITY" ||
+          routerMappingCategory === "MISSING_TARGET_CAPABILITY_MAPPING"
+        ? "Decide which lower-level executable capability command_orchestrator should spawn or route to, then represent that mapping explicitly before any real execution."
+        : routerMappingCategory === "UNSUPPORTED_STATUS_BLOCKS_ROUTING"
+          ? "Inspect Worker router mapping and the Unsupported transition before promoting the command."
+          : routerMappingCategory === "DRY_RUN_ONLY_BLOCKS_ROUTING"
+            ? "Keep the command gated. Define a separate promotion path from dry_run_only to executable mode."
+            : "Continue with Worker router code inspection or controlled registry/schema definition before real execution.";
+
+  return {
+    available: true,
+    inspection_version: "V5.30_WORKER_ROUTER_MAPPING_INSPECTION",
+    command_record_id: args.commandRecordId,
+    command_id: args.commandId,
+    workspace_id: args.workspaceId,
+    capability_requested: capabilityRequested,
+    capability_role: capabilityRole,
+    direct_execution_expected: directExecutionExpected,
+    spawn_or_route_expected: spawnOrRouteExpected,
+    likely_target_capability: likelyTargetCapability,
+    target_capability_confidence: targetCapabilityConfidence,
+    router_mapping_category: routerMappingCategory,
+    router_mapping_score: routerMappingScore,
+    router_mapping_ready_for_real_run: routerMappingReadyForRealRun,
+    blockers,
+    warnings,
+    next_safe_action: nextSafeAction,
+    evidence: {
+      tool_key_present: Boolean(toolKey),
+      tool_mode_present: Boolean(toolMode),
+      registry_ready_for_real_run:
+        args.toolcatalogRegistryReadiness.registry_ready_for_real_run === true,
+      router_allowlist_real_run_allowed:
+        args.routerAllowlistReadiness.real_run_allowed_by_readiness === true,
+      command_payload_present: commandPayloadPresent,
+      status_select: args.commandStatusSelect || null,
+      target_mode: targetMode || null,
+      dry_run: dryRun,
+      worker_call_allowed: workerCallAllowed,
+      run_creation_allowed: runCreationAllowed,
+      worker_unsupported_count: args.workerDryRunResult.unsupported,
+    },
+    guardrail_interpretation:
+      "V5.30 is router mapping inspection only. It does not call the worker, mutate Airtable, create target commands, or promote dry-run to real-run.",
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
@@ -2569,6 +2851,18 @@ export async function GET(request: Request, context: RouteContext) {
     registryReads,
   });
 
+  const workerRouterMappingInspection = buildWorkerRouterMappingInspection({
+    commandRecordId,
+    commandId: ids.commandDraftId,
+    workspaceId,
+    commandFields,
+    commandStatus,
+    commandStatusSelect,
+    workerDryRunResult,
+    routerAllowlistReadiness,
+    toolcatalogRegistryReadiness,
+  });
+
   const reviewCheck = {
     intent_found: Boolean(intentRead.record),
     approval_found: Boolean(approvalRead.record),
@@ -2725,6 +3019,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     toolcatalog_registry_readiness: toolcatalogRegistryReadiness,
 
+    worker_router_mapping_inspection: workerRouterMappingInspection,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -2778,14 +3074,16 @@ export async function GET(request: Request, context: RouteContext) {
 
     interpretation: {
       summary:
-        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains why the scanned command was classified as unsupported. V5.28 adds router / allowlist readiness inspection. V5.29 adds ToolCatalog / registry readiness inspection without execution.",
+        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains why the scanned command was classified as unsupported. V5.28 adds router / allowlist readiness inspection. V5.29 adds ToolCatalog / registry readiness inspection. V5.30 adds Worker router mapping inspection without execution.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, and registry readiness are now reviewed without executing a new run.",
+        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, and logical worker router mapping are now reviewed without executing a new run.",
       unsupported_is_blocking_for_real_execution: true,
       router_allowlist_readiness_is_blocking_for_real_execution:
         !routerAllowlistReadiness.real_run_allowed_by_readiness,
       registry_readiness_is_blocking_for_real_execution:
         !toolcatalogRegistryReadiness.registry_ready_for_real_run,
+      worker_router_mapping_is_blocking_for_real_execution:
+        !workerRouterMappingInspection.router_mapping_ready_for_real_run,
       unsupported_fix_required_before_real_execution: true,
     },
 
@@ -2805,6 +3103,8 @@ export async function GET(request: Request, context: RouteContext) {
       "Review why command_orchestrator returned unsupported for the queued command",
       "Verify the command capability and worker allowlist before any real execution",
       "Verify the command router supports command_orchestrator from this queue",
+      "Verify whether command_orchestrator should spawn a lower-level executable capability",
+      "Define target capability mapping before promotion",
       "Verify the command payload schema before promotion",
       "Inspect ToolCatalog readiness in read-only mode",
       "Inspect Workspace_Capabilities readiness in read-only mode",
@@ -2835,8 +3135,8 @@ export async function GET(request: Request, context: RouteContext) {
     error:
       status === "POST_RUN_DRY_RUN_RESULT_REVIEW_READY"
         ? null
-        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, and read sections.",
+        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, and read sections.",
     next_step:
-      "Next safe step: inspect Worker router mapping for command_orchestrator or define Tool_Key / Tool_Mode and registry entries before any real execution.",
+      "Next safe step: define Tool_Key / Tool_Mode and target capability mapping, or inspect Worker router code in a separate read-only engineering step before any real execution.",
   });
 }
