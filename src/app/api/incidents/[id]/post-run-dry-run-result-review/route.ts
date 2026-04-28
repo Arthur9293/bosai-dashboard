@@ -4640,6 +4640,313 @@ function buildHumanReviewGate(args: {
   };
 }
 
+function buildOperatorDecisionDraft(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  workspaceId: string;
+  commandFields: JsonRecord;
+  commandStatus: string;
+  commandStatusSelect: string;
+  humanReviewGate: JsonRecord;
+  mappingPreflightChecklist: JsonRecord;
+  toolMappingProposalDraft: JsonRecord;
+  controlledMappingPlan: JsonRecord;
+  toolcatalogRegistryReadiness: JsonRecord;
+  executionMappingContractDraft: JsonRecord;
+  unsupportedCommandDiagnosis: JsonRecord;
+}) {
+  const humanGateStatus = pickString(args.humanReviewGate, ["gate_status"]);
+
+  const mappingCandidate =
+    pickString(args.humanReviewGate, [
+      "proposed_review_decision.mapping_candidate",
+    ]) ||
+    `${pickString(args.toolMappingProposalDraft, [
+      "source.capability",
+    ], "command_orchestrator")} -> ${pickString(args.toolMappingProposalDraft, [
+      "proposal.proposed_target_capability",
+    ], "incident_router")}`;
+
+  const proposalConfidence = normalizeProposalConfidence(
+    pickString(args.humanReviewGate, [
+      "proposed_review_decision.confidence",
+    ]) ||
+      pickString(args.toolMappingProposalDraft, [
+        "proposal.proposal_confidence",
+      ]) ||
+      pickString(args.controlledMappingPlan, [
+        "proposed_mapping.proposal_confidence",
+      ])
+  );
+
+  const preflightStatus = pickString(args.mappingPreflightChecklist, [
+    "preflight_status",
+  ]);
+
+  const currentTargetMode = stringField(args.commandFields, [
+    "Target_Mode",
+    "target_mode",
+    "targetMode",
+  ]);
+
+  const preflightReadyForMutation = pickBoolean(
+    args.mappingPreflightChecklist,
+    ["preflight_ready_for_mapping_mutation"],
+    false
+  );
+
+  const registryReady = pickBoolean(args.toolcatalogRegistryReadiness, [
+    "registry_ready_for_real_run",
+  ]);
+
+  const payloadSchemaValidated = pickBoolean(
+    args.executionMappingContractDraft,
+    ["payload_contract.payload_schema_validated"],
+    false
+  );
+
+  const promotionReady = pickBoolean(
+    args.executionMappingContractDraft,
+    ["promotion_contract.promotion_ready"],
+    false
+  );
+
+  const realRunAllowed =
+    pickBoolean(args.executionMappingContractDraft, [
+      "promotion_contract.real_run_allowed",
+    ]) ||
+    pickBoolean(args.mappingPreflightChecklist, ["real_run_allowed"]);
+
+  const unsupportedActive =
+    pickBoolean(args.unsupportedCommandDiagnosis, [
+      "unsupported_confirmed",
+    ]) ||
+    pickBoolean(args.unsupportedCommandDiagnosis, [
+      "real_execution_blocker",
+    ]);
+
+  const rollbackValidated = false;
+
+  let draftStatus:
+    | "OPERATOR_DECISION_DRAFT_READY_REVIEW_ONLY"
+    | "OPERATOR_DECISION_DRAFT_BLOCKED_LOW_CONFIDENCE"
+    | "OPERATOR_DECISION_DRAFT_BLOCKED_PREFLIGHT"
+    | "OPERATOR_DECISION_DRAFT_BLOCKED_REGISTRY"
+    | "OPERATOR_DECISION_DRAFT_BLOCKED_PAYLOAD_SCHEMA"
+    | "OPERATOR_DECISION_DRAFT_BLOCKED_PROMOTION_POLICY"
+    | "OPERATOR_DECISION_DRAFT_BLOCKED_ROLLBACK"
+    | "OPERATOR_DECISION_DRAFT_UNKNOWN" = "OPERATOR_DECISION_DRAFT_UNKNOWN";
+
+  if (proposalConfidence === "low" || proposalConfidence === "unknown") {
+    draftStatus = "OPERATOR_DECISION_DRAFT_BLOCKED_LOW_CONFIDENCE";
+  } else if (!preflightReadyForMutation) {
+    draftStatus = "OPERATOR_DECISION_DRAFT_BLOCKED_PREFLIGHT";
+  } else if (!registryReady) {
+    draftStatus = "OPERATOR_DECISION_DRAFT_BLOCKED_REGISTRY";
+  } else if (!payloadSchemaValidated) {
+    draftStatus = "OPERATOR_DECISION_DRAFT_BLOCKED_PAYLOAD_SCHEMA";
+  } else if (!promotionReady) {
+    draftStatus = "OPERATOR_DECISION_DRAFT_BLOCKED_PROMOTION_POLICY";
+  } else if (!rollbackValidated) {
+    draftStatus = "OPERATOR_DECISION_DRAFT_BLOCKED_ROLLBACK";
+  } else {
+    draftStatus = "OPERATOR_DECISION_DRAFT_READY_REVIEW_ONLY";
+  }
+
+  const blockers = [
+    "Mapping proposal confidence is low.",
+    "Mapping preflight is not ready for mutation.",
+    "Registry readiness is false.",
+    "Payload schema is not validated.",
+    "Promotion policy is not ready.",
+    "Rollback is not operationally validated.",
+    "Unsupported classification remains active.",
+    "Current approval is draft/dry-run only.",
+    "Fresh approval is required before any mutation.",
+    "Fresh approval is required before real-run.",
+  ];
+
+  const warnings = [
+    "Operator decision draft is review-only and does not create an Operator_Approval record.",
+    "Allowed options can guide human review, but cannot authorize mutation or execution from this route.",
+  ];
+
+  const allowedDecisionOptions = [
+    {
+      option_id: "REVIEW_MAPPING_ONLY",
+      label: "Review mapping only",
+      description:
+        "Operator can discuss and analyze the mapping candidate without approving mutation.",
+      allowed_now: true,
+      scope: "review_only",
+      requires_fresh_approval: false,
+      blocked_by: [],
+    },
+    {
+      option_id: "REJECT_MAPPING_CANDIDATE",
+      label: "Reject mapping candidate",
+      description:
+        "Operator can reject the incident_router candidate without mutating Airtable.",
+      allowed_now: true,
+      scope: "review_only",
+      requires_fresh_approval: false,
+      blocked_by: [],
+    },
+    {
+      option_id: "REQUEST_MAPPING_REFINEMENT",
+      label: "Request mapping refinement",
+      description:
+        "Operator can request more evidence or a better mapping candidate before mutation.",
+      allowed_now: true,
+      scope: "review_only",
+      requires_fresh_approval: false,
+      blocked_by: [],
+    },
+  ];
+
+  const rejectedDecisionOptions = [
+    {
+      option_id: "APPROVE_TOOL_MAPPING_MUTATION",
+      label: "Approve Tool_Key / Tool_Mode mutation",
+      reason:
+        "Proposal confidence is low and preflight mutation is not ready.",
+      blocked_by: [
+        "proposal_confidence_low",
+        "preflight_ready_for_mapping_mutation_false",
+        "fresh_mutation_approval_missing",
+      ],
+    },
+    {
+      option_id: "APPROVE_REGISTRY_MUTATION",
+      label: "Approve registry mutation",
+      reason:
+        "Registry is not ready and no fresh mutation approval exists.",
+      blocked_by: [
+        "registry_ready_false",
+        "toolcatalog_entry_missing",
+        "workspace_capability_entry_missing",
+        "fresh_mutation_approval_missing",
+      ],
+    },
+    {
+      option_id: "APPROVE_COMMAND_CREATION",
+      label: "Approve command creation",
+      reason:
+        "Target capability is not selected with enough confidence.",
+      blocked_by: [
+        "target_capability_not_selected",
+        "proposal_confidence_low",
+        "command_creation_preflight_false",
+      ],
+    },
+    {
+      option_id: "APPROVE_REAL_RUN",
+      label: "Approve real-run",
+      reason:
+        "Real-run is forbidden, unsupported remains active, payload schema and rollback are not validated.",
+      blocked_by: [
+        "real_run_forbidden",
+        "unsupported_active",
+        "payload_schema_not_validated",
+        "rollback_not_validated",
+        "fresh_real_run_approval_missing",
+      ],
+    },
+  ];
+
+  return {
+    available: true,
+    draft_version: "V5.37_OPERATOR_DECISION_DRAFT",
+    command_record_id: args.commandRecordId,
+    command_id: args.commandId,
+    workspace_id: args.workspaceId,
+
+    draft_status: draftStatus,
+
+    decision_context: {
+      human_gate_status: humanGateStatus || null,
+      mapping_candidate: mappingCandidate || null,
+      proposal_confidence: proposalConfidence,
+      preflight_status: preflightStatus || null,
+      current_command_status: args.commandStatus || null,
+      current_command_status_select: args.commandStatusSelect || null,
+      current_target_mode: currentTargetMode || null,
+      real_run_allowed: realRunAllowed,
+    },
+
+    proposed_operator_decision: {
+      decision_type: "REQUEST_MAPPING_REVIEW",
+      decision_label: "Review mapping candidate only",
+      decision_summary:
+        "Operator should review the low-confidence command_orchestrator -> incident_router mapping candidate, but must not approve mutation or real-run yet.",
+      recommended: true,
+      confidence: proposalConfidence,
+      applies_to_mapping: true,
+      applies_to_mutation: false,
+      applies_to_real_run: false,
+    },
+
+    allowed_decision_options: allowedDecisionOptions,
+
+    rejected_decision_options: rejectedDecisionOptions,
+
+    decision_boundaries: {
+      creates_approval: false,
+      mutates_command: false,
+      mutates_registry: false,
+      creates_command: false,
+      calls_worker: false,
+      allows_real_run: false,
+      approval_scope_allowed_now: "review_only",
+    },
+
+    required_before_final_operator_decision: [
+      "confirm whether incident_router is the correct target capability",
+      "confirm whether command_orchestrator should route instead of execute directly",
+      "decide whether to accept, reject, or refine the mapping candidate",
+      "decide what evidence is required to upgrade confidence",
+      "confirm no mutation is requested now",
+      "confirm real-run remains forbidden",
+    ],
+
+    required_before_mapping_mutation: [
+      "improve mapping confidence to medium or high",
+      "define Tool_Key",
+      "define Tool_Mode",
+      "define target capability explicitly",
+      "define ToolCatalog entry",
+      "define Workspace_Capabilities entry",
+      "validate payload schema",
+      "validate rollback strategy",
+      "create fresh operator approval for mutation",
+      "use a separate gated mutation endpoint or manual controlled update",
+    ],
+
+    required_before_real_run: [
+      "mapping mutation completed and rechecked",
+      "registry ready",
+      "router mapping ready",
+      "target capability selected",
+      "payload schema validated",
+      "dry-run repeated successfully after mapping",
+      "unsupported resolved",
+      "promotion policy approved",
+      "rollback/cancel path validated",
+      "fresh real-run approval",
+      "real-run feature gate explicitly opened in separate server-side route",
+    ],
+
+    blockers,
+    warnings,
+
+    next_safe_action:
+      "Use this draft to guide review-only operator decision: accept review discussion, reject the mapping candidate, or request refinement. Do not approve mutation, registry changes, command creation, or real-run from this route.",
+
+    guardrail_interpretation:
+      "V5.37 is an operator decision draft only. It does not create approvals, mutate Airtable, create commands, create registry records, call the worker, or promote dry-run to real-run.",
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
