@@ -658,9 +658,12 @@ function extractRawStringArray(rawText: string, keys: string[]): string[] {
 
   for (const key of keys) {
     const escapedKey = escapeRegex(key);
-    const arrayRegex = new RegExp(
-      `["']?${escapedKey}["']?\\s*:\\s*\$begin:math:display$\(\[\^\\$end:math:display$]*)\\]`,
-      "i"
+   const openBracket = "\\[";
+   const closeBracket = "\\]";
+
+   const arrayRegex = new RegExp(
+     `["']?${escapedKey}["']?\\s*:\\s*${openBracket}([^\\]]*)${closeBracket}`,
+     "i"
     );
     const arrayMatch = text.match(arrayRegex);
 
