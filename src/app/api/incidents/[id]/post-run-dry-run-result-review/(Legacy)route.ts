@@ -51,11 +51,11 @@ type PreflightCheckItem = {
   required_before: PreflightRequiredBefore;
 };
 
-const VERSION = "Incident Detail V5.35";
+const VERSION = "Incident Detail V5.36";
 const SOURCE =
-  "dashboard_incident_detail_v5_35_mapping_preflight_checklist";
+  "dashboard_incident_detail_v5_36_human_review_gate";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
-const READER_VERSION = "V5.35_MAPPING_PREFLIGHT_CHECKLIST";
+const READER_VERSION = "V5.36_HUMAN_REVIEW_GATE";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
