@@ -5321,7 +5321,288 @@ function buildOperatorDecisionReviewSummary(args: {
       "V5.38 is an operator decision review summary only. It does not create approvals, mutate Airtable, create commands, create registry records, call the worker, or promote dry-run to real-run.",
   };
 }
+function buildReviewDecisionPersistenceDraft(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  workspaceId: string;
+  incidentId: string;
+  operatorDecisionReviewSummary: JsonRecord;
+  operatorDecisionDraft: JsonRecord;
+  humanReviewGate: JsonRecord;
+  mappingPreflightChecklist: JsonRecord;
+  toolMappingProposalDraft: JsonRecord;
+  controlledMappingPlan: JsonRecord;
+  toolcatalogRegistryReadiness: JsonRecord;
+  workerRouterMappingInspection: JsonRecord;
+  targetCapabilityDecisionMatrix: JsonRecord;
+  executionMappingContractDraft: JsonRecord;
+  unsupportedCommandDiagnosis: JsonRecord;
+  workerDryRunResult: JsonRecord;
+}) {
+  const reviewStatus = pickString(args.operatorDecisionReviewSummary, [
+    "review_status",
+  ]);
 
+  const draftStatusFromDecision = pickString(args.operatorDecisionDraft, [
+    "draft_status",
+  ]);
+
+  const mappingCandidate =
+    pickString(args.operatorDecisionReviewSummary, [
+      "mapping_summary.candidate",
+    ]) ||
+    pickString(args.operatorDecisionDraft, [
+      "decision_context.mapping_candidate",
+    ]) ||
+    pickString(args.humanReviewGate, [
+      "proposed_review_decision.mapping_candidate",
+    ]) ||
+    "command_orchestrator -> incident_router";
+
+  const proposalConfidence = normalizeProposalConfidence(
+    pickString(args.operatorDecisionReviewSummary, [
+      "mapping_summary.confidence",
+    ]) ||
+      pickString(args.operatorDecisionDraft, [
+        "decision_context.proposal_confidence",
+      ]) ||
+      pickString(args.toolMappingProposalDraft, [
+        "proposal.proposal_confidence",
+      ]) ||
+      pickString(args.controlledMappingPlan, [
+        "proposed_mapping.proposal_confidence",
+      ])
+  );
+
+  const recommendedDecisionType =
+    pickString(args.operatorDecisionReviewSummary, [
+      "operator_decision_now.recommended_decision_type",
+    ]) ||
+    pickString(args.operatorDecisionDraft, [
+      "proposed_operator_decision.decision_type",
+    ]) ||
+    "REQUEST_MAPPING_REVIEW";
+
+  const preflightReadyForMutation = pickBoolean(
+    args.mappingPreflightChecklist,
+    ["preflight_ready_for_mapping_mutation"],
+    false
+  );
+
+  const registryReadyForRealRun = pickBoolean(
+    args.toolcatalogRegistryReadiness,
+    ["registry_ready_for_real_run"],
+    false
+  );
+
+  const payloadSchemaValidated = pickBoolean(
+    args.executionMappingContractDraft,
+    ["payload_contract.payload_schema_validated"],
+    false
+  );
+
+  const promotionReady = pickBoolean(
+    args.executionMappingContractDraft,
+    ["promotion_contract.promotion_ready"],
+    false
+  );
+
+  const realRunAllowed =
+    pickBoolean(args.executionMappingContractDraft, [
+      "promotion_contract.real_run_allowed",
+    ]) ||
+    pickBoolean(args.mappingPreflightChecklist, ["real_run_allowed"], false) ||
+    pickBoolean(args.operatorDecisionReviewSummary, [
+      "operator_decision_now.can_approve_real_run",
+    ]);
+
+  const unsupportedActive =
+    pickBoolean(args.unsupportedCommandDiagnosis, [
+      "unsupported_confirmed",
+    ]) ||
+    pickBoolean(args.unsupportedCommandDiagnosis, [
+      "real_execution_blocker",
+    ]) ||
+    pickBoolean(args.operatorDecisionDraft, [
+      "decision_context.unsupported_active",
+    ]);
+
+  const rollbackValidated = false;
+  const freshApprovalMissing = true;
+
+  const lowConfidence =
+    proposalConfidence === "low" ||
+    proposalConfidence === "unknown" ||
+    reviewStatus === "OPERATOR_REVIEW_SUMMARY_BLOCKED_LOW_CONFIDENCE" ||
+    draftStatusFromDecision === "OPERATOR_DECISION_DRAFT_BLOCKED_LOW_CONFIDENCE";
+
+  let draftStatus:
+    | "REVIEW_DECISION_PERSISTENCE_DRAFT_BLOCKED_LOW_CONFIDENCE"
+    | "REVIEW_DECISION_PERSISTENCE_DRAFT_BLOCKED_PREFLIGHT"
+    | "REVIEW_DECISION_PERSISTENCE_DRAFT_BLOCKED_REGISTRY"
+    | "REVIEW_DECISION_PERSISTENCE_DRAFT_BLOCKED_REAL_RUN"
+    | "REVIEW_DECISION_PERSISTENCE_DRAFT_READY_REVIEW_ONLY"
+    | "REVIEW_DECISION_PERSISTENCE_DRAFT_UNKNOWN" =
+    "REVIEW_DECISION_PERSISTENCE_DRAFT_UNKNOWN";
+
+  if (lowConfidence) {
+    draftStatus = "REVIEW_DECISION_PERSISTENCE_DRAFT_BLOCKED_LOW_CONFIDENCE";
+  } else if (!preflightReadyForMutation) {
+    draftStatus = "REVIEW_DECISION_PERSISTENCE_DRAFT_BLOCKED_PREFLIGHT";
+  } else if (!registryReadyForRealRun) {
+    draftStatus = "REVIEW_DECISION_PERSISTENCE_DRAFT_BLOCKED_REGISTRY";
+  } else if (!realRunAllowed || unsupportedActive) {
+    draftStatus = "REVIEW_DECISION_PERSISTENCE_DRAFT_BLOCKED_REAL_RUN";
+  } else {
+    draftStatus = "REVIEW_DECISION_PERSISTENCE_DRAFT_READY_REVIEW_ONLY";
+  }
+
+  const approvalId = `review-decision-draft:v5.39:${args.workspaceId}:${args.incidentId}`;
+  const idempotencyKey = `dashboard:v5.39:review-decision-persistence-draft:${args.workspaceId}:${args.incidentId}`;
+
+  const requiredBeforePersistence = [
+    "complete review-only human decision",
+    "confirm mapping candidate scope",
+    "confirm decision remains review_only",
+    "confirm no mutation is requested",
+    "confirm Operator_Approval creation is still disabled from this route",
+    "confirm real-run remains forbidden",
+  ];
+
+  const requiredBeforeAnyMutationApproval = pickArray<string>(
+    args.operatorDecisionDraft,
+    ["required_before_mapping_mutation"]
+  );
+
+  const requiredBeforeRealRunApproval = pickArray<string>(
+    args.operatorDecisionDraft,
+    ["required_before_real_run"]
+  );
+
+  return {
+    available: true,
+    draft_version: "V5.39_REVIEW_DECISION_PERSISTENCE_DRAFT",
+    draft_status: draftStatus,
+    workspace_id: args.workspaceId,
+    incident_id: args.incidentId,
+    command_id: args.commandId,
+    command_record_id: args.commandRecordId,
+
+    persistence_intent: {
+      target_table: "Operator_Approvals",
+      target_action: "create_later",
+      persistence_allowed_now: false,
+      operator_approval_creation_allowed: false,
+      mutation_allowed_now: false,
+      read_only: true,
+    },
+
+    proposed_review_decision_record: {
+      approval_id: approvalId,
+      idempotency_key: idempotencyKey,
+      workspace_id: args.workspaceId,
+      incident_id: args.incidentId,
+      command_id: args.commandId,
+      command_record_id: args.commandRecordId,
+      decision_type: recommendedDecisionType,
+      decision_scope: "review_only",
+      decision_status: "Draft",
+      mapping_candidate: mappingCandidate,
+      proposal_confidence: proposalConfidence,
+      can_mutate: false,
+      can_create_command: false,
+      can_real_run: false,
+      source_layer: "Incident Detail V5.39",
+    },
+
+    proposed_fields_for_future_persistence: {
+      Workspace_ID: args.workspaceId,
+      Incident_ID: args.incidentId,
+      Command_ID: args.commandId,
+      Command_Record_ID: args.commandRecordId,
+      Decision_Type: recommendedDecisionType,
+      Decision_Scope: "review_only",
+      Decision_Status: "Draft",
+      Mapping_Candidate: mappingCandidate,
+      Proposal_Confidence: proposalConfidence,
+      Review_Status: reviewStatus || null,
+      Real_Run_Allowed: false,
+      Mutation_Allowed: false,
+      Source_Layer: "Incident Detail V5.39",
+    },
+
+    persistence_blockers: {
+      low_confidence: lowConfidence,
+      preflight_not_ready: !preflightReadyForMutation,
+      registry_not_ready: !registryReadyForRealRun,
+      payload_schema_not_validated: !payloadSchemaValidated,
+      promotion_policy_missing: !promotionReady,
+      rollback_not_validated: !rollbackValidated,
+      unsupported_active: unsupportedActive,
+      fresh_approval_missing: freshApprovalMissing,
+    },
+
+    allowed_to_persist_now: false,
+
+    allowed_future_persistence_scope: ["review_only_decision_draft"],
+
+    forbidden_persistence_scope: [
+      "mapping_mutation_approval",
+      "registry_mutation_approval",
+      "command_creation_approval",
+      "real_run_approval",
+    ],
+
+    required_before_persistence: requiredBeforePersistence,
+
+    required_before_any_mutation_approval:
+      requiredBeforeAnyMutationApproval.length > 0
+        ? requiredBeforeAnyMutationApproval
+        : [
+            "improve mapping confidence to medium or high",
+            "define Tool_Key",
+            "define Tool_Mode",
+            "define target capability explicitly",
+            "define ToolCatalog entry",
+            "define Workspace_Capabilities entry",
+            "validate payload schema",
+            "validate rollback strategy",
+            "create fresh operator approval for mutation",
+            "use a separate gated mutation endpoint or manual controlled update",
+          ],
+
+    required_before_real_run_approval:
+      requiredBeforeRealRunApproval.length > 0
+        ? requiredBeforeRealRunApproval
+        : [
+            "mapping mutation completed and rechecked",
+            "registry ready",
+            "router mapping ready",
+            "target capability selected",
+            "payload schema validated",
+            "dry-run repeated successfully after mapping",
+            "unsupported resolved",
+            "promotion policy approved",
+            "rollback/cancel path validated",
+            "fresh real-run approval",
+            "real-run feature gate explicitly opened in separate server-side route",
+          ],
+
+    audit: {
+      no_airtable_mutation: true,
+      no_operator_approval_created: true,
+      no_command_created: true,
+      no_worker_call: true,
+      no_real_run: true,
+    },
+
+    next_safe_action:
+      "Keep this as a read-only persistence draft. Run human review of the mapping candidate before any future Operator_Approval creation path.",
+
+    guardrail_interpretation:
+      "V5.39 is a review decision persistence draft only. It does not create Operator_Approval records, mutate Airtable, create commands, create registry records, call the worker, or promote dry-run to real-run.",
+  };
+}
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
