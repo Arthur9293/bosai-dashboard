@@ -3750,7 +3750,6 @@ function buildMappingPreflightChecklist(args: {
     plan_ready_for_mutation?: boolean;
     plan_ready_for_execution?: boolean;
     proposed_mapping?: {
-    proposed_mapping?: {
       proposal_confidence?: "high" | "medium" | "low" | "unknown";
       proposed_tool_key?: string | null;
       proposed_tool_mode?: "review_only" | "dry_run_only" | "router_only" | null;
