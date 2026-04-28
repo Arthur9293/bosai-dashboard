@@ -4871,6 +4871,7 @@ function buildOperatorDecisionDraft(args: {
       current_command_status: args.commandStatus || null,
       current_command_status_select: args.commandStatusSelect || null,
       current_target_mode: currentTargetMode || null,
+      unsupported_active: unsupportedActive,
       real_run_allowed: realRunAllowed,
     },
 
