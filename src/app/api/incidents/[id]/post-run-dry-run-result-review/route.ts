@@ -6288,6 +6288,25 @@ export async function GET(request: Request, context: RouteContext) {
     workerDryRunResult,
   });
 
+  const reviewDecisionPersistenceDraft = buildReviewDecisionPersistenceDraft({
+    commandRecordId,
+    commandId: ids.commandDraftId,
+    workspaceId,
+    incidentId,
+    operatorDecisionReviewSummary,
+    operatorDecisionDraft,
+    humanReviewGate,
+    mappingPreflightChecklist,
+    toolMappingProposalDraft,
+    controlledMappingPlan,
+    toolcatalogRegistryReadiness,
+    workerRouterMappingInspection,
+    targetCapabilityDecisionMatrix,
+    executionMappingContractDraft,
+    unsupportedCommandDiagnosis,
+    workerDryRunResult,
+  });
+
   let status = "POST_RUN_DRY_RUN_RESULT_REVIEW_READY";
 
   if (configMissing) {
