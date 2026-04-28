@@ -51,11 +51,11 @@ type PreflightCheckItem = {
   required_before: PreflightRequiredBefore;
 };
 
-const VERSION = "Incident Detail V5.38";
+const VERSION = "Incident Detail V5.39";
 const SOURCE =
-  "dashboard_incident_detail_v5_38_operator_decision_review_summary";
+  "dashboard_incident_detail_v5_39_operator_review_decision_persistence_draft";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
-const READER_VERSION = "V5.38_OPERATOR_DECISION_REVIEW_SUMMARY";
+const READER_VERSION = "V5.39_REVIEW_DECISION_PERSISTENCE_DRAFT";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
@@ -1520,6 +1520,8 @@ function buildUnsupportedCommandDiagnosis(args: {
       : false,
     unsupported_confirmed: unsupportedConfirmed,
     unsupported_category: unsupportedCategory,
+    unsupported_is_blocking_for_real_execution:
+      true,
     probable_reason: probableReason,
     safety_interpretation: safetyInterpretation,
     real_execution_blocker: realExecutionBlocker,
