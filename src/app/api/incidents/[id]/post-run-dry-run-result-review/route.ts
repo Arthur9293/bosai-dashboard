@@ -3734,12 +3734,12 @@ function buildMappingPreflightChecklist(args: {
     };
   };
   toolMappingProposalDraft: {
-    available?: boolean;
-    proposal?: {
-      proposed_tool_key?: string | null;
-      proposed_tool_mode?: "review_only" | "dry_run_only" | "router_only" | null;
-      proposed_target_capability?: string | null;
-      proposal_confidence?: "medium" | "low" | "unknown";
+  available?: boolean;
+  proposal?: {
+    proposed_tool_key?: string | null;
+    proposed_tool_mode?: "review_only" | "dry_run_only" | "router_only" | null;
+    proposed_target_capability?: string | null;
+    proposal_confidence?: "high" | "medium" | "low" | "unknown";
       proposal_ready_to_apply?: boolean;
       proposal_apply_allowed?: boolean;
     };
