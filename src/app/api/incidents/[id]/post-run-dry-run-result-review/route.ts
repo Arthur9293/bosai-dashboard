@@ -33,11 +33,11 @@ type AirtableListResult = {
   formula_used: string | null;
 };
 
-const VERSION = "Incident Detail V5.33";
+const VERSION = "Incident Detail V5.34";
 const SOURCE =
-  "dashboard_incident_detail_v5_33_tool_mapping_proposal_draft";
+  "dashboard_incident_detail_v5_34_controlled_mapping_plan";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
-const READER_VERSION = "V5.33_TOOL_MAPPING_PROPOSAL_DRAFT";
+const READER_VERSION = "V5.34_CONTROLLED_MAPPING_PLAN";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
@@ -3294,6 +3294,342 @@ function buildToolMappingProposalDraft(args: {
   };
 }
 
+function buildControlledMappingPlan(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  workspaceId: string;
+  commandFields: JsonRecord;
+  toolMappingProposalDraft: {
+    source?: {
+      capability?: string;
+      role?: string;
+      current_tool_key?: string | null;
+      current_tool_mode?: string | null;
+    };
+    proposal?: {
+      proposed_tool_key?: string | null;
+      proposed_tool_mode?: "review_only" | "dry_run_only" | "router_only" | null;
+      proposed_target_capability?: string | null;
+      proposed_target_role?: "router" | "executable" | "terminal" | "unknown";
+      proposal_confidence?: "medium" | "low" | "unknown";
+      proposal_ready_to_apply?: boolean;
+      proposal_apply_allowed?: boolean;
+    };
+  };
+  executionMappingContractDraft: {
+    payload_contract?: {
+      payload_present?: boolean;
+      payload_schema_validated?: boolean;
+    };
+    promotion_contract?: {
+      current_mode?: string | null;
+      real_run_allowed?: boolean;
+    };
+  };
+  targetCapabilityDecisionMatrix: {
+    decision_ready?: boolean;
+  };
+  workerRouterMappingInspection: {
+    router_mapping_ready_for_real_run?: boolean;
+  };
+  toolcatalogRegistryReadiness: {
+    registry_ready_for_real_run?: boolean;
+  };
+}) {
+  const sourceCapability =
+    args.toolMappingProposalDraft.source?.capability ||
+    stringField(args.commandFields, ["Capability", "capability"]) ||
+    "command_orchestrator";
+
+  const sourceRole =
+    args.toolMappingProposalDraft.source?.role ||
+    (normalizeStatusToken(sourceCapability) === "COMMANDORCHESTRATOR"
+      ? "orchestrator"
+      : "unknown");
+
+  const proposedToolKey =
+    args.toolMappingProposalDraft.proposal?.proposed_tool_key ?? null;
+  const proposedToolMode =
+    args.toolMappingProposalDraft.proposal?.proposed_tool_mode ?? null;
+  const proposedTargetCapability =
+    args.toolMappingProposalDraft.proposal?.proposed_target_capability ?? null;
+  const proposedTargetRole =
+    args.toolMappingProposalDraft.proposal?.proposed_target_role ?? "unknown";
+  const proposalConfidence =
+    args.toolMappingProposalDraft.proposal?.proposal_confidence ?? "unknown";
+
+  const currentToolKey =
+    args.toolMappingProposalDraft.source?.current_tool_key ?? null;
+  const currentToolMode =
+    args.toolMappingProposalDraft.source?.current_tool_mode ?? null;
+
+  const registryReadyForRealRun =
+    args.toolcatalogRegistryReadiness.registry_ready_for_real_run === true;
+  const payloadSchemaValidated =
+    args.executionMappingContractDraft.payload_contract?.payload_schema_validated ===
+    true;
+  const payloadPresent =
+    args.executionMappingContractDraft.payload_contract?.payload_present === true;
+  const promotionRealRunAllowed =
+    args.executionMappingContractDraft.promotion_contract?.real_run_allowed ===
+    true;
+
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+
+  if (proposalConfidence === "low" || proposalConfidence === "unknown") {
+    blockers.push(
+      "Tool mapping proposal confidence is low. Human review is required before any mutation."
+    );
+  }
+
+  if (!currentToolKey || !currentToolMode) {
+    blockers.push(
+      "Current Command has no Tool_Key / Tool_Mode. Mapping fields must be defined in a controlled mutation step later."
+    );
+  }
+
+  if (!registryReadyForRealRun) {
+    blockers.push(
+      "ToolCatalog / Workspace_Capabilities are not ready. Registry entries must be created or confirmed before execution."
+    );
+  }
+
+  if (!payloadSchemaValidated) {
+    blockers.push(
+      "Payload schema is not validated. No executable mapping can be approved before schema validation."
+    );
+  }
+
+  if (!promotionRealRunAllowed) {
+    blockers.push(
+      "Promotion from dry_run_only to executable mode is not ready."
+    );
+  }
+
+  if (!args.targetCapabilityDecisionMatrix.decision_ready) {
+    blockers.push(
+      "Target capability decision is not ready. Proposed mapping must remain a draft."
+    );
+  }
+
+  if (!args.workerRouterMappingInspection.router_mapping_ready_for_real_run) {
+    blockers.push(
+      "Worker router mapping is not ready for real execution."
+    );
+  }
+
+  warnings.push(
+    "V5.34 is a controlled mapping plan only. It must not mutate Airtable or create execution objects."
+  );
+
+  if (proposedTargetCapability) {
+    warnings.push(
+      `The proposed target capability ${proposedTargetCapability} is a planning candidate, not an approved runtime mapping.`
+    );
+  } else {
+    warnings.push(
+      "No proposed target capability is available. Mapping must remain fully blocked."
+    );
+  }
+
+  let planStatus:
+    | "PLAN_DRAFT_ONLY"
+    | "PLAN_BLOCKED_BY_LOW_CONFIDENCE_PROPOSAL"
+    | "PLAN_BLOCKED_BY_MISSING_TOOL_MAPPING"
+    | "PLAN_BLOCKED_BY_MISSING_REGISTRY"
+    | "PLAN_BLOCKED_BY_UNVALIDATED_PAYLOAD_SCHEMA"
+    | "PLAN_BLOCKED_BY_PROMOTION_POLICY"
+    | "PLAN_READY_FOR_HUMAN_REVIEW_ONLY"
+    | "UNKNOWN_PLAN_STATUS" = "UNKNOWN_PLAN_STATUS";
+
+  if (proposalConfidence === "low" || proposalConfidence === "unknown") {
+    planStatus = "PLAN_BLOCKED_BY_LOW_CONFIDENCE_PROPOSAL";
+  } else if (!currentToolKey || !currentToolMode) {
+    planStatus = "PLAN_BLOCKED_BY_MISSING_TOOL_MAPPING";
+  } else if (!registryReadyForRealRun) {
+    planStatus = "PLAN_BLOCKED_BY_MISSING_REGISTRY";
+  } else if (!payloadSchemaValidated) {
+    planStatus = "PLAN_BLOCKED_BY_UNVALIDATED_PAYLOAD_SCHEMA";
+  } else if (!promotionRealRunAllowed) {
+    planStatus = "PLAN_BLOCKED_BY_PROMOTION_POLICY";
+  } else {
+    planStatus = "PLAN_READY_FOR_HUMAN_REVIEW_ONLY";
+  }
+
+  const proposedToolKeyForPlan = proposedToolKey || "incident_router";
+  const proposedToolModeForPlan = proposedToolMode || "router_only";
+  const proposedTargetForPlan = proposedTargetCapability || "incident_router";
+
+  const implementationSequence = [
+    `Human review of proposed mapping ${sourceCapability} -> ${proposedTargetForPlan}`,
+    `Define Tool_Key = ${proposedToolKeyForPlan} on a future controlled mutation path`,
+    `Define Tool_Mode = ${proposedToolModeForPlan} on a future controlled mutation path`,
+    `Create or confirm ToolCatalog entry for ${proposedTargetForPlan}`,
+    `Create or confirm Workspace_Capabilities entry for ${args.workspaceId} + ${proposedTargetForPlan}`,
+    `Define payload schema for ${proposedTargetForPlan}`,
+    "Validate payload against schema",
+    "Define promotion policy from dry_run_only to executable",
+    "Require explicit operator approval",
+    "Define rollback/cancel path",
+    "Rerun GET read-only inspection",
+    "Only after all checks pass, consider a separate gated mutation endpoint",
+  ];
+
+  const validationSequence = [
+    "confirm proposed target capability is correct",
+    `confirm ${sourceCapability} should route to ${proposedTargetForPlan}`,
+    `confirm ${proposedTargetForPlan} exists in worker router`,
+    "confirm ToolCatalog entry exists",
+    "confirm Workspace_Capabilities entry exists",
+    "confirm payload schema validates",
+    "confirm command is no longer Unsupported only after controlled update",
+    "confirm dry_run_only remains until explicit promotion",
+    "confirm operator approval is fresh",
+    "confirm rollback path exists",
+  ];
+
+  const rollbackSequence = [
+    "keep original Command unchanged until mutation phase",
+    "preserve Run Draft evidence",
+    "preserve Worker run evidence",
+    "if future mapping fails, revert Tool_Key / Tool_Mode",
+    "if future registry check fails, disable mapping",
+    "if future worker dry-run fails, do not promote to real-run",
+    "keep real-run forbidden by default",
+  ];
+
+  const preconditionsBeforeAnyMutation = [
+    "human review completed",
+    "proposed target capability explicitly accepted",
+    "Tool_Key and Tool_Mode approved for controlled mutation",
+    "ToolCatalog entry design approved",
+    "Workspace_Capabilities entry design approved",
+    "payload schema defined",
+    "rollback/cancel path defined",
+    "fresh operator approval for mutation obtained",
+    "separate mutation endpoint or manual controlled update prepared",
+  ];
+
+  const preconditionsBeforeAnyExecution = [
+    "Tool_Key exists on Command",
+    "Tool_Mode exists on Command",
+    "target capability is explicitly selected",
+    "ToolCatalog confirms target capability",
+    "Workspace_Capabilities confirms workspace can use target capability",
+    "worker router supports target capability",
+    "payload schema validates",
+    "command is safely rechecked after mutation",
+    "dry_run_only promotion policy is approved",
+    "fresh operator approval for execution exists",
+    "rollback/cancel path exists",
+    "real-run feature gate remains explicit and closed by default",
+  ];
+
+  return {
+    available: true,
+    plan_version: "V5.34_CONTROLLED_MAPPING_PLAN",
+    command_record_id: args.commandRecordId,
+    command_id: args.commandId,
+    workspace_id: args.workspaceId,
+
+    proposed_mapping: {
+      source_capability: sourceCapability,
+      source_role: sourceRole,
+      proposed_tool_key: proposedToolKey,
+      proposed_tool_mode: proposedToolMode,
+      proposed_target_capability: proposedTargetCapability,
+      proposed_target_role: proposedTargetRole,
+      proposal_confidence: proposalConfidence,
+      apply_allowed_now: false,
+    },
+
+    plan_status: planStatus,
+    plan_ready_for_mutation: false,
+    plan_ready_for_execution: false,
+    real_run_allowed: false,
+
+    implementation_sequence: implementationSequence,
+    validation_sequence: validationSequence,
+    rollback_sequence: rollbackSequence,
+
+    objects_to_prepare_later: {
+      command_fields: [
+        {
+          field: "Tool_Key",
+          proposed_value: proposedToolKey,
+          status: "draft_only",
+        },
+        {
+          field: "Tool_Mode",
+          proposed_value: proposedToolMode,
+          status: "draft_only",
+        },
+        {
+          field: "Target_Capability",
+          proposed_value: proposedTargetCapability,
+          status: "draft_only",
+        },
+        {
+          field: "Mapping_Status",
+          proposed_value: "Draft / Review only",
+          status: "draft_only",
+        },
+        {
+          field: "Real_Run",
+          proposed_value: "Forbidden",
+          status: "must_remain_forbidden",
+        },
+      ],
+      toolcatalog_entry: {
+        Tool_Key: proposedToolKeyForPlan,
+        Capability: proposedTargetForPlan,
+        Tool_Mode: proposedToolModeForPlan,
+        Executable: false,
+        Router: proposedTargetRole === "router" || proposedTargetForPlan === "incident_router",
+        Status: "Draft",
+        note: "Draft only. Do not create from V5.34.",
+      },
+      workspace_capability_entry: {
+        Workspace_ID: args.workspaceId,
+        Capability_Key: proposedTargetForPlan,
+        Enabled: false,
+        Status: "Draft",
+        note: "Draft only. Do not create from V5.34.",
+      },
+      payload_schema: {
+        capability: proposedTargetForPlan,
+        schema_required: true,
+        schema_validated: false,
+        payload_present: payloadPresent,
+        note: "Schema must be defined and validated before any executable mapping.",
+      },
+      promotion_policy: {
+        from: "dry_run_only",
+        to: "executable",
+        allowed_now: false,
+        requires_operator_approval: true,
+        requires_rollback: true,
+        note: "Promotion must be a separate explicit policy, never implicit from this review route.",
+      },
+      operator_approval: {
+        required: true,
+        current_approval_valid_for_real_run: false,
+        reason: "Current approval covers dry-run / draft only, not real execution.",
+      },
+    },
+
+    preconditions_before_any_mutation: preconditionsBeforeAnyMutation,
+    preconditions_before_any_execution: preconditionsBeforeAnyExecution,
+    blockers: Array.from(new Set(blockers)),
+    warnings: Array.from(new Set(warnings)),
+    next_safe_action:
+      "Perform human review of the low-confidence mapping proposal, then prepare a separate controlled mutation path for Tool_Key / Tool_Mode only after registry, payload schema, promotion policy, and rollback requirements are explicit.",
+    guardrail_interpretation:
+      "V5.34 is a controlled mapping plan only. It does not create mappings, mutate Airtable, call the worker, create commands, create registry records, or promote dry-run to real-run.",
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
@@ -3874,6 +4210,18 @@ export async function GET(request: Request, context: RouteContext) {
     executionMappingContractDraft,
   });
 
+  const controlledMappingPlan = buildControlledMappingPlan({
+    commandRecordId,
+    commandId: ids.commandDraftId,
+    workspaceId,
+    commandFields,
+    toolMappingProposalDraft,
+    executionMappingContractDraft,
+    targetCapabilityDecisionMatrix,
+    workerRouterMappingInspection,
+    toolcatalogRegistryReadiness,
+  });
+
   const reviewCheck = {
     intent_found: Boolean(intentRead.record),
     approval_found: Boolean(approvalRead.record),
@@ -4038,6 +4386,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     tool_mapping_proposal_draft: toolMappingProposalDraft,
 
+    controlled_mapping_plan: controlledMappingPlan,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -4091,9 +4441,9 @@ export async function GET(request: Request, context: RouteContext) {
 
     interpretation: {
       summary:
-        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft.",
+        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft. V5.34 adds a controlled mapping plan.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, and tool mapping proposal constraints are now reviewed without executing a new run.",
+        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, and controlled mapping plan requirements are now reviewed without executing a new run.",
       unsupported_is_blocking_for_real_execution: true,
       router_allowlist_readiness_is_blocking_for_real_execution:
         !routerAllowlistReadiness.real_run_allowed_by_readiness,
@@ -4107,6 +4457,10 @@ export async function GET(request: Request, context: RouteContext) {
         !executionMappingContractDraft.contract_ready_for_execution,
       tool_mapping_proposal_is_blocking_for_real_execution:
         !toolMappingProposalDraft.proposal.proposal_apply_allowed,
+      controlled_mapping_plan_is_blocking_for_real_execution:
+        !controlledMappingPlan.plan_ready_for_execution,
+      controlled_mapping_plan_is_blocking_for_mutation:
+        !controlledMappingPlan.plan_ready_for_mutation,
       unsupported_fix_required_before_real_execution: true,
     },
 
@@ -4136,6 +4490,7 @@ export async function GET(request: Request, context: RouteContext) {
       "Select a target capability only after explicit mapping evidence exists",
       "Define execution mapping contract before creating target commands",
       "Review tool mapping proposal before any mutation",
+      "Review controlled mapping plan before any mutation",
       "Define dry_run_only to executable promotion policy",
       "Define rollback/cancel path before real execution",
       "Keep real execution behind a separate feature gate",
@@ -4159,6 +4514,7 @@ export async function GET(request: Request, context: RouteContext) {
       target_capability_creation: "DISABLED",
       execution_mapping_contract_mutation: "DISABLED",
       tool_mapping_mutation: "DISABLED",
+      controlled_mapping_plan_mutation: "DISABLED",
       toolcatalog_creation: "DISABLED",
       workspace_capabilities_creation: "DISABLED",
       secret_exposure: "DISABLED",
@@ -4168,8 +4524,8 @@ export async function GET(request: Request, context: RouteContext) {
     error:
       status === "POST_RUN_DRY_RUN_RESULT_REVIEW_READY"
         ? null
-        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, execution_mapping_contract_draft, tool_mapping_proposal_draft, and read sections.",
+        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, execution_mapping_contract_draft, tool_mapping_proposal_draft, controlled_mapping_plan, and read sections.",
     next_step:
-      "Next safe step: V5.34 Controlled Mapping Plan, still read-only, before any Tool_Key / Tool_Mode, registry, command, or execution mutation.",
+      "Next safe step: V5.35 Mapping Preflight Checklist, still read-only, before any Tool_Key / Tool_Mode, registry, command, or execution mutation.",
   });
 }
