@@ -5754,6 +5754,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     human_review_gate: humanReviewGate,
 
+    operator_decision_draft: operatorDecisionDraft,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
