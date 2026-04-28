@@ -51,11 +51,11 @@ type PreflightCheckItem = {
   required_before: PreflightRequiredBefore;
 };
 
-const VERSION = "Incident Detail V5.37";
+const VERSION = "Incident Detail V5.38";
 const SOURCE =
-  "dashboard_incident_detail_v5_37_operator_decision_draft";
+  "dashboard_incident_detail_v5_38_operator_decision_review_summary";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
-const READER_VERSION = "V5.37_OPERATOR_DECISION_DRAFT";
+const READER_VERSION = "V5.38_OPERATOR_DECISION_REVIEW_SUMMARY";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
@@ -658,12 +658,9 @@ function extractRawStringArray(rawText: string, keys: string[]): string[] {
 
   for (const key of keys) {
     const escapedKey = escapeRegex(key);
-   const openBracket = "\\[";
-   const closeBracket = "\\]";
-
-   const arrayRegex = new RegExp(
-     `["']?${escapedKey}["']?\\s*:\\s*${openBracket}([^\\]]*)${closeBracket}`,
-     "i"
+    const arrayRegex = new RegExp(
+      `["']?${escapedKey}["']?\\s*:\\s*\$begin:math:display$\(\[\^\\$end:math:display$]*)\\]`,
+      "i"
     );
     const arrayMatch = text.match(arrayRegex);
 
@@ -3737,12 +3734,12 @@ function buildMappingPreflightChecklist(args: {
     };
   };
   toolMappingProposalDraft: {
-  available?: boolean;
-  proposal?: {
-    proposed_tool_key?: string | null;
-    proposed_tool_mode?: "review_only" | "dry_run_only" | "router_only" | null;
-    proposed_target_capability?: string | null;
-    proposal_confidence?: "high" | "medium" | "low" | "unknown";
+    available?: boolean;
+    proposal?: {
+      proposed_tool_key?: string | null;
+      proposed_tool_mode?: "review_only" | "dry_run_only" | "router_only" | null;
+      proposed_target_capability?: string | null;
+      proposal_confidence?: "high" | "medium" | "low" | "unknown";
       proposal_ready_to_apply?: boolean;
       proposal_apply_allowed?: boolean;
     };
@@ -4951,6 +4948,380 @@ function buildOperatorDecisionDraft(args: {
   };
 }
 
+function buildOperatorDecisionReviewSummary(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  workspaceId: string;
+  incidentId: string;
+  operatorDecisionDraft: JsonRecord;
+  humanReviewGate: JsonRecord;
+  mappingPreflightChecklist: JsonRecord;
+  toolMappingProposalDraft: JsonRecord;
+  controlledMappingPlan: JsonRecord;
+  toolcatalogRegistryReadiness: JsonRecord;
+  workerRouterMappingInspection: JsonRecord;
+  targetCapabilityDecisionMatrix: JsonRecord;
+  executionMappingContractDraft: JsonRecord;
+  unsupportedCommandDiagnosis: JsonRecord;
+  workerDryRunResult: {
+    http_status: number | null;
+    ok: boolean;
+    scanned: number;
+    executed: number;
+    unsupported: number;
+    errors_count: number;
+    commands_record_ids: string[];
+  };
+}) {
+  const draftStatus = pickString(args.operatorDecisionDraft, ["draft_status"]);
+
+  const proposalConfidence = normalizeProposalConfidence(
+    pickString(args.operatorDecisionDraft, [
+      "decision_context.proposal_confidence",
+    ]) ||
+      pickString(args.humanReviewGate, [
+        "proposed_review_decision.confidence",
+      ]) ||
+      pickString(args.toolMappingProposalDraft, [
+        "proposal.proposal_confidence",
+      ]) ||
+      pickString(args.controlledMappingPlan, [
+        "proposed_mapping.proposal_confidence",
+      ])
+  );
+
+  const mappingCandidate =
+    pickString(args.operatorDecisionDraft, [
+      "decision_context.mapping_candidate",
+    ]) ||
+    pickString(args.humanReviewGate, [
+      "proposed_review_decision.mapping_candidate",
+    ]) ||
+    "command_orchestrator -> incident_router";
+
+  const recommendedDecisionType =
+    pickString(args.operatorDecisionDraft, [
+      "proposed_operator_decision.decision_type",
+    ]) || "REQUEST_MAPPING_REVIEW";
+
+  const recommendedDecisionLabel =
+    pickString(args.operatorDecisionDraft, [
+      "proposed_operator_decision.decision_label",
+    ]) || "Review mapping candidate only";
+
+  const preflightReadyForMappingMutation = pickBoolean(
+    args.mappingPreflightChecklist,
+    ["preflight_ready_for_mapping_mutation"],
+    false
+  );
+
+  const registryReadyForRealRun = pickBoolean(
+    args.toolcatalogRegistryReadiness,
+    ["registry_ready_for_real_run"],
+    false
+  );
+
+  const realRunAllowed =
+    pickBoolean(args.executionMappingContractDraft, [
+      "promotion_contract.real_run_allowed",
+    ]) ||
+    pickBoolean(args.mappingPreflightChecklist, ["real_run_allowed"], false);
+
+  const unsupportedActive =
+    pickBoolean(args.operatorDecisionDraft, [
+      "decision_context.unsupported_active",
+    ]) ||
+    pickBoolean(args.unsupportedCommandDiagnosis, [
+      "unsupported_confirmed",
+    ]) ||
+    pickBoolean(args.unsupportedCommandDiagnosis, [
+      "real_execution_blocker",
+    ]);
+
+  const targetCapabilitySelected =
+    pickBoolean(args.targetCapabilityDecisionMatrix, ["decision_ready"]) &&
+    Boolean(
+      pickString(args.targetCapabilityDecisionMatrix, [
+        "selected_target_capability",
+      ])
+    );
+
+  const proposedToolKey =
+    pickString(args.toolMappingProposalDraft, [
+      "proposal.proposed_tool_key",
+    ]) ||
+    pickString(args.controlledMappingPlan, [
+      "proposed_mapping.proposed_tool_key",
+    ]) ||
+    null;
+
+  const proposedToolMode =
+    pickString(args.toolMappingProposalDraft, [
+      "proposal.proposed_tool_mode",
+    ]) ||
+    pickString(args.controlledMappingPlan, [
+      "proposed_mapping.proposed_tool_mode",
+    ]) ||
+    null;
+
+  const allowedDecisionOptions = pickArray<JsonRecord>(
+    args.operatorDecisionDraft,
+    ["allowed_decision_options"]
+  );
+
+  const rejectedDecisionOptions = pickArray<JsonRecord>(
+    args.operatorDecisionDraft,
+    ["rejected_decision_options"]
+  );
+
+  const hasAllowedOption = (optionId: string): boolean =>
+    allowedDecisionOptions.some((option) => {
+      return (
+        pickString(option, ["option_id"]) === optionId &&
+        pickBoolean(option, ["allowed_now"], false)
+      );
+    });
+
+  const allowedNow =
+    allowedDecisionOptions.length > 0
+      ? allowedDecisionOptions
+          .filter((option) => pickBoolean(option, ["allowed_now"], false))
+          .map((option) => {
+            const optionId = pickString(option, ["option_id"], "UNKNOWN_OPTION");
+            const label = pickString(option, ["label"], optionId);
+            return `${optionId}: ${label}`;
+          })
+      : [
+          "REVIEW_MAPPING_ONLY: Review mapping only",
+          "REJECT_MAPPING_CANDIDATE: Reject mapping candidate",
+          "REQUEST_MAPPING_REFINEMENT: Request mapping refinement",
+        ];
+
+  const forbiddenNow =
+    rejectedDecisionOptions.length > 0
+      ? rejectedDecisionOptions.map((option) => {
+          const optionId = pickString(option, ["option_id"], "UNKNOWN_OPTION");
+          const label = pickString(option, ["label"], optionId);
+          const reason = pickString(option, ["reason"], "Blocked by current guardrails.");
+          return `${optionId}: ${label} — ${reason}`;
+        })
+      : [
+          "APPROVE_TOOL_MAPPING_MUTATION: forbidden until mapping confidence and preflight are ready.",
+          "APPROVE_REGISTRY_MUTATION: forbidden until registry design and fresh approval exist.",
+          "APPROVE_COMMAND_CREATION: forbidden until target capability is explicitly selected.",
+          "APPROVE_REAL_RUN: forbidden while unsupported, schema, promotion, rollback, and approval remain unresolved.",
+        ];
+
+  const requiredBeforeMutation =
+    pickArray<string>(args.operatorDecisionDraft, [
+      "required_before_mapping_mutation",
+    ]).length > 0
+      ? pickArray<string>(args.operatorDecisionDraft, [
+          "required_before_mapping_mutation",
+        ])
+      : [
+          "improve mapping confidence to medium or high",
+          "define Tool_Key",
+          "define Tool_Mode",
+          "define target capability explicitly",
+          "define ToolCatalog entry",
+          "define Workspace_Capabilities entry",
+          "validate payload schema",
+          "validate rollback strategy",
+          "create fresh operator approval for mutation",
+          "use a separate gated mutation endpoint or manual controlled update",
+        ];
+
+  const requiredBeforeRealRun =
+    pickArray<string>(args.operatorDecisionDraft, [
+      "required_before_real_run",
+    ]).length > 0
+      ? pickArray<string>(args.operatorDecisionDraft, [
+          "required_before_real_run",
+        ])
+      : [
+          "mapping mutation completed and rechecked",
+          "registry ready",
+          "router mapping ready",
+          "target capability selected",
+          "payload schema validated",
+          "dry-run repeated successfully after mapping",
+          "unsupported resolved",
+          "promotion policy approved",
+          "rollback/cancel path validated",
+          "fresh real-run approval",
+          "real-run feature gate explicitly opened in separate server-side route",
+        ];
+
+  const operatorReviewQuestions =
+    pickArray<string>(args.humanReviewGate, [
+      "human_questions_to_answer",
+    ]).length > 0
+      ? pickArray<string>(args.humanReviewGate, [
+          "human_questions_to_answer",
+        ])
+      : [
+          "Is incident_router the correct target capability for command_orchestrator?",
+          "Should command_orchestrator route instead of execute directly?",
+          "What evidence is required to upgrade mapping confidence?",
+          "What exact Tool_Key and Tool_Mode should be used later?",
+          "What rollback path is acceptable before mutation or real-run?",
+        ];
+
+  const totalBlockingChecks = pickNumber(args.mappingPreflightChecklist, [
+    "checklist_summary.blocking_checks",
+  ]);
+
+  const preflightBlockers = pickArray<string>(args.mappingPreflightChecklist, [
+    "blockers",
+  ]);
+
+  const draftBlockers = pickArray<string>(args.operatorDecisionDraft, [
+    "blockers",
+  ]);
+
+  const topBlockers =
+    preflightBlockers.length > 0
+      ? preflightBlockers.slice(0, 8)
+      : draftBlockers.slice(0, 8);
+
+  const mutationBlocked =
+    !preflightReadyForMappingMutation ||
+    proposalConfidence === "low" ||
+    proposalConfidence === "unknown";
+
+  const registryBlocked = !registryReadyForRealRun;
+
+  const commandCreationBlocked =
+    !pickBoolean(args.mappingPreflightChecklist, [
+      "preflight_ready_for_command_creation",
+    ]) || !targetCapabilitySelected;
+
+  const executionBlocked =
+    !pickBoolean(args.mappingPreflightChecklist, [
+      "preflight_ready_for_execution",
+    ]) ||
+    !realRunAllowed ||
+    unsupportedActive;
+
+  const dryRunTransportValidated = args.workerDryRunResult.http_status === 200;
+  const workerResponseValidated =
+    args.workerDryRunResult.http_status === 200 &&
+    args.workerDryRunResult.ok === true;
+  const commandRecordSeen = args.commandRecordId
+    ? args.workerDryRunResult.commands_record_ids.includes(args.commandRecordId)
+    : false;
+  const unsupportedConfirmed =
+    args.workerDryRunResult.unsupported >= 1 &&
+    args.workerDryRunResult.executed === 0 &&
+    args.workerDryRunResult.errors_count === 0;
+  const noExecutionPerformed = args.workerDryRunResult.executed === 0;
+  const noMutationPerformed = true;
+
+  let reviewStatus:
+    | "OPERATOR_REVIEW_SUMMARY_BLOCKED_LOW_CONFIDENCE"
+    | "OPERATOR_REVIEW_SUMMARY_BLOCKED_PREFLIGHT"
+    | "OPERATOR_REVIEW_SUMMARY_BLOCKED_REGISTRY"
+    | "OPERATOR_REVIEW_SUMMARY_BLOCKED_REAL_RUN"
+    | "OPERATOR_REVIEW_SUMMARY_READY_REVIEW_ONLY"
+    | "OPERATOR_REVIEW_SUMMARY_UNKNOWN" = "OPERATOR_REVIEW_SUMMARY_UNKNOWN";
+
+  if (
+    draftStatus === "OPERATOR_DECISION_DRAFT_BLOCKED_LOW_CONFIDENCE" ||
+    proposalConfidence === "low" ||
+    proposalConfidence === "unknown"
+  ) {
+    reviewStatus = "OPERATOR_REVIEW_SUMMARY_BLOCKED_LOW_CONFIDENCE";
+  } else if (!preflightReadyForMappingMutation) {
+    reviewStatus = "OPERATOR_REVIEW_SUMMARY_BLOCKED_PREFLIGHT";
+  } else if (!registryReadyForRealRun) {
+    reviewStatus = "OPERATOR_REVIEW_SUMMARY_BLOCKED_REGISTRY";
+  } else if (!realRunAllowed || unsupportedActive) {
+    reviewStatus = "OPERATOR_REVIEW_SUMMARY_BLOCKED_REAL_RUN";
+  } else {
+    reviewStatus = "OPERATOR_REVIEW_SUMMARY_READY_REVIEW_ONLY";
+  }
+
+  return {
+    available: true,
+    summary_version: "V5.38_OPERATOR_DECISION_REVIEW_SUMMARY",
+    review_status: reviewStatus,
+    workspace_id: args.workspaceId,
+    incident_id: args.incidentId,
+    command_id: args.commandId,
+    command_record_id: args.commandRecordId,
+
+    executive_summary: {
+      title: "Operator review summary",
+      short_summary:
+        "Dry-run evidence is valid, the Worker saw the Command, and no execution was performed. The system proposes review-only discussion of the command_orchestrator -> incident_router mapping candidate.",
+      system_position:
+        "The system is ready for operator review only. It is not ready for Tool_Key / Tool_Mode mutation, registry mutation, command creation, or real execution.",
+      real_run_position:
+        "Real-run remains forbidden because unsupported is still active, registry readiness is false, payload schema is not validated, promotion policy is missing, rollback is not validated, and no fresh real-run approval exists.",
+      confidence_position:
+        proposalConfidence === "low" || proposalConfidence === "unknown"
+          ? "Mapping confidence is too low for mutation. Human review may accept discussion, reject the candidate, or request refinement only."
+          : "Mapping confidence is not sufficient to bypass the remaining preflight, registry, payload, promotion, approval, and rollback blockers.",
+    },
+
+    proven_evidence: {
+      dry_run_transport_validated: dryRunTransportValidated,
+      worker_response_validated: workerResponseValidated,
+      command_record_seen: commandRecordSeen,
+      unsupported_confirmed: unsupportedConfirmed,
+      no_execution_performed: noExecutionPerformed,
+      no_mutation_performed: noMutationPerformed,
+    },
+
+    operator_decision_now: {
+      recommended_decision_type: recommendedDecisionType,
+      recommended_decision_label: recommendedDecisionLabel,
+      recommended_scope: "review_only",
+      recommended: true,
+      can_accept_review_discussion: hasAllowedOption("REVIEW_MAPPING_ONLY"),
+      can_reject_candidate: hasAllowedOption("REJECT_MAPPING_CANDIDATE"),
+      can_request_refinement: hasAllowedOption("REQUEST_MAPPING_REFINEMENT"),
+      can_approve_mutation: false,
+      can_approve_real_run: false,
+    },
+
+    mapping_summary: {
+      candidate: mappingCandidate,
+      confidence: proposalConfidence,
+      confidence_is_sufficient_for_mutation: false,
+      target_capability_selected: targetCapabilitySelected,
+      proposed_tool_key: proposedToolKey,
+      proposed_tool_mode: proposedToolMode,
+    },
+
+    blockers_summary: {
+      total_blocking_checks: totalBlockingChecks,
+      top_blockers: topBlockers,
+      mutation_blocked: mutationBlocked,
+      registry_blocked: registryBlocked,
+      command_creation_blocked: commandCreationBlocked,
+      execution_blocked: executionBlocked,
+    },
+
+    allowed_now: allowedNow,
+
+    forbidden_now: forbiddenNow,
+
+    required_before_mutation: requiredBeforeMutation,
+
+    required_before_real_run: requiredBeforeRealRun,
+
+    operator_review_questions: operatorReviewQuestions,
+
+    next_safe_action:
+      "Run review-only human decision on the mapping candidate: accept discussion, reject command_orchestrator -> incident_router, or request refinement. Do not approve mutation, registry changes, command creation, or real-run from this route.",
+
+    guardrail_interpretation:
+      "V5.38 is an operator decision review summary only. It does not create approvals, mutate Airtable, create commands, create registry records, call the worker, or promote dry-run to real-run.",
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
@@ -5618,6 +5989,24 @@ export async function GET(request: Request, context: RouteContext) {
     unsupportedCommandDiagnosis,
   });
 
+  const operatorDecisionReviewSummary = buildOperatorDecisionReviewSummary({
+    commandRecordId,
+    commandId: ids.commandDraftId,
+    workspaceId,
+    incidentId,
+    operatorDecisionDraft,
+    humanReviewGate,
+    mappingPreflightChecklist,
+    toolMappingProposalDraft,
+    controlledMappingPlan,
+    toolcatalogRegistryReadiness,
+    workerRouterMappingInspection,
+    targetCapabilityDecisionMatrix,
+    executionMappingContractDraft,
+    unsupportedCommandDiagnosis,
+    workerDryRunResult,
+  });
+
   let status = "POST_RUN_DRY_RUN_RESULT_REVIEW_READY";
 
   if (configMissing) {
@@ -5760,6 +6149,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     operator_decision_draft: operatorDecisionDraft,
 
+    operator_decision_review_summary: operatorDecisionReviewSummary,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -5813,9 +6204,9 @@ export async function GET(request: Request, context: RouteContext) {
 
     interpretation: {
       summary:
-        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft. V5.34 adds a controlled mapping plan. V5.35 adds a read-only mapping preflight checklist. V5.36 adds a human review gate. V5.37 adds a read-only operator decision draft.",
+        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft. V5.34 adds a controlled mapping plan. V5.35 adds a read-only mapping preflight checklist. V5.36 adds a human review gate. V5.37 adds a read-only operator decision draft. V5.38 adds an operator decision review summary.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, controlled mapping plan requirements, mapping preflight blockers, human review boundaries, and operator decision draft options are now reviewed without executing a new run.",
+        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, controlled mapping plan requirements, mapping preflight blockers, human review boundaries, operator decision draft options, and operator decision review summary are now reviewed without executing a new run.",
       unsupported_is_blocking_for_real_execution: true,
       router_allowlist_readiness_is_blocking_for_real_execution:
         !routerAllowlistReadiness.real_run_allowed_by_readiness,
@@ -5872,6 +6263,7 @@ export async function GET(request: Request, context: RouteContext) {
       "Review tool mapping proposal before any mutation",
       "Review controlled mapping plan before any mutation",
       "Complete mapping preflight checklist before any mutation",
+      "Complete operator decision review summary before any persistence draft",
       "Define dry_run_only to executable promotion policy",
       "Define rollback/cancel path before real execution",
       "Keep real execution behind a separate feature gate",
@@ -5897,6 +6289,7 @@ export async function GET(request: Request, context: RouteContext) {
       tool_mapping_mutation: "DISABLED",
       controlled_mapping_plan_mutation: "DISABLED",
       mapping_preflight_mutation: "DISABLED",
+      operator_decision_review_mutation: "DISABLED",
       toolcatalog_creation: "DISABLED",
       workspace_capabilities_creation: "DISABLED",
       registry_mutation: "DISABLED",
@@ -5907,8 +6300,8 @@ export async function GET(request: Request, context: RouteContext) {
     error:
       status === "POST_RUN_DRY_RUN_RESULT_REVIEW_READY"
         ? null
-        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, execution_mapping_contract_draft, tool_mapping_proposal_draft, controlled_mapping_plan, mapping_preflight_checklist, and read sections.",
+        : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, execution_mapping_contract_draft, tool_mapping_proposal_draft, controlled_mapping_plan, mapping_preflight_checklist, human_review_gate, operator_decision_draft, operator_decision_review_summary, and read sections.",
     next_step:
-      "Next safe step: V5.38 Operator Decision Review Summary, still read-only, before any Tool_Key / Tool_Mode, registry, command, approval, or execution mutation.",
+      "Next safe step: V5.39 Review Decision Persistence Draft, still read-only / no mutation, before any Operator_Approval creation.",
   });
 }
