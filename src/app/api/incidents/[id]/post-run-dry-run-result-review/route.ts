@@ -51,11 +51,12 @@ type PreflightCheckItem = {
   required_before: PreflightRequiredBefore;
 };
 
-const VERSION = "Incident Detail V5.42";
+const VERSION = "Incident Detail V5.43";
 const SOURCE =
-  "dashboard_incident_detail_v5_42_review_decision_persistence_payload_preview";
+  "dashboard_incident_detail_v5_43_review_decision_persistence_human_review_readiness";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
-const READER_VERSION = "V5.42_REVIEW_DECISION_PERSISTENCE_PAYLOAD_PREVIEW";
+const READER_VERSION =
+  "V5.43_REVIEW_DECISION_PERSISTENCE_HUMAN_REVIEW_READINESS";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
@@ -7964,6 +7965,849 @@ function buildReviewDecisionPersistencePayloadPreview(args: {
   };
 }
 
+function buildReviewDecisionPersistenceHumanReviewReadiness(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  workspaceId: string;
+  incidentId: string;
+  reviewDecisionPersistencePayloadPreview: JsonRecord;
+  reviewDecisionPersistenceSchemaPreview: JsonRecord;
+  reviewDecisionPersistencePreflight: JsonRecord;
+  reviewDecisionPersistenceDraft: JsonRecord;
+  operatorDecisionReviewSummary: JsonRecord;
+  operatorDecisionDraft: JsonRecord;
+  humanReviewGate: JsonRecord;
+  mappingPreflightChecklist: JsonRecord;
+  toolMappingProposalDraft: JsonRecord;
+  controlledMappingPlan: JsonRecord;
+  toolcatalogRegistryReadiness: JsonRecord;
+  workerRouterMappingInspection: JsonRecord;
+  targetCapabilityDecisionMatrix: JsonRecord;
+  executionMappingContractDraft: JsonRecord;
+  unsupportedCommandDiagnosis: JsonRecord;
+  workerDryRunResult: JsonRecord;
+}) {
+  type ReadinessCheck = {
+    id: string;
+    label: string;
+    status: "pass" | "warning" | "fail";
+    blocking: boolean;
+    evidence: string;
+  };
+
+  const payloadPreviewAvailable = pickBoolean(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["available"],
+    false
+  );
+
+  const payloadPreviewStatus = pickString(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_preview_status"]
+  );
+
+  const schemaPreviewAvailable = pickBoolean(
+    args.reviewDecisionPersistenceSchemaPreview,
+    ["available"],
+    false
+  );
+
+  const schemaPreviewStatus = pickString(
+    args.reviewDecisionPersistenceSchemaPreview,
+    ["schema_preview_status"]
+  );
+
+  const preflightAvailable = pickBoolean(
+    args.reviewDecisionPersistencePreflight,
+    ["available"],
+    false
+  );
+
+  const preflightStatus = pickString(args.reviewDecisionPersistencePreflight, [
+    "preflight_status",
+  ]);
+
+  const draftAvailable = pickBoolean(
+    args.reviewDecisionPersistenceDraft,
+    ["available"],
+    false
+  );
+
+  const draftStatus = pickString(args.reviewDecisionPersistenceDraft, [
+    "draft_status",
+  ]);
+
+  const operatorDecisionDraftAvailable = pickBoolean(
+    args.operatorDecisionDraft,
+    ["available"],
+    false
+  );
+
+  const humanReviewGateAvailable = pickBoolean(args.humanReviewGate, [
+    "available",
+  ]);
+
+  const mappingCandidate =
+    pickString(args.reviewDecisionPersistencePayloadPreview, [
+      "payload_decision.mapping_candidate",
+    ]) ||
+    pickString(args.reviewDecisionPersistenceSchemaPreview, [
+      "source_draft.mapping_candidate",
+    ]) ||
+    pickString(args.operatorDecisionReviewSummary, [
+      "mapping_summary.candidate",
+    ]) ||
+    pickString(args.operatorDecisionDraft, [
+      "decision_context.mapping_candidate",
+    ]) ||
+    "command_orchestrator -> incident_router";
+
+  const proposalConfidence = normalizeProposalConfidence(
+    pickString(args.reviewDecisionPersistencePayloadPreview, [
+      "payload_decision.proposal_confidence",
+    ]) ||
+      pickString(args.reviewDecisionPersistenceSchemaPreview, [
+        "source_draft.proposal_confidence",
+      ]) ||
+      pickString(args.operatorDecisionReviewSummary, [
+        "mapping_summary.confidence",
+      ]) ||
+      pickString(args.operatorDecisionDraft, [
+        "decision_context.proposal_confidence",
+      ]) ||
+      pickString(args.toolMappingProposalDraft, [
+        "proposal.proposal_confidence",
+      ])
+  );
+
+  const recommendedDecisionType =
+    pickString(args.reviewDecisionPersistencePayloadPreview, [
+      "payload_decision.decision_type",
+    ]) ||
+    pickString(args.operatorDecisionReviewSummary, [
+      "operator_decision_now.recommended_decision_type",
+    ]) ||
+    pickString(args.operatorDecisionDraft, [
+      "proposed_operator_decision.decision_type",
+    ]) ||
+    "REQUEST_MAPPING_REVIEW";
+
+  const recommendedDecisionLabel =
+    pickString(args.operatorDecisionReviewSummary, [
+      "operator_decision_now.recommended_decision_label",
+    ]) ||
+    pickString(args.operatorDecisionDraft, [
+      "proposed_operator_decision.decision_label",
+    ]) ||
+    "Review mapping candidate only";
+
+  const reviewStatus =
+    pickString(args.reviewDecisionPersistencePayloadPreview, [
+      "payload_decision.review_status",
+    ]) ||
+    pickString(args.operatorDecisionReviewSummary, ["review_status"]);
+
+  const payloadRequiredFieldsPresent = pickBoolean(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_validation.required_fields_present"],
+    false
+  );
+
+  const payloadSafeForReviewOnlyPreview = pickBoolean(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_validation.payload_safe_for_review_only_preview"],
+    false
+  );
+
+  const payloadSafeForSendNow = pickBoolean(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_validation.payload_safe_for_send_now"],
+    false
+  );
+
+  const schemaSafeForReviewOnlyPreview = pickBoolean(
+    args.reviewDecisionPersistenceSchemaPreview,
+    ["schema_validation.schema_safe_for_review_only_preview"],
+    false
+  );
+
+  const schemaSafeForCreationNow = pickBoolean(
+    args.reviewDecisionPersistenceSchemaPreview,
+    ["schema_validation.schema_safe_for_creation_now"],
+    false
+  );
+
+  const operatorApprovalCreationAllowed =
+    pickBoolean(args.reviewDecisionPersistencePreflight, [
+      "safety_preflight.operator_approval_creation_allowed",
+    ]) ||
+    pickBoolean(args.reviewDecisionPersistencePayloadPreview, [
+      "payload_safety_flags.operator_approval_creation_allowed",
+    ]) ||
+    schemaSafeForCreationNow;
+
+  const mutationAllowed =
+    pickBoolean(args.reviewDecisionPersistencePreflight, [
+      "safety_preflight.mutation_allowed_now",
+    ]) ||
+    pickBoolean(args.reviewDecisionPersistencePayloadPreview, [
+      "payload_safety_flags.mutation_allowed",
+    ]);
+
+  const commandCreationAllowed = pickBoolean(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_safety_flags.command_creation_allowed"]
+  );
+
+  const workerCallAllowed = pickBoolean(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_safety_flags.worker_call_allowed"]
+  );
+
+  const airtableMutationAllowed = pickBoolean(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_safety_flags.airtable_mutation_allowed"]
+  );
+
+  const realRunAllowed =
+    pickBoolean(args.executionMappingContractDraft, [
+      "promotion_contract.real_run_allowed",
+    ]) ||
+    pickBoolean(args.mappingPreflightChecklist, ["real_run_allowed"], false) ||
+    pickBoolean(args.reviewDecisionPersistencePayloadPreview, [
+      "payload_safety_flags.real_run_allowed",
+    ]);
+
+  const unsupportedActive =
+    pickBoolean(args.unsupportedCommandDiagnosis, [
+      "unsupported_confirmed",
+    ]) ||
+    pickBoolean(args.unsupportedCommandDiagnosis, [
+      "real_execution_blocker",
+    ]) ||
+    pickBoolean(args.operatorDecisionDraft, [
+      "decision_context.unsupported_active",
+    ]) ||
+    pickBoolean(args.reviewDecisionPersistencePayloadPreview, [
+      "payload_safety_flags.unsupported_active",
+    ]);
+
+  const registryReadyForRealRun = pickBoolean(
+    args.toolcatalogRegistryReadiness,
+    ["registry_ready_for_real_run"],
+    false
+  );
+
+  const routerMappingReadyForRealRun = pickBoolean(
+    args.workerRouterMappingInspection,
+    ["router_mapping_ready_for_real_run"],
+    false
+  );
+
+  const targetCapabilitySelected = Boolean(
+    pickString(args.targetCapabilityDecisionMatrix, [
+      "selected_target_capability",
+    ])
+  );
+
+  const payloadSchemaValidated =
+    pickBoolean(args.executionMappingContractDraft, [
+      "payload_contract.payload_schema_validated",
+    ]) ||
+    pickBoolean(args.reviewDecisionPersistencePayloadPreview, [
+      "payload_safety_flags.payload_schema_validated",
+    ]);
+
+  const promotionPolicyReady =
+    pickBoolean(args.executionMappingContractDraft, [
+      "promotion_contract.promotion_ready",
+    ]) ||
+    pickBoolean(args.reviewDecisionPersistencePayloadPreview, [
+      "payload_safety_flags.promotion_ready",
+    ]);
+
+  const rollbackValidated = pickBoolean(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_safety_flags.rollback_validated"],
+    false
+  );
+
+  const freshApprovalMissing =
+    pickBoolean(args.humanReviewGate, [
+      "approval_boundaries.fresh_approval_required_for_mutation",
+    ]) ||
+    pickBoolean(args.humanReviewGate, [
+      "approval_boundaries.fresh_approval_required_for_real_run",
+    ]) ||
+    true;
+
+  const missingPayloadRequiredFields = pickArray<string>(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_validation.missing_required_fields"]
+  );
+
+  const lowConfidence =
+    proposalConfidence === "low" ||
+    proposalConfidence === "unknown" ||
+    payloadPreviewStatus ===
+      "REVIEW_DECISION_PAYLOAD_PREVIEW_BLOCKED_LOW_CONFIDENCE";
+
+  const payloadPreviewBlocked =
+    !payloadPreviewAvailable ||
+    !payloadRequiredFieldsPresent ||
+    missingPayloadRequiredFields.length > 0 ||
+    !payloadSafeForReviewOnlyPreview;
+
+  const schemaPreviewBlocked =
+    !schemaPreviewAvailable || !schemaSafeForReviewOnlyPreview;
+
+  const preflightBlocked =
+    !preflightAvailable ||
+    preflightStatus ===
+      "REVIEW_DECISION_PERSISTENCE_PREFLIGHT_BLOCKED_LOW_CONFIDENCE" ||
+    preflightStatus ===
+      "REVIEW_DECISION_PERSISTENCE_PREFLIGHT_BLOCKED_DRAFT_INVALID" ||
+    preflightStatus ===
+      "REVIEW_DECISION_PERSISTENCE_PREFLIGHT_BLOCKED_SYSTEM_PREFLIGHT" ||
+    preflightStatus ===
+      "REVIEW_DECISION_PERSISTENCE_PREFLIGHT_BLOCKED_REGISTRY" ||
+    preflightStatus ===
+      "REVIEW_DECISION_PERSISTENCE_PREFLIGHT_BLOCKED_REAL_RUN" ||
+    operatorApprovalCreationAllowed === false;
+
+  let readinessStatus:
+    | "HUMAN_REVIEW_READINESS_BLOCKED_LOW_CONFIDENCE"
+    | "HUMAN_REVIEW_READINESS_BLOCKED_PAYLOAD"
+    | "HUMAN_REVIEW_READINESS_BLOCKED_SCHEMA"
+    | "HUMAN_REVIEW_READINESS_BLOCKED_PREFLIGHT"
+    | "HUMAN_REVIEW_READINESS_BLOCKED_REAL_RUN"
+    | "HUMAN_REVIEW_READINESS_READY_REVIEW_ONLY"
+    | "HUMAN_REVIEW_READINESS_UNKNOWN" =
+    "HUMAN_REVIEW_READINESS_UNKNOWN";
+
+  if (lowConfidence) {
+    readinessStatus = "HUMAN_REVIEW_READINESS_BLOCKED_LOW_CONFIDENCE";
+  } else if (payloadPreviewBlocked) {
+    readinessStatus = "HUMAN_REVIEW_READINESS_BLOCKED_PAYLOAD";
+  } else if (schemaPreviewBlocked) {
+    readinessStatus = "HUMAN_REVIEW_READINESS_BLOCKED_SCHEMA";
+  } else if (preflightBlocked) {
+    readinessStatus = "HUMAN_REVIEW_READINESS_BLOCKED_PREFLIGHT";
+  } else if (!realRunAllowed || unsupportedActive) {
+    readinessStatus = "HUMAN_REVIEW_READINESS_BLOCKED_REAL_RUN";
+  } else {
+    readinessStatus = "HUMAN_REVIEW_READINESS_READY_REVIEW_ONLY";
+  }
+
+  const allowedDecisionOptions = pickArray<JsonRecord>(
+    args.operatorDecisionDraft,
+    ["allowed_decision_options"]
+  );
+
+  const allowedHumanActionsNow =
+    allowedDecisionOptions.length > 0
+      ? allowedDecisionOptions.map((option) => ({
+          action_id:
+            pickString(option, ["option_id"]) || "REVIEW_MAPPING_ONLY",
+          label: pickString(option, ["label"]) || "Review mapping only",
+          allowed_now: true,
+          scope: "review_only",
+          creates_record: false,
+          mutates_system: false,
+          allows_real_run: false,
+        }))
+      : [
+          {
+            action_id: "REVIEW_MAPPING_ONLY",
+            label: "Review mapping only",
+            allowed_now: true,
+            scope: "review_only",
+            creates_record: false,
+            mutates_system: false,
+            allows_real_run: false,
+          },
+          {
+            action_id: "REJECT_MAPPING_CANDIDATE",
+            label: "Reject mapping candidate",
+            allowed_now: true,
+            scope: "review_only",
+            creates_record: false,
+            mutates_system: false,
+            allows_real_run: false,
+          },
+          {
+            action_id: "REQUEST_MAPPING_REFINEMENT",
+            label: "Request mapping refinement",
+            allowed_now: true,
+            scope: "review_only",
+            creates_record: false,
+            mutates_system: false,
+            allows_real_run: false,
+          },
+        ];
+
+  const rejectedDecisionOptions = pickArray<JsonRecord>(
+    args.operatorDecisionDraft,
+    ["rejected_decision_options"]
+  );
+
+  const forbiddenHumanActionsNow =
+    rejectedDecisionOptions.length > 0
+      ? rejectedDecisionOptions.map((option) => ({
+          action_id:
+            pickString(option, ["option_id"]) || "FORBIDDEN_ACTION",
+          label: pickString(option, ["label"]) || "Forbidden action",
+          allowed_now: false,
+          reason:
+            pickString(option, ["reason"]) ||
+            "This action is forbidden from the V5.43 read-only review readiness surface.",
+          blocked_by: pickArray<string>(option, ["blocked_by"]),
+        }))
+      : [
+          {
+            action_id: "APPROVE_TOOL_MAPPING_MUTATION",
+            label: "Approve Tool_Key / Tool_Mode mutation",
+            allowed_now: false,
+            reason:
+              "Mutation approval is forbidden because proposal confidence is low and mapping preflight is not ready.",
+            blocked_by: [
+              "proposal_confidence_low",
+              "preflight_not_ready",
+              "fresh_mutation_approval_missing",
+            ],
+          },
+          {
+            action_id: "APPROVE_REGISTRY_MUTATION",
+            label: "Approve registry mutation",
+            allowed_now: false,
+            reason:
+              "Registry mutation approval is forbidden because ToolCatalog and Workspace_Capabilities readiness are not confirmed.",
+            blocked_by: [
+              "registry_not_ready",
+              "toolcatalog_entry_missing",
+              "workspace_capability_entry_missing",
+            ],
+          },
+          {
+            action_id: "APPROVE_COMMAND_CREATION",
+            label: "Approve command creation",
+            allowed_now: false,
+            reason:
+              "Command creation approval is forbidden because target capability is not selected.",
+            blocked_by: [
+              "target_capability_not_selected",
+              "payload_schema_not_validated",
+            ],
+          },
+          {
+            action_id: "APPROVE_REAL_RUN",
+            label: "Approve real-run",
+            allowed_now: false,
+            reason:
+              "Real-run approval is forbidden because unsupported remains active and real-run is not allowed.",
+            blocked_by: [
+              "real_run_forbidden",
+              "unsupported_active",
+              "fresh_real_run_approval_missing",
+            ],
+          },
+        ];
+
+  const humanReviewQuestions = pickArray<string>(args.humanReviewGate, [
+    "human_questions_to_answer",
+  ]);
+
+  const requiredBeforeHumanReviewCompletion = [
+    "review the low-confidence mapping candidate",
+    "decide whether incident_router is the correct target capability",
+    "decide whether command_orchestrator should route instead of execute directly",
+    "choose review-only outcome: review mapping, reject candidate, or request refinement",
+    "confirm no Operator_Approval creation is requested now",
+    "confirm no mutation is requested now",
+    "confirm real-run remains forbidden",
+  ];
+
+  const requiredBeforeOperatorApprovalCreation =
+    pickArray<string>(args.reviewDecisionPersistencePayloadPreview, [
+      "required_before_operator_approval_creation",
+    ]);
+
+  const requiredBeforeAnyMutation = pickArray<string>(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["required_before_any_mutation"]
+  );
+
+  const requiredBeforeRealRun = pickArray<string>(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["required_before_real_run"]
+  );
+
+  const packetReadyForHumanReview =
+    payloadPreviewAvailable &&
+    schemaPreviewAvailable &&
+    preflightAvailable &&
+    draftAvailable &&
+    operatorDecisionDraftAvailable &&
+    humanReviewGateAvailable &&
+    payloadSafeForReviewOnlyPreview &&
+    schemaSafeForReviewOnlyPreview;
+
+  const readinessChecks: ReadinessCheck[] = [
+    {
+      id: "payload_preview_available",
+      label: "Payload preview is available",
+      status: payloadPreviewAvailable ? "pass" : "fail",
+      blocking: !payloadPreviewAvailable,
+      evidence: `payload_preview_available=${payloadPreviewAvailable}.`,
+    },
+    {
+      id: "schema_preview_available",
+      label: "Schema preview is available",
+      status: schemaPreviewAvailable ? "pass" : "fail",
+      blocking: !schemaPreviewAvailable,
+      evidence: `schema_preview_available=${schemaPreviewAvailable}.`,
+    },
+    {
+      id: "preflight_available",
+      label: "Persistence preflight is available",
+      status: preflightAvailable ? "pass" : "fail",
+      blocking: !preflightAvailable,
+      evidence: `preflight_available=${preflightAvailable}.`,
+    },
+    {
+      id: "operator_decision_draft_available",
+      label: "Operator decision draft is available",
+      status: operatorDecisionDraftAvailable ? "pass" : "fail",
+      blocking: !operatorDecisionDraftAvailable,
+      evidence: `operator_decision_draft_available=${operatorDecisionDraftAvailable}.`,
+    },
+    {
+      id: "human_review_gate_available",
+      label: "Human review gate is available",
+      status: humanReviewGateAvailable ? "pass" : "fail",
+      blocking: !humanReviewGateAvailable,
+      evidence: `human_review_gate_available=${humanReviewGateAvailable}.`,
+    },
+    {
+      id: "payload_safe_for_review_only",
+      label: "Payload is safe for review-only preview",
+      status: payloadSafeForReviewOnlyPreview ? "pass" : "fail",
+      blocking: !payloadSafeForReviewOnlyPreview,
+      evidence: `payload_safe_for_review_only_preview=${payloadSafeForReviewOnlyPreview}.`,
+    },
+    {
+      id: "schema_safe_for_review_only",
+      label: "Schema is safe for review-only preview",
+      status: schemaSafeForReviewOnlyPreview ? "pass" : "fail",
+      blocking: !schemaSafeForReviewOnlyPreview,
+      evidence: `schema_safe_for_review_only_preview=${schemaSafeForReviewOnlyPreview}.`,
+    },
+    {
+      id: "proposal_confidence_sufficient",
+      label: "Proposal confidence is sufficient",
+      status: lowConfidence ? "fail" : "pass",
+      blocking: lowConfidence,
+      evidence: `proposal_confidence=${proposalConfidence}.`,
+    },
+    {
+      id: "review_scope_is_review_only",
+      label: "Review scope is review_only",
+      status: "pass",
+      blocking: false,
+      evidence: "review_scope=review_only.",
+    },
+    {
+      id: "allowed_human_actions_present",
+      label: "Allowed review-only human actions are present",
+      status: allowedHumanActionsNow.length > 0 ? "pass" : "fail",
+      blocking: allowedHumanActionsNow.length === 0,
+      evidence: `allowed_human_actions_count=${allowedHumanActionsNow.length}.`,
+    },
+    {
+      id: "operator_approval_creation_forbidden",
+      label: "Operator_Approval creation remains forbidden",
+      status: !operatorApprovalCreationAllowed ? "pass" : "fail",
+      blocking: operatorApprovalCreationAllowed,
+      evidence: `operator_approval_creation_allowed=${operatorApprovalCreationAllowed}.`,
+    },
+    {
+      id: "payload_send_forbidden",
+      label: "Payload send remains forbidden",
+      status: !payloadSafeForSendNow ? "pass" : "fail",
+      blocking: payloadSafeForSendNow,
+      evidence: `payload_safe_for_send_now=${payloadSafeForSendNow}.`,
+    },
+    {
+      id: "mutation_forbidden",
+      label: "Mutation remains forbidden",
+      status: !mutationAllowed ? "pass" : "fail",
+      blocking: mutationAllowed,
+      evidence: `mutation_allowed=${mutationAllowed}.`,
+    },
+    {
+      id: "real_run_forbidden",
+      label: "Real-run remains forbidden",
+      status: !realRunAllowed ? "pass" : "fail",
+      blocking: realRunAllowed,
+      evidence: `real_run_allowed=${realRunAllowed}.`,
+    },
+    {
+      id: "unsupported_active",
+      label: "Unsupported classification remains active",
+      status: unsupportedActive ? "fail" : "pass",
+      blocking: unsupportedActive,
+      evidence: `unsupported_active=${unsupportedActive}.`,
+    },
+    {
+      id: "registry_ready_for_real_run",
+      label: "Registry ready for real-run",
+      status: registryReadyForRealRun ? "pass" : "fail",
+      blocking: !registryReadyForRealRun,
+      evidence: `registry_ready_for_real_run=${registryReadyForRealRun}.`,
+    },
+    {
+      id: "router_mapping_ready_for_real_run",
+      label: "Router mapping ready for real-run",
+      status: routerMappingReadyForRealRun ? "pass" : "fail",
+      blocking: !routerMappingReadyForRealRun,
+      evidence: `router_mapping_ready_for_real_run=${routerMappingReadyForRealRun}.`,
+    },
+    {
+      id: "target_capability_selected",
+      label: "Target capability selected",
+      status: targetCapabilitySelected ? "pass" : "fail",
+      blocking: !targetCapabilitySelected,
+      evidence: `target_capability_selected=${targetCapabilitySelected}.`,
+    },
+    {
+      id: "payload_schema_validated",
+      label: "Payload schema validated",
+      status: payloadSchemaValidated ? "pass" : "fail",
+      blocking: !payloadSchemaValidated,
+      evidence: `payload_schema_validated=${payloadSchemaValidated}.`,
+    },
+    {
+      id: "promotion_policy_ready",
+      label: "Promotion policy ready",
+      status: promotionPolicyReady ? "pass" : "fail",
+      blocking: !promotionPolicyReady,
+      evidence: `promotion_policy_ready=${promotionPolicyReady}.`,
+    },
+    {
+      id: "rollback_validated",
+      label: "Rollback validated",
+      status: rollbackValidated ? "pass" : "fail",
+      blocking: !rollbackValidated,
+      evidence: `rollback_validated=${rollbackValidated}.`,
+    },
+    {
+      id: "fresh_approval_available",
+      label: "Fresh approval available",
+      status: freshApprovalMissing ? "fail" : "pass",
+      blocking: freshApprovalMissing,
+      evidence: `fresh_approval_missing=${freshApprovalMissing}.`,
+    },
+  ];
+
+  return {
+    available: true,
+    readiness_version:
+      "V5.43_REVIEW_DECISION_PERSISTENCE_HUMAN_REVIEW_READINESS",
+    readiness_status: readinessStatus,
+    workspace_id: args.workspaceId,
+    incident_id: args.incidentId,
+    command_id: args.commandId,
+    command_record_id: args.commandRecordId,
+
+    review_target: {
+      target_table: "Operator_Approvals",
+      future_action: "create_later",
+      current_mode: "read_only_review_readiness",
+      review_scope: "review_only",
+      create_allowed_now: false,
+      update_allowed_now: false,
+      payload_send_allowed_now: false,
+    },
+
+    readiness_context: {
+      payload_preview_available: payloadPreviewAvailable,
+      payload_preview_status: payloadPreviewStatus || null,
+      schema_preview_available: schemaPreviewAvailable,
+      schema_preview_status: schemaPreviewStatus || null,
+      preflight_available: preflightAvailable,
+      preflight_status: preflightStatus || null,
+      draft_available: draftAvailable,
+      draft_status: draftStatus || null,
+      operator_decision_draft_available: operatorDecisionDraftAvailable,
+      human_review_gate_available: humanReviewGateAvailable,
+    },
+
+    operator_review_packet: {
+      packet_ready_for_human_review: packetReadyForHumanReview,
+      packet_scope: "review_only",
+      recommended_decision_type: recommendedDecisionType,
+      recommended_decision_label: recommendedDecisionLabel,
+      mapping_candidate: mappingCandidate,
+      proposal_confidence: proposalConfidence,
+      review_status: reviewStatus || null,
+      payload_preview_safe: payloadSafeForReviewOnlyPreview,
+      schema_preview_safe: schemaSafeForReviewOnlyPreview,
+      real_run_forbidden: true,
+      mutation_forbidden: true,
+      operator_approval_creation_forbidden: true,
+    },
+
+    allowed_human_actions_now: allowedHumanActionsNow,
+
+    forbidden_human_actions_now: forbiddenHumanActionsNow,
+
+    human_review_questions:
+      humanReviewQuestions.length > 0
+        ? humanReviewQuestions
+        : [
+            "Is incident_router the correct target capability for command_orchestrator?",
+            "Should command_orchestrator route instead of execute directly?",
+            "Should the mapping candidate be rejected?",
+            "Should more evidence be requested before mutation?",
+            "What exact Tool_Key should be written later?",
+            "What exact Tool_Mode should be written later?",
+            "What payload schema should incident_router require?",
+            "What rollback path is acceptable?",
+            "What fresh approval is required before mutation?",
+            "What separate gate is required before real-run?",
+          ],
+
+    human_review_decision_options: {
+      recommended_option: "REQUEST_MAPPING_REVIEW",
+      safe_options: [
+        "REVIEW_MAPPING_ONLY",
+        "REJECT_MAPPING_CANDIDATE",
+        "REQUEST_MAPPING_REFINEMENT",
+      ],
+      unsafe_options: [
+        "APPROVE_TOOL_MAPPING_MUTATION",
+        "APPROVE_REGISTRY_MUTATION",
+        "APPROVE_COMMAND_CREATION",
+        "APPROVE_REAL_RUN",
+      ],
+      mutation_options_blocked: true,
+      real_run_options_blocked: true,
+    },
+
+    readiness_blockers: {
+      low_confidence: lowConfidence,
+      payload_preview_blocked: payloadPreviewBlocked,
+      schema_preview_blocked: schemaPreviewBlocked,
+      preflight_blocked: preflightBlocked,
+      registry_not_ready: !registryReadyForRealRun,
+      router_mapping_not_ready: !routerMappingReadyForRealRun,
+      target_capability_not_selected: !targetCapabilitySelected,
+      payload_schema_not_validated: !payloadSchemaValidated,
+      promotion_policy_missing: !promotionPolicyReady,
+      rollback_not_validated: !rollbackValidated,
+      unsupported_active: unsupportedActive,
+      fresh_approval_missing: freshApprovalMissing,
+    },
+
+    readiness_checks: readinessChecks,
+
+    readiness_summary: {
+      total_checks: readinessChecks.length,
+      passed_checks: readinessChecks.filter((check) => check.status === "pass")
+        .length,
+      warning_checks: readinessChecks.filter(
+        (check) => check.status === "warning"
+      ).length,
+      failed_checks: readinessChecks.filter((check) => check.status === "fail")
+        .length,
+      blocking_checks: readinessChecks.filter((check) => check.blocking)
+        .length,
+    },
+
+    allowed_now: [
+      "human_review_readiness",
+      "review_mapping_only",
+      "reject_mapping_candidate",
+      "request_mapping_refinement",
+    ],
+
+    forbidden_now: [
+      "operator_approval_creation",
+      "operator_approval_update",
+      "payload_send_to_airtable",
+      "mapping_mutation_approval",
+      "registry_mutation_approval",
+      "command_creation_approval",
+      "real_run_approval",
+      "worker_call",
+    ],
+
+    required_before_human_review_completion:
+      requiredBeforeHumanReviewCompletion,
+
+    required_before_operator_approval_creation:
+      requiredBeforeOperatorApprovalCreation.length > 0
+        ? requiredBeforeOperatorApprovalCreation
+        : [
+            "complete review-only human decision",
+            "confirm mapping candidate scope",
+            "confirm decision remains review_only",
+            "confirm no mutation is requested",
+            "confirm Operator_Approval creation is still disabled from this route",
+            "confirm real-run remains forbidden",
+          ],
+
+    required_before_any_mutation:
+      requiredBeforeAnyMutation.length > 0
+        ? requiredBeforeAnyMutation
+        : [
+            "improve mapping confidence to medium or high",
+            "define Tool_Key",
+            "define Tool_Mode",
+            "define target capability explicitly",
+            "define ToolCatalog entry",
+            "define Workspace_Capabilities entry",
+            "validate payload schema",
+            "validate rollback strategy",
+            "create fresh operator approval for mutation",
+            "use a separate gated mutation endpoint or manual controlled update",
+          ],
+
+    required_before_real_run:
+      requiredBeforeRealRun.length > 0
+        ? requiredBeforeRealRun
+        : [
+            "mapping mutation completed and rechecked",
+            "registry ready",
+            "router mapping ready",
+            "target capability selected",
+            "payload schema validated",
+            "dry-run repeated successfully after mapping",
+            "unsupported resolved",
+            "promotion policy approved",
+            "rollback/cancel path validated",
+            "fresh real-run approval",
+            "real-run feature gate explicitly opened in separate server-side route",
+          ],
+
+    audit: {
+      no_airtable_mutation: true,
+      no_payload_sent: true,
+      no_operator_approval_created: true,
+      no_operator_approval_updated: true,
+      no_command_created: true,
+      no_worker_call: true,
+      no_real_run: true,
+    },
+
+    next_safe_action:
+      "Present the review-only packet to a human operator. The operator may review the mapping, reject the candidate, or request refinement. Do not create Operator_Approval, send payload, mutate Airtable, call the worker, or allow real-run from this route.",
+
+    guardrail_interpretation:
+      "V5.43 is a review decision persistence human review readiness layer only. It does not create or update Operator_Approval records, send Airtable payloads, mutate Airtable, create commands, create registry records, call the worker, or promote dry-run to real-run.",
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
@@ -8734,6 +9578,30 @@ export async function GET(request: Request, context: RouteContext) {
     workerDryRunResult,
   });
 
+    const reviewDecisionPersistenceHumanReviewReadiness =
+    buildReviewDecisionPersistenceHumanReviewReadiness({
+      commandRecordId,
+      commandId: ids.commandDraftId,
+      workspaceId,
+      incidentId,
+      reviewDecisionPersistencePayloadPreview,
+      reviewDecisionPersistenceSchemaPreview,
+      reviewDecisionPersistencePreflight,
+      reviewDecisionPersistenceDraft,
+      operatorDecisionReviewSummary,
+      operatorDecisionDraft,
+      humanReviewGate,
+      mappingPreflightChecklist,
+      toolMappingProposalDraft,
+      controlledMappingPlan,
+      toolcatalogRegistryReadiness,
+      workerRouterMappingInspection,
+      targetCapabilityDecisionMatrix,
+      executionMappingContractDraft,
+      unsupportedCommandDiagnosis,
+      workerDryRunResult,
+    });
+
   let status = "POST_RUN_DRY_RUN_RESULT_REVIEW_READY";
 
   if (configMissing) {
@@ -8888,6 +9756,9 @@ export async function GET(request: Request, context: RouteContext) {
     review_decision_persistence_payload_preview:
       reviewDecisionPersistencePayloadPreview,
 
+    review_decision_persistence_human_review_readiness:
+      reviewDecisionPersistenceHumanReviewReadiness,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -8941,9 +9812,9 @@ export async function GET(request: Request, context: RouteContext) {
 
     interpretation: {
       summary:
-        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft. V5.34 adds a controlled mapping plan. V5.35 adds a read-only mapping preflight checklist. V5.36 adds a human review gate. V5.37 adds a read-only operator decision draft. V5.38 adds an operator decision review summary. V5.39 adds a review decision persistence draft. V5.40 adds a review decision persistence preflight. V5.41 adds a review decision persistence schema preview. V5.42 adds a review decision persistence payload preview.",
+        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft. V5.34 adds a controlled mapping plan. V5.35 adds a read-only mapping preflight checklist. V5.36 adds a human review gate. V5.37 adds a read-only operator decision draft. V5.38 adds an operator decision review summary. V5.39 adds a review decision persistence draft. V5.40 adds a review decision persistence preflight. V5.41 adds a review decision persistence schema preview. V5.42 adds a review decision persistence payload preview. V5.43 adds a review decision persistence human review readiness.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, controlled mapping plan requirements, mapping preflight blockers, human review boundaries, operator decision draft options, operator decision review summary, review decision persistence draft, review decision persistence preflight, review decision persistence schema preview, and review decision persistence payload preview are now reviewed without executing a new run.",
+        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, controlled mapping plan requirements, mapping preflight blockers, human review boundaries, operator decision draft options, operator decision review summary, review decision persistence draft, review decision persistence preflight, review decision persistence schema preview, review decision persistence payload preview, and review decision persistence human review readiness are now reviewed without executing a new run.",
       router_allowlist_readiness_is_blocking_for_real_execution:
         !routerAllowlistReadiness.real_run_allowed_by_readiness,
       registry_readiness_is_blocking_for_real_execution:
@@ -9011,6 +9882,7 @@ export async function GET(request: Request, context: RouteContext) {
       "Complete review decision persistence preflight before any Operator_Approval creation",
       "Complete review decision persistence schema preview before any Operator_Approval creation",
       "Complete review decision persistence payload preview before any Operator_Approval creation",
+      "Complete review decision persistence human review readiness before any Operator_Approval creation"
     ],
 
     guardrails: {
@@ -9043,6 +9915,8 @@ export async function GET(request: Request, context: RouteContext) {
       review_decision_persistence_payload_preview_mutation: "DISABLED",
       operator_approval_payload_send: "DISABLED",
       payload_send_to_airtable: "DISABLED",
+      review_decision_persistence_human_review_readiness_mutation: "DISABLED",
+      human_review_completion_mutation: "DISABLED",
     },
 
     error:
@@ -9050,6 +9924,6 @@ export async function GET(request: Request, context: RouteContext) {
         ? null
         : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, execution_mapping_contract_draft, tool_mapping_proposal_draft, controlled_mapping_plan, mapping_preflight_checklist, human_review_gate, operator_decision_draft, operator_decision_review_summary, and read sections.",
     next_step:
-      "Next safe step: V5.43 Review Decision Persistence Human Review Readiness, still read-only / no mutation, before any Operator_Approval creation.",
+      "Next safe step: V5.44 Review Decision Human Review Package, still read-only / no mutation, before any Operator_Approval creation.",
   });
 }
