@@ -14454,7 +14454,6 @@ export async function GET(request: Request, context: RouteContext) {
       ui_component_backend_binding: "DISABLED",
       review_decision_ui_component_data_model_mutation: "DISABLED",
       ui_component_creation: "DISABLED",
-      ui_component_backend_binding: "DISABLED",
       component_submit_backend_binding: "DISABLED",
     },
 
