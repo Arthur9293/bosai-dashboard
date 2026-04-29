@@ -12166,6 +12166,1021 @@ function buildReviewDecisionUIRenderContract(args: {
       "V5.47 is a review decision UI render contract only. It does not create UI actions, persist decisions, mutate Airtable, send payloads, create Operator_Approval records, call the Worker, or promote dry-run to real-run.",
   };
 }
+function buildReviewDecisionUIComponentDataModel(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  workspaceId: string;
+  incidentId: string;
+  reviewDecisionUIRenderContract: JsonRecord;
+  reviewDecisionUIActionContract: JsonRecord;
+  reviewDecisionHumanDecisionCaptureDraft: JsonRecord;
+  reviewDecisionHumanReviewPackage: JsonRecord;
+  reviewDecisionPersistenceHumanReviewReadiness: JsonRecord;
+  reviewDecisionPersistencePayloadPreview: JsonRecord;
+  reviewDecisionPersistenceSchemaPreview: JsonRecord;
+  reviewDecisionPersistencePreflight: JsonRecord;
+  reviewDecisionPersistenceDraft: JsonRecord;
+  operatorDecisionReviewSummary: JsonRecord;
+  operatorDecisionDraft: JsonRecord;
+  humanReviewGate: JsonRecord;
+  mappingPreflightChecklist: JsonRecord;
+  toolMappingProposalDraft: JsonRecord;
+  controlledMappingPlan: JsonRecord;
+  toolcatalogRegistryReadiness: JsonRecord;
+  workerRouterMappingInspection: JsonRecord;
+  targetCapabilityDecisionMatrix: JsonRecord;
+  executionMappingContractDraft: JsonRecord;
+  unsupportedCommandDiagnosis: JsonRecord;
+  workerDryRunResult: JsonRecord;
+}) {
+  const renderContractAvailable = pickBoolean(
+    args.reviewDecisionUIRenderContract,
+    ["available"],
+    false
+  );
+
+  const renderContractStatus = pickString(args.reviewDecisionUIRenderContract, [
+    "render_contract_status",
+  ]);
+
+  const actionContractAvailable = pickBoolean(
+    args.reviewDecisionUIActionContract,
+    ["available"],
+    false
+  );
+
+  const actionContractStatus = pickString(args.reviewDecisionUIActionContract, [
+    "contract_status",
+  ]);
+
+  const captureDraftAvailable = pickBoolean(
+    args.reviewDecisionHumanDecisionCaptureDraft,
+    ["available"],
+    false
+  );
+
+  const captureDraftStatus = pickString(
+    args.reviewDecisionHumanDecisionCaptureDraft,
+    ["capture_draft_status"]
+  );
+
+  const packageAvailable = pickBoolean(args.reviewDecisionHumanReviewPackage, [
+    "available",
+  ]);
+
+  const packageStatus = pickString(args.reviewDecisionHumanReviewPackage, [
+    "package_status",
+  ]);
+
+  const payloadPreviewStatus = pickString(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_preview_status"]
+  );
+
+  const schemaPreviewStatus = pickString(
+    args.reviewDecisionPersistenceSchemaPreview,
+    ["schema_preview_status"]
+  );
+
+  const preflightStatus = pickString(args.reviewDecisionPersistencePreflight, [
+    "preflight_status",
+  ]);
+
+  const draftStatus = pickString(args.reviewDecisionPersistenceDraft, [
+    "draft_status",
+  ]);
+
+  const proposalConfidence = normalizeProposalConfidence(
+    pickString(args.reviewDecisionUIRenderContract, [
+      "mapping_candidate_model.proposal_confidence",
+    ]) ||
+      pickString(args.reviewDecisionHumanDecisionCaptureDraft, [
+        "source_review_package.proposal_confidence",
+      ]) ||
+      pickString(args.reviewDecisionHumanReviewPackage, [
+        "decision_to_review.proposal_confidence",
+      ]) ||
+      pickString(args.operatorDecisionReviewSummary, [
+        "mapping_summary.confidence",
+      ]) ||
+      pickString(args.operatorDecisionDraft, [
+        "decision_context.proposal_confidence",
+      ]) ||
+      pickString(args.toolMappingProposalDraft, [
+        "proposal.proposal_confidence",
+      ]) ||
+      pickString(args.controlledMappingPlan, [
+        "proposed_mapping.proposal_confidence",
+      ])
+  );
+
+  const mappingCandidate =
+    pickString(args.reviewDecisionUIRenderContract, [
+      "panel_model.mapping_candidate",
+    ]) ||
+    pickString(args.reviewDecisionHumanReviewPackage, [
+      "decision_to_review.mapping_candidate",
+    ]) ||
+    pickString(args.operatorDecisionReviewSummary, [
+      "mapping_summary.candidate",
+    ]) ||
+    pickString(args.operatorDecisionDraft, [
+      "decision_context.mapping_candidate",
+    ]) ||
+    "command_orchestrator -> incident_router";
+
+  const proposedToolKey =
+    pickString(args.toolMappingProposalDraft, ["proposal.proposed_tool_key"]) ||
+    pickString(args.controlledMappingPlan, [
+      "proposed_mapping.proposed_tool_key",
+    ]) ||
+    null;
+
+  const proposedToolMode =
+    pickString(args.toolMappingProposalDraft, ["proposal.proposed_tool_mode"]) ||
+    pickString(args.controlledMappingPlan, [
+      "proposed_mapping.proposed_tool_mode",
+    ]) ||
+    null;
+
+  const renderAllowedNow = pickBoolean(args.reviewDecisionUIRenderContract, [
+    "render_target.render_allowed_now",
+  ]);
+
+  const backendActionAllowedNow = pickBoolean(
+    args.reviewDecisionUIRenderContract,
+    ["render_target.backend_action_allowed_now"],
+    false
+  );
+
+  const safeForUiRenderNow = pickBoolean(
+    args.reviewDecisionUIRenderContract,
+    ["render_validation.safe_for_ui_render_now"],
+    false
+  );
+
+  const safeForUiRendering = pickBoolean(args.reviewDecisionUIActionContract, [
+    "contract_validation.safe_for_ui_rendering",
+  ]);
+
+  const safeForUiDisplay = pickBoolean(
+    args.reviewDecisionHumanDecisionCaptureDraft,
+    ["capture_validation.safe_for_ui_display"],
+    false
+  );
+
+  const safeForReviewOnly = pickBoolean(
+    args.reviewDecisionHumanDecisionCaptureDraft,
+    ["capture_validation.safe_for_review_only"],
+    false
+  );
+
+  const payloadSafeForReviewOnly = pickBoolean(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_validation.payload_safe_for_review_only_preview"],
+    false
+  );
+
+  const schemaSafeForReviewOnly = pickBoolean(
+    args.reviewDecisionPersistenceSchemaPreview,
+    ["schema_validation.schema_safe_for_review_only_preview"],
+    false
+  );
+
+  const packageComplete = pickBoolean(args.reviewDecisionHumanReviewPackage, [
+    "package_validation.package_complete",
+  ]);
+
+  const registryReadyForRealRun = pickBoolean(
+    args.toolcatalogRegistryReadiness,
+    ["registry_ready_for_real_run"],
+    false
+  );
+
+  const routerMappingReadyForRealRun = pickBoolean(
+    args.workerRouterMappingInspection,
+    ["router_mapping_ready_for_real_run"],
+    false
+  );
+
+  const targetCapabilitySelected = Boolean(
+    pickString(args.targetCapabilityDecisionMatrix, [
+      "selected_target_capability",
+    ])
+  );
+
+  const payloadSchemaValidated = pickBoolean(
+    args.executionMappingContractDraft,
+    ["payload_contract.payload_schema_validated"],
+    false
+  );
+
+  const promotionPolicyReady = pickBoolean(
+    args.executionMappingContractDraft,
+    ["promotion_contract.promotion_ready"],
+    false
+  );
+
+  const realRunAllowed =
+    pickBoolean(args.executionMappingContractDraft, [
+      "promotion_contract.real_run_allowed",
+    ]) ||
+    pickBoolean(args.mappingPreflightChecklist, ["real_run_allowed"], false);
+
+  const unsupportedActive =
+    pickBoolean(args.unsupportedCommandDiagnosis, [
+      "unsupported_confirmed",
+    ]) ||
+    pickBoolean(args.unsupportedCommandDiagnosis, [
+      "real_execution_blocker",
+    ]) ||
+    pickBoolean(args.workerDryRunResult, ["unsupported"], false);
+
+  const rollbackValidated = false;
+  const freshApprovalMissing = true;
+
+  const lowConfidence =
+    proposalConfidence === "low" ||
+    proposalConfidence === "unknown" ||
+    renderContractStatus === "UI_RENDER_CONTRACT_BLOCKED_LOW_CONFIDENCE";
+
+  const renderContractBlocked =
+    !renderContractAvailable || !safeForUiRenderNow;
+
+  const actionContractBlocked =
+    !actionContractAvailable || !safeForUiRendering;
+
+  const captureDraftBlocked =
+    !captureDraftAvailable || !safeForUiDisplay || !safeForReviewOnly;
+
+  const packageBlocked = !packageAvailable || !packageComplete;
+
+  const payloadPreviewBlocked = !payloadSafeForReviewOnly;
+
+  const schemaPreviewBlocked = !schemaSafeForReviewOnly;
+
+  const preflightBlocked =
+    pickBoolean(args.mappingPreflightChecklist, [
+      "preflight_ready_for_mapping_mutation",
+    ]) === false;
+
+  let dataModelStatus:
+    | "UI_COMPONENT_DATA_MODEL_BLOCKED_LOW_CONFIDENCE"
+    | "UI_COMPONENT_DATA_MODEL_BLOCKED_RENDER_CONTRACT"
+    | "UI_COMPONENT_DATA_MODEL_BLOCKED_ACTION_CONTRACT"
+    | "UI_COMPONENT_DATA_MODEL_BLOCKED_CAPTURE_DRAFT"
+    | "UI_COMPONENT_DATA_MODEL_BLOCKED_REAL_RUN"
+    | "UI_COMPONENT_DATA_MODEL_READY_REVIEW_ONLY"
+    | "UI_COMPONENT_DATA_MODEL_UNKNOWN" =
+    "UI_COMPONENT_DATA_MODEL_UNKNOWN";
+
+  if (lowConfidence) {
+    dataModelStatus = "UI_COMPONENT_DATA_MODEL_BLOCKED_LOW_CONFIDENCE";
+  } else if (renderContractBlocked) {
+    dataModelStatus = "UI_COMPONENT_DATA_MODEL_BLOCKED_RENDER_CONTRACT";
+  } else if (actionContractBlocked) {
+    dataModelStatus = "UI_COMPONENT_DATA_MODEL_BLOCKED_ACTION_CONTRACT";
+  } else if (captureDraftBlocked) {
+    dataModelStatus = "UI_COMPONENT_DATA_MODEL_BLOCKED_CAPTURE_DRAFT";
+  } else if (!realRunAllowed || unsupportedActive) {
+    dataModelStatus = "UI_COMPONENT_DATA_MODEL_BLOCKED_REAL_RUN";
+  } else {
+    dataModelStatus = "UI_COMPONENT_DATA_MODEL_READY_REVIEW_ONLY";
+  }
+
+  const componentVariant =
+    dataModelStatus === "UI_COMPONENT_DATA_MODEL_BLOCKED_LOW_CONFIDENCE"
+      ? "blocked_low_confidence"
+      : dataModelStatus === "UI_COMPONENT_DATA_MODEL_READY_REVIEW_ONLY"
+        ? "ready_review_only"
+        : "blocked";
+
+  const componentTone =
+    componentVariant === "ready_review_only" ? "success" : "warning";
+
+  const confidenceLabel =
+    proposalConfidence === "low"
+      ? "Low confidence"
+      : proposalConfidence === "medium"
+        ? "Medium confidence"
+        : proposalConfidence === "high"
+          ? "High confidence"
+          : "Unknown confidence";
+
+  const confidenceTone =
+    proposalConfidence === "high"
+      ? "success"
+      : proposalConfidence === "medium"
+        ? "neutral"
+        : "warning";
+
+  const evidenceCardModels = [
+    {
+      card_id: "dry_run_evidence",
+      title: "Dry-run evidence",
+      tone: "success",
+      status_label: "Validated",
+      items: [
+        "Dry-run transport is validated.",
+        "Worker response returned HTTP 200.",
+        "No real execution was triggered from this surface.",
+      ],
+    },
+    {
+      card_id: "worker_result",
+      title: "Worker result",
+      tone: "warning",
+      status_label: "Unsupported blocking",
+      items: [
+        "Worker scanned the Command record.",
+        "Worker executed zero command.",
+        "Worker returned unsupported=1.",
+      ],
+    },
+    {
+      card_id: "mapping_candidate",
+      title: "Mapping candidate",
+      tone: "warning",
+      status_label: "Low confidence",
+      items: [
+        `Mapping candidate: ${mappingCandidate}.`,
+        `Proposal confidence: ${proposalConfidence}.`,
+        "Human review is required before any future mutation path.",
+      ],
+    },
+    {
+      card_id: "safety_guardrails",
+      title: "Safety guardrails",
+      tone: "neutral",
+      status_label: "Locked",
+      items: [
+        "Operator_Approval creation is disabled.",
+        "Payload send to Airtable is disabled.",
+        "Worker call and real-run are disabled.",
+      ],
+    },
+  ];
+
+  const actionButtonModels = [
+    {
+      action_id: "REVIEW_MAPPING_ONLY",
+      label: "Review mapping only",
+      description:
+        "Review the mapping candidate without creating a record, mutating Airtable, calling the Worker, or allowing real-run.",
+      visible: true,
+      enabled: true,
+      visual_variant: "secondary",
+      button_role: "review_only",
+      backend_bound: false,
+      backend_method: "GET_ONLY",
+      future_method_hint: "POST_LATER",
+      requires_note: true,
+      requires_confirmation: false,
+      tooltip: "Safe review-only action. No backend mutation is bound.",
+      safety_badges: ["review_only", "no_mutation", "no_worker_call"],
+    },
+    {
+      action_id: "REJECT_MAPPING_CANDIDATE",
+      label: "Reject mapping candidate",
+      description:
+        "Reject the current mapping candidate in review-only mode without persisting the decision.",
+      visible: true,
+      enabled: true,
+      visual_variant: "warning",
+      button_role: "review_only",
+      backend_bound: false,
+      backend_method: "GET_ONLY",
+      future_method_hint: "POST_LATER",
+      requires_note: true,
+      requires_confirmation: true,
+      tooltip: "Safe review-only rejection preview. No record is created.",
+      safety_badges: ["review_only", "no_payload_send", "no_real_run"],
+    },
+    {
+      action_id: "REQUEST_MAPPING_REFINEMENT",
+      label: "Request mapping refinement",
+      description:
+        "Request more evidence or a better mapping candidate before any mutation path is considered.",
+      visible: true,
+      enabled: true,
+      visual_variant: "primary",
+      button_role: "review_only",
+      backend_bound: false,
+      backend_method: "GET_ONLY",
+      future_method_hint: "POST_LATER",
+      requires_note: true,
+      requires_confirmation: false,
+      tooltip: "Safe refinement request preview. No backend action is bound.",
+      safety_badges: ["review_only", "no_operator_approval", "no_worker_call"],
+    },
+  ];
+
+  const disabledActionButtonModels = [
+    {
+      action_id: "APPROVE_TOOL_MAPPING_MUTATION",
+      label: "Approve Tool Mapping",
+      visible: true,
+      enabled: false,
+      visual_variant: "disabled",
+      disabled_reason:
+        "Tool mapping mutation is blocked because mapping confidence is low and preflight is not ready.",
+      blocked_by: [
+        "low_confidence",
+        "preflight_not_ready",
+        "fresh_approval_missing",
+      ],
+      tooltip: "Disabled until mapping confidence and preflight are upgraded.",
+    },
+    {
+      action_id: "APPROVE_REGISTRY_MUTATION",
+      label: "Approve Registry Mutation",
+      visible: true,
+      enabled: false,
+      visual_variant: "disabled",
+      disabled_reason:
+        "Registry mutation is blocked because ToolCatalog and Workspace_Capabilities are not ready.",
+      blocked_by: [
+        "registry_not_ready",
+        "toolcatalog_entry_missing",
+        "workspace_capability_entry_missing",
+      ],
+      tooltip: "Disabled until registry readiness is confirmed.",
+    },
+    {
+      action_id: "APPROVE_COMMAND_CREATION",
+      label: "Approve Command Creation",
+      visible: true,
+      enabled: false,
+      visual_variant: "disabled",
+      disabled_reason:
+        "Command creation is blocked because the target capability is not selected with sufficient confidence.",
+      blocked_by: [
+        "target_capability_not_selected",
+        "low_confidence",
+        "payload_schema_not_validated",
+      ],
+      tooltip: "Disabled until target capability and payload schema are validated.",
+    },
+    {
+      action_id: "APPROVE_REAL_RUN",
+      label: "Approve Real Run",
+      visible: true,
+      enabled: false,
+      visual_variant: "danger_disabled",
+      disabled_reason:
+        "Real-run is blocked because unsupported remains active and execution guardrails are closed.",
+      blocked_by: [
+        "real_run_forbidden",
+        "unsupported_active",
+        "fresh_real_run_approval_missing",
+      ],
+      tooltip: "Disabled until all real-run gates are explicitly validated.",
+    },
+  ];
+
+  const reviewFormFields = [
+    {
+      field_id: "selected_review_action",
+      label: "Review action",
+      field_type: "select",
+      required: true,
+      allowed_values: [
+        "REVIEW_MAPPING_ONLY",
+        "REJECT_MAPPING_CANDIDATE",
+        "REQUEST_MAPPING_REFINEMENT",
+      ],
+      default_value: "REVIEW_MAPPING_ONLY",
+      help_text:
+        "Choose a review-only action. This preview does not submit or persist anything.",
+    },
+    {
+      field_id: "review_note",
+      label: "Review note",
+      field_type: "textarea",
+      required: true,
+      default_value: null,
+      help_text:
+        "Add the human review note required before any future persistence path.",
+    },
+    {
+      field_id: "confirm_no_mutation",
+      label: "Confirm no mutation",
+      field_type: "checkbox",
+      required: true,
+      default_value: false,
+      help_text:
+        "Confirm this review preview must not mutate Airtable or trigger execution.",
+    },
+  ];
+
+  const componentPropsComplete = true;
+  const headerModelComplete = true;
+  const statusBannerComplete = true;
+  const mappingCandidateModelComplete = true;
+  const disabledDangerousActionsPresent =
+    disabledActionButtonModels.length === 4;
+
+  const allActionButtonsAreReviewOnly = actionButtonModels.every(
+    (action) => action.button_role === "review_only"
+  );
+
+  const allActionButtonsAreBackendUnbound = actionButtonModels.every(
+    (action) => action.backend_bound === false
+  );
+
+  const allActionButtonsAreNonMutating = actionButtonModels.every(
+    (action) => action.backend_bound === false
+  );
+
+  const safeForUiComponentConsumption =
+    renderAllowedNow &&
+    safeForUiRenderNow &&
+    componentPropsComplete &&
+    headerModelComplete &&
+    statusBannerComplete &&
+    mappingCandidateModelComplete &&
+    allActionButtonsAreReviewOnly &&
+    allActionButtonsAreBackendUnbound &&
+    disabledDangerousActionsPresent;
+
+  const dataModelChecks: Array<{
+    id: string;
+    label: string;
+    status: "pass" | "warning" | "fail";
+    blocking: boolean;
+    evidence: string;
+  }> = [
+    {
+      id: "render_contract_available",
+      label: "UI render contract is available",
+      status: renderContractAvailable ? "pass" : "fail",
+      blocking: !renderContractAvailable,
+      evidence: `render_contract_available=${renderContractAvailable}.`,
+    },
+    {
+      id: "render_allowed_now",
+      label: "Render is allowed now",
+      status: renderAllowedNow ? "pass" : "fail",
+      blocking: !renderAllowedNow,
+      evidence: `render_allowed_now=${renderAllowedNow}.`,
+    },
+    {
+      id: "safe_for_ui_render_now",
+      label: "Render contract is safe for UI render",
+      status: safeForUiRenderNow ? "pass" : "fail",
+      blocking: !safeForUiRenderNow,
+      evidence: `safe_for_ui_render_now=${safeForUiRenderNow}.`,
+    },
+    {
+      id: "component_props_complete",
+      label: "Component props model is complete",
+      status: componentPropsComplete ? "pass" : "fail",
+      blocking: !componentPropsComplete,
+      evidence: `component_props_complete=${componentPropsComplete}.`,
+    },
+    {
+      id: "header_model_complete",
+      label: "Header model is complete",
+      status: headerModelComplete ? "pass" : "fail",
+      blocking: !headerModelComplete,
+      evidence: `header_model_complete=${headerModelComplete}.`,
+    },
+    {
+      id: "status_banner_complete",
+      label: "Status banner model is complete",
+      status: statusBannerComplete ? "pass" : "fail",
+      blocking: !statusBannerComplete,
+      evidence: `status_banner_complete=${statusBannerComplete}.`,
+    },
+    {
+      id: "mapping_candidate_model_complete",
+      label: "Mapping candidate model is complete",
+      status: mappingCandidateModelComplete ? "pass" : "fail",
+      blocking: !mappingCandidateModelComplete,
+      evidence: `mapping_candidate_model_complete=${mappingCandidateModelComplete}.`,
+    },
+    {
+      id: "proposal_confidence_sufficient",
+      label: "Proposal confidence is sufficient",
+      status: lowConfidence ? "fail" : "pass",
+      blocking: lowConfidence,
+      evidence: `proposal_confidence=${proposalConfidence}.`,
+    },
+    {
+      id: "action_buttons_review_only",
+      label: "Action buttons are review-only",
+      status: allActionButtonsAreReviewOnly ? "pass" : "fail",
+      blocking: !allActionButtonsAreReviewOnly,
+      evidence: `all_action_buttons_are_review_only=${allActionButtonsAreReviewOnly}.`,
+    },
+    {
+      id: "action_buttons_backend_unbound",
+      label: "Action buttons are backend-unbound",
+      status: allActionButtonsAreBackendUnbound ? "pass" : "fail",
+      blocking: !allActionButtonsAreBackendUnbound,
+      evidence: `all_action_buttons_are_backend_unbound=${allActionButtonsAreBackendUnbound}.`,
+    },
+    {
+      id: "dangerous_actions_disabled",
+      label: "Dangerous actions are disabled",
+      status: disabledDangerousActionsPresent ? "pass" : "fail",
+      blocking: !disabledDangerousActionsPresent,
+      evidence: `disabled_dangerous_actions_present=${disabledDangerousActionsPresent}.`,
+    },
+    {
+      id: "payload_send_disabled",
+      label: "Payload send remains disabled",
+      status: "pass",
+      blocking: false,
+      evidence: "payload_send_allowed_now=false.",
+    },
+    {
+      id: "operator_approval_creation_disabled",
+      label: "Operator approval creation remains disabled",
+      status: "pass",
+      blocking: false,
+      evidence: "operator_approval_creation_allowed_now=false.",
+    },
+    {
+      id: "worker_call_disabled",
+      label: "Worker call remains disabled",
+      status: "pass",
+      blocking: false,
+      evidence: "worker_call_allowed_now=false.",
+    },
+    {
+      id: "real_run_disabled",
+      label: "Real-run remains disabled",
+      status: "pass",
+      blocking: false,
+      evidence: "real_run_allowed_now=false.",
+    },
+    {
+      id: "unsupported_active",
+      label: "Unsupported classification remains active",
+      status: unsupportedActive ? "fail" : "pass",
+      blocking: unsupportedActive,
+      evidence: `unsupported_active=${unsupportedActive}.`,
+    },
+    {
+      id: "registry_ready",
+      label: "Registry is ready for real-run",
+      status: registryReadyForRealRun ? "pass" : "fail",
+      blocking: !registryReadyForRealRun,
+      evidence: `registry_ready_for_real_run=${registryReadyForRealRun}.`,
+    },
+    {
+      id: "router_mapping_ready",
+      label: "Router mapping is ready for real-run",
+      status: routerMappingReadyForRealRun ? "pass" : "fail",
+      blocking: !routerMappingReadyForRealRun,
+      evidence: `router_mapping_ready_for_real_run=${routerMappingReadyForRealRun}.`,
+    },
+    {
+      id: "target_capability_selected",
+      label: "Target capability is selected",
+      status: targetCapabilitySelected ? "pass" : "fail",
+      blocking: !targetCapabilitySelected,
+      evidence: `target_capability_selected=${targetCapabilitySelected}.`,
+    },
+    {
+      id: "payload_schema_validated",
+      label: "Payload schema is validated",
+      status: payloadSchemaValidated ? "pass" : "fail",
+      blocking: !payloadSchemaValidated,
+      evidence: `payload_schema_validated=${payloadSchemaValidated}.`,
+    },
+    {
+      id: "promotion_policy_ready",
+      label: "Promotion policy is ready",
+      status: promotionPolicyReady ? "pass" : "fail",
+      blocking: !promotionPolicyReady,
+      evidence: `promotion_policy_ready=${promotionPolicyReady}.`,
+    },
+    {
+      id: "rollback_validated",
+      label: "Rollback is validated",
+      status: rollbackValidated ? "pass" : "fail",
+      blocking: !rollbackValidated,
+      evidence: `rollback_validated=${rollbackValidated}.`,
+    },
+    {
+      id: "fresh_approval_available",
+      label: "Fresh approval is available",
+      status: freshApprovalMissing ? "fail" : "pass",
+      blocking: freshApprovalMissing,
+      evidence: `fresh_approval_missing=${freshApprovalMissing}.`,
+    },
+  ];
+
+  const dataModelSummary = {
+    total_checks: dataModelChecks.length,
+    passed_checks: dataModelChecks.filter((check) => check.status === "pass")
+      .length,
+    warning_checks: dataModelChecks.filter(
+      (check) => check.status === "warning"
+    ).length,
+    failed_checks: dataModelChecks.filter((check) => check.status === "fail")
+      .length,
+    blocking_checks: dataModelChecks.filter((check) => check.blocking).length,
+  };
+
+  return {
+    available: true,
+    data_model_version: "V5.48_REVIEW_DECISION_UI_COMPONENT_DATA_MODEL",
+    data_model_status: dataModelStatus,
+    workspace_id: args.workspaceId,
+    incident_id: args.incidentId,
+    command_id: args.commandId,
+    command_record_id: args.commandRecordId,
+
+    component_target: {
+      surface: "incident_detail",
+      component_name: "ReviewDecisionPanel",
+      section_id: "review_decision_actions",
+      current_mode: "read_only_component_data_model",
+      review_scope: "review_only",
+      data_model_ready_for_ui: true,
+      component_creation_allowed_now: false,
+      backend_binding_allowed_now: false,
+      create_allowed_now: false,
+      update_allowed_now: false,
+      payload_send_allowed_now: false,
+      worker_call_allowed_now: false,
+      real_run_allowed_now: false,
+    },
+
+    source_render_contract: {
+      render_contract_available: renderContractAvailable,
+      render_contract_status: renderContractStatus || null,
+      render_allowed_now: renderAllowedNow,
+      backend_action_allowed_now: backendActionAllowedNow,
+      safe_for_ui_render_now: safeForUiRenderNow,
+      renderable_actions_count: actionButtonModels.length,
+      disabled_actions_count: disabledActionButtonModels.length,
+    },
+
+    component_props_model: {
+      component_id: "review-decision-panel",
+      component_name: "ReviewDecisionPanel",
+      variant: componentVariant,
+      tone: componentTone,
+      size: "default",
+      density: "comfortable",
+      is_visible: true,
+      is_interactive: true,
+      is_backend_bound: false,
+      is_mutation_enabled: false,
+      is_real_run_enabled: false,
+    },
+
+    header_model: {
+      title: "Review decision",
+      subtitle: "Review-only mapping decision. No execution is allowed.",
+      eyebrow: "Incident Detail - Review-only",
+      status_label:
+        componentVariant === "blocked_low_confidence"
+          ? "Blocked - Low confidence"
+          : componentVariant === "ready_review_only"
+            ? "Ready - Review-only"
+            : "Blocked",
+      status_tone: componentTone,
+      workspace_label: args.workspaceId,
+      incident_label: args.incidentId,
+      command_label: args.commandId,
+    },
+
+    status_banner_model: {
+      visible: true,
+      tone: componentTone,
+      title: "Human review required",
+      message:
+        "The UI can display a review-only component model, but no backend binding, payload send, Operator_Approval creation, Worker call, mutation, or real-run is allowed.",
+      primary_reason: "low_confidence",
+      secondary_reasons: [
+        "unsupported_active",
+        "registry_not_ready",
+        "payload_schema_not_validated",
+        "fresh_approval_missing",
+      ],
+    },
+
+    mapping_candidate_model: {
+      visible: true,
+      source_capability: "command_orchestrator",
+      proposed_target_capability: "incident_router",
+      proposed_tool_key: proposedToolKey,
+      proposed_tool_mode: proposedToolMode,
+      mapping_candidate: mappingCandidate,
+      proposal_confidence: proposalConfidence,
+      confidence_label: confidenceLabel,
+      confidence_tone: confidenceTone,
+      confidence_is_sufficient_for_mutation: false,
+    },
+
+    evidence_card_models: evidenceCardModels,
+
+    action_button_models: actionButtonModels,
+
+    disabled_action_button_models: disabledActionButtonModels,
+
+    review_form_data_model: {
+      form_id: "review-decision-form",
+      form_scope: "review_only",
+      visible: true,
+      enabled_for_input_preview: true,
+      submit_enabled_now: false,
+      submit_backend_bound: false,
+      fields: reviewFormFields,
+    },
+
+    ui_state_model: {
+      can_render_component: true,
+      can_render_header: true,
+      can_render_status_banner: true,
+      can_render_mapping_candidate: true,
+      can_render_evidence_cards: true,
+      can_render_safe_actions: true,
+      can_render_disabled_dangerous_actions: true,
+      can_render_review_form_preview: true,
+      can_submit_now: false,
+      can_bind_backend_now: false,
+      can_send_payload_now: false,
+      can_create_operator_approval_now: false,
+      can_update_operator_approval_now: false,
+      can_call_worker_now: false,
+      can_real_run_now: false,
+    },
+
+    component_copy_model: {
+      heading: "Review decision",
+      subheading: "Review-only mapping decision. No execution is allowed.",
+      review_only_notice:
+        "This component data model is for review-only UI rendering.",
+      low_confidence_notice:
+        "Mapping confidence remains low. Human review is required before any future mutation path.",
+      unsupported_notice:
+        "Unsupported classification remains active and blocks real execution.",
+      disabled_actions_notice:
+        "Mutation, registry, command creation, and real-run actions must render disabled.",
+      no_backend_binding_notice:
+        "No backend binding, payload send, Operator_Approval creation, Worker call, or real-run is allowed from V5.48.",
+      next_safe_action_label:
+        "Prepare V5.49 or a future UI integration contract without mutation.",
+    },
+
+    component_data_validation: {
+      data_model_available: true,
+      component_props_complete: componentPropsComplete,
+      header_model_complete: headerModelComplete,
+      status_banner_complete: statusBannerComplete,
+      mapping_candidate_model_complete: mappingCandidateModelComplete,
+      evidence_cards_count: evidenceCardModels.length,
+      action_buttons_count: actionButtonModels.length,
+      disabled_action_buttons_count: disabledActionButtonModels.length,
+      review_form_fields_count: reviewFormFields.length,
+      all_action_buttons_are_review_only: allActionButtonsAreReviewOnly,
+      all_action_buttons_are_backend_unbound: allActionButtonsAreBackendUnbound,
+      all_action_buttons_are_non_mutating: allActionButtonsAreNonMutating,
+      disabled_dangerous_actions_present: disabledDangerousActionsPresent,
+      safe_for_ui_component_consumption: safeForUiComponentConsumption,
+      safe_for_component_creation_now: false,
+      safe_for_backend_binding_now: false,
+      safe_for_payload_send_now: false,
+      safe_for_operator_approval_creation_now: false,
+      safe_for_mutation_now: false,
+      safe_for_real_run_now: false,
+    },
+
+    data_model_blockers: {
+      low_confidence: lowConfidence,
+      render_contract_blocked: renderContractBlocked,
+      action_contract_blocked: actionContractBlocked,
+      capture_draft_blocked: captureDraftBlocked,
+      package_blocked: packageBlocked,
+      payload_preview_blocked: payloadPreviewBlocked,
+      schema_preview_blocked: schemaPreviewBlocked,
+      preflight_blocked: preflightBlocked,
+      registry_not_ready: !registryReadyForRealRun,
+      router_mapping_not_ready: !routerMappingReadyForRealRun,
+      target_capability_not_selected: !targetCapabilitySelected,
+      payload_schema_not_validated: !payloadSchemaValidated,
+      promotion_policy_missing: !promotionPolicyReady,
+      rollback_not_validated: !rollbackValidated,
+      unsupported_active: unsupportedActive,
+      fresh_approval_missing: freshApprovalMissing,
+    },
+
+    data_model_checks: dataModelChecks,
+
+    data_model_summary: dataModelSummary,
+
+    allowed_now: [
+      "ui_component_data_model",
+      "prepare_review_decision_panel_props",
+      "prepare_review_mapping_only_button_model",
+      "prepare_reject_mapping_candidate_button_model",
+      "prepare_request_mapping_refinement_button_model",
+      "prepare_disabled_dangerous_button_models",
+    ],
+
+    forbidden_now: [
+      "operator_approval_creation",
+      "operator_approval_update",
+      "payload_send_to_airtable",
+      "decision_capture_persistence",
+      "ui_backend_action_mutation",
+      "ui_component_backend_binding",
+      "component_submit_backend_binding",
+      "mapping_mutation_approval",
+      "registry_mutation_approval",
+      "command_creation_approval",
+      "real_run_approval",
+      "worker_call",
+    ],
+
+    required_before_ui_component_implementation: [
+      "confirm the component consumes this data model as read-only props",
+      "confirm no backend action is bound to safe buttons",
+      "confirm disabled dangerous actions remain disabled",
+      "confirm no payload send is wired",
+      "confirm no Operator_Approval creation is wired",
+    ],
+
+    required_before_ui_component_backend_binding: [
+      "complete human review",
+      "upgrade mapping confidence to medium or high",
+      "define a separate backend mutation endpoint",
+      "validate payload schema",
+      "validate rollback strategy",
+      "obtain fresh operator approval",
+    ],
+
+    required_before_operator_approval_creation: [
+      "complete review-only human decision",
+      "confirm mapping candidate scope",
+      "confirm decision remains review_only",
+      "confirm no mutation is requested",
+      "confirm Operator_Approval creation is still disabled from this route",
+      "confirm real-run remains forbidden",
+    ],
+
+    required_before_payload_send: [
+      "complete payload preview",
+      "complete schema preview",
+      "validate Airtable target schema separately",
+      "obtain fresh approval for persistence",
+      "use a separate gated server-side route",
+    ],
+
+    required_before_any_mutation: [
+      "improve mapping confidence to medium or high",
+      "define Tool_Key",
+      "define Tool_Mode",
+      "define target capability explicitly",
+      "define ToolCatalog entry",
+      "define Workspace_Capabilities entry",
+      "validate payload schema",
+      "validate rollback strategy",
+      "create fresh operator approval for mutation",
+      "use a separate gated mutation endpoint or manual controlled update",
+    ],
+
+    required_before_real_run: [
+      "mapping mutation completed and rechecked",
+      "registry ready",
+      "router mapping ready",
+      "target capability selected",
+      "payload schema validated",
+      "dry-run repeated successfully after mapping",
+      "unsupported resolved",
+      "promotion policy approved",
+      "rollback/cancel path validated",
+      "fresh real-run approval",
+      "real-run feature gate explicitly opened in separate server-side route",
+    ],
+
+    audit: {
+      no_airtable_mutation: true,
+      no_payload_sent: true,
+      no_operator_approval_created: true,
+      no_operator_approval_updated: true,
+      no_decision_captured: true,
+      no_ui_backend_action_created: true,
+      no_ui_component_created: true,
+      no_backend_binding_created: true,
+      no_command_created: true,
+      no_worker_call: true,
+      no_real_run: true,
+    },
+
+    next_safe_action:
+      "Use this read-only data model to prepare V5.49 or a future ReviewDecisionPanel integration contract without backend binding or mutation.",
+
+    guardrail_interpretation:
+      "V5.48 is a review decision UI component data model only. It does not create React components, bind backend actions, create Operator_Approval records, send payloads, mutate Airtable, call the worker, or promote dry-run to real-run.",
+  };
+}
 
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
@@ -13045,6 +14060,34 @@ export async function GET(request: Request, context: RouteContext) {
       commandId: ids.commandDraftId,
       workspaceId,
       incidentId,
+      reviewDecisionUIActionContract,
+      reviewDecisionHumanDecisionCaptureDraft,
+      reviewDecisionHumanReviewPackage,
+      reviewDecisionPersistenceHumanReviewReadiness,
+      reviewDecisionPersistencePayloadPreview,
+      reviewDecisionPersistenceSchemaPreview,
+      reviewDecisionPersistencePreflight,
+      reviewDecisionPersistenceDraft,
+      operatorDecisionReviewSummary,
+      operatorDecisionDraft,
+      humanReviewGate,
+      mappingPreflightChecklist,
+      toolMappingProposalDraft,
+      controlledMappingPlan,
+      toolcatalogRegistryReadiness,
+      workerRouterMappingInspection,
+      targetCapabilityDecisionMatrix,
+      executionMappingContractDraft,
+      unsupportedCommandDiagnosis,
+      workerDryRunResult,
+    });
+    const reviewDecisionUIComponentDataModel =
+      buildReviewDecisionUIComponentDataModel({
+      commandRecordId,
+      commandId: ids.commandDraftId,
+      workspaceId,
+      incidentId,
+      reviewDecisionUIRenderContract,
       reviewDecisionUIActionContract,
       reviewDecisionHumanDecisionCaptureDraft,
       reviewDecisionHumanReviewPackage,
