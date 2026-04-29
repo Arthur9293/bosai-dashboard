@@ -51,12 +51,10 @@ type PreflightCheckItem = {
   required_before: PreflightRequiredBefore;
 };
 
-const VERSION = "Incident Detail V5.45";
-const SOURCE =
-  "dashboard_incident_detail_v5_45_review_decision_human_decision_capture_draft";
+const VERSION = "Incident Detail V5.46";
+const SOURCE = "dashboard_incident_detail_v5_46_review_decision_ui_action_contract";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
-const READER_VERSION =
-  "V5.45_REVIEW_DECISION_HUMAN_DECISION_CAPTURE_DRAFT";
+const READER_VERSION = "V5.46_REVIEW_DECISION_UI_ACTION_CONTRACT";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
