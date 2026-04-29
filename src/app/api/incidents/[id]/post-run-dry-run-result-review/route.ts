@@ -51,11 +51,10 @@ type PreflightCheckItem = {
   required_before: PreflightRequiredBefore;
 };
 
-const VERSION = "Incident Detail V5.47";
-
-const SOURCE = "dashboard_incident_detail_v5_47_review_decision_ui_render_contract";
 const MODE = "POST_RUN_DRY_RUN_RESULT_REVIEW_ONLY";
-const READER_VERSION = "V5.47_REVIEW_DECISION_UI_RENDER_CONTRACT";
+const VERSION = "Incident Detail V5.48";
+const SOURCE = "dashboard_incident_detail_v5_48_review_decision_ui_component_data_model";
+const READER_VERSION = "V5.48_REVIEW_DECISION_UI_COMPONENT_DATA_MODEL";
 
 const INPUT_JSON_FIELD_CANDIDATES = [
   "Input_JSON",
@@ -14276,6 +14275,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     review_decision_ui_render_contract: reviewDecisionUIRenderContract,
 
+    review_decision_ui_component_data_model: reviewDecisionUIComponentDataModel,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -14329,9 +14330,9 @@ export async function GET(request: Request, context: RouteContext) {
 
     interpretation: {
       summary:
-        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft. V5.34 adds a controlled mapping plan. V5.35 adds a read-only mapping preflight checklist. V5.36 adds a human review gate. V5.37 adds a read-only operator decision draft. V5.38 adds an operator decision review summary. V5.39 adds a review decision persistence draft. V5.40 adds a review decision persistence preflight. V5.41 adds a review decision persistence schema preview. V5.42 adds a review decision persistence payload preview. V5.43 adds a review decision persistence human review readiness. V5.44 adds a review decision human review package. V5.45 adds a review decision human decision capture draft. V5.45 adds a review decision human decision capture draft. V5.46 adds a review decision UI action contract. V5.46 adds a review decision UI action contract. V5.47 adds a review decision UI render contract.",
+        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft. V5.34 adds a controlled mapping plan. V5.35 adds a read-only mapping preflight checklist. V5.36 adds a human review gate. V5.37 adds a read-only operator decision draft. V5.38 adds an operator decision review summary. V5.39 adds a review decision persistence draft. V5.40 adds a review decision persistence preflight. V5.41 adds a review decision persistence schema preview. V5.42 adds a review decision persistence payload preview. V5.43 adds a review decision persistence human review readiness. V5.44 adds a review decision human review package. V5.45 adds a review decision human decision capture draft. V5.45 adds a review decision human decision capture draft. V5.46 adds a review decision UI action contract. V5.46 adds a review decision UI action contract. V5.47 adds a review decision UI render contract. V5.47 adds a review decision UI render contract. V5.48 adds a review decision UI component data model.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, controlled mapping plan requirements, mapping preflight blockers, human review boundaries, operator decision draft options, operator decision review summary, review decision persistence draft, review decision persistence preflight, review decision persistence schema preview, review decision persistence payload preview, review decision persistence human review readiness, review decision human review package, and review decision human decision capture draft are now reviewed without executing a new run, review decision UI action contract, review decision UI render contract.",
+        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, controlled mapping plan requirements, mapping preflight blockers, human review boundaries, operator decision draft options, operator decision review summary, review decision persistence draft, review decision persistence preflight, review decision persistence schema preview, review decision persistence payload preview, review decision persistence human review readiness, review decision human review package, and review decision human decision capture draft are now reviewed without executing a new run, review decision UI action contract, review decision UI render contract, review decision UI component data model.",
       router_allowlist_readiness_is_blocking_for_real_execution:
         !routerAllowlistReadiness.real_run_allowed_by_readiness,
       registry_readiness_is_blocking_for_real_execution:
@@ -14404,6 +14405,7 @@ export async function GET(request: Request, context: RouteContext) {
       "Complete review decision human decision capture draft before any Operator_Approval creation",
       "Complete review decision UI action contract before any Operator_Approval creation",
       "Complete review decision UI render contract before any Operator_Approval creation",
+      "Complete review decision UI component data model before any Operator_Approval creation",
     ],
 
     guardrails: {
@@ -14450,6 +14452,10 @@ export async function GET(request: Request, context: RouteContext) {
       review_decision_ui_render_contract_mutation: "DISABLED",
       ui_render_contract_persistence: "DISABLED",
       ui_component_backend_binding: "DISABLED",
+      review_decision_ui_component_data_model_mutation: "DISABLED",
+      ui_component_creation: "DISABLED",
+      ui_component_backend_binding: "DISABLED",
+      component_submit_backend_binding: "DISABLED",
     },
 
     error:
@@ -14457,6 +14463,6 @@ export async function GET(request: Request, context: RouteContext) {
         ? null
         : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, execution_mapping_contract_draft, tool_mapping_proposal_draft, controlled_mapping_plan, mapping_preflight_checklist, human_review_gate, operator_decision_draft, operator_decision_review_summary, and read sections.",
     next_step:
-      "Next safe step: V5.48 Review Decision UI Component Data Model, still read-only / no mutation, before any Operator_Approval creation.",
+      "Next safe step: V5.49 Review Decision UI Component Integration Contract, still read-only / no mutation, before any Operator_Approval creation.",
   });
 }
