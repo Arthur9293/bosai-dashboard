@@ -11348,6 +11348,824 @@ function buildReviewDecisionUIActionContract(args: {
   };
 }
 
+function buildReviewDecisionUIRenderContract(args: {
+  commandRecordId: string | null;
+  commandId: string;
+  workspaceId: string;
+  incidentId: string;
+  reviewDecisionUIActionContract: JsonRecord;
+  reviewDecisionHumanDecisionCaptureDraft: JsonRecord;
+  reviewDecisionHumanReviewPackage: JsonRecord;
+  reviewDecisionPersistenceHumanReviewReadiness: JsonRecord;
+  reviewDecisionPersistencePayloadPreview: JsonRecord;
+  reviewDecisionPersistenceSchemaPreview: JsonRecord;
+  reviewDecisionPersistencePreflight: JsonRecord;
+  reviewDecisionPersistenceDraft: JsonRecord;
+  operatorDecisionReviewSummary: JsonRecord;
+  operatorDecisionDraft: JsonRecord;
+  humanReviewGate: JsonRecord;
+  mappingPreflightChecklist: JsonRecord;
+  toolMappingProposalDraft: JsonRecord;
+  controlledMappingPlan: JsonRecord;
+  toolcatalogRegistryReadiness: JsonRecord;
+  workerRouterMappingInspection: JsonRecord;
+  targetCapabilityDecisionMatrix: JsonRecord;
+  executionMappingContractDraft: JsonRecord;
+  unsupportedCommandDiagnosis: JsonRecord;
+  workerDryRunResult: JsonRecord;
+}) {
+  type RenderCheck = {
+    id: string;
+    label: string;
+    status: "pass" | "warning" | "fail";
+    blocking: boolean;
+    evidence: string;
+  };
+
+  const contractStatus = pickString(args.reviewDecisionUIActionContract, [
+    "contract_status",
+  ]);
+
+  const captureDraftStatus = pickString(
+    args.reviewDecisionHumanDecisionCaptureDraft,
+    ["capture_draft_status"]
+  );
+
+  const packageStatus = pickString(args.reviewDecisionHumanReviewPackage, [
+    "package_status",
+  ]);
+
+  const payloadPreviewStatus = pickString(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_preview_status"]
+  );
+
+  const schemaPreviewStatus = pickString(
+    args.reviewDecisionPersistenceSchemaPreview,
+    ["schema_preview_status"]
+  );
+
+  const preflightStatus = pickString(
+    args.reviewDecisionPersistencePreflight,
+    ["preflight_status"]
+  );
+
+  const proposalConfidence = normalizeProposalConfidence(
+    pickString(args.reviewDecisionUIActionContract, [
+      "contract_blockers.proposal_confidence",
+    ]) ||
+      pickString(args.reviewDecisionHumanDecisionCaptureDraft, [
+        "source_review_package.proposal_confidence",
+      ]) ||
+      pickString(args.reviewDecisionHumanReviewPackage, [
+        "decision_to_review.proposal_confidence",
+      ]) ||
+      pickString(args.operatorDecisionReviewSummary, [
+        "mapping_summary.confidence",
+      ]) ||
+      pickString(args.operatorDecisionDraft, [
+        "decision_context.proposal_confidence",
+      ]) ||
+      pickString(args.toolMappingProposalDraft, [
+        "proposal.proposal_confidence",
+      ]) ||
+      pickString(args.controlledMappingPlan, [
+        "proposed_mapping.proposal_confidence",
+      ])
+  );
+
+  const mappingCandidate =
+    pickString(args.reviewDecisionHumanReviewPackage, [
+      "decision_to_review.mapping_candidate",
+    ]) ||
+    pickString(args.operatorDecisionReviewSummary, [
+      "mapping_summary.candidate",
+    ]) ||
+    pickString(args.operatorDecisionDraft, [
+      "decision_context.mapping_candidate",
+    ]) ||
+    "command_orchestrator -> incident_router";
+
+  const proposedToolKey =
+    pickString(args.toolMappingProposalDraft, ["proposal.proposed_tool_key"]) ||
+    pickString(args.controlledMappingPlan, [
+      "proposed_mapping.proposed_tool_key",
+    ]) ||
+    null;
+
+  const proposedToolMode =
+    pickString(args.toolMappingProposalDraft, ["proposal.proposed_tool_mode"]) ||
+    pickString(args.controlledMappingPlan, [
+      "proposed_mapping.proposed_tool_mode",
+    ]) ||
+    null;
+
+  const sourceActionContracts = pickArray<JsonRecord>(
+    args.reviewDecisionUIActionContract,
+    ["action_contracts"]
+  );
+
+  const sourceDisabledActionContracts = pickArray<JsonRecord>(
+    args.reviewDecisionUIActionContract,
+    ["disabled_action_contracts"]
+  );
+
+  const actionsRenderableNow = pickBoolean(
+    args.reviewDecisionUIActionContract,
+    ["ui_contract_target.actions_renderable_now"],
+    true
+  );
+
+  const actionsExecutableNow = pickBoolean(
+    args.reviewDecisionUIActionContract,
+    ["ui_contract_target.actions_executable_now"],
+    false
+  );
+
+  const safeForUiRendering = pickBoolean(
+    args.reviewDecisionUIActionContract,
+    ["contract_validation.safe_for_ui_rendering"],
+    true
+  );
+
+  const safeForBackendExecutionNow = pickBoolean(
+    args.reviewDecisionUIActionContract,
+    ["contract_validation.safe_for_backend_execution_now"],
+    false
+  );
+
+  const captureDraftSafeForUiDisplay = pickBoolean(
+    args.reviewDecisionHumanDecisionCaptureDraft,
+    ["capture_validation.safe_for_ui_display"],
+    true
+  );
+
+  const captureDraftSafeForReviewOnly = pickBoolean(
+    args.reviewDecisionHumanDecisionCaptureDraft,
+    ["capture_validation.safe_for_review_only"],
+    true
+  );
+
+  const packageComplete = pickBoolean(args.reviewDecisionHumanReviewPackage, [
+    "package_validation.package_complete",
+  ]);
+
+  const payloadSafeForReviewOnlyPreview = pickBoolean(
+    args.reviewDecisionPersistencePayloadPreview,
+    ["payload_validation.payload_safe_for_review_only_preview"],
+    true
+  );
+
+  const schemaSafeForReviewOnlyPreview = pickBoolean(
+    args.reviewDecisionPersistenceSchemaPreview,
+    ["schema_validation.schema_safe_for_review_only_preview"],
+    true
+  );
+
+  const registryReadyForRealRun = pickBoolean(
+    args.toolcatalogRegistryReadiness,
+    ["registry_ready_for_real_run"],
+    false
+  );
+
+  const routerMappingReadyForRealRun = pickBoolean(
+    args.workerRouterMappingInspection,
+    ["router_mapping_ready_for_real_run"],
+    false
+  );
+
+  const targetCapabilitySelected = Boolean(
+    pickString(args.targetCapabilityDecisionMatrix, [
+      "selected_target_capability",
+    ])
+  );
+
+  const payloadSchemaValidated = pickBoolean(
+    args.executionMappingContractDraft,
+    ["payload_contract.payload_schema_validated"],
+    false
+  );
+
+  const promotionPolicyReady = pickBoolean(
+    args.executionMappingContractDraft,
+    ["promotion_contract.promotion_ready"],
+    false
+  );
+
+  const realRunAllowed =
+    pickBoolean(args.executionMappingContractDraft, [
+      "promotion_contract.real_run_allowed",
+    ]) ||
+    pickBoolean(args.mappingPreflightChecklist, ["real_run_allowed"], false);
+
+  const unsupportedActive =
+    pickBoolean(args.unsupportedCommandDiagnosis, [
+      "unsupported_confirmed",
+    ]) ||
+    pickBoolean(args.unsupportedCommandDiagnosis, [
+      "real_execution_blocker",
+    ]) ||
+    pickBoolean(args.operatorDecisionDraft, [
+      "decision_context.unsupported_active",
+    ]);
+
+  const rollbackValidated = false;
+  const freshApprovalMissing = true;
+
+  const lowConfidence =
+    proposalConfidence === "low" ||
+    proposalConfidence === "unknown" ||
+    contractStatus === "UI_ACTION_CONTRACT_BLOCKED_LOW_CONFIDENCE";
+
+  const actionContractBlocked =
+    !args.reviewDecisionUIActionContract ||
+    !safeForUiRendering ||
+    !actionsRenderableNow;
+
+  const captureDraftBlocked =
+    !args.reviewDecisionHumanDecisionCaptureDraft ||
+    !captureDraftSafeForUiDisplay ||
+    !captureDraftSafeForReviewOnly;
+
+  const packageBlocked =
+    !args.reviewDecisionHumanReviewPackage || !packageComplete;
+
+  const payloadPreviewBlocked =
+    !args.reviewDecisionPersistencePayloadPreview ||
+    !payloadSafeForReviewOnlyPreview;
+
+  const schemaPreviewBlocked =
+    !args.reviewDecisionPersistenceSchemaPreview ||
+    !schemaSafeForReviewOnlyPreview;
+
+  let renderContractStatus:
+    | "UI_RENDER_CONTRACT_BLOCKED_LOW_CONFIDENCE"
+    | "UI_RENDER_CONTRACT_BLOCKED_ACTION_CONTRACT"
+    | "UI_RENDER_CONTRACT_BLOCKED_CAPTURE_DRAFT"
+    | "UI_RENDER_CONTRACT_BLOCKED_PACKAGE"
+    | "UI_RENDER_CONTRACT_BLOCKED_REAL_RUN"
+    | "UI_RENDER_CONTRACT_READY_REVIEW_ONLY"
+    | "UI_RENDER_CONTRACT_UNKNOWN" = "UI_RENDER_CONTRACT_UNKNOWN";
+
+  if (lowConfidence) {
+    renderContractStatus = "UI_RENDER_CONTRACT_BLOCKED_LOW_CONFIDENCE";
+  } else if (actionContractBlocked) {
+    renderContractStatus = "UI_RENDER_CONTRACT_BLOCKED_ACTION_CONTRACT";
+  } else if (captureDraftBlocked) {
+    renderContractStatus = "UI_RENDER_CONTRACT_BLOCKED_CAPTURE_DRAFT";
+  } else if (packageBlocked) {
+    renderContractStatus = "UI_RENDER_CONTRACT_BLOCKED_PACKAGE";
+  } else if (!realRunAllowed || unsupportedActive) {
+    renderContractStatus = "UI_RENDER_CONTRACT_BLOCKED_REAL_RUN";
+  } else {
+    renderContractStatus = "UI_RENDER_CONTRACT_READY_REVIEW_ONLY";
+  }
+
+  const renderableActionButtons = [
+    {
+      action_id: "REVIEW_MAPPING_ONLY",
+      label: "Review mapping only",
+      description:
+        "Review the mapping candidate without creating records, sending payloads, calling the Worker, or enabling real-run.",
+      visible: true,
+      enabled: true,
+      visual_variant: "secondary",
+      backend_bound: false,
+      backend_method: "GET_ONLY",
+      future_method_hint: "POST_LATER",
+      requires_note: true,
+      requires_confirmation: false,
+      disabled_reason: null,
+      tooltip:
+        "Review-only action. No backend mutation is allowed from V5.47.",
+      safety_badges: ["review_only", "no_mutation", "no_worker_call"],
+    },
+    {
+      action_id: "REJECT_MAPPING_CANDIDATE",
+      label: "Reject mapping candidate",
+      description:
+        "Reject the command_orchestrator -> incident_router candidate without mutating the system.",
+      visible: true,
+      enabled: true,
+      visual_variant: "warning",
+      backend_bound: false,
+      backend_method: "GET_ONLY",
+      future_method_hint: "POST_LATER",
+      requires_note: true,
+      requires_confirmation: true,
+      disabled_reason: null,
+      tooltip:
+        "Rejecting is only a review-only draft state in V5.47. No persistence occurs.",
+      safety_badges: ["review_only", "no_payload_send", "no_real_run"],
+    },
+    {
+      action_id: "REQUEST_MAPPING_REFINEMENT",
+      label: "Request mapping refinement",
+      description:
+        "Request more evidence or a better target capability before any future mutation path.",
+      visible: true,
+      enabled: true,
+      visual_variant: "primary",
+      backend_bound: false,
+      backend_method: "GET_ONLY",
+      future_method_hint: "POST_LATER",
+      requires_note: true,
+      requires_confirmation: false,
+      disabled_reason: null,
+      tooltip:
+        "Refinement request is render-only in V5.47. No Operator_Approval is created.",
+      safety_badges: ["review_only", "low_confidence", "safe_render"],
+    },
+  ];
+
+  const disabledActionButtons = [
+    {
+      action_id: "APPROVE_TOOL_MAPPING_MUTATION",
+      label: "Approve Tool Mapping",
+      visible: true,
+      enabled: false,
+      visual_variant: "disabled",
+      disabled_reason:
+        "Tool mapping mutation is blocked because proposal confidence is low and mapping preflight is not ready.",
+      blocked_by: [
+        "proposal_confidence_low",
+        "mapping_preflight_not_ready",
+        "fresh_mutation_approval_missing",
+      ],
+      tooltip:
+        "Disabled until mapping confidence, registry, schema, rollback, and fresh approval are validated.",
+    },
+    {
+      action_id: "APPROVE_REGISTRY_MUTATION",
+      label: "Approve Registry Mutation",
+      visible: true,
+      enabled: false,
+      visual_variant: "disabled",
+      disabled_reason:
+        "Registry mutation is blocked because ToolCatalog and Workspace_Capabilities are not ready.",
+      blocked_by: [
+        "registry_not_ready",
+        "toolcatalog_entry_missing",
+        "workspace_capability_entry_missing",
+      ],
+      tooltip:
+        "Disabled until registry readiness is confirmed in a separate safe path.",
+    },
+    {
+      action_id: "APPROVE_COMMAND_CREATION",
+      label: "Approve Command Creation",
+      visible: true,
+      enabled: false,
+      visual_variant: "disabled",
+      disabled_reason:
+        "Command creation is blocked because no target capability is selected with sufficient confidence.",
+      blocked_by: [
+        "target_capability_not_selected",
+        "proposal_confidence_low",
+        "payload_schema_not_validated",
+      ],
+      tooltip:
+        "Disabled until target capability and payload schema are validated.",
+    },
+    {
+      action_id: "APPROVE_REAL_RUN",
+      label: "Approve Real Run",
+      visible: true,
+      enabled: false,
+      visual_variant: "danger_disabled",
+      disabled_reason:
+        "Real-run is blocked because unsupported remains active and execution guardrails are closed.",
+      blocked_by: [
+        "real_run_forbidden",
+        "unsupported_active",
+        "promotion_policy_missing",
+        "rollback_not_validated",
+        "fresh_real_run_approval_missing",
+      ],
+      tooltip:
+        "Disabled. V5.47 cannot execute, call Worker, or promote dry-run to real-run.",
+    },
+  ];
+
+  const evidenceCards = [
+    {
+      card_id: "dry_run_evidence",
+      title: "Dry-run evidence",
+      status: "validated",
+      items: [
+        `Worker HTTP status: ${String(
+          pickString(args.workerDryRunResult, ["http_status"]) ||
+            pickBoolean(args.workerDryRunResult, ["ok"], false)
+        )}`,
+        "Dry-run transport is validated.",
+        "No real execution was performed from this surface.",
+      ],
+    },
+    {
+      card_id: "worker_result",
+      title: "Worker result",
+      status: "unsupported_blocking",
+      items: [
+        "Worker scanned the Command record.",
+        "Worker executed zero commands.",
+        "Unsupported classification remains active and blocks real execution.",
+      ],
+    },
+    {
+      card_id: "mapping_candidate",
+      title: "Mapping candidate",
+      status: "low_confidence",
+      items: [
+        `Candidate: ${mappingCandidate}.`,
+        `Proposal confidence: ${proposalConfidence}.`,
+        `Proposed Tool_Key: ${proposedToolKey || "not confirmed"}.`,
+        `Proposed Tool_Mode: ${proposedToolMode || "not confirmed"}.`,
+      ],
+    },
+    {
+      card_id: "safety_guardrails",
+      title: "Safety guardrails",
+      status: "locked",
+      items: [
+        "Operator_Approval creation is disabled.",
+        "Payload send to Airtable is disabled.",
+        "Worker call is disabled.",
+        "Real-run is forbidden.",
+      ],
+    },
+  ];
+
+  const renderChecks: RenderCheck[] = [
+    {
+      id: "action_contract_available",
+      label: "UI action contract is available",
+      status: args.reviewDecisionUIActionContract ? "pass" : "fail",
+      blocking: !args.reviewDecisionUIActionContract,
+      evidence: `contract_status=${contractStatus || "missing"}.`,
+    },
+    {
+      id: "actions_renderable_now",
+      label: "Actions are renderable now",
+      status: actionsRenderableNow ? "pass" : "fail",
+      blocking: !actionsRenderableNow,
+      evidence: `actions_renderable_now=${String(actionsRenderableNow)}.`,
+    },
+    {
+      id: "actions_executable_now_false",
+      label: "Actions are not executable now",
+      status: !actionsExecutableNow ? "pass" : "fail",
+      blocking: actionsExecutableNow,
+      evidence: `actions_executable_now=${String(actionsExecutableNow)}.`,
+    },
+    {
+      id: "safe_for_ui_rendering",
+      label: "Safe for UI rendering",
+      status: safeForUiRendering ? "pass" : "fail",
+      blocking: !safeForUiRendering,
+      evidence: `safe_for_ui_rendering=${String(safeForUiRendering)}.`,
+    },
+    {
+      id: "renderable_safe_actions_present",
+      label: "Renderable safe actions are present",
+      status: renderableActionButtons.length === 3 ? "pass" : "fail",
+      blocking: renderableActionButtons.length !== 3,
+      evidence: `renderable_actions_count=${renderableActionButtons.length}.`,
+    },
+    {
+      id: "disabled_dangerous_actions_present",
+      label: "Dangerous actions are present but disabled",
+      status: disabledActionButtons.length === 4 ? "pass" : "fail",
+      blocking: disabledActionButtons.length !== 4,
+      evidence: `disabled_actions_count=${disabledActionButtons.length}.`,
+    },
+    {
+      id: "low_confidence_blocks_mutation",
+      label: "Low confidence blocks mutation",
+      status: lowConfidence ? "fail" : "pass",
+      blocking: lowConfidence,
+      evidence: `proposal_confidence=${proposalConfidence}.`,
+    },
+    {
+      id: "capture_draft_safe_for_ui",
+      label: "Capture draft is safe for UI display",
+      status: captureDraftSafeForUiDisplay ? "pass" : "fail",
+      blocking: !captureDraftSafeForUiDisplay,
+      evidence: `capture_draft_status=${captureDraftStatus || "missing"}.`,
+    },
+    {
+      id: "package_complete",
+      label: "Human review package is complete",
+      status: packageComplete ? "pass" : "fail",
+      blocking: !packageComplete,
+      evidence: `package_status=${packageStatus || "missing"}.`,
+    },
+    {
+      id: "payload_preview_safe",
+      label: "Payload preview is safe for review-only",
+      status: payloadSafeForReviewOnlyPreview ? "pass" : "fail",
+      blocking: !payloadSafeForReviewOnlyPreview,
+      evidence: `payload_preview_status=${payloadPreviewStatus || "missing"}.`,
+    },
+    {
+      id: "schema_preview_safe",
+      label: "Schema preview is safe for review-only",
+      status: schemaSafeForReviewOnlyPreview ? "pass" : "fail",
+      blocking: !schemaSafeForReviewOnlyPreview,
+      evidence: `schema_preview_status=${schemaPreviewStatus || "missing"}.`,
+    },
+    {
+      id: "unsupported_active",
+      label: "Unsupported classification remains active",
+      status: unsupportedActive ? "fail" : "pass",
+      blocking: unsupportedActive,
+      evidence: `unsupported_active=${String(unsupportedActive)}.`,
+    },
+    {
+      id: "registry_ready_for_real_run",
+      label: "Registry ready for real-run",
+      status: registryReadyForRealRun ? "pass" : "fail",
+      blocking: !registryReadyForRealRun,
+      evidence: `registry_ready_for_real_run=${String(
+        registryReadyForRealRun
+      )}.`,
+    },
+    {
+      id: "router_mapping_ready_for_real_run",
+      label: "Router mapping ready for real-run",
+      status: routerMappingReadyForRealRun ? "pass" : "fail",
+      blocking: !routerMappingReadyForRealRun,
+      evidence: `router_mapping_ready_for_real_run=${String(
+        routerMappingReadyForRealRun
+      )}.`,
+    },
+    {
+      id: "target_capability_selected",
+      label: "Target capability selected",
+      status: targetCapabilitySelected ? "pass" : "fail",
+      blocking: !targetCapabilitySelected,
+      evidence: `target_capability_selected=${String(
+        targetCapabilitySelected
+      )}.`,
+    },
+    {
+      id: "payload_schema_validated",
+      label: "Payload schema validated",
+      status: payloadSchemaValidated ? "pass" : "fail",
+      blocking: !payloadSchemaValidated,
+      evidence: `payload_schema_validated=${String(payloadSchemaValidated)}.`,
+    },
+    {
+      id: "promotion_policy_ready",
+      label: "Promotion policy ready",
+      status: promotionPolicyReady ? "pass" : "fail",
+      blocking: !promotionPolicyReady,
+      evidence: `promotion_policy_ready=${String(promotionPolicyReady)}.`,
+    },
+    {
+      id: "rollback_validated",
+      label: "Rollback validated",
+      status: rollbackValidated ? "pass" : "fail",
+      blocking: !rollbackValidated,
+      evidence: `rollback_validated=${String(rollbackValidated)}.`,
+    },
+    {
+      id: "fresh_approval_missing",
+      label: "Fresh approval available",
+      status: freshApprovalMissing ? "fail" : "pass",
+      blocking: freshApprovalMissing,
+      evidence: `fresh_approval_missing=${String(freshApprovalMissing)}.`,
+    },
+  ];
+
+  const passedChecks = renderChecks.filter(
+    (check) => check.status === "pass"
+  ).length;
+  const warningChecks = renderChecks.filter(
+    (check) => check.status === "warning"
+  ).length;
+  const failedChecks = renderChecks.filter(
+    (check) => check.status === "fail"
+  ).length;
+  const blockingChecks = renderChecks.filter((check) => check.blocking).length;
+
+  return {
+    available: true,
+    render_contract_version: "V5.47_REVIEW_DECISION_UI_RENDER_CONTRACT",
+    render_contract_status: renderContractStatus,
+    workspace_id: args.workspaceId,
+    incident_id: args.incidentId,
+    command_id: args.commandId,
+    command_record_id: args.commandRecordId,
+
+    render_target: {
+      surface: "incident_detail",
+      component_hint: "ReviewDecisionPanel",
+      section_hint: "review_decision_actions",
+      current_mode: "read_only_ui_render_contract",
+      review_scope: "review_only",
+      render_allowed_now: true,
+      backend_action_allowed_now: false,
+      create_allowed_now: false,
+      update_allowed_now: false,
+      payload_send_allowed_now: false,
+      worker_call_allowed_now: false,
+      real_run_allowed_now: false,
+    },
+
+    source_action_contract: {
+      action_contract_available: Boolean(args.reviewDecisionUIActionContract),
+      contract_status: contractStatus || null,
+      actions_renderable_now: actionsRenderableNow,
+      actions_executable_now: actionsExecutableNow,
+      action_contracts_count: sourceActionContracts.length,
+      disabled_action_contracts_count: sourceDisabledActionContracts.length,
+      safe_for_ui_rendering: safeForUiRendering,
+      safe_for_backend_execution_now: false,
+    },
+
+    panel_model: {
+      panel_title: "Review decision",
+      panel_subtitle:
+        "Review-only mapping decision. No execution is allowed.",
+      panel_status: lowConfidence
+        ? "blocked_low_confidence"
+        : renderContractStatus === "UI_RENDER_CONTRACT_READY_REVIEW_ONLY"
+          ? "ready_review_only"
+          : "blocked",
+      panel_tone:
+        renderContractStatus === "UI_RENDER_CONTRACT_READY_REVIEW_ONLY"
+          ? "neutral"
+          : "warning",
+      primary_message:
+        "The UI can render a review-only decision panel for the mapping candidate.",
+      secondary_message:
+        "The operator can review, reject, or request refinement, but no backend action is bound now.",
+      safety_message:
+        "Operator_Approval creation, payload send, Worker call, mutation, and real-run are disabled.",
+      confidence_message:
+        "Mapping confidence remains low. Mutation and execution remain blocked.",
+      unsupported_message:
+        "Unsupported classification remains active and blocks real execution.",
+    },
+
+    renderable_action_buttons: renderableActionButtons,
+
+    disabled_action_buttons: disabledActionButtons,
+
+    evidence_cards: evidenceCards,
+
+    ui_state_matrix: {
+      can_render_panel: true,
+      can_render_safe_actions: true,
+      can_render_disabled_dangerous_actions: true,
+      can_submit_action_now: false,
+      can_send_payload_now: false,
+      can_create_operator_approval_now: false,
+      can_update_operator_approval_now: false,
+      can_call_worker_now: false,
+      can_real_run_now: false,
+    },
+
+    copy_contract: {
+      heading: "Review decision",
+      subheading: "Review-only mapping decision. No execution is allowed.",
+      review_only_notice:
+        "This panel is read-only. It can guide human review but cannot persist decisions.",
+      low_confidence_notice:
+        "Mapping confidence is low. Human review is required before any future mutation path.",
+      unsupported_notice:
+        "Unsupported classification remains active and blocks real execution.",
+      disabled_actions_notice:
+        "Dangerous actions are visible for transparency but disabled.",
+      next_safe_action_label:
+        "Prepare UI component data model without binding backend mutation.",
+    },
+
+    render_validation: {
+      render_contract_available: true,
+      panel_model_complete: true,
+      renderable_actions_count: renderableActionButtons.length,
+      disabled_actions_count: disabledActionButtons.length,
+      evidence_cards_count: evidenceCards.length,
+      all_renderable_actions_are_review_only: true,
+      all_renderable_actions_are_non_mutating: true,
+      all_renderable_actions_are_backend_unbound: true,
+      disabled_dangerous_actions_present: disabledActionButtons.length === 4,
+      safe_for_ui_render_now: true,
+      safe_for_backend_execution_now: false,
+      safe_for_operator_approval_creation_now: false,
+      safe_for_payload_send_now: false,
+      safe_for_mutation_now: false,
+      safe_for_real_run_now: false,
+    },
+
+    render_blockers: {
+      low_confidence: lowConfidence,
+      action_contract_blocked: actionContractBlocked,
+      capture_draft_blocked: captureDraftBlocked,
+      package_blocked: packageBlocked,
+      payload_preview_blocked: payloadPreviewBlocked,
+      schema_preview_blocked: schemaPreviewBlocked,
+      preflight_blocked: preflightStatus !== null,
+      registry_not_ready: !registryReadyForRealRun,
+      router_mapping_not_ready: !routerMappingReadyForRealRun,
+      target_capability_not_selected: !targetCapabilitySelected,
+      payload_schema_not_validated: !payloadSchemaValidated,
+      promotion_policy_missing: !promotionPolicyReady,
+      rollback_not_validated: !rollbackValidated,
+      unsupported_active: unsupportedActive,
+      fresh_approval_missing: freshApprovalMissing,
+    },
+
+    render_checks: renderChecks,
+
+    render_summary: {
+      total_checks: renderChecks.length,
+      passed_checks: passedChecks,
+      warning_checks: warningChecks,
+      failed_checks: failedChecks,
+      blocking_checks: blockingChecks,
+    },
+
+    allowed_now: [
+      "ui_render_contract",
+      "render_review_decision_panel",
+      "render_review_mapping_only",
+      "render_reject_mapping_candidate",
+      "render_request_mapping_refinement",
+      "render_disabled_dangerous_actions",
+    ],
+
+    forbidden_now: [
+      "operator_approval_creation",
+      "operator_approval_update",
+      "payload_send_to_airtable",
+      "decision_capture_persistence",
+      "ui_backend_action_mutation",
+      "mapping_mutation_approval",
+      "registry_mutation_approval",
+      "command_creation_approval",
+      "real_run_approval",
+      "worker_call",
+    ],
+
+    required_before_ui_component_binding: [
+      "confirm UI consumes this render contract read-only",
+      "confirm buttons are not bound to mutation endpoints",
+      "confirm disabled dangerous actions remain disabled",
+      "confirm no payload send occurs from the component",
+      "confirm no Worker call occurs from the component",
+    ],
+
+    required_before_ui_backend_action: [
+      "define a separate backend action endpoint",
+      "define method and payload contract",
+      "validate idempotency",
+      "validate authorization",
+      "validate rollback path",
+      "keep dry-run and real-run gates separate",
+    ],
+
+    required_before_operator_approval_creation: pickArray<string>(
+      args.reviewDecisionPersistencePreflight,
+      ["required_before_operator_approval_creation"]
+    ),
+
+    required_before_payload_send: pickArray<string>(
+      args.reviewDecisionPersistencePayloadPreview,
+      ["required_before_payload_send"]
+    ),
+
+    required_before_any_mutation: pickArray<string>(
+      args.reviewDecisionUIActionContract,
+      ["required_before_any_mutation"]
+    ),
+
+    required_before_real_run: pickArray<string>(
+      args.reviewDecisionUIActionContract,
+      ["required_before_real_run"]
+    ),
+
+    audit: {
+      no_airtable_mutation: true,
+      no_payload_sent: true,
+      no_operator_approval_created: true,
+      no_operator_approval_updated: true,
+      no_decision_captured: true,
+      no_ui_backend_action_created: true,
+      no_command_created: true,
+      no_worker_call: true,
+      no_real_run: true,
+    },
+
+    next_safe_action:
+      "Use this render contract to prepare a UI component data model without binding backend mutation, payload send, Worker call, or real-run.",
+
+    guardrail_interpretation:
+      "V5.47 is a review decision UI render contract only. It does not create UI actions, persist decisions, mutate Airtable, send payloads, create Operator_Approval records, call the Worker, or promote dry-run to real-run.",
+  };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const incidentId = params.id;
@@ -12219,7 +13037,35 @@ export async function GET(request: Request, context: RouteContext) {
       unsupportedCommandDiagnosis,
       workerDryRunResult,
     });
-
+    
+    const reviewDecisionUIRenderContract =
+      buildReviewDecisionUIRenderContract({
+      commandRecordId,
+      commandId: ids.commandDraftId,
+      workspaceId,
+      incidentId,
+      reviewDecisionUIActionContract,
+      reviewDecisionHumanDecisionCaptureDraft,
+      reviewDecisionHumanReviewPackage,
+      reviewDecisionPersistenceHumanReviewReadiness,
+      reviewDecisionPersistencePayloadPreview,
+      reviewDecisionPersistenceSchemaPreview,
+      reviewDecisionPersistencePreflight,
+      reviewDecisionPersistenceDraft,
+      operatorDecisionReviewSummary,
+      operatorDecisionDraft,
+      humanReviewGate,
+      mappingPreflightChecklist,
+      toolMappingProposalDraft,
+      controlledMappingPlan,
+      toolcatalogRegistryReadiness,
+      workerRouterMappingInspection,
+      targetCapabilityDecisionMatrix,
+      executionMappingContractDraft,
+      unsupportedCommandDiagnosis,
+      workerDryRunResult,
+    });
+  
   let status = "POST_RUN_DRY_RUN_RESULT_REVIEW_READY";
 
   if (configMissing) {
@@ -12384,6 +13230,8 @@ export async function GET(request: Request, context: RouteContext) {
 
     review_decision_ui_action_contract: reviewDecisionUIActionContract,
 
+    review_decision_ui_render_contract: reviewDecisionUIRenderContract,
+
     post_run_from_this_surface: "DISABLED",
     worker_call_from_this_surface: "DISABLED",
     previous_worker_dry_run_call: normalizedAudit.workerDryRunCallWasSent
@@ -12437,9 +13285,9 @@ export async function GET(request: Request, context: RouteContext) {
 
     interpretation: {
       summary:
-        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft. V5.34 adds a controlled mapping plan. V5.35 adds a read-only mapping preflight checklist. V5.36 adds a human review gate. V5.37 adds a read-only operator decision draft. V5.38 adds an operator decision review summary. V5.39 adds a review decision persistence draft. V5.40 adds a review decision persistence preflight. V5.41 adds a review decision persistence schema preview. V5.42 adds a review decision persistence payload preview. V5.43 adds a review decision persistence human review readiness. V5.44 adds a review decision human review package. V5.45 adds a review decision human decision capture draft. V5.45 adds a review decision human decision capture draft. V5.46 adds a review decision UI action contract.",
+        "This surface reviews the persisted V5.25.1 dry-run evidence only. V5.27 explains unsupported classification. V5.28 adds router / allowlist readiness. V5.29 adds registry readiness. V5.30 adds Worker router mapping. V5.31 adds target capability decision matrix. V5.32 adds execution mapping contract draft. V5.33 adds a read-only tool mapping proposal draft. V5.34 adds a controlled mapping plan. V5.35 adds a read-only mapping preflight checklist. V5.36 adds a human review gate. V5.37 adds a read-only operator decision draft. V5.38 adds an operator decision review summary. V5.39 adds a review decision persistence draft. V5.40 adds a review decision persistence preflight. V5.41 adds a review decision persistence schema preview. V5.42 adds a review decision persistence payload preview. V5.43 adds a review decision persistence human review readiness. V5.44 adds a review decision human review package. V5.45 adds a review decision human decision capture draft. V5.45 adds a review decision human decision capture draft. V5.46 adds a review decision UI action contract. V5.46 adds a review decision UI action contract. V5.47 adds a review decision UI render contract.",
       result_meaning:
-        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, controlled mapping plan requirements, mapping preflight blockers, human review boundaries, operator decision draft options, operator decision review summary, review decision persistence draft, review decision persistence preflight, review decision persistence schema preview, review decision persistence payload preview, review decision persistence human review readiness, review decision human review package, and review decision human decision capture draft are now reviewed without executing a new run, review decision UI action contract.",
+        "Dry-run transport, auth, strict body, workspace routing, persisted worker evidence, unsupported classification, router readiness, registry readiness, router mapping, target capability decision constraints, execution mapping contract requirements, tool mapping proposal constraints, controlled mapping plan requirements, mapping preflight blockers, human review boundaries, operator decision draft options, operator decision review summary, review decision persistence draft, review decision persistence preflight, review decision persistence schema preview, review decision persistence payload preview, review decision persistence human review readiness, review decision human review package, and review decision human decision capture draft are now reviewed without executing a new run, review decision UI action contract, review decision UI render contract.",
       router_allowlist_readiness_is_blocking_for_real_execution:
         !routerAllowlistReadiness.real_run_allowed_by_readiness,
       registry_readiness_is_blocking_for_real_execution:
@@ -12511,6 +13359,7 @@ export async function GET(request: Request, context: RouteContext) {
       "Complete review decision human review package before any Operator_Approval creation",
       "Complete review decision human decision capture draft before any Operator_Approval creation",
       "Complete review decision UI action contract before any Operator_Approval creation",
+      "Complete review decision UI render contract before any Operator_Approval creation",
     ],
 
     guardrails: {
@@ -12554,6 +13403,9 @@ export async function GET(request: Request, context: RouteContext) {
       review_decision_ui_action_contract_mutation: "DISABLED",
       ui_backend_action_mutation: "DISABLED",
       ui_action_execution: "DISABLED",
+      review_decision_ui_render_contract_mutation: "DISABLED",
+      ui_render_contract_persistence: "DISABLED",
+      ui_component_backend_binding: "DISABLED",
     },
 
     error:
@@ -12561,6 +13413,6 @@ export async function GET(request: Request, context: RouteContext) {
         ? null
         : "Dry-run result review is not ready. Check status, audit_json_compatibility, worker_run_record_fallback, unsupported_command_diagnosis, router_allowlist_readiness, toolcatalog_registry_readiness, worker_router_mapping_inspection, target_capability_decision_matrix, execution_mapping_contract_draft, tool_mapping_proposal_draft, controlled_mapping_plan, mapping_preflight_checklist, human_review_gate, operator_decision_draft, operator_decision_review_summary, and read sections.",
     next_step:
-      "Next safe step: V5.47 Review Decision UI Render Contract, still read-only / no mutation, before any Operator_Approval creation.",
+      "Next safe step: V5.48 Review Decision UI Component Data Model, still read-only / no mutation, before any Operator_Approval creation.",
   });
 }
